@@ -1,0 +1,19 @@
+directories:
+  output: dist
+  buildResources: assets
+appId: com.fere.localhostmonitor
+productName: LocalhostMonitor
+extends: null
+extraMetadata:
+  main: electron/main.js
+mac:
+  category: public.app-category.developer-tools
+  target:
+    - dmg
+    - zip
+files:
+  - filter:
+      - build/**/*
+      - electron/**/*
+      - package.json
+electronVersion: 40.0.0
