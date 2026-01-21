@@ -3,9 +3,14 @@ const { contextBridge, ipcRenderer } = require('electron');
 // Expose protected methods to the renderer process
 contextBridge.exposeInMainWorld('electronAPI', {
   // Process monitoring
-  getProcesses: () => ipcRenderer.invoke('get-processes'),
-  getPorts: () => ipcRenderer.invoke('get-ports'),
+  getDevProcesses: () => ipcRenderer.invoke('get-dev-processes'),
+  getAllProcesses: () => ipcRenderer.invoke('get-all-processes'),
+  getListeningPorts: () => ipcRenderer.invoke('get-listening-ports'),
   getConnections: () => ipcRenderer.invoke('get-connections'),
+
+  // Connection graph
+  getConnectionGraph: () => ipcRenderer.invoke('get-connection-graph'),
+  getEnvironmentSummary: () => ipcRenderer.invoke('get-environment-summary'),
 
   // Process control
   killProcess: (pid) => ipcRenderer.invoke('kill-process', pid),

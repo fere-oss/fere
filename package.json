@@ -1,8 +1,8 @@
 {
-  "name": "localhost-monitor",
+  "name": "fere",
   "version": "0.1.0",
   "description": "Visualize your local development environment in real-time",
-  "author": "Fere",
+  "author": "Rahul Thennarasu",
   "private": true,
   "main": "electron/main.js",
   "homepage": "./",
@@ -38,8 +38,8 @@
     "electron:build:mac": "npm run build && electron-builder --mac"
   },
   "build": {
-    "appId": "com.fere.localhostmonitor",
-    "productName": "LocalhostMonitor",
+    "appId": "com.fere.app",
+    "productName": "Fere",
     "extends": null,
     "extraMetadata": {
       "main": "electron/main.js"

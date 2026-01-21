@@ -1,6 +1,10 @@
 const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
-const { exec } = require('child_process');
+
+// Import services
+const { getDevProcesses, getAllProcesses, killProcess } = require('./services/processMonitor');
+const { getListeningPorts, getEstablishedConnections } = require('./services/portMonitor');
+const { buildConnectionGraph, getEnvironmentSummary } = require('./services/connectionGraph');
 
 // Keep a global reference of the window object
 let mainWindow;
@@ -14,6 +18,7 @@ function createWindow() {
     minWidth: 800,
     minHeight: 600,
     titleBarStyle: 'hiddenInset',
+    trafficLightPosition: { x: 15, y: 15 },
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -48,54 +53,76 @@ app.on('activate', () => {
   }
 });
 
-// IPC handlers for system monitoring
-ipcMain.handle('get-processes', async () => {
-  return new Promise((resolve, reject) => {
-    // Get running processes with their ports
-    exec('ps aux', (error, stdout) => {
-      if (error) {
-        reject(error);
-        return;
-      }
-      resolve(stdout);
-    });
-  });
+// ============================================
+// IPC Handlers - System Monitoring API
+// ============================================
+
+// Get all dev-related processes (filtered)
+ipcMain.handle('get-dev-processes', async () => {
+  try {
+    return await getDevProcesses();
+  } catch (error) {
+    console.error('Error getting dev processes:', error);
+    return [];
+  }
 });
 
-ipcMain.handle('get-ports', async () => {
-  return new Promise((resolve, reject) => {
-    // Get listening ports using lsof
-    exec('lsof -iTCP -sTCP:LISTEN -P -n', (error, stdout) => {
-      if (error && error.code !== 1) {
-        reject(error);
-        return;
-      }
-      resolve(stdout || '');
-    });
-  });
+// Get all processes (unfiltered)
+ipcMain.handle('get-all-processes', async () => {
+  try {
+    return await getAllProcesses();
+  } catch (error) {
+    console.error('Error getting all processes:', error);
+    return [];
+  }
 });
 
+// Get listening ports
+ipcMain.handle('get-listening-ports', async () => {
+  try {
+    return await getListeningPorts();
+  } catch (error) {
+    console.error('Error getting listening ports:', error);
+    return [];
+  }
+});
+
+// Get established connections
 ipcMain.handle('get-connections', async () => {
-  return new Promise((resolve, reject) => {
-    // Get established connections
-    exec('lsof -iTCP -sTCP:ESTABLISHED -P -n', (error, stdout) => {
-      if (error && error.code !== 1) {
-        reject(error);
-        return;
-      }
-      resolve(stdout || '');
-    });
-  });
+  try {
+    return await getEstablishedConnections();
+  } catch (error) {
+    console.error('Error getting connections:', error);
+    return [];
+  }
 });
 
+// Get the full connection graph (nodes + edges)
+ipcMain.handle('get-connection-graph', async () => {
+  try {
+    return await buildConnectionGraph();
+  } catch (error) {
+    console.error('Error building connection graph:', error);
+    return { nodes: [], edges: [] };
+  }
+});
+
+// Get environment summary
+ipcMain.handle('get-environment-summary', async () => {
+  try {
+    return await getEnvironmentSummary();
+  } catch (error) {
+    console.error('Error getting environment summary:', error);
+    return { totalServices: 0, totalConnections: 0, services: [] };
+  }
+});
+
+// Kill a process by PID
 ipcMain.handle('kill-process', async (event, pid) => {
-  return new Promise((resolve, reject) => {
-    exec(`kill ${pid}`, (error) => {
-      if (error) {
-        reject(error);
-        return;
-      }
-      resolve(true);
-    });
-  });
+  try {
+    return await killProcess(pid);
+  } catch (error) {
+    console.error('Error killing process:', error);
+    return { success: false, error: error.message };
+  }
 });
