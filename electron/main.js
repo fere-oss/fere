@@ -2,7 +2,7 @@ const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 
 // Import services
-const { getDevProcesses, getAllProcesses, killProcess } = require('./services/processMonitor');
+const { getDevProcesses, getAllProcesses, getProcessByPid, killProcess, isDevProcess } = require('./services/processMonitor');
 const { getListeningPorts, getEstablishedConnections } = require('./services/portMonitor');
 const { buildConnectionGraph, getEnvironmentSummary } = require('./services/connectionGraph');
 
@@ -120,6 +120,10 @@ ipcMain.handle('get-environment-summary', async () => {
 // Kill a process by PID
 ipcMain.handle('kill-process', async (event, pid) => {
   try {
+    const proc = await getProcessByPid(pid);
+    if (!proc || !isDevProcess(proc)) {
+      return { success: false, error: 'Process is not eligible for termination' };
+    }
     return await killProcess(pid);
   } catch (error) {
     console.error('Error killing process:', error);

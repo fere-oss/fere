@@ -3,6 +3,33 @@ const { promisify } = require('util');
 
 const execAsync = promisify(exec);
 
+const LSOF_LINE_RE = /^(\S+)\s+(\d+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(.+)$/;
+
+function parseLsofLine(line) {
+  const match = line.match(LSOF_LINE_RE);
+  if (!match) return null;
+
+  const [, command, pid, user, fd, type, device, sizeOff, node, name] = match;
+  return { command, pid, user, fd, type, device, sizeOff, node, name };
+}
+
+function normalizeName(name) {
+  return name.replace(/\s+\(.*\)$/, '').replace(/^TCP\s+/, '').trim();
+}
+
+function stripBrackets(host) {
+  return host.startsWith('[') && host.endsWith(']') ? host.slice(1, -1) : host;
+}
+
+function parseHostPort(part) {
+  const portMatch = part.match(/:(\d+)$/);
+  if (!portMatch) return null;
+  const port = parseInt(portMatch[1], 10);
+  const hostRaw = part.slice(0, part.lastIndexOf(':'));
+  const host = stripBrackets(hostRaw) || '*';
+  return { host, port };
+}
+
 /**
  * Parse lsof output for listening ports
  * lsof -iTCP -sTCP:LISTEN -P -n format:
@@ -17,21 +44,18 @@ function parseListeningPorts(lsofOutput) {
   // Skip header line
   for (let i = 1; i < lines.length; i++) {
     const line = lines[i];
-    const parts = line.trim().split(/\s+/);
-    if (parts.length < 9) continue;
+    const parsed = parseLsofLine(line);
+    if (!parsed) continue;
 
-    const [command, pid, user, fd, type, device, sizeOff, node, name] = parts;
-
-    // Parse the NAME field (e.g., "*:3000" or "127.0.0.1:5432" or "[::1]:8080")
-    const portMatch = name.match(/:(\d+)$/);
-    if (!portMatch) continue;
-
-    const port = parseInt(portMatch[1], 10);
-    const host = name.replace(`:${port}`, '') || '*';
+    const { command, pid, user, fd, node, name } = parsed;
+    const cleaned = normalizeName(name);
+    const localPart = cleaned.split('->')[0].trim();
+    const hostPort = parseHostPort(localPart);
+    if (!hostPort) continue;
 
     ports.push({
-      port,
-      host,
+      port: hostPort.port,
+      host: hostPort.host,
       pid: parseInt(pid, 10),
       process: command,
       user,
@@ -63,24 +87,25 @@ function parseConnections(lsofOutput) {
 
   for (let i = 1; i < lines.length; i++) {
     const line = lines[i];
-    const parts = line.trim().split(/\s+/);
-    if (parts.length < 9) continue;
+    const parsed = parseLsofLine(line);
+    if (!parsed) continue;
 
-    const [command, pid, user, fd, type, device, sizeOff, node, name] = parts;
+    const { command, pid, user, node, name } = parsed;
+    const cleaned = normalizeName(name);
 
     // Parse connection format: "localhost:52341->localhost:5432"
-    const connMatch = name.match(/(.+):(\d+)->(.+):(\d+)/);
+    const connMatch = cleaned.match(/(.+):(\d+)->(.+):(\d+)/);
     if (!connMatch) continue;
 
-    const [, localHost, localPort, remoteHost, remotePort] = connMatch;
+    const [, localHostRaw, localPort, remoteHostRaw, remotePort] = connMatch;
 
     connections.push({
       pid: parseInt(pid, 10),
       process: command,
       user,
-      localHost,
+      localHost: stripBrackets(localHostRaw),
       localPort: parseInt(localPort, 10),
-      remoteHost,
+      remoteHost: stripBrackets(remoteHostRaw),
       remotePort: parseInt(remotePort, 10),
       protocol: node.toLowerCase(),
     });
@@ -89,33 +114,61 @@ function parseConnections(lsofOutput) {
   return connections;
 }
 
+const CACHE_TTL_MS = 1000;
+const listeningCache = { timestamp: 0, data: [], promise: null };
+const connectionsCache = { timestamp: 0, data: [], promise: null };
+
+async function runCached(cache, fetcher) {
+  const now = Date.now();
+  if (cache.data.length && now - cache.timestamp < CACHE_TTL_MS) {
+    return cache.data;
+  }
+  if (cache.promise) {
+    return cache.promise;
+  }
+
+  cache.promise = (async () => {
+    const data = await fetcher();
+    cache.data = data;
+    cache.timestamp = Date.now();
+    cache.promise = null;
+    return data;
+  })();
+
+  return cache.promise;
+}
+
 /**
  * Get all listening ports
  */
 async function getListeningPorts() {
-  try {
-    const { stdout } = await execAsync('lsof -iTCP -sTCP:LISTEN -P -n 2>/dev/null');
-    return parseListeningPorts(stdout);
-  } catch (error) {
-    // lsof returns exit code 1 when no results found
-    if (error.code === 1) return [];
-    console.error('Error getting listening ports:', error);
-    return [];
-  }
+  return runCached(listeningCache, async () => {
+    try {
+      const { stdout } = await execAsync('lsof -iTCP -sTCP:LISTEN -P -n 2>/dev/null');
+      return parseListeningPorts(stdout);
+    } catch (error) {
+      // lsof returns exit code 1 when no results found
+      if (error.code === 1) return [];
+      console.error('Error getting listening ports:', error);
+      return [];
+    }
+  });
 }
 
 /**
  * Get all established TCP connections
  */
 async function getEstablishedConnections() {
-  try {
-    const { stdout } = await execAsync('lsof -iTCP -sTCP:ESTABLISHED -P -n 2>/dev/null');
-    return parseConnections(stdout);
-  } catch (error) {
-    if (error.code === 1) return [];
-    console.error('Error getting connections:', error);
-    return [];
-  }
+  return runCached(connectionsCache, async () => {
+    try {
+      const { stdout } = await execAsync('lsof -iTCP -sTCP:ESTABLISHED -P -n 2>/dev/null');
+      return parseConnections(stdout);
+    } catch (error) {
+      if (error.code === 1) return [];
+      console.error('Error getting connections:', error);
+      return [];
+    }
+  });
 }
 
 /**

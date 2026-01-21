@@ -6,10 +6,11 @@ import { Header } from './components/Header';
 import './App.css';
 
 function App() {
-  const { graph, loading: graphLoading, refresh } = useConnectionGraph(2000);
-  const { ports, loading: portsLoading } = useListeningPorts(2000);
+  const { graph, loading: graphLoading, refresh, error: graphError } = useConnectionGraph(2000);
+  const { ports, loading: portsLoading, error: portsError } = useListeningPorts(2000);
 
   const loading = graphLoading || portsLoading;
+  const error = graphError || portsError;
 
   return (
     <div className="app">
@@ -18,6 +19,12 @@ function App() {
         connectionCount={graph.edges.length}
         onRefresh={refresh}
       />
+      {error && (
+        <div className="error-banner">
+          <span className="error-title">Monitoring error:</span>
+          <span className="error-message">{error}</span>
+        </div>
+      )}
       <main className="main-content">
         <div className="panel services-panel">
           <h2 className="panel-title">Services</h2>

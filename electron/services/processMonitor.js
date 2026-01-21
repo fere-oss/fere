@@ -2,6 +2,8 @@ const { exec } = require('child_process');
 const { promisify } = require('util');
 
 const execAsync = promisify(exec);
+const CACHE_TTL_MS = 1000;
+const processCache = { timestamp: 0, data: [], promise: null };
 
 // Dev-related process patterns to filter for
 const DEV_PATTERNS = [
@@ -86,28 +88,47 @@ function extractProcessName(command) {
 /**
  * Filter processes to only show dev-related ones
  */
-function filterDevProcesses(processes) {
-  return processes.filter(proc => {
-    const cmdLower = proc.command.toLowerCase();
-    const nameLower = proc.name.toLowerCase();
+function isDevProcess(process) {
+  const cmdLower = process.command.toLowerCase();
+  const nameLower = process.name.toLowerCase();
 
-    return DEV_PATTERNS.some(pattern =>
-      cmdLower.includes(pattern) || nameLower.includes(pattern)
-    );
-  });
+  return DEV_PATTERNS.some(pattern =>
+    cmdLower.includes(pattern) || nameLower.includes(pattern)
+  );
+}
+
+function filterDevProcesses(processes) {
+  return processes.filter(isDevProcess);
 }
 
 /**
  * Get all running processes
  */
 async function getAllProcesses() {
-  try {
-    const { stdout } = await execAsync('ps aux');
-    return parseProcesses(stdout);
-  } catch (error) {
-    console.error('Error getting processes:', error);
-    return [];
+  const now = Date.now();
+  if (processCache.data.length && now - processCache.timestamp < CACHE_TTL_MS) {
+    return processCache.data;
   }
+  if (processCache.promise) {
+    return processCache.promise;
+  }
+
+  processCache.promise = (async () => {
+    try {
+      const { stdout } = await execAsync('ps aux');
+      const data = parseProcesses(stdout);
+      processCache.data = data;
+      processCache.timestamp = Date.now();
+      processCache.promise = null;
+      return data;
+    } catch (error) {
+      console.error('Error getting processes:', error);
+      processCache.promise = null;
+      return [];
+    }
+  })();
+
+  return processCache.promise;
 }
 
 /**
@@ -150,4 +171,5 @@ module.exports = {
   killProcess,
   parseProcesses,
   filterDevProcesses,
+  isDevProcess,
 };

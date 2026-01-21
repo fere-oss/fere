@@ -116,6 +116,28 @@ body {
   color: var(--text-primary);
 }
 
+/* Error banner */
+.error-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 24px;
+  background: #fef2f2;
+  border-bottom: 1px solid #fecaca;
+  color: #991b1b;
+  font-size: 12px;
+}
+
+.error-title {
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.error-message {
+  font-weight: 500;
+}
+
 /* Main content */
 .main-content {
   flex: 1;
