@@ -14,6 +14,24 @@ export interface Process {
   name: string;
 }
 
+export interface Service {
+  id: string;
+  pid: number;
+  name: string;
+  command: string;
+  type: 'database' | 'cache' | 'webserver' | 'container' | 'frontend' | 'backend' | 'nodejs' | 'python' | 'service' | 'external';
+  user: string;
+  tty?: string | null;
+  project?: string | null;
+  cpu: number;
+  memory: number;
+  ports: {
+    port: number;
+    host: string;
+    description: string | null;
+  }[];
+}
+
 // Port types
 export interface Port {
   port: number;
@@ -43,10 +61,12 @@ export interface GraphNode {
   pid: number;
   name: string;
   command: string;
-  type: 'database' | 'cache' | 'webserver' | 'container' | 'frontend' | 'backend' | 'nodejs' | 'python' | 'service';
+  type: 'database' | 'cache' | 'webserver' | 'container' | 'frontend' | 'backend' | 'nodejs' | 'python' | 'service' | 'external';
   cpu: number;
   memory: number;
   user: string;
+  tty?: string | null;
+  project?: string | null;
   ports: {
     port: number;
     host: string;
@@ -66,6 +86,13 @@ export interface GraphEdge {
 export interface ConnectionGraph {
   nodes: GraphNode[];
   edges: GraphEdge[];
+}
+
+export interface SystemSnapshot {
+  processes: Process[];
+  ports: Port[];
+  connections: Connection[];
+  graph: ConnectionGraph;
 }
 
 export interface EnvironmentSummary {
@@ -99,6 +126,7 @@ export interface ElectronAPI {
   // Connection graph
   getConnectionGraph: () => Promise<ConnectionGraph>;
   getEnvironmentSummary: () => Promise<EnvironmentSummary>;
+  getSystemSnapshot: () => Promise<SystemSnapshot>;
 
   // Process control
   killProcess: (pid: number) => Promise<KillResult>;

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import type { ConnectionGraph, EnvironmentSummary, Port, Process } from '../types/electron';
+import type { ConnectionGraph, EnvironmentSummary, Port, Process, SystemSnapshot } from '../types/electron';
 
 // Check if we're running in Electron
 const isElectron = () => {
@@ -39,6 +39,46 @@ export function useConnectionGraph(pollInterval = 2000) {
   }, [refresh, pollInterval]);
 
   return { graph, loading, error, refresh };
+}
+
+/**
+ * Hook to poll the full system snapshot
+ */
+export function useSystemSnapshot(pollInterval = 2000) {
+  const [snapshot, setSnapshot] = useState<SystemSnapshot>({
+    processes: [],
+    ports: [],
+    connections: [],
+    graph: { nodes: [], edges: [] },
+  });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    if (!isElectron()) {
+      setError('Not running in Electron');
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const data = await window.electronAPI.getSystemSnapshot();
+      setSnapshot(data);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch system snapshot');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    refresh();
+    const interval = setInterval(refresh, pollInterval);
+    return () => clearInterval(interval);
+  }, [refresh, pollInterval]);
+
+  return { snapshot, loading, error, refresh };
 }
 
 /**

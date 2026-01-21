@@ -5,6 +5,7 @@ const path = require('path');
 const { getDevProcesses, getAllProcesses, getProcessByPid, killProcess, isDevProcess } = require('./services/processMonitor');
 const { getListeningPorts, getEstablishedConnections } = require('./services/portMonitor');
 const { buildConnectionGraph, getEnvironmentSummary } = require('./services/connectionGraph');
+const { getSystemSnapshot } = require('./services/systemSnapshot');
 
 // Keep a global reference of the window object
 let mainWindow;
@@ -104,6 +105,16 @@ ipcMain.handle('get-connection-graph', async () => {
   } catch (error) {
     console.error('Error building connection graph:', error);
     return { nodes: [], edges: [] };
+  }
+});
+
+// Get a full system snapshot (processes, ports, connections, graph)
+ipcMain.handle('get-system-snapshot', async () => {
+  try {
+    return await getSystemSnapshot();
+  } catch (error) {
+    console.error('Error getting system snapshot:', error);
+    return { processes: [], ports: [], connections: [], graph: { nodes: [], edges: [] } };
   }
 });
 

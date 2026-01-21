@@ -5,12 +5,10 @@ const { getListeningPorts, getEstablishedConnections, getPortDescription } = req
  * Build a complete picture of the local dev environment
  * Returns nodes (processes/services) and edges (connections between them)
  */
-async function buildConnectionGraph() {
-  const [processes, ports, connections] = await Promise.all([
-    getDevProcesses(),
-    getListeningPorts(),
-    getEstablishedConnections(),
-  ]);
+async function buildConnectionGraph(snapshot = null) {
+  const processes = snapshot?.processes || await getDevProcesses();
+  const ports = snapshot?.ports || await getListeningPorts();
+  const connections = snapshot?.connections || await getEstablishedConnections();
 
   // Create a map of PID to process info
   const processMap = new Map();
@@ -20,67 +18,111 @@ async function buildConnectionGraph() {
 
   // Create nodes from processes that have listening ports
   const nodes = [];
+  const nodesByPid = new Map();
   const portToPid = new Map();
+  const portProcessByPid = new Map();
+  const portUserByPid = new Map();
+
+  const ensureProcessNode = (pid, portProcess) => {
+    if (nodesByPid.has(pid)) {
+      return nodesByPid.get(pid);
+    }
+
+    const proc = processMap.get(pid);
+    const fallbackProcess = portProcessByPid.get(pid) || portProcess;
+    const name = proc ? proc.name : fallbackProcess;
+    const command = proc ? proc.command : fallbackProcess;
+    const node = {
+      id: `proc-${pid}`,
+      pid,
+      name,
+      command,
+      type: categorizeProcess(name, command),
+      cpu: proc?.cpu || 0,
+      memory: proc?.memory || 0,
+      user: proc?.user || portUserByPid.get(pid) || 'unknown',
+      tty: proc?.tty || null,
+      project: inferProjectFromCommand(command),
+      ports: [],
+    };
+
+    nodes.push(node);
+    nodesByPid.set(pid, node);
+    return node;
+  };
 
   for (const port of ports) {
     portToPid.set(port.port, port.pid);
-
-    const proc = processMap.get(port.pid);
-    const existingNode = nodes.find(n => n.pid === port.pid);
-
-    if (existingNode) {
-      // Add port to existing node
-      existingNode.ports.push({
-        port: port.port,
-        host: port.host,
-        description: getPortDescription(port.port),
-      });
-    } else {
-      // Create new node
-      nodes.push({
-        id: `proc-${port.pid}`,
-        pid: port.pid,
-        name: proc ? proc.name : port.process,
-        command: proc ? proc.command : port.process,
-        type: categorizeProcess(port.process, proc?.command),
-        cpu: proc?.cpu || 0,
-        memory: proc?.memory || 0,
-        user: port.user,
-        ports: [{
-          port: port.port,
-          host: port.host,
-          description: getPortDescription(port.port),
-        }],
-      });
+    if (!portProcessByPid.has(port.pid)) {
+      portProcessByPid.set(port.pid, port.process);
+      portUserByPid.set(port.pid, port.user);
     }
+
+    const node = ensureProcessNode(port.pid, port.process);
+    node.ports.push({
+      port: port.port,
+      host: port.host,
+      description: getPortDescription(port.port),
+    });
   }
 
   // Build edges from established connections
   const edges = [];
   const edgeSet = new Set(); // Prevent duplicate edges
+  const externalNodes = new Map();
+
+  const getExternalNode = (host, port) => {
+    const key = `${host}:${port}`;
+    if (externalNodes.has(key)) {
+      return externalNodes.get(key);
+    }
+
+    const node = {
+      id: `external-${host}:${port}`,
+      pid: -1,
+      name: key,
+      command: key,
+      type: 'external',
+      cpu: 0,
+      memory: 0,
+      user: 'external',
+      tty: null,
+      project: null,
+      ports: [{
+        port,
+        host,
+        description: null,
+      }],
+    };
+
+    nodes.push(node);
+    externalNodes.set(key, node);
+    return node;
+  };
 
   for (const conn of connections) {
-    // Check if this connection is to a local listening port
+    const sourceProc = processMap.get(conn.pid);
+    if (!sourceProc) continue;
+
+    const sourceNode = ensureProcessNode(conn.pid, conn.process);
     const targetPid = portToPid.get(conn.remotePort);
-    if (!targetPid) continue; // Connection to external service
+    const targetNode = targetPid
+      ? ensureProcessNode(targetPid, conn.process)
+      : getExternalNode(conn.remoteHost, conn.remotePort);
 
-    // Check if the source process is in our dev processes
-    const sourceNode = nodes.find(n => n.pid === conn.pid);
-    const targetNode = nodes.find(n => n.pid === targetPid);
+    if (sourceNode.id === targetNode.id) continue;
 
-    if (sourceNode && targetNode && sourceNode.id !== targetNode.id) {
-      const edgeKey = `${sourceNode.id}->${targetNode.id}:${conn.remotePort}`;
-      if (!edgeSet.has(edgeKey)) {
-        edgeSet.add(edgeKey);
-        edges.push({
-          id: edgeKey,
-          source: sourceNode.id,
-          target: targetNode.id,
-          sourcePort: conn.localPort,
-          targetPort: conn.remotePort,
-          protocol: conn.protocol,
-        });
-      }
+    const edgeKey = `${sourceNode.id}->${targetNode.id}:${conn.remotePort}`;
+    if (!edgeSet.has(edgeKey)) {
+      edgeSet.add(edgeKey);
+      edges.push({
+        id: edgeKey,
+        source: sourceNode.id,
+        target: targetNode.id,
+        sourcePort: conn.localPort,
+        targetPort: conn.remotePort,
+        protocol: conn.protocol,
+      });
     }
   }
 
@@ -146,6 +188,20 @@ function categorizeProcess(processName, command = '') {
   return 'service';
 }
 
+function inferProjectFromCommand(command = '') {
+  const match = command.match(/\/Users\/[^/\s]+\/[^/\s]+/);
+  if (match) {
+    return match[0].split('/').pop();
+  }
+
+  const homeMatch = command.match(/\/home\/[^/\s]+\/[^/\s]+/);
+  if (homeMatch) {
+    return homeMatch[0].split('/').pop();
+  }
+
+  return null;
+}
+
 /**
  * Get a simplified summary of the dev environment
  */
@@ -171,4 +227,5 @@ module.exports = {
   buildConnectionGraph,
   getEnvironmentSummary,
   categorizeProcess,
+  inferProjectFromCommand,
 };

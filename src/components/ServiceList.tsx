@@ -17,6 +17,7 @@ const TYPE_COLORS: Record<string, string> = {
   nodejs: '#525252',
   python: '#737373',
   service: '#a3a3a3',
+  external: '#1e293b',
 };
 
 const TYPE_LABELS: Record<string, string> = {
@@ -29,6 +30,7 @@ const TYPE_LABELS: Record<string, string> = {
   nodejs: 'Node.js',
   python: 'Python',
   service: 'Service',
+  external: 'External',
 };
 
 export function ServiceList({ nodes, edges }: ServiceListProps) {
@@ -61,18 +63,21 @@ export function ServiceList({ nodes, edges }: ServiceListProps) {
               >
                 {TYPE_LABELS[node.type] || 'Service'}
               </div>
-              <button
-                className="kill-btn"
-                onClick={() => handleKill(node.pid, node.name)}
-                disabled={killing}
-                title="Stop process"
-              >
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
-                  <path d="M14 1.41L12.59 0 7 5.59 1.41 0 0 1.41 5.59 7 0 12.59 1.41 14 7 8.41 12.59 14 14 12.59 8.41 7z"/>
-                </svg>
-              </button>
+              {node.pid > 0 && (
+                <button
+                  className="kill-btn"
+                  onClick={() => handleKill(node.pid, node.name)}
+                  disabled={killing}
+                  title="Stop process"
+                >
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
+                    <path d="M14 1.41L12.59 0 7 5.59 1.41 0 0 1.41 5.59 7 0 12.59 1.41 14 7 8.41 12.59 14 14 12.59 8.41 7z"/>
+                  </svg>
+                </button>
+              )}
             </div>
             <div className="service-name">{node.name}</div>
+            {node.project && <div className="service-project">{node.project}</div>}
             <div className="service-ports">
               {node.ports.map(p => (
                 <span key={p.port} className="port-badge">

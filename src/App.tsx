@@ -1,16 +1,13 @@
 import React from 'react';
-import { useConnectionGraph, useListeningPorts } from './hooks/useSystemMonitor';
+import { useSystemSnapshot } from './hooks/useSystemMonitor';
 import { ServiceList } from './components/ServiceList';
 import { PortList } from './components/PortList';
 import { Header } from './components/Header';
 import './App.css';
 
 function App() {
-  const { graph, loading: graphLoading, refresh, error: graphError } = useConnectionGraph(2000);
-  const { ports, loading: portsLoading, error: portsError } = useListeningPorts(2000);
-
-  const loading = graphLoading || portsLoading;
-  const error = graphError || portsError;
+  const { snapshot, loading, refresh, error } = useSystemSnapshot(2000);
+  const { graph, ports } = snapshot;
 
   return (
     <div className="app">

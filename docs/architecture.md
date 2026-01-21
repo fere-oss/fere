@@ -23,6 +23,12 @@ The core model is a "service" that represents a dev process and its runtime cont
 - protocol: tcp/udp
 - confidence: 0..1 for inferred links
 
+### System snapshot
+- processes: raw `ps` data
+- ports: parsed listening ports
+- connections: parsed established connections
+- graph: nodes + edges derived from the above
+
 ## Phase 1 kickoff: monitoring core
 - Collect `ps` and `lsof` once per tick in the main process.
 - Cache the latest snapshot and serve via IPC without duplicate OS calls.
