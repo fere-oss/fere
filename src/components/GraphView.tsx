@@ -150,7 +150,7 @@ export function GraphView({ nodes, edges }: GraphViewProps) {
     return map;
   }, [frontend, backendLayer, database, other]);
 
-  // Calculate node positions after render
+  // Calculate node positions after render - zoom independent
   useEffect(() => {
     if (!canvasRef.current) return;
 
@@ -166,6 +166,7 @@ export function GraphView({ nodes, edges }: GraphViewProps) {
         if (element) {
           const rect = element.getBoundingClientRect();
           const layerInfo = nodeLayerMap.get(node.id) || { layer: 0, indexInLayer: 0 };
+          // Normalize positions by dividing by zoom to get consistent coordinates
           positions.set(node.id, {
             x: (rect.left - canvasRect.left + rect.width / 2) / zoom,
             y: (rect.top - canvasRect.top + rect.height / 2) / zoom,
@@ -182,101 +183,85 @@ export function GraphView({ nodes, edges }: GraphViewProps) {
 
     const timer = setTimeout(updatePositions, 150);
     return () => clearTimeout(timer);
-  }, [localNodes, zoom, nodeLayerMap]);
+  }, [localNodes, nodeLayerMap, zoom]);
 
-  // Calculate all edge routes with proper spacing to avoid overlaps
+  // Calculate edge routes - routes go around the OUTSIDE, never through nodes
   const edgeRoutes = useMemo(() => {
     if (nodePositions.size === 0) return [];
 
-    // Group edges by source-target layer pairs for bundling
-    const edgeGroups = new Map<string, typeof connections>();
-    connections.forEach(conn => {
-      const fromPos = nodePositions.get(conn.from);
-      const toPos = nodePositions.get(conn.to);
-      if (!fromPos || !toPos) return;
+    // Find the global left and right boundaries of ALL nodes
+    let globalLeft = Infinity;
+    let globalRight = -Infinity;
 
-      const key = `${fromPos.layer}-${toPos.layer}`;
-      if (!edgeGroups.has(key)) {
-        edgeGroups.set(key, []);
-      }
-      edgeGroups.get(key)!.push(conn);
+    nodePositions.forEach((pos) => {
+      const left = pos.x - pos.width / 2;
+      const right = pos.x + pos.width / 2;
+      globalLeft = Math.min(globalLeft, left);
+      globalRight = Math.max(globalRight, right);
     });
+
+    // Side lanes are outside all nodes
+    const sideMargin = 50;
+    const leftLane = globalLeft - sideMargin;
+    const rightLane = globalRight + sideMargin;
 
     const routes: { from: string; to: string; path: string }[] = [];
 
-    edgeGroups.forEach((groupEdges) => {
-      const edgeCount = groupEdges.length;
+    connections.forEach((conn, index) => {
+      const from = nodePositions.get(conn.from);
+      const to = nodePositions.get(conn.to);
+      if (!from || !to) return;
 
-      groupEdges.forEach((conn, edgeIndex) => {
-        const from = nodePositions.get(conn.from);
-        const to = nodePositions.get(conn.to);
-        if (!from || !to) return;
+      const sourceBottom = from.y + from.height / 2;
+      const sourceTop = from.y - from.height / 2;
+      const targetTop = to.y - to.height / 2;
+      const targetBottom = to.y + to.height / 2;
 
-        // Determine if going down (normal) or up (reverse connection)
-        const goingDown = from.layer < to.layer || (from.layer === to.layer && from.y < to.y);
+      let path: string;
 
-        // Start and end points with padding
-        const verticalPadding = 12;
-        const startX = from.x;
-        const startY = goingDown ? from.y + from.height / 2 + verticalPadding : from.y - from.height / 2 - verticalPadding;
-        const endX = to.x;
-        const endY = goingDown ? to.y - to.height / 2 - verticalPadding : to.y + to.height / 2 + verticalPadding;
-
-        // Calculate horizontal offset for edge bundling (spread edges apart)
-        const bundleSpacing = 16;
-        const bundleOffset = edgeCount > 1 ? (edgeIndex - (edgeCount - 1) / 2) * bundleSpacing : 0;
-
-        // For same-layer connections or when nodes are far apart horizontally
-        const horizontalDiff = Math.abs(endX - startX);
-        const verticalDiff = Math.abs(endY - startY);
-
-        let path: string;
-
-        if (from.layer === to.layer) {
-          // Same layer connection - route around (loop above the nodes)
-          const loopHeight = 40 + edgeIndex * 12;
-          const midY = Math.min(from.y, to.y) - from.height / 2 - loopHeight;
-
-          path = `M ${startX} ${from.y - from.height / 2 - verticalPadding}
-                  L ${startX} ${midY}
-                  L ${endX} ${midY}
-                  L ${endX} ${to.y - to.height / 2 - verticalPadding}`;
-        } else if (horizontalDiff < 20) {
-          // Nearly vertical - simple straight line with slight curve
-          const midY = (startY + endY) / 2;
-          path = `M ${startX} ${startY}
-                  C ${startX} ${midY}, ${endX} ${midY}, ${endX} ${endY}`;
+      // Adjacent layers going DOWN (source layer is directly above target layer)
+      if (from.layer === to.layer - 1) {
+        if (Math.abs(from.x - to.x) < 5) {
+          // Vertically aligned - straight line
+          path = `M ${from.x} ${sourceBottom} L ${to.x} ${targetTop}`;
         } else {
-          // Orthogonal routing with rounded corners
-          // Calculate the corridor Y position (midpoint between layers)
-          const corridorY = (startY + endY) / 2 + bundleOffset;
-
-          // Use quadratic bezier for smooth corners
-          const cornerRadius = Math.min(20, horizontalDiff / 4, verticalDiff / 4);
-
-          // Direction of horizontal movement
-          const goingRight = endX > startX;
-          const hDir = goingRight ? 1 : -1;
-          const vDir = goingDown ? 1 : -1;
-
-          // Points for the path with rounded corners
-          const p1 = { x: startX, y: startY }; // Start
-          const p2 = { x: startX, y: corridorY - vDir * cornerRadius }; // Before first corner
-          const p3 = { x: startX + hDir * cornerRadius, y: corridorY }; // After first corner
-          const p4 = { x: endX - hDir * cornerRadius, y: corridorY }; // Before second corner
-          const p5 = { x: endX, y: corridorY + vDir * cornerRadius }; // After second corner
-          const p6 = { x: endX, y: endY }; // End
-
-          path = `M ${p1.x} ${p1.y}
-                  L ${p2.x} ${p2.y}
-                  Q ${startX} ${corridorY}, ${p3.x} ${p3.y}
-                  L ${p4.x} ${p4.y}
-                  Q ${endX} ${corridorY}, ${p5.x} ${p5.y}
-                  L ${p6.x} ${p6.y}`;
+          // Simple step: down, across, down (gap is guaranteed clear between adjacent layers)
+          const gapY = (sourceBottom + targetTop) / 2;
+          path = `M ${from.x} ${sourceBottom} L ${from.x} ${gapY} L ${to.x} ${gapY} L ${to.x} ${targetTop}`;
         }
+      }
+      // Adjacent layers going UP (source layer is directly below target layer)
+      else if (from.layer === to.layer + 1) {
+        if (Math.abs(from.x - to.x) < 5) {
+          // Vertically aligned - straight line
+          path = `M ${from.x} ${sourceTop} L ${to.x} ${targetBottom}`;
+        } else {
+          // Simple step: up, across, up
+          const gapY = (sourceTop + targetBottom) / 2;
+          path = `M ${from.x} ${sourceTop} L ${from.x} ${gapY} L ${to.x} ${gapY} L ${to.x} ${targetBottom}`;
+        }
+      }
+      // Same layer - route above
+      else if (from.layer === to.layer) {
+        const routeY = Math.min(sourceTop, targetTop) - 40;
+        path = `M ${from.x} ${sourceTop} L ${from.x} ${routeY} L ${to.x} ${routeY} L ${to.x} ${targetTop}`;
+      }
+      // SKIP layers (non-adjacent) - must route around the OUTSIDE
+      else {
+        // Choose left or right lane based on position (prefer shorter horizontal distance)
+        const useLeftLane = (from.x + to.x) / 2 < (globalLeft + globalRight) / 2;
+        const laneX = useLeftLane ? leftLane - (index * 8) : rightLane + (index * 8);
 
-        routes.push({ from: conn.from, to: conn.to, path });
-      });
+        if (from.layer < to.layer) {
+          // Going DOWN but skipping layers - route out the side
+          path = `M ${from.x} ${sourceBottom} L ${from.x} ${sourceBottom + 15} L ${laneX} ${sourceBottom + 15} L ${laneX} ${targetTop - 15} L ${to.x} ${targetTop - 15} L ${to.x} ${targetTop}`;
+        } else {
+          // Going UP but skipping layers - route out the side
+          path = `M ${from.x} ${sourceTop} L ${from.x} ${sourceTop - 15} L ${laneX} ${sourceTop - 15} L ${laneX} ${targetBottom + 15} L ${to.x} ${targetBottom + 15} L ${to.x} ${targetBottom}`;
+        }
+      }
+
+      routes.push({ from: conn.from, to: conn.to, path });
     });
 
     return routes;
@@ -336,11 +321,10 @@ export function GraphView({ nodes, edges }: GraphViewProps) {
               <path
                 d="M 0 1 L 8 5 L 0 9"
                 fill="none"
-                stroke="#0078D4"
+                stroke="#000000"
                 strokeWidth="1.5"
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                opacity="0.6"
               />
             </marker>
           </defs>
@@ -349,11 +333,11 @@ export function GraphView({ nodes, edges }: GraphViewProps) {
             <path
               key={`${route.from}-${route.to}-${i}`}
               d={route.path}
-              stroke="#0078D4"
+              stroke="#000000"
               strokeWidth="1.5"
               fill="none"
               markerEnd="url(#arrowhead)"
-              opacity="0.5"
+              opacity="0.4"
               className="graph-edge"
             />
           ))}
