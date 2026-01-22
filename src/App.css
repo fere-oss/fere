@@ -641,6 +641,22 @@ body {
   overflow: visible;
 }
 
+/* Graph Edge Styling */
+.graph-edge {
+  transition: opacity 0.2s ease, stroke-width 0.2s ease;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.graph-connections:hover .graph-edge {
+  opacity: 0.3;
+}
+
+.graph-edge:hover {
+  opacity: 0.8 !important;
+  stroke-width: 2.5 !important;
+}
+
 /* Scrollbar */
 ::-webkit-scrollbar {
   width: 8px;
