@@ -710,6 +710,11 @@ function NodeDetailPanel({ node, edges, allNodes, onClose }: NodeDetailPanelProp
     }
   };
 
+  // Stop wheel events from propagating to the graph (prevents zoom while scrolling)
+  const handleWheel = (e: React.WheelEvent) => {
+    e.stopPropagation();
+  };
+
   // Handle escape key
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
@@ -720,7 +725,7 @@ function NodeDetailPanel({ node, edges, allNodes, onClose }: NodeDetailPanelProp
   }, [onClose]);
 
   return (
-    <div className="node-detail-backdrop" onClick={handleBackdropClick}>
+    <div className="node-detail-backdrop" onClick={handleBackdropClick} onWheel={handleWheel}>
       <div className="node-detail-panel">
         {/* Header */}
         <div className="node-detail-header">
