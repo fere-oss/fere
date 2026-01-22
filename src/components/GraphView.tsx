@@ -755,6 +755,14 @@ function NodeDetailPanel({ node, edges, allNodes, onClose }: NodeDetailPanelProp
 
         {/* Content */}
         <div className="node-detail-content">
+          {/* Description Section (if available) */}
+          {node.description && (
+            <div className="node-detail-section">
+              <h3 className="node-detail-section-title">About</h3>
+              <p className="node-detail-description">{node.description}</p>
+            </div>
+          )}
+
           {/* Process Info Section */}
           <div className="node-detail-section">
             <h3 className="node-detail-section-title">Process Information</h3>

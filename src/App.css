@@ -826,6 +826,17 @@ body {
   gap: 8px;
 }
 
+.node-detail-description {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  margin: 0;
+  padding: 12px 14px;
+  background: linear-gradient(135deg, rgba(118, 185, 0, 0.06) 0%, rgba(0, 120, 212, 0.06) 100%);
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+}
+
 .node-detail-count {
   font-family: "JetBrains Mono", monospace;
   font-size: 11px;

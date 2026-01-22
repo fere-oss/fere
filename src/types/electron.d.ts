@@ -70,6 +70,7 @@ export interface GraphNode {
   tty?: string | null;
   project?: string | null;
   projectPath?: string | null;
+  description?: string | null;
   ports: {
     port: number;
     host: string;
