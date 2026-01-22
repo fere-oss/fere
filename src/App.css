@@ -44,43 +44,6 @@ body {
   position: relative;
 }
 
-/* Traffic Lights */
-.traffic-lights {
-  position: absolute;
-  top: 0;
-  left: 0;
-  z-index: 50;
-  display: flex;
-  gap: 8px;
-  padding: 20px;
-  -webkit-app-region: drag;
-}
-
-.traffic-light {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  cursor: pointer;
-  transition: filter 0.15s ease;
-  -webkit-app-region: no-drag;
-}
-
-.traffic-light:hover {
-  filter: brightness(0.9);
-}
-
-.traffic-light.red {
-  background-color: #ff5f57;
-}
-
-.traffic-light.yellow {
-  background-color: #ffbd2e;
-}
-
-.traffic-light.green {
-  background-color: #28ca42;
-}
-
 /* App Header */
 .app-header {
   padding: 64px 40px 28px 40px;
