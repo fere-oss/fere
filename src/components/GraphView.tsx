@@ -279,6 +279,7 @@ export function GraphView({ nodes, edges }: GraphViewProps) {
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
 
   // Filter out external nodes
   const localNodes = useMemo(() => nodes.filter(n => {
@@ -542,7 +543,7 @@ export function GraphView({ nodes, edges }: GraphViewProps) {
               <div className="graph-layer-label">FRONTEND</div>
               <div className="graph-layer-nodes">
                 {frontendGroups.map(group => (
-                  <NodeGroupContainer key={group.groupName} group={group} />
+                  <NodeGroupContainer key={group.groupName} group={group} onNodeClick={setSelectedNode} />
                 ))}
               </div>
             </div>
@@ -553,7 +554,7 @@ export function GraphView({ nodes, edges }: GraphViewProps) {
               <div className="graph-layer-label">BACKEND / API</div>
               <div className="graph-layer-nodes">
                 {backendGroups.map(group => (
-                  <NodeGroupContainer key={group.groupName} group={group} />
+                  <NodeGroupContainer key={group.groupName} group={group} onNodeClick={setSelectedNode} />
                 ))}
               </div>
             </div>
@@ -564,7 +565,7 @@ export function GraphView({ nodes, edges }: GraphViewProps) {
               <div className="graph-layer-label">DATA LAYER</div>
               <div className="graph-layer-nodes">
                 {databaseGroups.map(group => (
-                  <NodeGroupContainer key={group.groupName} group={group} />
+                  <NodeGroupContainer key={group.groupName} group={group} onNodeClick={setSelectedNode} />
                 ))}
               </div>
             </div>
@@ -575,21 +576,31 @@ export function GraphView({ nodes, edges }: GraphViewProps) {
               <div className="graph-layer-label">OTHER SERVICES</div>
               <div className="graph-layer-nodes">
                 {otherGroups.map(group => (
-                  <NodeGroupContainer key={group.groupName} group={group} />
+                  <NodeGroupContainer key={group.groupName} group={group} onNodeClick={setSelectedNode} />
                 ))}
               </div>
             </div>
           )}
         </div>
       </div>
+
+      {/* Node Detail Panel */}
+      {selectedNode && (
+        <NodeDetailPanel
+          node={selectedNode}
+          edges={localEdges}
+          allNodes={localNodes}
+          onClose={() => setSelectedNode(null)}
+        />
+      )}
     </div>
   );
 }
 
 // Node Group Container
-function NodeGroupContainer({ group }: { group: RenderGroup }) {
+function NodeGroupContainer({ group, onNodeClick }: { group: RenderGroup; onNodeClick: (node: GraphNode) => void }) {
   if (!group.isGroup) {
-    return <ServiceNode node={group.nodes[0]} />;
+    return <ServiceNode node={group.nodes[0]} onClick={onNodeClick} />;
   }
 
   return (
@@ -597,7 +608,7 @@ function NodeGroupContainer({ group }: { group: RenderGroup }) {
       <div className="node-group-label">{group.groupName}</div>
       <div className="node-group-nodes">
         {group.nodes.map(node => (
-          <ServiceNode key={node.id} node={node} />
+          <ServiceNode key={node.id} node={node} onClick={onNodeClick} />
         ))}
       </div>
     </div>
@@ -605,14 +616,19 @@ function NodeGroupContainer({ group }: { group: RenderGroup }) {
 }
 
 // Service Node Component
-function ServiceNode({ node }: { node: GraphNode }) {
+function ServiceNode({ node, onClick }: { node: GraphNode; onClick: (node: GraphNode) => void }) {
   const accentColor = getServiceColor(node.type);
   const mainPort = node.ports[0]?.port;
   const routes = node.routes || [];
   const visibleRoutes = routes.slice(0, 3);
 
+  const handleClick = (e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent pan/drag from triggering
+    onClick(node);
+  };
+
   return (
-    <div data-node-id={node.id} className="service-node">
+    <div data-node-id={node.id} className="service-node" onClick={handleClick}>
       <div className="service-node-header">
         <div
           className="service-node-dot"
@@ -664,6 +680,201 @@ function ServiceNode({ node }: { node: GraphNode }) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// Node Detail Panel Component
+interface NodeDetailPanelProps {
+  node: GraphNode;
+  edges: GraphEdge[];
+  allNodes: GraphNode[];
+  onClose: () => void;
+}
+
+function NodeDetailPanel({ node, edges, allNodes, onClose }: NodeDetailPanelProps) {
+  const accentColor = getServiceColor(node.type);
+  const routes = node.routes || [];
+
+  // Find connections to/from this node
+  const incomingEdges = edges.filter(e => e.target === node.id);
+  const outgoingEdges = edges.filter(e => e.source === node.id);
+
+  // Get connected node names
+  const getNodeName = (id: string) => allNodes.find(n => n.id === id)?.name || id;
+
+  // Handle click outside to close
+  const handleBackdropClick = (e: React.MouseEvent) => {
+    if (e.target === e.currentTarget) {
+      onClose();
+    }
+  };
+
+  // Handle escape key
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleEscape);
+    return () => window.removeEventListener('keydown', handleEscape);
+  }, [onClose]);
+
+  return (
+    <div className="node-detail-backdrop" onClick={handleBackdropClick}>
+      <div className="node-detail-panel">
+        {/* Header */}
+        <div className="node-detail-header">
+          <div className="node-detail-title-row">
+            <div
+              className="node-detail-dot"
+              style={{
+                backgroundColor: accentColor,
+                boxShadow: `0 0 12px ${accentColor}50`,
+              }}
+            />
+            <div className="node-detail-title-info">
+              <h2 className="node-detail-name">{node.name}</h2>
+              <span
+                className="node-detail-badge"
+                style={{
+                  backgroundColor: `${accentColor}15`,
+                  color: accentColor,
+                }}
+              >
+                {getTypeBadge(node.type)}
+              </span>
+            </div>
+          </div>
+          <button className="node-detail-close" onClick={onClose}>×</button>
+        </div>
+
+        {/* Content */}
+        <div className="node-detail-content">
+          {/* Process Info Section */}
+          <div className="node-detail-section">
+            <h3 className="node-detail-section-title">Process Information</h3>
+            <div className="node-detail-grid">
+              <div className="node-detail-item">
+                <span className="node-detail-label">PID</span>
+                <span className="node-detail-value mono">{node.pid}</span>
+              </div>
+              <div className="node-detail-item">
+                <span className="node-detail-label">User</span>
+                <span className="node-detail-value">{node.user}</span>
+              </div>
+              <div className="node-detail-item">
+                <span className="node-detail-label">CPU</span>
+                <span className="node-detail-value mono">{node.cpu.toFixed(1)}%</span>
+              </div>
+              <div className="node-detail-item">
+                <span className="node-detail-label">Memory</span>
+                <span className="node-detail-value mono">{node.memory.toFixed(1)}%</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Command Section */}
+          <div className="node-detail-section">
+            <h3 className="node-detail-section-title">Command</h3>
+            <div className="node-detail-command">{node.command}</div>
+          </div>
+
+          {/* Project Info (if available) */}
+          {(node.project || node.projectPath) && (
+            <div className="node-detail-section">
+              <h3 className="node-detail-section-title">Project</h3>
+              <div className="node-detail-grid">
+                {node.project && (
+                  <div className="node-detail-item full-width">
+                    <span className="node-detail-label">Name</span>
+                    <span className="node-detail-value">{node.project}</span>
+                  </div>
+                )}
+                {node.projectPath && (
+                  <div className="node-detail-item full-width">
+                    <span className="node-detail-label">Path</span>
+                    <span className="node-detail-value mono small">{node.projectPath}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Ports Section */}
+          {node.ports.length > 0 && (
+            <div className="node-detail-section">
+              <h3 className="node-detail-section-title">
+                Ports <span className="node-detail-count">{node.ports.length}</span>
+              </h3>
+              <div className="node-detail-ports">
+                {node.ports.map((port, idx) => (
+                  <div key={idx} className="node-detail-port">
+                    <span className="node-detail-port-number" style={{ color: accentColor }}>
+                      :{port.port}
+                    </span>
+                    <span className="node-detail-port-host">{port.host}</span>
+                    {port.description && (
+                      <span className="node-detail-port-desc">{port.description}</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* API Routes Section */}
+          {routes.length > 0 && (
+            <div className="node-detail-section">
+              <h3 className="node-detail-section-title">
+                API Routes <span className="node-detail-count">{routes.length}</span>
+              </h3>
+              <div className="node-detail-routes">
+                {routes.map((route, idx) => (
+                  <div key={idx} className="node-detail-route">
+                    <span className={`route-method route-${route.method.toLowerCase()}`}>
+                      {route.method}
+                    </span>
+                    <span className="node-detail-route-path">{route.path}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Connections Section */}
+          {(incomingEdges.length > 0 || outgoingEdges.length > 0) && (
+            <div className="node-detail-section">
+              <h3 className="node-detail-section-title">Connections</h3>
+              <div className="node-detail-connections">
+                {incomingEdges.length > 0 && (
+                  <div className="node-detail-connection-group">
+                    <span className="node-detail-connection-label">Incoming</span>
+                    {incomingEdges.map((edge, idx) => (
+                      <div key={idx} className="node-detail-connection">
+                        <span className="connection-arrow">←</span>
+                        <span className="connection-node">{getNodeName(edge.source)}</span>
+                        <span className="connection-port">:{edge.sourcePort} → :{edge.targetPort}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {outgoingEdges.length > 0 && (
+                  <div className="node-detail-connection-group">
+                    <span className="node-detail-connection-label">Outgoing</span>
+                    {outgoingEdges.map((edge, idx) => (
+                      <div key={idx} className="node-detail-connection">
+                        <span className="connection-arrow">→</span>
+                        <span className="connection-node">{getNodeName(edge.target)}</span>
+                        <span className="connection-port">:{edge.sourcePort} → :{edge.targetPort}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
