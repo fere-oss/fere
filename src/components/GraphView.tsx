@@ -185,33 +185,109 @@ export function GraphView({ nodes, edges }: GraphViewProps) {
     return () => clearTimeout(timer);
   }, [localNodes, nodeLayerMap, zoom]);
 
-  // Calculate edge routes - routes go around the OUTSIDE, never through nodes
+  // Calculate edge routes - route through layer gaps, never through nodes
   const edgeRoutes = useMemo(() => {
     if (nodePositions.size === 0) return [];
 
-    // Find the global left and right boundaries of ALL nodes
-    let globalLeft = Infinity;
-    let globalRight = -Infinity;
+    const allNodes = Array.from(nodePositions.entries());
+    const padding = 15; // Minimum clearance from node edges
 
-    nodePositions.forEach((pos) => {
-      const left = pos.x - pos.width / 2;
-      const right = pos.x + pos.width / 2;
-      globalLeft = Math.min(globalLeft, left);
-      globalRight = Math.max(globalRight, right);
+    // Compute bounding box for each layer
+    const layerBounds = new Map<number, { top: number; bottom: number; left: number; right: number }>();
+    allNodes.forEach(([, pos]) => {
+      const nodeTop = pos.y - pos.height / 2;
+      const nodeBottom = pos.y + pos.height / 2;
+      const nodeLeft = pos.x - pos.width / 2;
+      const nodeRight = pos.x + pos.width / 2;
+
+      const existing = layerBounds.get(pos.layer);
+      if (existing) {
+        existing.top = Math.min(existing.top, nodeTop);
+        existing.bottom = Math.max(existing.bottom, nodeBottom);
+        existing.left = Math.min(existing.left, nodeLeft);
+        existing.right = Math.max(existing.right, nodeRight);
+      } else {
+        layerBounds.set(pos.layer, { top: nodeTop, bottom: nodeBottom, left: nodeLeft, right: nodeRight });
+      }
     });
 
-    // Side lanes are outside all nodes
-    const sideMargin = 50;
-    const leftLane = globalLeft - sideMargin;
-    const rightLane = globalRight + sideMargin;
+    // Find global boundaries for side lanes
+    let globalLeft = Infinity;
+    let globalRight = -Infinity;
+    nodePositions.forEach((pos) => {
+      globalLeft = Math.min(globalLeft, pos.x - pos.width / 2);
+      globalRight = Math.max(globalRight, pos.x + pos.width / 2);
+    });
+    const sideMargin = 40;
+
+    // Compute gaps between adjacent layers (safe horizontal corridors)
+    const sortedLayers = Array.from(layerBounds.keys()).sort((a, b) => a - b);
+    const layerGaps = new Map<string, number>(); // "layer1-layer2" -> Y coordinate of gap center
+    for (let i = 0; i < sortedLayers.length - 1; i++) {
+      const upperLayer = sortedLayers[i];
+      const lowerLayer = sortedLayers[i + 1];
+      const upperBounds = layerBounds.get(upperLayer)!;
+      const lowerBounds = layerBounds.get(lowerLayer)!;
+      // Gap is between bottom of upper layer and top of lower layer
+      const gapY = (upperBounds.bottom + lowerBounds.top) / 2;
+      layerGaps.set(`${upperLayer}-${lowerLayer}`, gapY);
+    }
+
+    // Check if a horizontal segment at Y collides with any node
+    const horizontalSegmentBlocked = (y: number, x1: number, x2: number, excludeIds: string[]): boolean => {
+      const minX = Math.min(x1, x2);
+      const maxX = Math.max(x1, x2);
+      return allNodes.some(([id, pos]) => {
+        if (excludeIds.includes(id)) return false;
+        const nodeLeft = pos.x - pos.width / 2 - padding;
+        const nodeRight = pos.x + pos.width / 2 + padding;
+        const nodeTop = pos.y - pos.height / 2 - padding;
+        const nodeBottom = pos.y + pos.height / 2 + padding;
+        return y > nodeTop && y < nodeBottom && maxX > nodeLeft && minX < nodeRight;
+      });
+    };
+
+    // Check if a vertical segment at X collides with any node
+    const verticalSegmentBlocked = (x: number, y1: number, y2: number, excludeIds: string[]): boolean => {
+      const minY = Math.min(y1, y2);
+      const maxY = Math.max(y1, y2);
+      return allNodes.some(([id, pos]) => {
+        if (excludeIds.includes(id)) return false;
+        const nodeLeft = pos.x - pos.width / 2 - padding;
+        const nodeRight = pos.x + pos.width / 2 + padding;
+        const nodeTop = pos.y - pos.height / 2 - padding;
+        const nodeBottom = pos.y + pos.height / 2 + padding;
+        return x > nodeLeft && x < nodeRight && maxY > nodeTop && minY < nodeBottom;
+      });
+    };
+
+    // Find a safe gap Y between two layers for horizontal routing
+    const findGapY = (fromLayer: number, toLayer: number): number | null => {
+      const minLayer = Math.min(fromLayer, toLayer);
+      const maxLayer = Math.max(fromLayer, toLayer);
+      // Look for an existing gap between these layers
+      for (let layer = minLayer; layer < maxLayer; layer++) {
+        const gapKey = `${layer}-${layer + 1}`;
+        const gapY = layerGaps.get(gapKey);
+        if (gapY !== undefined) return gapY;
+      }
+      return null;
+    };
+
+    // Find a safe X lane (left or right of all nodes)
+    let leftLaneIndex = 0;
+    let rightLaneIndex = 0;
+    const getLeftLane = () => globalLeft - sideMargin - (leftLaneIndex++ * 12);
+    const getRightLane = () => globalRight + sideMargin + (rightLaneIndex++ * 12);
 
     const routes: { from: string; to: string; path: string }[] = [];
 
-    connections.forEach((conn, index) => {
+    connections.forEach((conn) => {
       const from = nodePositions.get(conn.from);
       const to = nodePositions.get(conn.to);
       if (!from || !to) return;
 
+      const excludeIds = [conn.from, conn.to];
       const sourceBottom = from.y + from.height / 2;
       const sourceTop = from.y - from.height / 2;
       const targetTop = to.y - to.height / 2;
@@ -219,45 +295,68 @@ export function GraphView({ nodes, edges }: GraphViewProps) {
 
       let path: string;
 
-      // Adjacent layers going DOWN (source layer is directly above target layer)
-      if (from.layer === to.layer - 1) {
-        if (Math.abs(from.x - to.x) < 5) {
-          // Vertically aligned - straight line
-          path = `M ${from.x} ${sourceBottom} L ${to.x} ${targetTop}`;
-        } else {
-          // Simple step: down, across, down (gap is guaranteed clear between adjacent layers)
-          const gapY = (sourceBottom + targetTop) / 2;
-          path = `M ${from.x} ${sourceBottom} L ${from.x} ${gapY} L ${to.x} ${gapY} L ${to.x} ${targetTop}`;
-        }
-      }
-      // Adjacent layers going UP (source layer is directly below target layer)
-      else if (from.layer === to.layer + 1) {
-        if (Math.abs(from.x - to.x) < 5) {
-          // Vertically aligned - straight line
-          path = `M ${from.x} ${sourceTop} L ${to.x} ${targetBottom}`;
-        } else {
-          // Simple step: up, across, up
-          const gapY = (sourceTop + targetBottom) / 2;
-          path = `M ${from.x} ${sourceTop} L ${from.x} ${gapY} L ${to.x} ${gapY} L ${to.x} ${targetBottom}`;
-        }
-      }
-      // Same layer - route above
-      else if (from.layer === to.layer) {
-        const routeY = Math.min(sourceTop, targetTop) - 40;
+      if (from.layer === to.layer) {
+        // Same layer - route above the layer
+        const layerTop = layerBounds.get(from.layer)?.top ?? Math.min(sourceTop, targetTop);
+        const routeY = layerTop - padding - 25;
         path = `M ${from.x} ${sourceTop} L ${from.x} ${routeY} L ${to.x} ${routeY} L ${to.x} ${targetTop}`;
-      }
-      // SKIP layers (non-adjacent) - must route around the OUTSIDE
-      else {
-        // Choose left or right lane based on position (prefer shorter horizontal distance)
-        const useLeftLane = (from.x + to.x) / 2 < (globalLeft + globalRight) / 2;
-        const laneX = useLeftLane ? leftLane - (index * 8) : rightLane + (index * 8);
+      } else if (from.layer < to.layer) {
+        // Going DOWN (source is above target)
+        const gapY = findGapY(from.layer, to.layer) ?? (sourceBottom + targetTop) / 2;
 
-        if (from.layer < to.layer) {
-          // Going DOWN but skipping layers - route out the side
-          path = `M ${from.x} ${sourceBottom} L ${from.x} ${sourceBottom + 15} L ${laneX} ${sourceBottom + 15} L ${laneX} ${targetTop - 15} L ${to.x} ${targetTop - 15} L ${to.x} ${targetTop}`;
+        if (Math.abs(from.x - to.x) < 5) {
+          // Nearly vertically aligned - check if straight path is clear
+          if (!verticalSegmentBlocked(from.x, sourceBottom, targetTop, excludeIds)) {
+            path = `M ${from.x} ${sourceBottom} L ${to.x} ${targetTop}`;
+          } else {
+            // Need to route around - go to side lane
+            const laneX = from.x <= (globalLeft + globalRight) / 2 ? getLeftLane() : getRightLane();
+            path = `M ${from.x} ${sourceBottom} L ${from.x} ${gapY} L ${laneX} ${gapY} L ${laneX} ${targetTop - padding} L ${to.x} ${targetTop - padding} L ${to.x} ${targetTop}`;
+          }
         } else {
-          // Going UP but skipping layers - route out the side
-          path = `M ${from.x} ${sourceTop} L ${from.x} ${sourceTop - 15} L ${laneX} ${sourceTop - 15} L ${laneX} ${targetBottom + 15} L ${to.x} ${targetBottom + 15} L ${to.x} ${targetBottom}`;
+          // Check if simple step path through gap is clear
+          const verticalDownClear = !verticalSegmentBlocked(from.x, sourceBottom, gapY, excludeIds);
+          const horizontalClear = !horizontalSegmentBlocked(gapY, from.x, to.x, excludeIds);
+          const verticalToClear = !verticalSegmentBlocked(to.x, gapY, targetTop, excludeIds);
+
+          if (verticalDownClear && horizontalClear && verticalToClear) {
+            // Direct step path is clear
+            path = `M ${from.x} ${sourceBottom} L ${from.x} ${gapY} L ${to.x} ${gapY} L ${to.x} ${targetTop}`;
+          } else {
+            // Route around via side lane
+            const goLeft = from.x > to.x;
+            const laneX = goLeft ? getLeftLane() : getRightLane();
+            path = `M ${from.x} ${sourceBottom} L ${from.x} ${gapY} L ${laneX} ${gapY} L ${laneX} ${targetTop - padding} L ${to.x} ${targetTop - padding} L ${to.x} ${targetTop}`;
+          }
+        }
+      } else {
+        // Going UP (source is below target)
+        const gapY = findGapY(to.layer, from.layer) ?? (sourceTop + targetBottom) / 2;
+
+        if (Math.abs(from.x - to.x) < 5) {
+          // Nearly vertically aligned - check if straight path is clear
+          if (!verticalSegmentBlocked(from.x, sourceTop, targetBottom, excludeIds)) {
+            path = `M ${from.x} ${sourceTop} L ${to.x} ${targetBottom}`;
+          } else {
+            // Need to route around - go to side lane
+            const laneX = from.x <= (globalLeft + globalRight) / 2 ? getLeftLane() : getRightLane();
+            path = `M ${from.x} ${sourceTop} L ${from.x} ${gapY} L ${laneX} ${gapY} L ${laneX} ${targetBottom + padding} L ${to.x} ${targetBottom + padding} L ${to.x} ${targetBottom}`;
+          }
+        } else {
+          // Check if simple step path through gap is clear
+          const verticalUpClear = !verticalSegmentBlocked(from.x, sourceTop, gapY, excludeIds);
+          const horizontalClear = !horizontalSegmentBlocked(gapY, from.x, to.x, excludeIds);
+          const verticalToClear = !verticalSegmentBlocked(to.x, gapY, targetBottom, excludeIds);
+
+          if (verticalUpClear && horizontalClear && verticalToClear) {
+            // Direct step path is clear
+            path = `M ${from.x} ${sourceTop} L ${from.x} ${gapY} L ${to.x} ${gapY} L ${to.x} ${targetBottom}`;
+          } else {
+            // Route around via side lane
+            const goLeft = from.x > to.x;
+            const laneX = goLeft ? getLeftLane() : getRightLane();
+            path = `M ${from.x} ${sourceTop} L ${from.x} ${gapY} L ${laneX} ${gapY} L ${laneX} ${targetBottom + padding} L ${to.x} ${targetBottom + padding} L ${to.x} ${targetBottom}`;
+          }
         }
       }
 
