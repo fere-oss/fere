@@ -47,6 +47,9 @@ body {
 /* App Header */
 .app-header {
   padding: 64px 40px 28px 40px;
+  -webkit-app-region: drag;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .app-title {
@@ -90,6 +93,7 @@ body {
   gap: 24px;
   padding: 0 40px 40px 40px;
   overflow: hidden;
+  -webkit-app-region: no-drag;
 }
 
 /* Graph Container */
@@ -118,6 +122,7 @@ body {
 .sidebar {
   width: 340px;
   flex-shrink: 0;
+  -webkit-app-region: no-drag;
 }
 
 .service-sidebar {
@@ -366,6 +371,7 @@ body {
   align-items: center;
   justify-content: center;
   transition: all 0.15s ease;
+  -webkit-app-region: no-drag;
 }
 
 .graph-control-btn:hover {
@@ -464,6 +470,8 @@ body {
   min-width: 220px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
   transition: all 0.2s ease;
+  -webkit-app-region: no-drag;
+  cursor: pointer;
 }
 
 .service-node:hover {
@@ -720,6 +728,7 @@ body {
   display: flex;
   flex-direction: column;
   animation: slideIn 0.2s ease-out;
+  -webkit-app-region: no-drag;
 }
 
 .node-detail-header {
