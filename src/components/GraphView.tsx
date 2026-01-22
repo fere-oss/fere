@@ -22,21 +22,22 @@ interface LayoutNode {
   groupId: string;
 }
 
+// Color scheme for different service types
+const SERVICE_COLORS: Record<string, { color: string; label: string }> = {
+  frontend: { color: '#8B5CF6', label: 'Frontend' },      // Purple
+  backend: { color: '#0078D4', label: 'Backend' },        // Blue
+  webserver: { color: '#0078D4', label: 'Web Server' },   // Blue
+  database: { color: '#10B981', label: 'Database' },      // Green
+  cache: { color: '#F59E0B', label: 'Cache' },            // Amber
+  nodejs: { color: '#22C55E', label: 'Node.js' },         // Green
+  python: { color: '#3B82F6', label: 'Python' },          // Blue
+  container: { color: '#06B6D4', label: 'Container' },    // Cyan
+  service: { color: '#6B7280', label: 'System Service' }, // Gray
+  external: { color: '#9CA3AF', label: 'External' },      // Light gray
+};
+
 const getServiceColor = (type: string) => {
-  switch (type) {
-    case 'database':
-    case 'cache':
-      return '#76B900'; // NVIDIA Green
-    case 'nodejs':
-    case 'python':
-      return '#76B900'; // NVIDIA Green
-    case 'frontend':
-    case 'backend':
-    case 'webserver':
-      return '#0078D4'; // Microsoft Blue
-    default:
-      return '#525252'; // Neutral gray
-  }
+  return SERVICE_COLORS[type]?.color || '#6B7280';
 };
 
 const getTypeBadge = (type: string) => {
@@ -482,6 +483,22 @@ export function GraphView({ nodes, edges }: GraphViewProps) {
       onWheel={handleWheel}
       style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
     >
+      {/* Legend */}
+      <div className="graph-legend">
+        <div className="graph-legend-title">Service Types</div>
+        {Array.from(new Set(localNodes.map(n => n.type)))
+          .filter(type => SERVICE_COLORS[type])
+          .map(type => (
+            <div key={type} className="graph-legend-item">
+              <div
+                className="graph-legend-dot"
+                style={{ backgroundColor: SERVICE_COLORS[type].color }}
+              />
+              <span>{SERVICE_COLORS[type].label}</span>
+            </div>
+          ))}
+      </div>
+
       {/* Zoom Controls */}
       <div className="graph-controls">
         <button className="graph-control-btn" onClick={handleZoomIn} title="Zoom In">+</button>
@@ -628,7 +645,12 @@ function ServiceNode({ node, onClick }: { node: GraphNode; onClick: (node: Graph
   };
 
   return (
-    <div data-node-id={node.id} className="service-node" onClick={handleClick}>
+    <div
+      data-node-id={node.id}
+      className="service-node"
+      onClick={handleClick}
+      style={{ '--node-color': accentColor } as React.CSSProperties}
+    >
       <div className="service-node-header">
         <div
           className="service-node-dot"

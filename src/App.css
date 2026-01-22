@@ -404,29 +404,70 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 60px;
+  gap: 32px;
   position: relative;
   z-index: 10;
+  min-width: fit-content;
 }
 
 .graph-layer {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
-  gap: 24px;
+  justify-content: center;
+  gap: 32px;
 }
 
 .graph-layer-label {
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: var(--text-faint);
+  display: none;
 }
 
 .graph-layer-nodes {
   display: flex;
   gap: 32px;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Legend */
+.graph-legend {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--bg-white);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 12px 14px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.graph-legend-title {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.graph-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.graph-legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
 }
 
 /* Node Group Container */
@@ -466,6 +507,7 @@ body {
   background: var(--bg-white);
   border-radius: 12px;
   border: 1px solid var(--border-color);
+  border-left: 4px solid var(--node-color, var(--border-color));
   padding: 20px 28px;
   min-width: 220px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
@@ -476,6 +518,7 @@ body {
 
 .service-node:hover {
   border-color: var(--border-hover);
+  border-left-color: var(--node-color, var(--border-hover));
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
