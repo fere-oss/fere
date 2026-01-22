@@ -24,16 +24,16 @@ interface LayoutNode {
 
 // Color scheme for different service types
 const SERVICE_COLORS: Record<string, { color: string; label: string }> = {
-  frontend: { color: '#8B5CF6', label: 'Frontend' },      // Purple
-  backend: { color: '#0078D4', label: 'Backend' },        // Blue
-  webserver: { color: '#0078D4', label: 'Web Server' },   // Blue
-  database: { color: '#10B981', label: 'Database' },      // Green
-  cache: { color: '#F59E0B', label: 'Cache' },            // Amber
-  nodejs: { color: '#22C55E', label: 'Node.js' },         // Green
-  python: { color: '#3B82F6', label: 'Python' },          // Blue
-  container: { color: '#06B6D4', label: 'Container' },    // Cyan
-  service: { color: '#6B7280', label: 'System Service' }, // Gray
-  external: { color: '#9CA3AF', label: 'External' },      // Light gray
+  frontend: { color: '#0078D4', label: 'Frontend' },      // Microsoft Blue
+  backend: { color: '#0078D4', label: 'Backend' },        // Microsoft Blue
+  webserver: { color: '#0078D4', label: 'Web Server' },   // Microsoft Blue
+  database: { color: '#76B900', label: 'Database' },      // NVIDIA Green
+  cache: { color: '#FFB707', label: 'Cache' },            // Amber
+  nodejs: { color: '#5E9B00', label: 'Node.js' },         // Deep green
+  python: { color: '#9AD100', label: 'Python' },          // Bright green
+  container: { color: '#EC679B', label: 'Container' },    // Pink
+  service: { color: '#F03603', label: 'System Service' }, // Red
+  external: { color: '#EC679B', label: 'External' },      // Pink
 };
 
 const getServiceColor = (type: string) => {

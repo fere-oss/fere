@@ -9,14 +9,22 @@ interface ServiceSidebarProps {
 const getServiceColor = (type: string) => {
   switch (type) {
     case 'database':
-    case 'cache':
-    case 'nodejs':
-    case 'python':
       return '#76B900'; // NVIDIA Green
+    case 'nodejs':
+      return '#5E9B00'; // Deep green
+    case 'python':
+      return '#9AD100'; // Bright green
+    case 'cache':
+      return '#FFB707'; // Amber
+    case 'container':
+    case 'external':
+      return '#EC679B'; // Pink
     case 'frontend':
     case 'backend':
     case 'webserver':
       return '#0078D4'; // Microsoft Blue
+    case 'service':
+      return '#F03603'; // Red
     default:
       return '#525252'; // Neutral gray
   }

@@ -1,0 +1,22 @@
+#!/usr/bin/env node
+/**
+ * Mock Redis server for Fere Dashboard Testing.
+ * Listens on a Redis-like port to show the "cache" service type.
+ */
+
+const net = require('net');
+
+const PORT = parseInt(process.env.PORT || '6379', 10);
+
+const server = net.createServer((socket) => {
+  socket.write('+PONG\r\n');
+  socket.end();
+});
+
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`Redis mock listening on port ${PORT}`);
+});
+
+process.on('SIGINT', () => {
+  server.close(() => process.exit(0));
+});

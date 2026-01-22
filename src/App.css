@@ -17,8 +17,8 @@
   --text-secondary: #525252;
   --text-muted: #737373;
   --text-faint: #a3a3a3;
-  --nvidia-green: #76b900;
-  --microsoft-blue: #0078d4;
+  --green: #76b900;
+  --blue: #0078d4;
   --neutral-gray: #525252;
 }
 
@@ -151,7 +151,7 @@ body {
 .sidebar-card-header {
   padding: 20px 24px;
   border-bottom: 1px solid var(--border-color);
-  background: linear-gradient(to bottom, #fafafa, white);
+  background: #f5f5f5;
 }
 
 .sidebar-card-title {
@@ -476,7 +476,7 @@ body {
   flex-direction: column;
   gap: 12px;
   padding: 16px;
-  background: linear-gradient(135deg, rgba(118, 185, 0, 0.04) 0%, rgba(0, 120, 212, 0.04) 100%);
+  background: #f5f5f5;
   border: 1px dashed var(--border-color);
   border-radius: 16px;
   position: relative;
@@ -507,7 +507,6 @@ body {
   background: var(--bg-white);
   border-radius: 12px;
   border: 1px solid var(--border-color);
-  border-left: 4px solid var(--node-color, var(--border-color));
   padding: 20px 28px;
   min-width: 220px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
@@ -518,7 +517,6 @@ body {
 
 .service-node:hover {
   border-color: var(--border-hover);
-  border-left-color: var(--node-color, var(--border-hover));
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
@@ -641,8 +639,8 @@ body {
 }
 
 .route-method.route-patch {
-  background: #ede7f6;
-  color: #5e35b1;
+  background: #e3f2fd;
+  color: #0078d4;
 }
 
 .route-path {
@@ -780,7 +778,7 @@ body {
   justify-content: space-between;
   padding: 24px 28px;
   border-bottom: 1px solid var(--border-color);
-  background: linear-gradient(to bottom, #fafafa, white);
+  background: #f5f5f5;
   border-radius: 16px 16px 0 0;
 }
 
@@ -875,7 +873,7 @@ body {
   color: var(--text-secondary);
   margin: 0;
   padding: 12px 14px;
-  background: linear-gradient(135deg, rgba(118, 185, 0, 0.06) 0%, rgba(0, 120, 212, 0.06) 100%);
+  background: #f5f5f5;
   border-radius: 8px;
   border: 1px solid var(--border-color);
 }

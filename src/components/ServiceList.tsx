@@ -9,15 +9,15 @@ interface ServiceListProps {
 
 const TYPE_COLORS: Record<string, string> = {
   database: "#76B900",
-  cache: "#76B900",
+  cache: "#FFB707",
   webserver: "#0078D4",
-  container: "#525252",
+  container: "#EC679B",
   frontend: "#0078D4",
   backend: "#0078D4",
-  nodejs: "#76B900",
-  python: "#76B900",
-  service: "#525252",
-  external: "#a3a3a3",
+  nodejs: "#5E9B00",
+  python: "#9AD100",
+  service: "#F03603",
+  external: "#EC679B",
 };
 
 const TYPE_LABELS: Record<string, string> = {

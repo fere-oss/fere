@@ -5,6 +5,10 @@
 # This script starts:
 #   - Flask API server on port 5001
 #   - Node.js server on port 3001
+#   - Redis mock server on port 6379
+#   - Docker mock server on port 2375
+#   - Service mock (Ruby) on port 7070
+#   - External connector (outbound) to example.com:443
 #
 # Usage: ./start-all.sh
 # Stop all: Ctrl+C (will stop all background processes)
@@ -57,6 +61,14 @@ if ! command -v node &> /dev/null; then
     exit 1
 fi
 
+# Check for Ruby (optional)
+if ! command -v ruby &> /dev/null; then
+    echo -e "${YELLOW}Warning: ruby not found, skipping service mock${NC}"
+    HAS_RUBY=false
+else
+    HAS_RUBY=true
+fi
+
 # Install Flask if needed
 if ! python3 -c "import flask" 2>/dev/null; then
     echo -e "${YELLOW}Installing Flask...${NC}"
@@ -75,9 +87,41 @@ node node-server.js &
 PIDS+=($!)
 sleep 1
 
+# Start Redis mock server
+echo -e "${GREEN}Starting Redis mock server on port 6379...${NC}"
+./redis-server-mock &
+PIDS+=($!)
+sleep 1
+
+# Start Docker mock server
+echo -e "${GREEN}Starting Docker mock server on port 2375...${NC}"
+./docker-mock &
+PIDS+=($!)
+sleep 1
+
+# Start Service mock server (Ruby)
+if [ "$HAS_RUBY" = true ]; then
+    echo -e "${GREEN}Starting Service mock server on port 7070...${NC}"
+    ./bun-mock.rb &
+    PIDS+=($!)
+    sleep 1
+fi
+
+# Start External connector
+echo -e "${GREEN}Starting External connector to example.com:443...${NC}"
+node external-connector.js &
+PIDS+=($!)
+sleep 1
+
 echo -e "\n${GREEN}All services started!${NC}"
 echo -e "  Flask API:  http://localhost:5001"
 echo -e "  Node.js:    http://localhost:3001"
+echo -e "  Redis mock: tcp://localhost:6379"
+echo -e "  Docker mock: http://localhost:2375"
+if [ "$HAS_RUBY" = true ]; then
+    echo -e "  Service mock: tcp://localhost:7070"
+fi
+echo -e "  External connector: example.com:443"
 echo -e "\n${YELLOW}Press Ctrl+C to stop all services${NC}\n"
 
 # Wait for all background processes
