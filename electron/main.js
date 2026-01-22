@@ -6,6 +6,7 @@ const { getDevProcesses, getAllProcesses, getProcessByPid, killProcess, isDevPro
 const { getListeningPorts, getEstablishedConnections } = require('./services/portMonitor');
 const { buildConnectionGraph, getEnvironmentSummary } = require('./services/connectionGraph');
 const { getSystemSnapshot } = require('./services/systemSnapshot');
+const { scanRoutes } = require('./services/routeScanner');
 
 // Keep a global reference of the window object
 let mainWindow;
