@@ -1,52 +1,49 @@
-import React from 'react';
 import { useSystemSnapshot } from './hooks/useSystemMonitor';
-import { ServiceList } from './components/ServiceList';
-import { PortList } from './components/PortList';
-import { Header } from './components/Header';
+import { GraphView } from './components/GraphView';
+import { ServiceSidebar } from './components/ServiceSidebar';
 import './App.css';
 
 function App() {
-  const { snapshot, loading, refresh, error } = useSystemSnapshot(2000);
+  const { snapshot, loading, error } = useSystemSnapshot(2000);
   const { graph, ports } = snapshot;
 
   return (
     <div className="app">
-      <Header
-        serviceCount={graph.nodes.length}
-        connectionCount={graph.edges.length}
-        onRefresh={refresh}
-      />
+      {/* macOS Traffic Lights Area */}
+      <div className="traffic-lights">
+        <div className="traffic-light red" />
+        <div className="traffic-light yellow" />
+        <div className="traffic-light green" />
+      </div>
+
+      {/* App Title */}
+      <div className="app-header">
+        <h1 className="app-title">Fere</h1>
+        <p className="app-subtitle">Localhost Environment Visualizer</p>
+      </div>
+
+      {/* Error Banner */}
       {error && (
         <div className="error-banner">
-          <span className="error-title">Monitoring error:</span>
+          <span className="error-title">Error:</span>
           <span className="error-message">{error}</span>
         </div>
       )}
+
+      {/* Main Content */}
       <main className="main-content">
-        <div className="panel services-panel">
-          <h2 className="panel-title">Services</h2>
+        {/* Connection Graph */}
+        <div className="graph-container">
           {loading ? (
-            <div className="loading">Scanning...</div>
-          ) : graph.nodes.length === 0 ? (
-            <div className="empty-state">
-              <p>No dev services detected</p>
-              <span className="empty-hint">Start a local server to see it here</span>
-            </div>
+            <div className="loading">Scanning localhost...</div>
           ) : (
-            <ServiceList nodes={graph.nodes} edges={graph.edges} />
+            <GraphView nodes={graph.nodes} edges={graph.edges} />
           )}
         </div>
-        <div className="panel ports-panel">
-          <h2 className="panel-title">Listening Ports</h2>
-          {loading ? (
-            <div className="loading">Scanning...</div>
-          ) : ports.length === 0 ? (
-            <div className="empty-state">
-              <p>No ports in use</p>
-            </div>
-          ) : (
-            <PortList ports={ports} />
-          )}
+
+        {/* Sidebar */}
+        <div className="sidebar">
+          <ServiceSidebar nodes={graph.nodes} ports={ports} loading={loading} />
         </div>
       </main>
     </div>
