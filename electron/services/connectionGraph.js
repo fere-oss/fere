@@ -1,5 +1,12 @@
+const fs = require('fs');
+const path = require('path');
+const { exec } = require('child_process');
+const { promisify } = require('util');
 const { getDevProcesses } = require('./processMonitor');
 const { getListeningPorts, getEstablishedConnections, getPortDescription } = require('./portMonitor');
+const { scanRoutes, matchRoutesToService } = require('./routeScanner');
+
+const execAsync = promisify(exec);
 
 /**
  * Build a complete picture of the local dev environment
@@ -43,7 +50,9 @@ async function buildConnectionGraph(snapshot = null) {
       user: proc?.user || portUserByPid.get(pid) || 'unknown',
       tty: proc?.tty || null,
       project: inferProjectFromCommand(command),
+      projectPath: inferProjectPathFromCommand(command),
       ports: [],
+      routes: [],
     };
 
     nodes.push(node);
@@ -88,11 +97,13 @@ async function buildConnectionGraph(snapshot = null) {
       user: 'external',
       tty: null,
       project: null,
+      projectPath: null,
       ports: [{
         port,
         host,
         description: null,
       }],
+      routes: [],
     };
 
     nodes.push(node);
@@ -125,6 +136,8 @@ async function buildConnectionGraph(snapshot = null) {
       });
     }
   }
+
+  await attachRoutesToNodes(nodes);
 
   return { nodes, edges };
 }
@@ -202,6 +215,123 @@ function inferProjectFromCommand(command = '') {
   return null;
 }
 
+const PROJECT_MARKERS = [
+  'package.json',
+  'pyproject.toml',
+  'requirements.txt',
+  'Pipfile',
+  'setup.py',
+  'go.mod',
+  'Cargo.toml',
+  'composer.json',
+  'Gemfile',
+  'pom.xml',
+  'build.gradle',
+  'Makefile',
+];
+
+function findProjectRoot(startPath) {
+  let current = startPath;
+  if (!current) return null;
+
+  try {
+    const stat = fs.statSync(current);
+    if (stat.isFile()) {
+      current = path.dirname(current);
+    }
+  } catch (error) {
+    return null;
+  }
+
+  let previous = null;
+  while (current && current !== previous) {
+    for (const marker of PROJECT_MARKERS) {
+      if (fs.existsSync(path.join(current, marker))) {
+        return current;
+      }
+    }
+    previous = current;
+    current = path.dirname(current);
+  }
+
+  return null;
+}
+
+function inferProjectPathFromCommand(command = '') {
+  const tokens = command.split(/\s+/);
+  const candidates = [];
+
+  for (const token of tokens) {
+    if (token.startsWith('/Users/') || token.startsWith('/home/')) {
+      const cleaned = token.replace(/[",']/g, '');
+      candidates.push(cleaned);
+    }
+  }
+
+  for (const candidate of candidates) {
+    const projectRoot = findProjectRoot(candidate);
+    if (projectRoot) {
+      return projectRoot;
+    }
+  }
+
+  return null;
+}
+
+async function attachRoutesToNodes(nodes) {
+  const projects = new Map();
+  const cwdByPid = new Map();
+
+  for (const node of nodes) {
+    if (node.projectPath) {
+      projects.set(node.projectPath, null);
+    }
+  }
+
+  for (const node of nodes) {
+    if (node.projectPath || node.pid <= 0) continue;
+    const cwd = await getProcessCwd(node.pid, cwdByPid);
+    if (!cwd) continue;
+    const projectRoot = findProjectRoot(cwd);
+    if (projectRoot) {
+      node.projectPath = projectRoot;
+      projects.set(projectRoot, null);
+    }
+  }
+
+  for (const projectPath of projects.keys()) {
+    try {
+      const routes = await scanRoutes(projectPath);
+      projects.set(projectPath, routes);
+    } catch (error) {
+      projects.set(projectPath, []);
+    }
+  }
+
+  for (const node of nodes) {
+    if (!node.projectPath) continue;
+    const routes = projects.get(node.projectPath) || [];
+    node.routes = matchRoutesToService(routes, node);
+  }
+}
+
+async function getProcessCwd(pid, cache) {
+  if (cache.has(pid)) {
+    return cache.get(pid);
+  }
+
+  try {
+    const { stdout } = await execAsync(`lsof -a -p ${pid} -d cwd -Fn`);
+    const line = stdout.split('\n').find(entry => entry.startsWith('n'));
+    const cwd = line ? line.slice(1).trim() : null;
+    cache.set(pid, cwd);
+    return cwd;
+  } catch (error) {
+    cache.set(pid, null);
+    return null;
+  }
+}
+
 /**
  * Get a simplified summary of the dev environment
  */
@@ -228,4 +358,5 @@ module.exports = {
   getEnvironmentSummary,
   categorizeProcess,
   inferProjectFromCommand,
+  inferProjectPathFromCommand,
 };

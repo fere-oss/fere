@@ -303,6 +303,8 @@ export function GraphView({ nodes, edges }: GraphViewProps) {
 function ServiceNode({ node }: { node: GraphNode }) {
   const accentColor = getServiceColor(node.type);
   const mainPort = node.ports[0]?.port;
+  const routes = node.routes || [];
+  const visibleRoutes = routes.slice(0, 3);
 
   return (
     <div data-node-id={node.id} className="service-node">
@@ -333,6 +335,30 @@ function ServiceNode({ node }: { node: GraphNode }) {
           :{mainPort || '?'}
         </span>
       </div>
+
+      {routes.length > 0 && (
+        <div className="service-node-routes">
+          <div className="service-node-routes-header">
+            <span className="service-node-routes-title">API routes</span>
+            <span className="service-node-routes-count">{routes.length}</span>
+          </div>
+          <div className="service-node-routes-list">
+            {visibleRoutes.map(route => (
+              <div key={`${route.method}-${route.path}`} className="service-route">
+                <span className={`route-method route-${route.method.toLowerCase()}`}>
+                  {route.method}
+                </span>
+                <span className="route-path">{route.path}</span>
+              </div>
+            ))}
+            {routes.length > visibleRoutes.length && (
+              <div className="service-route-more">
+                +{routes.length - visibleRoutes.length} more
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

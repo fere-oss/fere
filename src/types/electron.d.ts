@@ -23,6 +23,7 @@ export interface Service {
   user: string;
   tty?: string | null;
   project?: string | null;
+  projectPath?: string | null;
   cpu: number;
   memory: number;
   ports: {
@@ -30,6 +31,7 @@ export interface Service {
     host: string;
     description: string | null;
   }[];
+  routes?: ApiRoute[];
 }
 
 // Port types
@@ -67,11 +69,13 @@ export interface GraphNode {
   user: string;
   tty?: string | null;
   project?: string | null;
+  projectPath?: string | null;
   ports: {
     port: number;
     host: string;
     description: string | null;
   }[];
+  routes?: ApiRoute[];
 }
 
 export interface GraphEdge {
@@ -86,6 +90,11 @@ export interface GraphEdge {
 export interface ConnectionGraph {
   nodes: GraphNode[];
   edges: GraphEdge[];
+}
+
+export interface ApiRoute {
+  method: string;
+  path: string;
 }
 
 export interface SystemSnapshot {

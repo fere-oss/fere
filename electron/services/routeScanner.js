@@ -32,16 +32,35 @@ const ROUTE_PATTERNS = {
 const SCAN_EXTENSIONS = ['.py', '.js', '.ts', '.jsx', '.tsx', '.mjs'];
 
 // Directories to skip
-const SKIP_DIRS = ['node_modules', '.git', '__pycache__', 'venv', '.venv', 'dist', 'build', '.next'];
+const SKIP_DIRS = [
+  'node_modules',
+  '.git',
+  '__pycache__',
+  'venv',
+  '.venv',
+  'dist',
+  'build',
+  '.next',
+  '.cache',
+  '.nvm',
+  '.npm',
+  '.yarn',
+  '.pnpm-store',
+];
+const MAX_FILES = 2000;
+const ROUTE_CACHE_TTL_MS = 10000;
+const routeCache = new Map();
 
 /**
  * Recursively find all relevant files in a directory
  */
 function findFiles(dir, files = []) {
   try {
+    if (files.length >= MAX_FILES) return files;
     const entries = fs.readdirSync(dir, { withFileTypes: true });
 
     for (const entry of entries) {
+      if (files.length >= MAX_FILES) break;
       const fullPath = path.join(dir, entry.name);
 
       if (entry.isDirectory()) {
@@ -142,7 +161,8 @@ function extractRoutes(filePath, content, framework) {
     let match;
 
     while ((match = pattern.exec(content)) !== null) {
-      const method = match[1]?.toUpperCase() || 'ALL';
+      const methodToken = match[2] ? match[1] : null;
+      const method = methodToken ? methodToken.toUpperCase() : 'ALL';
       const routePath = match[2] || match[1];
 
       // Skip if path looks like a variable
@@ -192,6 +212,10 @@ async function scanRoutes(projectPath) {
   if (!projectPath || !fs.existsSync(projectPath)) {
     return routes;
   }
+  const cached = routeCache.get(projectPath);
+  if (cached && Date.now() - cached.timestamp < ROUTE_CACHE_TTL_MS) {
+    return cached.routes;
+  }
 
   const files = findFiles(projectPath);
 
@@ -218,6 +242,7 @@ async function scanRoutes(projectPath) {
     return true;
   });
 
+  routeCache.set(projectPath, { timestamp: Date.now(), routes: uniqueRoutes });
   return uniqueRoutes;
 }
 
