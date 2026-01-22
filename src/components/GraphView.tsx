@@ -15,6 +15,13 @@ interface NodePosition {
   indexInLayer: number;
 }
 
+interface LayoutNode {
+  node: GraphNode;
+  layer: number;
+  order: number; // Position within layer (0, 1, 2, ...)
+  groupId: string;
+}
+
 const getServiceColor = (type: string) => {
   switch (type) {
     case 'database':
@@ -48,6 +55,222 @@ const getTypeBadge = (type: string) => {
   return labels[type] || 'Service';
 };
 
+// Extract a normalized base name for grouping related services
+const getBaseName = (name: string): string => {
+  let base = name.toLowerCase().trim();
+  base = base.replace(/[-_]?(server|api|service|app|client|worker|main|dev|prod|test)$/i, '');
+  base = base.replace(/[-_]?\d+$/, '');
+  base = base.replace(/[-_]+$/, '');
+  return base || name.toLowerCase();
+};
+
+// Assign layer based on node type
+const getTypeLayer = (type: string): number => {
+  switch (type) {
+    case 'frontend':
+      return 0;
+    case 'backend':
+    case 'webserver':
+    case 'nodejs':
+    case 'python':
+      return 1;
+    case 'database':
+    case 'cache':
+      return 2;
+    default:
+      return 3;
+  }
+};
+
+// Build adjacency lists for the graph
+const buildAdjacencyLists = (edges: GraphEdge[]) => {
+  const outgoing = new Map<string, Set<string>>(); // node -> nodes it connects TO
+  const incoming = new Map<string, Set<string>>(); // node -> nodes that connect TO it
+
+  edges.forEach(edge => {
+    if (!outgoing.has(edge.source)) outgoing.set(edge.source, new Set());
+    if (!incoming.has(edge.target)) incoming.set(edge.target, new Set());
+    outgoing.get(edge.source)!.add(edge.target);
+    incoming.get(edge.target)!.add(edge.source);
+  });
+
+  return { outgoing, incoming };
+};
+
+// Barycenter method: compute average position of connected nodes in adjacent layer
+const computeBarycenter = (
+  _nodeId: string,
+  adjacentNodeIds: Set<string> | undefined,
+  nodeOrders: Map<string, number>
+): number => {
+  if (!adjacentNodeIds || adjacentNodeIds.size === 0) return Infinity;
+
+  let sum = 0;
+  let count = 0;
+  adjacentNodeIds.forEach(adjId => {
+    const order = nodeOrders.get(adjId);
+    if (order !== undefined) {
+      sum += order;
+      count++;
+    }
+  });
+
+  return count > 0 ? sum / count : Infinity;
+};
+
+// Hierarchical layout algorithm using barycenter method
+const computeHierarchicalLayout = (
+  nodes: GraphNode[],
+  edges: GraphEdge[]
+): LayoutNode[] => {
+  if (nodes.length === 0) return [];
+
+  const { outgoing, incoming } = buildAdjacencyLists(edges);
+
+  // Step 1: Assign layers based on type
+  const nodesByLayer = new Map<number, GraphNode[]>();
+  nodes.forEach(node => {
+    const layer = getTypeLayer(node.type);
+    if (!nodesByLayer.has(layer)) nodesByLayer.set(layer, []);
+    nodesByLayer.get(layer)!.push(node);
+  });
+
+  // Step 2: Initial ordering within each layer - group by base name, then alphabetically
+  const layerOrders = new Map<string, number>(); // nodeId -> order within layer
+
+  nodesByLayer.forEach((layerNodes) => {
+    // Group by base name
+    const groups = new Map<string, GraphNode[]>();
+    layerNodes.forEach(node => {
+      const baseName = getBaseName(node.name);
+      if (!groups.has(baseName)) groups.set(baseName, []);
+      groups.get(baseName)!.push(node);
+    });
+
+    // Sort groups: multi-node groups first, then alphabetically
+    const sortedGroups = Array.from(groups.entries()).sort((a, b) => {
+      if (a[1].length !== b[1].length) return b[1].length - a[1].length;
+      return a[0].localeCompare(b[0]);
+    });
+
+    // Flatten and assign initial order
+    let order = 0;
+    sortedGroups.forEach(([, groupNodes]) => {
+      groupNodes.sort((a, b) => a.name.localeCompare(b.name));
+      groupNodes.forEach(node => {
+        layerOrders.set(node.id, order++);
+      });
+    });
+  });
+
+  // Step 3: Barycenter refinement - multiple passes to minimize crossings
+  const sortedLayers = Array.from(nodesByLayer.keys()).sort((a, b) => a - b);
+  const NUM_ITERATIONS = 4;
+
+  for (let iter = 0; iter < NUM_ITERATIONS; iter++) {
+    // Forward pass: order based on connections from upper layers
+    for (let i = 1; i < sortedLayers.length; i++) {
+      const layer = sortedLayers[i];
+      const layerNodes = nodesByLayer.get(layer) || [];
+
+      // Compute barycenter for each node based on incoming connections
+      const barycenters: { node: GraphNode; bc: number; originalOrder: number }[] = [];
+      layerNodes.forEach(node => {
+        const bc = computeBarycenter(node.id, incoming.get(node.id), layerOrders);
+        barycenters.push({ node, bc, originalOrder: layerOrders.get(node.id) || 0 });
+      });
+
+      // Sort by barycenter, keeping original order for nodes with same/no connections
+      barycenters.sort((a, b) => {
+        if (a.bc === Infinity && b.bc === Infinity) return a.originalOrder - b.originalOrder;
+        if (a.bc === Infinity) return 1;
+        if (b.bc === Infinity) return -1;
+        return a.bc - b.bc;
+      });
+
+      // Update orders
+      barycenters.forEach((item, idx) => {
+        layerOrders.set(item.node.id, idx);
+      });
+    }
+
+    // Backward pass: order based on connections to lower layers
+    for (let i = sortedLayers.length - 2; i >= 0; i--) {
+      const layer = sortedLayers[i];
+      const layerNodes = nodesByLayer.get(layer) || [];
+
+      // Compute barycenter for each node based on outgoing connections
+      const barycenters: { node: GraphNode; bc: number; originalOrder: number }[] = [];
+      layerNodes.forEach(node => {
+        const bc = computeBarycenter(node.id, outgoing.get(node.id), layerOrders);
+        barycenters.push({ node, bc, originalOrder: layerOrders.get(node.id) || 0 });
+      });
+
+      // Sort by barycenter
+      barycenters.sort((a, b) => {
+        if (a.bc === Infinity && b.bc === Infinity) return a.originalOrder - b.originalOrder;
+        if (a.bc === Infinity) return 1;
+        if (b.bc === Infinity) return -1;
+        return a.bc - b.bc;
+      });
+
+      // Update orders
+      barycenters.forEach((item, idx) => {
+        layerOrders.set(item.node.id, idx);
+      });
+    }
+  }
+
+  // Step 4: Build final layout
+  const result: LayoutNode[] = [];
+  nodes.forEach(node => {
+    const layer = getTypeLayer(node.type);
+    result.push({
+      node,
+      layer,
+      order: layerOrders.get(node.id) || 0,
+      groupId: getBaseName(node.name),
+    });
+  });
+
+  return result;
+};
+
+// Group layout nodes for rendering
+interface RenderGroup {
+  groupName: string;
+  nodes: GraphNode[];
+  isGroup: boolean;
+}
+
+const groupLayoutNodes = (layoutNodes: LayoutNode[], layer: number): RenderGroup[] => {
+  // Filter nodes for this layer and sort by order
+  const layerNodes = layoutNodes
+    .filter(ln => ln.layer === layer)
+    .sort((a, b) => a.order - b.order);
+
+  // Group consecutive nodes with same groupId
+  const groups: RenderGroup[] = [];
+  let currentGroup: RenderGroup | null = null;
+
+  layerNodes.forEach(ln => {
+    if (currentGroup && currentGroup.groupName.toLowerCase() === ln.groupId.toLowerCase()) {
+      currentGroup.nodes.push(ln.node);
+      currentGroup.isGroup = true;
+    } else {
+      if (currentGroup) groups.push(currentGroup);
+      currentGroup = {
+        groupName: ln.groupId.charAt(0).toUpperCase() + ln.groupId.slice(1),
+        nodes: [ln.node],
+        isGroup: false,
+      };
+    }
+  });
+  if (currentGroup) groups.push(currentGroup);
+
+  return groups;
+};
+
 export function GraphView({ nodes, edges }: GraphViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
@@ -57,44 +280,45 @@ export function GraphView({ nodes, edges }: GraphViewProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
 
-  // Filter out external nodes (IPs, non-local services)
-  const localNodes = nodes.filter(n => {
-    // Keep only local services, filter out external IPs
+  // Filter out external nodes
+  const localNodes = useMemo(() => nodes.filter(n => {
     if (n.type === 'external') return false;
     if (n.id.includes('external-')) return false;
-    // Filter out nodes with IP addresses in their name/id
     if (/\d+\.\d+\.\d+\.\d+/.test(n.id)) return false;
     return true;
-  });
+  }), [nodes]);
 
   // Filter edges to only include connections between local nodes
-  const localNodeIds = new Set(localNodes.map(n => n.id));
-  const localEdges = edges.filter(e =>
-    localNodeIds.has(e.source) && localNodeIds.has(e.target)
+  const localEdges = useMemo(() => {
+    const localNodeIds = new Set(localNodes.map(n => n.id));
+    return edges.filter(e => localNodeIds.has(e.source) && localNodeIds.has(e.target));
+  }, [localNodes, edges]);
+
+  // Compute hierarchical layout
+  const layoutNodes = useMemo(() =>
+    computeHierarchicalLayout(localNodes, localEdges),
+    [localNodes, localEdges]
   );
 
-  // Organize nodes by layer (memoized to prevent unnecessary re-renders)
-  const { frontend, backendLayer, database, other } = useMemo(() => {
-    const frontend = localNodes.filter(n => n.type === 'frontend');
-    const backend = localNodes.filter(n => n.type === 'backend' || n.type === 'webserver');
-    const runtime = localNodes.filter(n => n.type === 'nodejs' || n.type === 'python');
-    const database = localNodes.filter(n => n.type === 'database' || n.type === 'cache');
-    const other = localNodes.filter(n =>
-      !['frontend', 'backend', 'webserver', 'nodejs', 'python', 'database', 'cache'].includes(n.type)
-    );
-    return {
-      frontend,
-      backendLayer: [...backend, ...runtime],
-      database,
-      other,
-    };
-  }, [localNodes]);
+  // Group nodes by layer for rendering
+  const { frontendGroups, backendGroups, databaseGroups, otherGroups } = useMemo(() => ({
+    frontendGroups: groupLayoutNodes(layoutNodes, 0),
+    backendGroups: groupLayoutNodes(layoutNodes, 1),
+    databaseGroups: groupLayoutNodes(layoutNodes, 2),
+    otherGroups: groupLayoutNodes(layoutNodes, 3),
+  }), [layoutNodes]);
+
+  // Flatten for layer counts
+  const frontend = frontendGroups.flatMap(g => g.nodes);
+  const backendLayer = backendGroups.flatMap(g => g.nodes);
+  const database = databaseGroups.flatMap(g => g.nodes);
+  const other = otherGroups.flatMap(g => g.nodes);
 
   // Create connection list from edges
-  const connections = localEdges.map(edge => ({
-    from: edge.source,
-    to: edge.target,
-  }));
+  const connections = useMemo(() =>
+    localEdges.map(edge => ({ from: edge.source, to: edge.target })),
+    [localEdges]
+  );
 
   // Zoom handlers
   const handleZoomIn = () => setZoom(z => Math.min(z + 0.2, 2));
@@ -106,24 +330,18 @@ export function GraphView({ nodes, edges }: GraphViewProps) {
 
   // Pan handlers
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    if (e.button !== 0) return; // Only left click
+    if (e.button !== 0) return;
     setIsDragging(true);
     setDragStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
   }, [pan]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
     if (!isDragging) return;
-    setPan({
-      x: e.clientX - dragStart.x,
-      y: e.clientY - dragStart.y,
-    });
+    setPan({ x: e.clientX - dragStart.x, y: e.clientY - dragStart.y });
   }, [isDragging, dragStart]);
 
-  const handleMouseUp = useCallback(() => {
-    setIsDragging(false);
-  }, []);
+  const handleMouseUp = useCallback(() => setIsDragging(false), []);
 
-  // Wheel zoom
   const handleWheel = useCallback((e: React.WheelEvent) => {
     e.preventDefault();
     const delta = e.deltaY > 0 ? -0.1 : 0.1;
@@ -133,24 +351,13 @@ export function GraphView({ nodes, edges }: GraphViewProps) {
   // Build layer mapping for nodes
   const nodeLayerMap = useMemo(() => {
     const map = new Map<string, { layer: number; indexInLayer: number }>();
-
-    const layers = [
-      { nodes: frontend, layer: 0 },
-      { nodes: backendLayer, layer: 1 },
-      { nodes: database, layer: 2 },
-      { nodes: other, layer: 3 },
-    ];
-
-    layers.forEach(({ nodes: layerNodes, layer }) => {
-      layerNodes.forEach((node, index) => {
-        map.set(node.id, { layer, indexInLayer: index });
-      });
+    layoutNodes.forEach(ln => {
+      map.set(ln.node.id, { layer: ln.layer, indexInLayer: ln.order });
     });
-
     return map;
-  }, [frontend, backendLayer, database, other]);
+  }, [layoutNodes]);
 
-  // Calculate node positions after render - zoom independent
+  // Calculate node positions after render
   useEffect(() => {
     if (!canvasRef.current) return;
 
@@ -166,7 +373,6 @@ export function GraphView({ nodes, edges }: GraphViewProps) {
         if (element) {
           const rect = element.getBoundingClientRect();
           const layerInfo = nodeLayerMap.get(node.id) || { layer: 0, indexInLayer: 0 };
-          // Normalize positions by dividing by zoom to get consistent coordinates
           positions.set(node.id, {
             x: (rect.left - canvasRect.left + rect.width / 2) / zoom,
             y: (rect.top - canvasRect.top + rect.height / 2) / zoom,
@@ -185,109 +391,43 @@ export function GraphView({ nodes, edges }: GraphViewProps) {
     return () => clearTimeout(timer);
   }, [localNodes, nodeLayerMap, zoom]);
 
-  // Calculate edge routes - route through layer gaps, never through nodes
+  // Simplified edge routing - layout handles most complexity
   const edgeRoutes = useMemo(() => {
     if (nodePositions.size === 0) return [];
 
     const allNodes = Array.from(nodePositions.entries());
-    const padding = 15; // Minimum clearance from node edges
 
-    // Compute bounding box for each layer
-    const layerBounds = new Map<number, { top: number; bottom: number; left: number; right: number }>();
+    // Compute layer bounds
+    const layerBounds = new Map<number, { top: number; bottom: number }>();
     allNodes.forEach(([, pos]) => {
       const nodeTop = pos.y - pos.height / 2;
       const nodeBottom = pos.y + pos.height / 2;
-      const nodeLeft = pos.x - pos.width / 2;
-      const nodeRight = pos.x + pos.width / 2;
-
       const existing = layerBounds.get(pos.layer);
       if (existing) {
         existing.top = Math.min(existing.top, nodeTop);
         existing.bottom = Math.max(existing.bottom, nodeBottom);
-        existing.left = Math.min(existing.left, nodeLeft);
-        existing.right = Math.max(existing.right, nodeRight);
       } else {
-        layerBounds.set(pos.layer, { top: nodeTop, bottom: nodeBottom, left: nodeLeft, right: nodeRight });
+        layerBounds.set(pos.layer, { top: nodeTop, bottom: nodeBottom });
       }
     });
 
-    // Find global boundaries for side lanes
-    let globalLeft = Infinity;
-    let globalRight = -Infinity;
-    nodePositions.forEach((pos) => {
-      globalLeft = Math.min(globalLeft, pos.x - pos.width / 2);
-      globalRight = Math.max(globalRight, pos.x + pos.width / 2);
-    });
-    const sideMargin = 40;
-
-    // Compute gaps between adjacent layers (safe horizontal corridors)
+    // Compute gap Y between layers
     const sortedLayers = Array.from(layerBounds.keys()).sort((a, b) => a - b);
-    const layerGaps = new Map<string, number>(); // "layer1-layer2" -> Y coordinate of gap center
+    const layerGapY = new Map<string, number>();
     for (let i = 0; i < sortedLayers.length - 1; i++) {
-      const upperLayer = sortedLayers[i];
-      const lowerLayer = sortedLayers[i + 1];
-      const upperBounds = layerBounds.get(upperLayer)!;
-      const lowerBounds = layerBounds.get(lowerLayer)!;
-      // Gap is between bottom of upper layer and top of lower layer
-      const gapY = (upperBounds.bottom + lowerBounds.top) / 2;
-      layerGaps.set(`${upperLayer}-${lowerLayer}`, gapY);
+      const upper = sortedLayers[i];
+      const lower = sortedLayers[i + 1];
+      const gapY = (layerBounds.get(upper)!.bottom + layerBounds.get(lower)!.top) / 2;
+      layerGapY.set(`${upper}-${lower}`, gapY);
     }
-
-    // Check if a horizontal segment at Y collides with any node
-    const horizontalSegmentBlocked = (y: number, x1: number, x2: number, excludeIds: string[]): boolean => {
-      const minX = Math.min(x1, x2);
-      const maxX = Math.max(x1, x2);
-      return allNodes.some(([id, pos]) => {
-        if (excludeIds.includes(id)) return false;
-        const nodeLeft = pos.x - pos.width / 2 - padding;
-        const nodeRight = pos.x + pos.width / 2 + padding;
-        const nodeTop = pos.y - pos.height / 2 - padding;
-        const nodeBottom = pos.y + pos.height / 2 + padding;
-        return y > nodeTop && y < nodeBottom && maxX > nodeLeft && minX < nodeRight;
-      });
-    };
-
-    // Check if a vertical segment at X collides with any node
-    const verticalSegmentBlocked = (x: number, y1: number, y2: number, excludeIds: string[]): boolean => {
-      const minY = Math.min(y1, y2);
-      const maxY = Math.max(y1, y2);
-      return allNodes.some(([id, pos]) => {
-        if (excludeIds.includes(id)) return false;
-        const nodeLeft = pos.x - pos.width / 2 - padding;
-        const nodeRight = pos.x + pos.width / 2 + padding;
-        const nodeTop = pos.y - pos.height / 2 - padding;
-        const nodeBottom = pos.y + pos.height / 2 + padding;
-        return x > nodeLeft && x < nodeRight && maxY > nodeTop && minY < nodeBottom;
-      });
-    };
-
-    // Find a safe gap Y between two layers for horizontal routing
-    const findGapY = (fromLayer: number, toLayer: number): number | null => {
-      const minLayer = Math.min(fromLayer, toLayer);
-      const maxLayer = Math.max(fromLayer, toLayer);
-      // Look for an existing gap between these layers
-      for (let layer = minLayer; layer < maxLayer; layer++) {
-        const gapKey = `${layer}-${layer + 1}`;
-        const gapY = layerGaps.get(gapKey);
-        if (gapY !== undefined) return gapY;
-      }
-      return null;
-    };
-
-    // Find a safe X lane (left or right of all nodes)
-    let leftLaneIndex = 0;
-    let rightLaneIndex = 0;
-    const getLeftLane = () => globalLeft - sideMargin - (leftLaneIndex++ * 12);
-    const getRightLane = () => globalRight + sideMargin + (rightLaneIndex++ * 12);
 
     const routes: { from: string; to: string; path: string }[] = [];
 
-    connections.forEach((conn) => {
+    connections.forEach(conn => {
       const from = nodePositions.get(conn.from);
       const to = nodePositions.get(conn.to);
       if (!from || !to) return;
 
-      const excludeIds = [conn.from, conn.to];
       const sourceBottom = from.y + from.height / 2;
       const sourceTop = from.y - from.height / 2;
       const targetTop = to.y - to.height / 2;
@@ -296,68 +436,21 @@ export function GraphView({ nodes, edges }: GraphViewProps) {
       let path: string;
 
       if (from.layer === to.layer) {
-        // Same layer - route above the layer
-        const layerTop = layerBounds.get(from.layer)?.top ?? Math.min(sourceTop, targetTop);
-        const routeY = layerTop - padding - 25;
-        path = `M ${from.x} ${sourceTop} L ${from.x} ${routeY} L ${to.x} ${routeY} L ${to.x} ${targetTop}`;
+        // Same layer - arc above
+        const arcY = Math.min(sourceTop, targetTop) - 30;
+        path = `M ${from.x} ${sourceTop} L ${from.x} ${arcY} L ${to.x} ${arcY} L ${to.x} ${targetTop}`;
       } else if (from.layer < to.layer) {
-        // Going DOWN (source is above target)
-        const gapY = findGapY(from.layer, to.layer) ?? (sourceBottom + targetTop) / 2;
-
-        if (Math.abs(from.x - to.x) < 5) {
-          // Nearly vertically aligned - check if straight path is clear
-          if (!verticalSegmentBlocked(from.x, sourceBottom, targetTop, excludeIds)) {
-            path = `M ${from.x} ${sourceBottom} L ${to.x} ${targetTop}`;
-          } else {
-            // Need to route around - go to side lane
-            const laneX = from.x <= (globalLeft + globalRight) / 2 ? getLeftLane() : getRightLane();
-            path = `M ${from.x} ${sourceBottom} L ${from.x} ${gapY} L ${laneX} ${gapY} L ${laneX} ${targetTop - padding} L ${to.x} ${targetTop - padding} L ${to.x} ${targetTop}`;
-          }
-        } else {
-          // Check if simple step path through gap is clear
-          const verticalDownClear = !verticalSegmentBlocked(from.x, sourceBottom, gapY, excludeIds);
-          const horizontalClear = !horizontalSegmentBlocked(gapY, from.x, to.x, excludeIds);
-          const verticalToClear = !verticalSegmentBlocked(to.x, gapY, targetTop, excludeIds);
-
-          if (verticalDownClear && horizontalClear && verticalToClear) {
-            // Direct step path is clear
-            path = `M ${from.x} ${sourceBottom} L ${from.x} ${gapY} L ${to.x} ${gapY} L ${to.x} ${targetTop}`;
-          } else {
-            // Route around via side lane
-            const goLeft = from.x > to.x;
-            const laneX = goLeft ? getLeftLane() : getRightLane();
-            path = `M ${from.x} ${sourceBottom} L ${from.x} ${gapY} L ${laneX} ${gapY} L ${laneX} ${targetTop - padding} L ${to.x} ${targetTop - padding} L ${to.x} ${targetTop}`;
-          }
-        }
+        // Going DOWN - source above target
+        // Always use orthogonal step path for clean, symmetrical appearance
+        const gapKey = `${from.layer}-${from.layer + 1}`;
+        const gapY = layerGapY.get(gapKey) ?? (sourceBottom + targetTop) / 2;
+        path = `M ${from.x} ${sourceBottom} L ${from.x} ${gapY} L ${to.x} ${gapY} L ${to.x} ${targetTop}`;
       } else {
-        // Going UP (source is below target)
-        const gapY = findGapY(to.layer, from.layer) ?? (sourceTop + targetBottom) / 2;
-
-        if (Math.abs(from.x - to.x) < 5) {
-          // Nearly vertically aligned - check if straight path is clear
-          if (!verticalSegmentBlocked(from.x, sourceTop, targetBottom, excludeIds)) {
-            path = `M ${from.x} ${sourceTop} L ${to.x} ${targetBottom}`;
-          } else {
-            // Need to route around - go to side lane
-            const laneX = from.x <= (globalLeft + globalRight) / 2 ? getLeftLane() : getRightLane();
-            path = `M ${from.x} ${sourceTop} L ${from.x} ${gapY} L ${laneX} ${gapY} L ${laneX} ${targetBottom + padding} L ${to.x} ${targetBottom + padding} L ${to.x} ${targetBottom}`;
-          }
-        } else {
-          // Check if simple step path through gap is clear
-          const verticalUpClear = !verticalSegmentBlocked(from.x, sourceTop, gapY, excludeIds);
-          const horizontalClear = !horizontalSegmentBlocked(gapY, from.x, to.x, excludeIds);
-          const verticalToClear = !verticalSegmentBlocked(to.x, gapY, targetBottom, excludeIds);
-
-          if (verticalUpClear && horizontalClear && verticalToClear) {
-            // Direct step path is clear
-            path = `M ${from.x} ${sourceTop} L ${from.x} ${gapY} L ${to.x} ${gapY} L ${to.x} ${targetBottom}`;
-          } else {
-            // Route around via side lane
-            const goLeft = from.x > to.x;
-            const laneX = goLeft ? getLeftLane() : getRightLane();
-            path = `M ${from.x} ${sourceTop} L ${from.x} ${gapY} L ${laneX} ${gapY} L ${laneX} ${targetBottom + padding} L ${to.x} ${targetBottom + padding} L ${to.x} ${targetBottom}`;
-          }
-        }
+        // Going UP - source below target
+        // Always use orthogonal step path for clean, symmetrical appearance
+        const gapKey = `${to.layer}-${to.layer + 1}`;
+        const gapY = layerGapY.get(gapKey) ?? (sourceTop + targetBottom) / 2;
+        path = `M ${from.x} ${sourceTop} L ${from.x} ${gapY} L ${to.x} ${gapY} L ${to.x} ${targetBottom}`;
       }
 
       routes.push({ from: conn.from, to: conn.to, path });
@@ -444,54 +537,68 @@ export function GraphView({ nodes, edges }: GraphViewProps) {
 
         {/* Layered nodes */}
         <div className="graph-layers">
-          {/* Frontend Layer */}
           {frontend.length > 0 && (
             <div className="graph-layer">
               <div className="graph-layer-label">FRONTEND</div>
               <div className="graph-layer-nodes">
-                {frontend.map(node => (
-                  <ServiceNode key={node.id} node={node} />
+                {frontendGroups.map(group => (
+                  <NodeGroupContainer key={group.groupName} group={group} />
                 ))}
               </div>
             </div>
           )}
 
-          {/* Backend / Runtime Layer */}
           {backendLayer.length > 0 && (
             <div className="graph-layer">
               <div className="graph-layer-label">BACKEND / API</div>
               <div className="graph-layer-nodes">
-                {backendLayer.map(node => (
-                  <ServiceNode key={node.id} node={node} />
+                {backendGroups.map(group => (
+                  <NodeGroupContainer key={group.groupName} group={group} />
                 ))}
               </div>
             </div>
           )}
 
-          {/* Database Layer */}
           {database.length > 0 && (
             <div className="graph-layer">
               <div className="graph-layer-label">DATA LAYER</div>
               <div className="graph-layer-nodes">
-                {database.map(node => (
-                  <ServiceNode key={node.id} node={node} />
+                {databaseGroups.map(group => (
+                  <NodeGroupContainer key={group.groupName} group={group} />
                 ))}
               </div>
             </div>
           )}
 
-          {/* Other Services */}
           {other.length > 0 && (
             <div className="graph-layer">
               <div className="graph-layer-label">OTHER SERVICES</div>
               <div className="graph-layer-nodes">
-                {other.map(node => (
-                  <ServiceNode key={node.id} node={node} />
+                {otherGroups.map(group => (
+                  <NodeGroupContainer key={group.groupName} group={group} />
                 ))}
               </div>
             </div>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+// Node Group Container
+function NodeGroupContainer({ group }: { group: RenderGroup }) {
+  if (!group.isGroup) {
+    return <ServiceNode node={group.nodes[0]} />;
+  }
+
+  return (
+    <div className="node-group">
+      <div className="node-group-label">{group.groupName}</div>
+      <div className="node-group-nodes">
+        {group.nodes.map(node => (
+          <ServiceNode key={node.id} node={node} />
+        ))}
       </div>
     </div>
   );
