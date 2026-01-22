@@ -9,17 +9,9 @@ function App() {
 
   return (
     <div className="app">
-      {/* macOS Traffic Lights Area */}
-      <div className="traffic-lights">
-        <div className="traffic-light red" />
-        <div className="traffic-light yellow" />
-        <div className="traffic-light green" />
-      </div>
-
       {/* App Title */}
       <div className="app-header">
-        <h1 className="app-title">Fere</h1>
-        <p className="app-subtitle">Localhost Environment Visualizer</p>
+        <h1 className="app-title">fere</h1>
       </div>
 
       {/* Error Banner */}

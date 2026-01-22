@@ -1,5 +1,5 @@
-/* Import Inter and JetBrains Mono fonts */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+/* Import Inter, Instrument Serif, and JetBrains Mono fonts */
+@import url("https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap");
 
 /* Base styles */
 * {
@@ -17,13 +17,17 @@
   --text-secondary: #525252;
   --text-muted: #737373;
   --text-faint: #a3a3a3;
-  --nvidia-green: #76B900;
-  --microsoft-blue: #0078D4;
+  --nvidia-green: #76b900;
+  --microsoft-blue: #0078d4;
   --neutral-gray: #525252;
 }
 
 body {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family:
+    "Inter",
+    -apple-system,
+    BlinkMacSystemFont,
+    sans-serif;
   background: var(--bg-primary);
   color: var(--text-primary);
   overflow: hidden;
@@ -66,28 +70,29 @@ body {
 }
 
 .traffic-light.red {
-  background-color: #FF5F57;
+  background-color: #ff5f57;
 }
 
 .traffic-light.yellow {
-  background-color: #FFBD2E;
+  background-color: #ffbd2e;
 }
 
 .traffic-light.green {
-  background-color: #28CA42;
+  background-color: #28ca42;
 }
 
 /* App Header */
 .app-header {
   padding: 64px 40px 28px 40px;
-  -webkit-app-region: drag;
 }
 
 .app-title {
-  font-size: 28px;
-  font-weight: 700;
+  font-family: "Instrument Serif", serif;
+  font-size: 55px;
+  font-weight: 500;
   letter-spacing: -0.02em;
   color: var(--text-primary);
+  user-select: text;
 }
 
 .app-subtitle {
@@ -280,7 +285,7 @@ body {
 }
 
 .service-port-badge {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: "JetBrains Mono", monospace;
   font-size: 13px;
   font-weight: 600;
   padding: 4px 10px;
@@ -307,7 +312,7 @@ body {
 }
 
 .service-stat-value {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: "JetBrains Mono", monospace;
   font-size: 13px;
   font-weight: 600;
   color: var(--text-primary);
@@ -333,7 +338,7 @@ body {
 }
 
 .port-chip {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: "JetBrains Mono", monospace;
   font-size: 12px;
   font-weight: 600;
   padding: 6px 12px;
@@ -406,7 +411,7 @@ body {
 }
 
 .graph-zoom-level {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: "JetBrains Mono", monospace;
   font-size: 11px;
   color: var(--text-muted);
   padding: 0 8px;
@@ -501,7 +506,7 @@ body {
 }
 
 .service-node-port {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: "JetBrains Mono", monospace;
   font-size: 15px;
   display: flex;
   align-items: center;
@@ -538,7 +543,7 @@ body {
 }
 
 .service-node-routes-count {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: "JetBrains Mono", monospace;
   font-size: 11px;
   color: var(--text-muted);
 }
@@ -553,7 +558,7 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: "JetBrains Mono", monospace;
   font-size: 11px;
   color: var(--text-secondary);
 }
@@ -643,7 +648,9 @@ body {
 
 /* Graph Edge Styling */
 .graph-edge {
-  transition: opacity 0.2s ease, stroke-width 0.2s ease;
+  transition:
+    opacity 0.2s ease,
+    stroke-width 0.2s ease;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
