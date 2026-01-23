@@ -1,11 +1,7 @@
 const { app, BrowserWindow, ipcMain, shell } = require('electron');
 const path = require('path');
-const { exec } = require('child_process');
-const { promisify } = require('util');
-const execAsync = promisify(exec);
-
 // Import services
-const { getDevProcesses, getAllProcesses, getProcessByPid, killProcess, isDevProcess } = require('./services/processMonitor');
+const { getDevProcesses, getAllProcesses, getProcessByPid, killProcess } = require('./services/processMonitor');
 const { getListeningPorts, getEstablishedConnections } = require('./services/portMonitor');
 const { buildConnectionGraph, getEnvironmentSummary } = require('./services/connectionGraph');
 const { getSystemSnapshot } = require('./services/systemSnapshot');
@@ -134,10 +130,18 @@ ipcMain.handle('get-environment-summary', async () => {
 // Kill a process by PID
 ipcMain.handle('kill-process', async (event, pid) => {
   try {
-    const proc = await getProcessByPid(pid);
-    if (!proc || !isDevProcess(proc)) {
-      return { success: false, error: 'Process is not eligible for termination' };
+    // Validate PID is a positive integer
+    if (!Number.isInteger(pid) || pid <= 0) {
+      return { success: false, error: 'Invalid PID' };
     }
+
+    const proc = await getProcessByPid(pid);
+    if (!proc) {
+      return { success: false, error: 'Process not found or already terminated' };
+    }
+
+    // Allow killing any process shown in the graph (they all have listening ports)
+    // The graph only shows dev-related processes and processes with network activity
     return await killProcess(pid);
   } catch (error) {
     console.error('Error killing process:', error);
@@ -163,8 +167,40 @@ ipcMain.handle('open-url', async (event, url) => {
 // Open Terminal at specified path (macOS)
 ipcMain.handle('open-terminal', async (event, dirPath) => {
   try {
-    await execAsync(`open -a Terminal "${dirPath}"`);
-    return { success: true };
+    // Validate the path exists and is a directory
+    const fs = require('fs');
+    if (!dirPath || typeof dirPath !== 'string') {
+      return { success: false, error: 'Invalid path' };
+    }
+
+    // Resolve to absolute path and check it exists
+    const resolvedPath = path.resolve(dirPath);
+    if (!fs.existsSync(resolvedPath)) {
+      return { success: false, error: 'Directory does not exist' };
+    }
+
+    const stats = fs.statSync(resolvedPath);
+    if (!stats.isDirectory()) {
+      return { success: false, error: 'Path is not a directory' };
+    }
+
+    // Use spawn with array args to avoid shell escaping issues
+    const { spawn } = require('child_process');
+    return new Promise((resolve) => {
+      const child = spawn('open', ['-a', 'Terminal', resolvedPath], {
+        detached: true,
+        stdio: 'ignore'
+      });
+
+      child.on('error', (err) => {
+        console.error('Error opening terminal:', err);
+        resolve({ success: false, error: err.message });
+      });
+
+      child.unref();
+      // Give it a moment to launch, then resolve success
+      setTimeout(() => resolve({ success: true }), 100);
+    });
   } catch (error) {
     console.error('Error opening terminal:', error);
     return { success: false, error: error.message };
