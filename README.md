@@ -25,6 +25,10 @@ npm run electron:dev
 ```bash
 npm run test:node
 ```
+```bash
+cd test
+sh start-all.sh
+```
 
 ## Build (macOS)
 ```bash
