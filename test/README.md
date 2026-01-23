@@ -15,6 +15,12 @@ node node-server.js    # Node server on port 3001
 ./docker-mock          # Docker mock on port 2375
 ./bun-mock.rb          # Service mock on port 7070 (requires Ruby)
 node external-connector.js # External connector (outbound)
+node broker-mock.js    # Broker mock on port 4222
+node ws-server-mock.js # WS mock server on port 8081
+node ws-client-mock.js # WS mock client (outbound)
+node http-client-mock.js # HTTP client mock (outbound)
+node postgres-client-mock.js # Postgres client mock (outbound)
+node worker-mock.js    # Background worker (no port)
 ```
 
 ## Services
@@ -39,6 +45,30 @@ A simple HTTP server simulating a frontend proxy:
 
 Simple TCP server to surface the "cache" service type.
 Keeps sockets open so edges remain visible.
+
+### Broker Mock (port 4222)
+
+Simple TCP server to surface a message broker service.
+
+### WS Mock Server (port 8081)
+
+TCP server that holds open connections for real-time edge testing.
+
+### WS Mock Client (outbound)
+
+Connects to the WS mock server to keep a live edge visible.
+
+### HTTP Client Mock (outbound)
+
+Periodically hits the Node and Flask health endpoints.
+
+### Postgres Client Mock (outbound)
+
+Holds a TCP connection open to port 5432 for DB edge testing.
+
+### Worker Mock (no port)
+
+Background process to validate nodes without listening ports.
 
 ### Docker Mock (port 2375)
 

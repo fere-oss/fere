@@ -9,6 +9,11 @@
 #   - Docker mock server on port 2375
 #   - Service mock (Ruby) on port 7070
 #   - External connector (outbound) to example.com:443
+#   - Broker mock server on port 4222
+#   - WS mock server on port 8081 + client
+#   - HTTP client mock (outbound)
+#   - Postgres client mock (outbound)
+#   - Worker mock (no port)
 #
 # Usage: ./start-all.sh
 # Stop all: Ctrl+C (will stop all background processes)
@@ -113,6 +118,42 @@ node external-connector.js &
 PIDS+=($!)
 sleep 1
 
+# Start Broker mock server
+echo -e "${GREEN}Starting Broker mock server on port 4222...${NC}"
+node broker-mock.js &
+PIDS+=($!)
+sleep 1
+
+# Start WS mock server
+echo -e "${GREEN}Starting WS mock server on port 8081...${NC}"
+node ws-server-mock.js &
+PIDS+=($!)
+sleep 1
+
+# Start WS mock client
+echo -e "${GREEN}Starting WS mock client...${NC}"
+node ws-client-mock.js &
+PIDS+=($!)
+sleep 1
+
+# Start HTTP client mock
+echo -e "${GREEN}Starting HTTP client mock...${NC}"
+node http-client-mock.js &
+PIDS+=($!)
+sleep 1
+
+# Start Postgres client mock
+echo -e "${GREEN}Starting Postgres client mock...${NC}"
+node postgres-client-mock.js &
+PIDS+=($!)
+sleep 1
+
+# Start Worker mock
+echo -e "${GREEN}Starting Worker mock...${NC}"
+node worker-mock.js &
+PIDS+=($!)
+sleep 1
+
 echo -e "\n${GREEN}All services started!${NC}"
 echo -e "  Flask API:  http://localhost:5001"
 echo -e "  Node.js:    http://localhost:3001"
@@ -122,6 +163,11 @@ if [ "$HAS_RUBY" = true ]; then
     echo -e "  Service mock: tcp://localhost:7070"
 fi
 echo -e "  External connector: example.com:443"
+echo -e "  Broker mock: tcp://localhost:4222"
+echo -e "  WS mock: tcp://localhost:8081"
+echo -e "  HTTP client mock: outbound"
+echo -e "  Postgres client mock: outbound"
+echo -e "  Worker mock: background"
 echo -e "\n${YELLOW}Press Ctrl+C to stop all services${NC}\n"
 
 # Wait for all background processes

@@ -19,7 +19,7 @@ export interface Service {
   pid: number;
   name: string;
   command: string;
-  type: 'database' | 'cache' | 'webserver' | 'container' | 'frontend' | 'backend' | 'nodejs' | 'python' | 'service' | 'external';
+  type: 'database' | 'cache' | 'webserver' | 'container' | 'frontend' | 'backend' | 'nodejs' | 'python' | 'service' | 'external' | 'broker' | 'realtime' | 'worker' | 'client';
   user: string;
   tty?: string | null;
   project?: string | null;
@@ -63,7 +63,7 @@ export interface GraphNode {
   pid: number;
   name: string;
   command: string;
-  type: 'database' | 'cache' | 'webserver' | 'container' | 'frontend' | 'backend' | 'nodejs' | 'python' | 'service' | 'external';
+  type: 'database' | 'cache' | 'webserver' | 'container' | 'frontend' | 'backend' | 'nodejs' | 'python' | 'service' | 'external' | 'broker' | 'realtime' | 'worker' | 'client';
   cpu: number;
   memory: number;
   user: string;

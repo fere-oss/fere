@@ -23,6 +23,14 @@ const getServiceColor = (type: string) => {
     case 'backend':
     case 'webserver':
       return '#0078D4'; // Microsoft Blue
+    case 'broker':
+      return '#D96C00'; // Deep amber
+    case 'realtime':
+      return '#1AA6A6'; // Teal
+    case 'worker':
+      return '#6B7280'; // Neutral gray
+    case 'client':
+      return '#5C7AEA'; // Muted blue
     case 'service':
       return '#F03603'; // Red
     default:
@@ -40,6 +48,10 @@ const getTypeBadge = (type: string) => {
     python: 'Python',
     webserver: 'Web Server',
     container: 'Container',
+    broker: 'Broker',
+    realtime: 'Realtime',
+    worker: 'Worker',
+    client: 'Client',
     service: 'Service',
     external: 'External',
   };

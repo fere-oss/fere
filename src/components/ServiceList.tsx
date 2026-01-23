@@ -16,6 +16,10 @@ const TYPE_COLORS: Record<string, string> = {
   backend: "#0078D4",
   nodejs: "#5E9B00",
   python: "#9AD100",
+  broker: "#D96C00",
+  realtime: "#1AA6A6",
+  worker: "#6B7280",
+  client: "#5C7AEA",
   service: "#F03603",
   external: "#EC679B",
 };
@@ -29,6 +33,10 @@ const TYPE_LABELS: Record<string, string> = {
   backend: "Backend",
   nodejs: "Node.js",
   python: "Python",
+  broker: "Broker",
+  realtime: "Realtime",
+  worker: "Worker",
+  client: "Client",
   service: "Service",
   external: "External",
 };

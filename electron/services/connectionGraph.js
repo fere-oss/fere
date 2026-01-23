@@ -387,10 +387,25 @@ function getServiceDescription(processName, command = '') {
   return info?.description || null;
 }
 
+function formatScriptLabel(scriptName) {
+  const base = scriptName.replace(/\.[a-z0-9]+$/i, '');
+  return base
+    .split(/[-_]/)
+    .filter(Boolean)
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+}
+
 /**
  * Get display name for a known service (falls back to process name)
  */
 function getServiceDisplayName(processName, command = '') {
+  if (processName && processName.includes(':')) {
+    const [, scriptPart] = processName.split(':').map(part => part.trim());
+    if (scriptPart) {
+      return formatScriptLabel(scriptPart);
+    }
+  }
   const info = getServiceInfo(processName, command);
   return info?.displayName || processName;
 }
@@ -538,6 +553,25 @@ async function buildConnectionGraph(snapshot = null) {
 function categorizeProcess(processName, command = '') {
   const name = processName.toLowerCase();
   const cmd = command.toLowerCase();
+
+  if (cmd.includes('postgres-client-mock')) {
+    return 'database';
+  }
+  if (cmd.includes('broker-mock') || cmd.includes('nats')) {
+    return 'broker';
+  }
+  if (cmd.includes('ws-server-mock')) {
+    return 'realtime';
+  }
+  if (cmd.includes('ws-client-mock')) {
+    return 'client';
+  }
+  if (cmd.includes('http-client-mock')) {
+    return 'client';
+  }
+  if (cmd.includes('worker-mock')) {
+    return 'worker';
+  }
 
   // Databases
   if (name.includes('postgres') || name.includes('psql') || cmd.includes('postgres')) {

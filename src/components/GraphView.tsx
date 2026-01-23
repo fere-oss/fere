@@ -32,6 +32,10 @@ const SERVICE_COLORS: Record<string, { color: string; label: string }> = {
   nodejs: { color: '#5E9B00', label: 'Node.js' },         // Deep green
   python: { color: '#9AD100', label: 'Python' },          // Bright green
   container: { color: '#EC679B', label: 'Container' },    // Pink
+  broker: { color: '#D96C00', label: 'Broker' },          // Deep amber
+  realtime: { color: '#1AA6A6', label: 'Realtime' },      // Teal
+  worker: { color: '#6B7280', label: 'Worker' },          // Neutral gray
+  client: { color: '#5C7AEA', label: 'Client' },          // Muted blue
   service: { color: '#F03603', label: 'System Service' }, // Red
   external: { color: '#EC679B', label: 'External' },      // Pink
 };
@@ -50,6 +54,10 @@ const getTypeBadge = (type: string) => {
     python: 'Python',
     webserver: 'Web Server',
     container: 'Container',
+    broker: 'Broker',
+    realtime: 'Realtime',
+    worker: 'Worker',
+    client: 'Client',
     service: 'Service',
     external: 'External',
   };
@@ -74,10 +82,18 @@ const getTypeLayer = (type: string): number => {
     case 'webserver':
     case 'nodejs':
     case 'python':
+    case 'broker':
+    case 'realtime':
+    case 'client':
+    case 'worker':
       return 1;
     case 'database':
     case 'cache':
       return 2;
+    case 'broker':
+    case 'realtime':
+    case 'worker':
+    case 'client':
     default:
       return 3;
   }
