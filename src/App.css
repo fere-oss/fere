@@ -86,6 +86,61 @@ body {
   font-weight: 500;
 }
 
+/* App Tabs */
+.app-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 0 40px 16px 40px;
+  -webkit-app-region: no-drag;
+}
+
+.app-tab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: transparent;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.app-tab:hover {
+  background: var(--bg-white);
+  border-color: var(--border-hover);
+  color: var(--text-primary);
+}
+
+.app-tab-active {
+  background: var(--bg-white);
+  border-color: var(--text-primary);
+  color: var(--text-primary);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.app-tab-active:hover {
+  border-color: var(--text-primary);
+}
+
+.app-tab-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  background: var(--text-primary);
+  color: var(--bg-white);
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
 /* Main Content */
 .main-content {
   flex: 1;
@@ -589,8 +644,29 @@ body {
 .service-node-header {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 10px;
   margin-bottom: 12px;
+}
+
+.service-node-status-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.service-node-health-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.service-node-health-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
 .service-node-dot {
@@ -972,6 +1048,42 @@ body {
   background: #f5f5f5;
   border-radius: 8px;
   border: 1px solid var(--border-color);
+}
+
+/* Health Status in Detail Panel */
+.node-detail-health {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  background: #f5f5f5;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+}
+
+.node-detail-health-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.node-detail-health-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.node-detail-health-label {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.node-detail-health-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
 }
 
 .node-detail-count {

@@ -57,6 +57,9 @@ export interface Connection {
   protocol: string;
 }
 
+// Health status types
+export type HealthStatus = 'green' | 'yellow' | 'red';
+
 // Graph types
 export interface GraphNode {
   id: string;
@@ -77,6 +80,9 @@ export interface GraphNode {
     description: string | null;
   }[];
   routes?: ApiRoute[];
+  // Health tracking
+  healthStatus: HealthStatus;
+  lastSeen: number;
 }
 
 export interface GraphEdge {

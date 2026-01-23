@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
-import type { GraphNode, GraphEdge } from '../types/electron';
+import type { GraphNode, GraphEdge, HealthStatus } from '../types/electron';
 
 interface GraphViewProps {
   nodes: GraphNode[];
@@ -42,6 +42,17 @@ const SERVICE_COLORS: Record<string, { color: string; label: string }> = {
 
 const getServiceColor = (type: string) => {
   return SERVICE_COLORS[type]?.color || '#6B7280';
+};
+
+// Health status colors and labels
+const HEALTH_COLORS: Record<HealthStatus, { color: string; label: string; glow: string }> = {
+  green: { color: '#22C55E', label: 'Active', glow: '0 0 8px #22C55E60' },
+  yellow: { color: '#EAB308', label: 'Idle', glow: '0 0 8px #EAB30860' },
+  red: { color: '#EF4444', label: 'Down', glow: '0 0 8px #EF444460' },
+};
+
+const getHealthInfo = (status: HealthStatus) => {
+  return HEALTH_COLORS[status] || HEALTH_COLORS.yellow;
 };
 
 const getTypeBadge = (type: string) => {
@@ -980,6 +991,7 @@ function ServiceNode({ node, onClick, onContextMenu }: {
   onContextMenu: (e: React.MouseEvent, node: GraphNode) => void;
 }) {
   const accentColor = getServiceColor(node.type);
+  const healthInfo = getHealthInfo(node.healthStatus);
   const mainPort = node.ports[0]?.port;
   const routes = node.routes || [];
   const visibleRoutes = routes.slice(0, 3);
@@ -1003,13 +1015,22 @@ function ServiceNode({ node, onClick, onContextMenu }: {
       style={{ '--node-color': accentColor } as React.CSSProperties}
     >
       <div className="service-node-header">
-        <div
-          className="service-node-dot"
-          style={{
-            backgroundColor: accentColor,
-            boxShadow: `0 0 8px ${accentColor}40`,
-          }}
-        />
+        <div className="service-node-status-row">
+          <div
+            className="service-node-health-dot"
+            style={{
+              backgroundColor: healthInfo.color,
+              boxShadow: healthInfo.glow,
+            }}
+            title={healthInfo.label}
+          />
+          <span
+            className="service-node-health-label"
+            style={{ color: healthInfo.color }}
+          >
+            {healthInfo.label}
+          </span>
+        </div>
         <span
           className="service-node-badge"
           style={{
@@ -1070,7 +1091,18 @@ interface NodeDetailPanelProps {
 
 function NodeDetailPanel({ node, edges, allNodes, onClose }: NodeDetailPanelProps) {
   const accentColor = getServiceColor(node.type);
+  const healthInfo = getHealthInfo(node.healthStatus);
   const routes = node.routes || [];
+
+  // Format last seen time
+  const formatLastSeen = (timestamp: number) => {
+    const now = Date.now();
+    const diff = now - timestamp;
+    if (diff < 1000) return 'just now';
+    if (diff < 60000) return `${Math.floor(diff / 1000)}s ago`;
+    if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
+    return new Date(timestamp).toLocaleTimeString();
+  };
 
   // Find connections to/from this node
   const incomingEdges = edges.filter(e => e.target === node.id);
@@ -1137,6 +1169,32 @@ function NodeDetailPanel({ node, edges, allNodes, onClose }: NodeDetailPanelProp
 
         {/* Content */}
         <div className="node-detail-content">
+          {/* Health Status Section */}
+          <div className="node-detail-section">
+            <h3 className="node-detail-section-title">Health Status</h3>
+            <div className="node-detail-health">
+              <div className="node-detail-health-indicator">
+                <div
+                  className="node-detail-health-dot"
+                  style={{
+                    backgroundColor: healthInfo.color,
+                    boxShadow: healthInfo.glow,
+                  }}
+                />
+                <span
+                  className="node-detail-health-label"
+                  style={{ color: healthInfo.color }}
+                >
+                  {healthInfo.label}
+                </span>
+              </div>
+              <div className="node-detail-health-meta">
+                <span className="node-detail-label">Last seen</span>
+                <span className="node-detail-value">{formatLastSeen(node.lastSeen)}</span>
+              </div>
+            </div>
+          </div>
+
           {/* Description Section (if available) */}
           {node.description && (
             <div className="node-detail-section">

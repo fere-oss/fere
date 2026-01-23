@@ -5,6 +5,7 @@ const { promisify } = require('util');
 const { getDevProcesses } = require('./processMonitor');
 const { getListeningPorts, getEstablishedConnections, getPortDescription } = require('./portMonitor');
 const { scanRoutes, matchRoutesToService } = require('./routeScanner');
+const { updateHealthTracking, getHealthStatus } = require('./healthTracker');
 
 const execAsync = promisify(exec);
 
@@ -419,6 +420,15 @@ async function buildConnectionGraph(snapshot = null) {
   const ports = snapshot?.ports || await getListeningPorts();
   const connections = snapshot?.connections || await getEstablishedConnections();
 
+  // Update health tracking with current snapshot
+  updateHealthTracking({ processes, ports, connections });
+
+  // Build a set of PIDs with active connections for health status
+  const pidsWithConnections = new Set();
+  for (const conn of connections) {
+    pidsWithConnections.add(conn.pid);
+  }
+
   // Create a map of PID to process info
   const processMap = new Map();
   for (const proc of processes) {
@@ -443,6 +453,12 @@ async function buildConnectionGraph(snapshot = null) {
     const command = proc ? proc.command : fallbackProcess;
     // Use display name if available (handles truncated macOS process names)
     const name = getServiceDisplayName(rawName, command);
+
+    // Calculate health status
+    const isListening = portProcessByPid.has(pid);
+    const hasConnections = pidsWithConnections.has(pid);
+    const { healthStatus, lastSeen } = getHealthStatus(pid, isListening, hasConnections);
+
     const node = {
       id: `proc-${pid}`,
       pid,
@@ -458,6 +474,8 @@ async function buildConnectionGraph(snapshot = null) {
       description: getServiceDescription(rawName, command),
       ports: [],
       routes: [],
+      healthStatus,
+      lastSeen,
     };
 
     nodes.push(node);
@@ -491,6 +509,9 @@ async function buildConnectionGraph(snapshot = null) {
       return externalNodes.get(key);
     }
 
+    // External nodes are always yellow (we can't track their health)
+    const { healthStatus, lastSeen } = getHealthStatus(-1, true, true);
+
     const node = {
       id: `external-${host}:${port}`,
       pid: -1,
@@ -509,6 +530,8 @@ async function buildConnectionGraph(snapshot = null) {
         description: null,
       }],
       routes: [],
+      healthStatus,
+      lastSeen,
     };
 
     nodes.push(node);
