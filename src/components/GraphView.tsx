@@ -954,8 +954,15 @@ function NodeGroupContainer({ group, onNodeClick, onContextMenu }: {
     return <ServiceNode node={group.nodes[0]} onClick={onNodeClick} onContextMenu={onContextMenu} />;
   }
 
+  const groupCount = group.nodes.length;
+  const columnCount = Math.max(2, Math.ceil(Math.sqrt(groupCount)));
+  const groupStyle = {
+    ['--group-columns' as string]: columnCount,
+    ['--group-span' as string]: columnCount,
+  } as React.CSSProperties;
+
   return (
-    <div className="node-group">
+    <div className="node-group" style={groupStyle}>
       <div className="node-group-label">{group.groupName}</div>
       <div className="node-group-nodes">
         {group.nodes.map(node => (

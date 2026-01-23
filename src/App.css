@@ -435,11 +435,12 @@ body {
 
 .graph-layer-nodes {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, max-content));
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 24px 32px;
   align-items: start;
+  align-content: start;
   justify-content: center;
-  justify-items: center;
+  justify-items: stretch;
   max-width: 1400px;
   width: 100%;
 }
@@ -530,6 +531,9 @@ body {
   border-radius: 20px;
   position: relative;
   z-index: 15;
+  width: 100%;
+  grid-column: span var(--group-span, 1);
+  box-sizing: border-box;
 }
 
 .node-group-label {
@@ -552,12 +556,14 @@ body {
 
 .node-group-nodes {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(var(--group-columns, 2), minmax(200px, 1fr));
   gap: 16px;
   align-items: start;
-  justify-items: center;
-  min-width: 240px;
-  max-width: 500px;
+  justify-items: stretch;
+  min-width: 220px;
+  max-width: 100%;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 /* Service Node (in graph) */
@@ -567,6 +573,8 @@ body {
   border: 1px solid var(--border-color);
   padding: 20px 28px;
   min-width: 220px;
+  width: 100%;
+  box-sizing: border-box;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
   transition: all 0.2s ease;
   -webkit-app-region: no-drag;
