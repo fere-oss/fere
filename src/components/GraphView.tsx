@@ -634,9 +634,12 @@ export function GraphView({ nodes, edges }: GraphViewProps) {
     [localEdges]
   );
 
+  const zoomStep = 0.01;
+  const clampZoom = useCallback((value: number) => Math.max(0.4, Math.min(2, value)), []);
+
   // Zoom handlers
-  const handleZoomIn = () => setZoom(z => Math.min(z + 0.2, 2));
-  const handleZoomOut = () => setZoom(z => Math.max(z - 0.2, 0.4));
+  const handleZoomIn = () => setZoom(z => clampZoom(z + zoomStep));
+  const handleZoomOut = () => setZoom(z => clampZoom(z - zoomStep));
   const handleZoomReset = () => {
     setZoom(1);
     setPan({ x: 0, y: 0 });
@@ -670,15 +673,15 @@ export function GraphView({ nodes, edges }: GraphViewProps) {
         }
       }
       e.preventDefault();
-      const delta = e.deltaY > 0 ? -0.1 : 0.1;
-      setZoom(z => Math.max(0.4, Math.min(2, z + delta)));
+      const direction = e.deltaY > 0 ? -1 : 1;
+      setZoom(z => clampZoom(z + direction * zoomStep));
     };
 
     container.addEventListener('wheel', handleWheel, { passive: false });
     return () => {
       container.removeEventListener('wheel', handleWheel);
     };
-  }, []);
+  }, [clampZoom]);
 
   // Context menu handler
   const handleContextMenu = useCallback((e: React.MouseEvent, node: GraphNode) => {
