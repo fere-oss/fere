@@ -633,6 +633,17 @@ function findProjectRoot(startPath) {
     return null;
   }
 
+  // Prefer the closest git root if present.
+  let probe = current;
+  let probePrev = null;
+  while (probe && probe !== probePrev) {
+    if (fs.existsSync(path.join(probe, '.git'))) {
+      return probe;
+    }
+    probePrev = probe;
+    probe = path.dirname(probe);
+  }
+
   let previous = null;
   while (current && current !== previous) {
     for (const marker of PROJECT_MARKERS) {
@@ -675,18 +686,24 @@ async function attachRoutesToNodes(nodes) {
   for (const node of nodes) {
     if (node.projectPath) {
       projects.set(node.projectPath, null);
+      if (!node.project) {
+        node.project = path.basename(node.projectPath);
+      }
     }
   }
 
   for (const node of nodes) {
-    if (node.projectPath || node.pid <= 0) continue;
+    if (node.pid <= 0) continue;
     const cwd = await getProcessCwd(node.pid, cwdByPid);
     if (!cwd) continue;
     const projectRoot = findProjectRoot(cwd);
-    if (projectRoot) {
+    if (!projectRoot) continue;
+
+    if (node.projectPath !== projectRoot) {
       node.projectPath = projectRoot;
-      projects.set(projectRoot, null);
     }
+    node.project = path.basename(projectRoot);
+    projects.set(projectRoot, null);
   }
 
   for (const projectPath of projects.keys()) {

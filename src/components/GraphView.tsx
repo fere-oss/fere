@@ -638,6 +638,7 @@ function ServiceNode({ node, onClick }: { node: GraphNode; onClick: (node: Graph
   const mainPort = node.ports[0]?.port;
   const routes = node.routes || [];
   const visibleRoutes = routes.slice(0, 3);
+  const projectLabel = node.projectPath ? node.projectPath.split('/').pop() : null;
 
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation(); // Prevent pan/drag from triggering
@@ -671,6 +672,9 @@ function ServiceNode({ node, onClick }: { node: GraphNode; onClick: (node: Graph
       </div>
 
       <h3 className="service-node-name">{node.name}</h3>
+      {projectLabel && (
+        <div className="service-node-project">{projectLabel}</div>
+      )}
 
       <div className="service-node-port">
         <span className="service-node-port-host">localhost</span>
