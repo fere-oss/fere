@@ -250,31 +250,35 @@ const groupLayoutNodes = (layoutNodes: LayoutNode[], layer: number): RenderGroup
     .filter(ln => ln.layer === layer)
     .sort((a, b) => a.order - b.order);
 
-  // Group consecutive nodes with same groupId
-  const groups: RenderGroup[] = [];
-  let currentGroup: RenderGroup | null = null;
+  // Group by groupId to keep grouping stable across refreshes.
+  const groupMap = new Map<string, RenderGroup>();
+  const groupOrder: string[] = [];
 
   layerNodes.forEach(ln => {
-    if (currentGroup && currentGroup.groupName.toLowerCase() === ln.groupId.toLowerCase()) {
-      currentGroup.nodes.push(ln.node);
-      currentGroup.isGroup = true;
-    } else {
-      if (currentGroup) groups.push(currentGroup);
-      currentGroup = {
+    const groupId = ln.groupId.toLowerCase();
+    if (!groupMap.has(groupId)) {
+      groupOrder.push(groupId);
+      groupMap.set(groupId, {
         groupName: ln.groupId.charAt(0).toUpperCase() + ln.groupId.slice(1),
-        nodes: [ln.node],
+        nodes: [],
         isGroup: false,
-      };
+      });
     }
+    groupMap.get(groupId)!.nodes.push(ln.node);
   });
-  if (currentGroup) groups.push(currentGroup);
 
-  return groups;
+  return groupOrder.map(groupId => {
+    const group = groupMap.get(groupId)!;
+    if (group.nodes.length > 1) group.isGroup = true;
+    return group;
+  });
 };
 
 export function GraphView({ nodes, edges }: GraphViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
+  const [displayNodes, setDisplayNodes] = useState<GraphNode[]>(nodes);
+  const [displayEdges, setDisplayEdges] = useState<GraphEdge[]>(edges);
   const [nodePositions, setNodePositions] = useState<Map<string, NodePosition>>(new Map());
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -282,20 +286,30 @@ export function GraphView({ nodes, edges }: GraphViewProps) {
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
   const [contextMenu, setContextMenu] = useState<{ node: GraphNode; x: number; y: number } | null>(null);
+  const orderCacheRef = useRef<Map<number, string[]>>(new Map());
+  const groupOrderCacheRef = useRef<Map<number, string[]>>(new Map());
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDisplayNodes(nodes);
+      setDisplayEdges(edges);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [nodes, edges]);
 
   // Filter out external nodes
-  const localNodes = useMemo(() => nodes.filter(n => {
+  const localNodes = useMemo(() => displayNodes.filter(n => {
     if (n.type === 'external') return false;
     if (n.id.includes('external-')) return false;
     if (/\d+\.\d+\.\d+\.\d+/.test(n.id)) return false;
     return true;
-  }), [nodes]);
+  }), [displayNodes]);
 
   // Filter edges to only include connections between local nodes
   const localEdges = useMemo(() => {
     const localNodeIds = new Set(localNodes.map(n => n.id));
-    return edges.filter(e => localNodeIds.has(e.source) && localNodeIds.has(e.target));
-  }, [localNodes, edges]);
+    return displayEdges.filter(e => localNodeIds.has(e.source) && localNodeIds.has(e.target));
+  }, [localNodes, displayEdges]);
 
   // Compute hierarchical layout
   const layoutNodes = useMemo(() =>
@@ -303,13 +317,74 @@ export function GraphView({ nodes, edges }: GraphViewProps) {
     [localNodes, localEdges]
   );
 
+  const stableLayoutNodes = useMemo(() => {
+    const byLayer = new Map<number, LayoutNode[]>();
+    layoutNodes.forEach(node => {
+      if (!byLayer.has(node.layer)) byLayer.set(node.layer, []);
+      byLayer.get(node.layer)!.push(node);
+    });
+
+    const stableOrders = new Map<string, number>();
+    byLayer.forEach((layerNodes, layer) => {
+      const groups = new Map<string, LayoutNode[]>();
+      layerNodes.forEach(node => {
+        if (!groups.has(node.groupId)) groups.set(node.groupId, []);
+        groups.get(node.groupId)!.push(node);
+      });
+
+      const groupIds = Array.from(groups.keys());
+      const groupOrderSeed = [...groupIds].sort((a, b) => {
+        const aOrder = Math.min(...groups.get(a)!.map(n => n.order));
+        const bOrder = Math.min(...groups.get(b)!.map(n => n.order));
+        return aOrder - bOrder;
+      });
+
+      const cachedGroupOrder = groupOrderCacheRef.current.get(layer);
+      const groupSet = new Set(groupIds);
+      const sameGroupSet =
+        cachedGroupOrder &&
+        cachedGroupOrder.length === groupIds.length &&
+        cachedGroupOrder.every(id => groupSet.has(id));
+      const finalGroupOrder = sameGroupSet ? cachedGroupOrder : groupOrderSeed;
+      groupOrderCacheRef.current.set(layer, finalGroupOrder);
+
+      const cachedNodeOrder = orderCacheRef.current.get(layer) || [];
+      const cachedIndex = new Map(cachedNodeOrder.map((id, idx) => [id, idx]));
+      const finalNodeOrder: string[] = [];
+
+      finalGroupOrder.forEach(groupId => {
+        const nodes = groups.get(groupId) || [];
+        nodes.sort((a, b) => {
+          const aIdx = cachedIndex.get(a.node.id);
+          const bIdx = cachedIndex.get(b.node.id);
+          if (aIdx !== undefined && bIdx !== undefined) return aIdx - bIdx;
+          if (aIdx !== undefined) return -1;
+          if (bIdx !== undefined) return 1;
+          if (a.order !== b.order) return a.order - b.order;
+          return a.node.id.localeCompare(b.node.id);
+        });
+        nodes.forEach(node => finalNodeOrder.push(node.node.id));
+      });
+
+      orderCacheRef.current.set(layer, finalNodeOrder);
+      finalNodeOrder.forEach((id, index) => {
+        stableOrders.set(id, index);
+      });
+    });
+
+    return layoutNodes.map(node => ({
+      ...node,
+      order: stableOrders.get(node.node.id) ?? node.order,
+    }));
+  }, [layoutNodes]);
+
   // Group nodes by layer for rendering
   const { frontendGroups, backendGroups, databaseGroups, otherGroups } = useMemo(() => ({
-    frontendGroups: groupLayoutNodes(layoutNodes, 0),
-    backendGroups: groupLayoutNodes(layoutNodes, 1),
-    databaseGroups: groupLayoutNodes(layoutNodes, 2),
-    otherGroups: groupLayoutNodes(layoutNodes, 3),
-  }), [layoutNodes]);
+    frontendGroups: groupLayoutNodes(stableLayoutNodes, 0),
+    backendGroups: groupLayoutNodes(stableLayoutNodes, 1),
+    databaseGroups: groupLayoutNodes(stableLayoutNodes, 2),
+    otherGroups: groupLayoutNodes(stableLayoutNodes, 3),
+  }), [stableLayoutNodes]);
 
   // Flatten for layer counts
   const frontend = frontendGroups.flatMap(g => g.nodes);
@@ -398,11 +473,11 @@ export function GraphView({ nodes, edges }: GraphViewProps) {
   // Build layer mapping for nodes
   const nodeLayerMap = useMemo(() => {
     const map = new Map<string, { layer: number; indexInLayer: number }>();
-    layoutNodes.forEach(ln => {
+    stableLayoutNodes.forEach(ln => {
       map.set(ln.node.id, { layer: ln.layer, indexInLayer: ln.order });
     });
     return map;
-  }, [layoutNodes]);
+  }, [stableLayoutNodes]);
 
   // Calculate node positions after render
   useEffect(() => {

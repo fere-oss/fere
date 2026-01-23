@@ -7,6 +7,9 @@ Fere is a native-feeling macOS Electron app that visualizes your local developme
 - Listening ports view with process metadata
 - Process termination for dev-related processes only
 - Connection graph model (nodes + edges) in the main process
+- API route discovery per service (framework-aware)
+- Project mapping from process CWD to repo root
+- Real-time connection arrows with port labels
 
 ## Requirements
 - macOS with `lsof` and `ps` available (default)

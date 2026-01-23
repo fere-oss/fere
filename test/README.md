@@ -33,10 +33,12 @@ A simple HTTP server simulating a frontend proxy:
 - Health checks
 - Request statistics
 - Proxy simulation to Flask API
+- Keeps persistent TCP connections to Flask/Redis/Docker/Service mocks to surface edges
 
 ### Redis Mock (port 6379)
 
 Simple TCP server to surface the "cache" service type.
+Keeps sockets open so edges remain visible.
 
 ### Docker Mock (port 2375)
 
