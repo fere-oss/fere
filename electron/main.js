@@ -1,5 +1,8 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, shell } = require('electron');
 const path = require('path');
+const { exec } = require('child_process');
+const { promisify } = require('util');
+const execAsync = promisify(exec);
 
 // Import services
 const { getDevProcesses, getAllProcesses, getProcessByPid, killProcess, isDevProcess } = require('./services/processMonitor');
@@ -138,6 +141,32 @@ ipcMain.handle('kill-process', async (event, pid) => {
     return await killProcess(pid);
   } catch (error) {
     console.error('Error killing process:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// ============================================
+// IPC Handlers - Quick Actions
+// ============================================
+
+// Open URL in default browser
+ipcMain.handle('open-url', async (event, url) => {
+  try {
+    await shell.openExternal(url);
+    return { success: true };
+  } catch (error) {
+    console.error('Error opening URL:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Open Terminal at specified path (macOS)
+ipcMain.handle('open-terminal', async (event, dirPath) => {
+  try {
+    await execAsync(`open -a Terminal "${dirPath}"`);
+    return { success: true };
+  } catch (error) {
+    console.error('Error opening terminal:', error);
     return { success: false, error: error.message };
   }
 });

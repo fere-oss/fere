@@ -141,6 +141,10 @@ export interface ElectronAPI {
   // Process control
   killProcess: (pid: number) => Promise<KillResult>;
 
+  // Quick actions
+  openUrl: (url: string) => Promise<{ success: boolean; error?: string }>;
+  openTerminal: (path: string) => Promise<{ success: boolean; error?: string }>;
+
   // Platform info
   platform: string;
 }

@@ -281,6 +281,7 @@ export function GraphView({ nodes, edges }: GraphViewProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ node: GraphNode; x: number; y: number } | null>(null);
 
   // Filter out external nodes
   const localNodes = useMemo(() => nodes.filter(n => {
@@ -349,6 +350,30 @@ export function GraphView({ nodes, edges }: GraphViewProps) {
     const delta = e.deltaY > 0 ? -0.1 : 0.1;
     setZoom(z => Math.max(0.4, Math.min(2, z + delta)));
   }, []);
+
+  // Context menu handler
+  const handleContextMenu = useCallback((e: React.MouseEvent, node: GraphNode) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({ node, x: e.clientX, y: e.clientY });
+  }, []);
+
+  // Close context menu on click outside or Escape
+  useEffect(() => {
+    if (!contextMenu) return;
+
+    const handleClickOutside = () => setContextMenu(null);
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setContextMenu(null);
+    };
+
+    document.addEventListener('click', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('click', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [contextMenu]);
 
   // Build layer mapping for nodes
   const nodeLayerMap = useMemo(() => {
@@ -560,7 +585,7 @@ export function GraphView({ nodes, edges }: GraphViewProps) {
               <div className="graph-layer-label">FRONTEND</div>
               <div className="graph-layer-nodes">
                 {frontendGroups.map(group => (
-                  <NodeGroupContainer key={group.groupName} group={group} onNodeClick={setSelectedNode} />
+                  <NodeGroupContainer key={group.groupName} group={group} onNodeClick={setSelectedNode} onContextMenu={handleContextMenu} />
                 ))}
               </div>
             </div>
@@ -571,7 +596,7 @@ export function GraphView({ nodes, edges }: GraphViewProps) {
               <div className="graph-layer-label">BACKEND / API</div>
               <div className="graph-layer-nodes">
                 {backendGroups.map(group => (
-                  <NodeGroupContainer key={group.groupName} group={group} onNodeClick={setSelectedNode} />
+                  <NodeGroupContainer key={group.groupName} group={group} onNodeClick={setSelectedNode} onContextMenu={handleContextMenu} />
                 ))}
               </div>
             </div>
@@ -582,7 +607,7 @@ export function GraphView({ nodes, edges }: GraphViewProps) {
               <div className="graph-layer-label">DATA LAYER</div>
               <div className="graph-layer-nodes">
                 {databaseGroups.map(group => (
-                  <NodeGroupContainer key={group.groupName} group={group} onNodeClick={setSelectedNode} />
+                  <NodeGroupContainer key={group.groupName} group={group} onNodeClick={setSelectedNode} onContextMenu={handleContextMenu} />
                 ))}
               </div>
             </div>
@@ -593,13 +618,23 @@ export function GraphView({ nodes, edges }: GraphViewProps) {
               <div className="graph-layer-label">OTHER SERVICES</div>
               <div className="graph-layer-nodes">
                 {otherGroups.map(group => (
-                  <NodeGroupContainer key={group.groupName} group={group} onNodeClick={setSelectedNode} />
+                  <NodeGroupContainer key={group.groupName} group={group} onNodeClick={setSelectedNode} onContextMenu={handleContextMenu} />
                 ))}
               </div>
             </div>
           )}
         </div>
       </div>
+
+      {/* Context Menu */}
+      {contextMenu && (
+        <ContextMenu
+          node={contextMenu.node}
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
 
       {/* Node Detail Panel */}
       {selectedNode && (
@@ -615,9 +650,13 @@ export function GraphView({ nodes, edges }: GraphViewProps) {
 }
 
 // Node Group Container
-function NodeGroupContainer({ group, onNodeClick }: { group: RenderGroup; onNodeClick: (node: GraphNode) => void }) {
+function NodeGroupContainer({ group, onNodeClick, onContextMenu }: {
+  group: RenderGroup;
+  onNodeClick: (node: GraphNode) => void;
+  onContextMenu: (e: React.MouseEvent, node: GraphNode) => void;
+}) {
   if (!group.isGroup) {
-    return <ServiceNode node={group.nodes[0]} onClick={onNodeClick} />;
+    return <ServiceNode node={group.nodes[0]} onClick={onNodeClick} onContextMenu={onContextMenu} />;
   }
 
   return (
@@ -625,7 +664,7 @@ function NodeGroupContainer({ group, onNodeClick }: { group: RenderGroup; onNode
       <div className="node-group-label">{group.groupName}</div>
       <div className="node-group-nodes">
         {group.nodes.map(node => (
-          <ServiceNode key={node.id} node={node} onClick={onNodeClick} />
+          <ServiceNode key={node.id} node={node} onClick={onNodeClick} onContextMenu={onContextMenu} />
         ))}
       </div>
     </div>
@@ -633,7 +672,11 @@ function NodeGroupContainer({ group, onNodeClick }: { group: RenderGroup; onNode
 }
 
 // Service Node Component
-function ServiceNode({ node, onClick }: { node: GraphNode; onClick: (node: GraphNode) => void }) {
+function ServiceNode({ node, onClick, onContextMenu }: {
+  node: GraphNode;
+  onClick: (node: GraphNode) => void;
+  onContextMenu: (e: React.MouseEvent, node: GraphNode) => void;
+}) {
   const accentColor = getServiceColor(node.type);
   const mainPort = node.ports[0]?.port;
   const routes = node.routes || [];
@@ -645,11 +688,16 @@ function ServiceNode({ node, onClick }: { node: GraphNode; onClick: (node: Graph
     onClick(node);
   };
 
+  const handleContextMenu = (e: React.MouseEvent) => {
+    onContextMenu(e, node);
+  };
+
   return (
     <div
       data-node-id={node.id}
       className="service-node"
       onClick={handleClick}
+      onContextMenu={handleContextMenu}
       style={{ '--node-color': accentColor } as React.CSSProperties}
     >
       <div className="service-node-header">
@@ -913,6 +961,117 @@ function NodeDetailPanel({ node, edges, allNodes, onClose }: NodeDetailPanelProp
             </div>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+// Context Menu Component
+interface ContextMenuProps {
+  node: GraphNode;
+  x: number;
+  y: number;
+  onClose: () => void;
+}
+
+function ContextMenu({ node, x, y, onClose }: ContextMenuProps) {
+  const hasPort = node.ports.length > 0;
+  const hasProjectPath = !!node.projectPath;
+  const isExternal = node.type === 'external';
+  const mainPort = node.ports[0]?.port;
+
+  // Adjust position to prevent overflow off screen
+  const menuStyle: React.CSSProperties = {
+    position: 'fixed',
+    left: Math.min(x, window.innerWidth - 200),
+    top: Math.min(y, window.innerHeight - 250),
+    zIndex: 200,
+  };
+
+  const handleAction = async (action: string) => {
+    try {
+      switch (action) {
+        case 'open-browser':
+          if (hasPort) {
+            await window.electronAPI.openUrl(`http://localhost:${mainPort}`);
+          }
+          break;
+        case 'open-terminal':
+          if (hasProjectPath) {
+            await window.electronAPI.openTerminal(node.projectPath!);
+          }
+          break;
+        case 'restart':
+          if (!isExternal) {
+            await window.electronAPI.killProcess(node.pid);
+          }
+          break;
+        case 'copy-port':
+          if (hasPort) {
+            await navigator.clipboard.writeText(String(mainPort));
+          }
+          break;
+        case 'copy-pid':
+          await navigator.clipboard.writeText(String(node.pid));
+          break;
+      }
+    } catch (error) {
+      console.error('Context menu action failed:', error);
+    }
+    onClose();
+  };
+
+  const handleMenuClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+  };
+
+  return (
+    <div className="context-menu" style={menuStyle} onClick={handleMenuClick}>
+      {hasPort && (
+        <div
+          className="context-menu-item"
+          onClick={() => handleAction('open-browser')}
+        >
+          <span className="context-menu-icon">🌐</span>
+          <span>Open in Browser</span>
+        </div>
+      )}
+      {hasProjectPath && (
+        <div
+          className="context-menu-item"
+          onClick={() => handleAction('open-terminal')}
+        >
+          <span className="context-menu-icon">⬛</span>
+          <span>Open in Terminal</span>
+        </div>
+      )}
+      {!isExternal && (
+        <div
+          className="context-menu-item"
+          onClick={() => handleAction('restart')}
+        >
+          <span className="context-menu-icon">🔄</span>
+          <span>Kill Process</span>
+        </div>
+      )}
+      {(hasPort || hasProjectPath || !isExternal) && (
+        <div className="context-menu-divider" />
+      )}
+      {hasPort && (
+        <div
+          className="context-menu-item"
+          onClick={() => handleAction('copy-port')}
+        >
+          <span className="context-menu-icon">📋</span>
+          <span>Copy Port ({mainPort})</span>
+        </div>
+      )}
+      <div
+        className="context-menu-item"
+        onClick={() => handleAction('copy-pid')}
+      >
+        <span className="context-menu-icon">📋</span>
+        <span>Copy PID ({node.pid})</span>
       </div>
     </div>
   );
