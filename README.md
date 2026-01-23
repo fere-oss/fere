@@ -1,6 +1,6 @@
-# Fere
+# fere
 
-Fere is a native-feeling macOS Electron app that visualizes your local development environment in real time. It discovers dev processes, maps listening ports, and infers service connections to help you answer "what is running where" at a glance.
+fere is a native-feeling macOS Electron app that visualizes your local development environment in real time. It discovers dev processes, maps listening ports, and infers service connections to help you answer "what is running where" at a glance.
 
 ## Current features
 - Live service list with CPU/memory, ports, and inferred connections
@@ -24,6 +24,10 @@ npm run electron:dev
 ## Tests
 ```bash
 npm run test:node
+```
+```bash
+cd test
+sh start-all.sh
 ```
 
 ## Build (macOS)
