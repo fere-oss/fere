@@ -1077,7 +1077,17 @@ body {
    Context Menu Styles
    ============================================ */
 
+.context-menu-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 200;
+}
+
 .context-menu {
+  position: fixed;
   background: rgba(30, 30, 30, 0.95);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
@@ -1087,6 +1097,7 @@ body {
   min-width: 180px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
   animation: fadeIn 0.1s ease-out;
+  z-index: 201;
 }
 
 .context-menu-item {

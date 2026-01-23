@@ -363,19 +363,16 @@ export function GraphView({ nodes, edges }: GraphViewProps) {
     setContextMenu({ node, x: e.clientX, y: e.clientY });
   }, []);
 
-  // Close context menu on click outside or Escape
+  // Close context menu on Escape key
   useEffect(() => {
     if (!contextMenu) return;
 
-    const handleClickOutside = () => setContextMenu(null);
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setContextMenu(null);
     };
 
-    document.addEventListener('click', handleClickOutside);
     document.addEventListener('keydown', handleKeyDown);
     return () => {
-      document.removeEventListener('click', handleClickOutside);
       document.removeEventListener('keydown', handleKeyDown);
     };
   }, [contextMenu]);
@@ -423,35 +420,94 @@ export function GraphView({ nodes, edges }: GraphViewProps) {
     return () => clearTimeout(timer);
   }, [localNodes, nodeLayerMap, zoom]);
 
-  // Simplified edge routing - layout handles most complexity
+  // Edge routing that avoids node intersections by using side lanes
   const edgeRoutes = useMemo(() => {
     if (nodePositions.size === 0) return [];
 
     const allNodes = Array.from(nodePositions.entries());
 
-    // Compute layer bounds
-    const layerBounds = new Map<number, { top: number; bottom: number }>();
+    // Compute layer Y bounds (top/bottom of each layer)
+    const layerYBounds = new Map<number, { top: number; bottom: number }>();
+    // Compute global X bounds across all nodes
+    let globalMinX = Infinity;
+    let globalMaxX = -Infinity;
+
     allNodes.forEach(([, pos]) => {
+      const nodeLeft = pos.x - pos.width / 2;
+      const nodeRight = pos.x + pos.width / 2;
       const nodeTop = pos.y - pos.height / 2;
       const nodeBottom = pos.y + pos.height / 2;
-      const existing = layerBounds.get(pos.layer);
+
+      globalMinX = Math.min(globalMinX, nodeLeft);
+      globalMaxX = Math.max(globalMaxX, nodeRight);
+
+      const existing = layerYBounds.get(pos.layer);
       if (existing) {
         existing.top = Math.min(existing.top, nodeTop);
         existing.bottom = Math.max(existing.bottom, nodeBottom);
       } else {
-        layerBounds.set(pos.layer, { top: nodeTop, bottom: nodeBottom });
+        layerYBounds.set(pos.layer, { top: nodeTop, bottom: nodeBottom });
       }
     });
 
-    // Compute gap Y between layers
-    const sortedLayers = Array.from(layerBounds.keys()).sort((a, b) => a - b);
+    // Define vertical lanes outside all node bounds
+    const LANE_MARGIN = 40;
+    const leftLaneX = globalMinX - LANE_MARGIN;
+    const rightLaneX = globalMaxX + LANE_MARGIN;
+
+    // Compute gap Y positions between consecutive layers
+    const sortedLayers = Array.from(layerYBounds.keys()).sort((a, b) => a - b);
     const layerGapY = new Map<string, number>();
     for (let i = 0; i < sortedLayers.length - 1; i++) {
-      const upper = sortedLayers[i];
-      const lower = sortedLayers[i + 1];
-      const gapY = (layerBounds.get(upper)!.bottom + layerBounds.get(lower)!.top) / 2;
-      layerGapY.set(`${upper}-${lower}`, gapY);
+      const upperLayer = sortedLayers[i];
+      const lowerLayer = sortedLayers[i + 1];
+      const upperBottom = layerYBounds.get(upperLayer)!.bottom;
+      const lowerTop = layerYBounds.get(lowerLayer)!.top;
+      layerGapY.set(`${upperLayer}-${lowerLayer}`, (upperBottom + lowerTop) / 2);
     }
+
+    // Helper: check if a vertical segment would intersect any node
+    const wouldIntersectNode = (
+      x: number,
+      yStart: number,
+      yEnd: number,
+      excludeNodeIds: Set<string>
+    ): boolean => {
+      const yMin = Math.min(yStart, yEnd);
+      const yMax = Math.max(yStart, yEnd);
+
+      for (const [nodeId, pos] of allNodes) {
+        if (excludeNodeIds.has(nodeId)) continue;
+
+        const nodeLeft = pos.x - pos.width / 2;
+        const nodeRight = pos.x + pos.width / 2;
+        const nodeTop = pos.y - pos.height / 2;
+        const nodeBottom = pos.y + pos.height / 2;
+
+        // Check if vertical line at x intersects this node's bounding box
+        if (x >= nodeLeft && x <= nodeRight) {
+          // Vertical ranges overlap?
+          if (yMax >= nodeTop && yMin <= nodeBottom) {
+            return true;
+          }
+        }
+      }
+      return false;
+    };
+
+    // Helper: pick lane based on edge direction and positions
+    const pickLane = (fromX: number, toX: number, edgeIndex: number): number => {
+      // If source is left of target, use left lane; otherwise use right lane
+      // This keeps edges from crossing over nodes in the middle
+      if (fromX < toX) {
+        return leftLaneX;
+      } else if (fromX > toX) {
+        return rightLaneX;
+      } else {
+        // Vertically aligned - alternate based on edge index
+        return edgeIndex % 2 === 0 ? leftLaneX : rightLaneX;
+      }
+    };
 
     const routes: {
       from: string;
@@ -462,13 +518,13 @@ export function GraphView({ nodes, edges }: GraphViewProps) {
       labelY: number;
     }[] = [];
 
-    connections.forEach(conn => {
+    connections.forEach((conn, edgeIndex) => {
       const from = nodePositions.get(conn.from);
       const to = nodePositions.get(conn.to);
       if (!from || !to) return;
 
-      const sourceBottom = from.y + from.height / 2;
       const sourceTop = from.y - from.height / 2;
+      const sourceBottom = from.y + from.height / 2;
       const targetTop = to.y - to.height / 2;
       const targetBottom = to.y + to.height / 2;
 
@@ -476,25 +532,109 @@ export function GraphView({ nodes, edges }: GraphViewProps) {
       let labelX = (from.x + to.x) / 2;
       let labelY = (from.y + to.y) / 2;
 
+      const excludeIds = new Set([conn.from, conn.to]);
+      const EXIT_PADDING = 15;
+      const ENTRY_PADDING = 15;
+
       if (from.layer === to.layer) {
-        // Same layer - arc above
-        const arcY = Math.min(sourceTop, targetTop) - 30;
-        path = `M ${from.x} ${sourceTop} L ${from.x} ${arcY} L ${to.x} ${arcY} L ${to.x} ${targetTop}`;
+        // Same layer - arc above the nodes
+        const arcY = Math.min(sourceTop, targetTop) - 40;
+        path = `M ${from.x} ${sourceTop} ` +
+               `L ${from.x} ${arcY} ` +
+               `L ${to.x} ${arcY} ` +
+               `L ${to.x} ${targetTop}`;
         labelY = arcY - 6;
-      } else if (from.layer < to.layer) {
-        // Going DOWN - source above target
-        // Always use orthogonal step path for clean, symmetrical appearance
-        const gapKey = `${from.layer}-${from.layer + 1}`;
-        const gapY = layerGapY.get(gapKey) ?? (sourceBottom + targetTop) / 2;
-        path = `M ${from.x} ${sourceBottom} L ${from.x} ${gapY} L ${to.x} ${gapY} L ${to.x} ${targetTop}`;
-        labelY = gapY - 6;
       } else {
-        // Going UP - source below target
-        // Always use orthogonal step path for clean, symmetrical appearance
-        const gapKey = `${to.layer}-${to.layer + 1}`;
-        const gapY = layerGapY.get(gapKey) ?? (sourceTop + targetBottom) / 2;
-        path = `M ${from.x} ${sourceTop} L ${from.x} ${gapY} L ${to.x} ${gapY} L ${to.x} ${targetBottom}`;
-        labelY = gapY - 6;
+        const goingDown = from.layer < to.layer;
+        const exitY = goingDown ? sourceBottom : sourceTop;
+        const entryY = goingDown ? targetTop : targetBottom;
+
+        // Check if direct vertical path would intersect any nodes
+        const directPathIntersects = wouldIntersectNode(
+          to.x,
+          exitY,
+          entryY,
+          excludeIds
+        );
+
+        // Also check if the horizontal segment at gap level would intersect
+        const gapKey = goingDown
+          ? `${from.layer}-${from.layer + 1}`
+          : `${to.layer}-${to.layer + 1}`;
+        const gapY = layerGapY.get(gapKey) ?? (exitY + entryY) / 2;
+
+        const horizontalIntersects = (() => {
+          const minX = Math.min(from.x, to.x);
+          const maxX = Math.max(from.x, to.x);
+          for (const [nodeId, pos] of allNodes) {
+            if (excludeIds.has(nodeId)) continue;
+            const nodeLeft = pos.x - pos.width / 2;
+            const nodeRight = pos.x + pos.width / 2;
+            const nodeTop = pos.y - pos.height / 2;
+            const nodeBottom = pos.y + pos.height / 2;
+            // Horizontal line at gapY from minX to maxX
+            if (gapY >= nodeTop && gapY <= nodeBottom) {
+              if (maxX >= nodeLeft && minX <= nodeRight) {
+                return true;
+              }
+            }
+          }
+          return false;
+        })();
+
+        // Check for intermediate layers (edge spans > 1 layer)
+        const hasIntermediateLayers = Math.abs(from.layer - to.layer) > 1;
+
+        // Decide routing strategy
+        const needsLaneRouting = directPathIntersects || horizontalIntersects || hasIntermediateLayers;
+
+        if (needsLaneRouting) {
+          // Route via side lane to avoid all node intersections
+          const laneX = pickLane(from.x, to.x, edgeIndex);
+
+          if (goingDown) {
+            // Going DOWN: exit bottom → lane → down → enter top
+            const exitSegmentY = sourceBottom + EXIT_PADDING;
+            const entrySegmentY = targetTop - ENTRY_PADDING;
+
+            path = `M ${from.x} ${sourceBottom} ` +
+                   `L ${from.x} ${exitSegmentY} ` +
+                   `L ${laneX} ${exitSegmentY} ` +
+                   `L ${laneX} ${entrySegmentY} ` +
+                   `L ${to.x} ${entrySegmentY} ` +
+                   `L ${to.x} ${targetTop}`;
+            labelX = laneX;
+            labelY = (exitSegmentY + entrySegmentY) / 2;
+          } else {
+            // Going UP: exit top → lane → up → enter bottom
+            const exitSegmentY = sourceTop - EXIT_PADDING;
+            const entrySegmentY = targetBottom + ENTRY_PADDING;
+
+            path = `M ${from.x} ${sourceTop} ` +
+                   `L ${from.x} ${exitSegmentY} ` +
+                   `L ${laneX} ${exitSegmentY} ` +
+                   `L ${laneX} ${entrySegmentY} ` +
+                   `L ${to.x} ${entrySegmentY} ` +
+                   `L ${to.x} ${targetBottom}`;
+            labelX = laneX;
+            labelY = (exitSegmentY + entrySegmentY) / 2;
+          }
+        } else {
+          // Direct orthogonal path through gap (no intersections)
+          if (goingDown) {
+            path = `M ${from.x} ${sourceBottom} ` +
+                   `L ${from.x} ${gapY} ` +
+                   `L ${to.x} ${gapY} ` +
+                   `L ${to.x} ${targetTop}`;
+            labelY = gapY - 6;
+          } else {
+            path = `M ${from.x} ${sourceTop} ` +
+                   `L ${from.x} ${gapY} ` +
+                   `L ${to.x} ${gapY} ` +
+                   `L ${to.x} ${targetBottom}`;
+            labelY = gapY - 6;
+          }
+        }
       }
 
       const sourcePort = conn.sourcePort ? `:${conn.sourcePort}` : '';
@@ -1023,94 +1163,117 @@ function ContextMenu({ node, x, y, onClose }: ContextMenuProps) {
     position: 'fixed',
     left: Math.min(x, window.innerWidth - 200),
     top: Math.min(y, window.innerHeight - 250),
-    zIndex: 200,
+    zIndex: 201,
   };
 
-  const handleAction = async (action: string) => {
-    try {
-      switch (action) {
-        case 'open-browser':
-          if (hasPort) {
-            await window.electronAPI.openUrl(`http://localhost:${mainPort}`);
-          }
-          break;
-        case 'open-terminal':
-          if (hasProjectPath) {
-            await window.electronAPI.openTerminal(node.projectPath!);
-          }
-          break;
-        case 'restart':
-          if (!isExternal) {
-            await window.electronAPI.killProcess(node.pid);
-          }
-          break;
-        case 'copy-port':
-          if (hasPort) {
-            await navigator.clipboard.writeText(String(mainPort));
-          }
-          break;
-        case 'copy-pid':
-          await navigator.clipboard.writeText(String(node.pid));
-          break;
+  const handleAction = (action: string) => (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    console.log('Context menu action clicked:', action, { hasPort, mainPort, hasProjectPath, projectPath: node.projectPath, pid: node.pid });
+
+    const performAction = async () => {
+      try {
+        switch (action) {
+          case 'open-browser':
+            if (hasPort) {
+              console.log('Opening browser:', `http://localhost:${mainPort}`);
+              const result = await window.electronAPI.openUrl(`http://localhost:${mainPort}`);
+              console.log('Open browser result:', result);
+            }
+            break;
+          case 'open-terminal':
+            if (hasProjectPath) {
+              console.log('Opening terminal:', node.projectPath);
+              const result = await window.electronAPI.openTerminal(node.projectPath!);
+              console.log('Open terminal result:', result);
+            }
+            break;
+          case 'restart':
+            if (!isExternal) {
+              console.log('Killing process:', node.pid);
+              const result = await window.electronAPI.killProcess(node.pid);
+              console.log('Kill process result:', result);
+            }
+            break;
+          case 'copy-port':
+            if (hasPort) {
+              console.log('Copying port:', mainPort);
+              await navigator.clipboard.writeText(String(mainPort));
+              console.log('Port copied');
+            }
+            break;
+          case 'copy-pid':
+            console.log('Copying PID:', node.pid);
+            await navigator.clipboard.writeText(String(node.pid));
+            console.log('PID copied');
+            break;
+        }
+      } catch (error) {
+        console.error('Context menu action failed:', error);
       }
-    } catch (error) {
-      console.error('Context menu action failed:', error);
-    }
+    };
+
+    performAction();
     onClose();
   };
 
-  const handleMenuClick = (e: React.MouseEvent) => {
+  const handleBackdropClick = (e: React.MouseEvent) => {
+    e.preventDefault();
     e.stopPropagation();
+    onClose();
   };
 
   return (
-    <div className="context-menu" style={menuStyle} onClick={handleMenuClick}>
-      {hasPort && (
+    <>
+      <div className="context-menu-backdrop" onClick={handleBackdropClick} />
+      <div className="context-menu" style={menuStyle}>
+        {hasPort && (
+          <div
+            className="context-menu-item"
+            onClick={handleAction('open-browser')}
+          >
+            <span className="context-menu-icon">🌐</span>
+            <span>Open in Browser</span>
+          </div>
+        )}
+        {hasProjectPath && (
+          <div
+            className="context-menu-item"
+            onClick={handleAction('open-terminal')}
+          >
+            <span className="context-menu-icon">⬛</span>
+            <span>Open in Terminal</span>
+          </div>
+        )}
+        {!isExternal && (
+          <div
+            className="context-menu-item"
+            onClick={handleAction('restart')}
+          >
+            <span className="context-menu-icon">🔄</span>
+            <span>Kill Process</span>
+          </div>
+        )}
+        {(hasPort || hasProjectPath || !isExternal) && (
+          <div className="context-menu-divider" />
+        )}
+        {hasPort && (
+          <div
+            className="context-menu-item"
+            onClick={handleAction('copy-port')}
+          >
+            <span className="context-menu-icon">📋</span>
+            <span>Copy Port ({mainPort})</span>
+          </div>
+        )}
         <div
           className="context-menu-item"
-          onClick={() => handleAction('open-browser')}
-        >
-          <span className="context-menu-icon">🌐</span>
-          <span>Open in Browser</span>
-        </div>
-      )}
-      {hasProjectPath && (
-        <div
-          className="context-menu-item"
-          onClick={() => handleAction('open-terminal')}
-        >
-          <span className="context-menu-icon">⬛</span>
-          <span>Open in Terminal</span>
-        </div>
-      )}
-      {!isExternal && (
-        <div
-          className="context-menu-item"
-          onClick={() => handleAction('restart')}
-        >
-          <span className="context-menu-icon">🔄</span>
-          <span>Kill Process</span>
-        </div>
-      )}
-      {(hasPort || hasProjectPath || !isExternal) && (
-        <div className="context-menu-divider" />
-      )}
-      {hasPort && (
-        <div
-          className="context-menu-item"
-          onClick={() => handleAction('copy-port')}
+          onClick={handleAction('copy-pid')}
         >
           <span className="context-menu-icon">📋</span>
-          <span>Copy Port ({mainPort})</span>
+          <span>Copy PID ({node.pid})</span>
         </div>
-      )}
-      <div
-        className="context-menu-item"
-        onClick={() => handleAction('copy-pid')}
-      >
-        <span className="context-menu-icon">📋</span>
-        <span>Copy PID ({node.pid})</span>
       </div>
-    </div>
+    </>
   );
 }
