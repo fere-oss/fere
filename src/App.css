@@ -800,6 +800,11 @@ body {
   flex-direction: column;
   animation: slideIn 0.2s ease-out;
   -webkit-app-region: no-drag;
+  user-select: text;
+}
+
+.node-detail-panel * {
+  user-select: text;
 }
 
 .node-detail-header {

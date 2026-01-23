@@ -338,15 +338,17 @@ export function GraphView({ nodes, edges }: GraphViewProps) {
 
   // Pan handlers
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    if (selectedNode || contextMenu) return;
     if (e.button !== 0) return;
     setIsDragging(true);
     setDragStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
-  }, [pan]);
+  }, [pan, selectedNode, contextMenu]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    if (selectedNode || contextMenu) return;
     if (!isDragging) return;
     setPan({ x: e.clientX - dragStart.x, y: e.clientY - dragStart.y });
-  }, [isDragging, dragStart]);
+  }, [isDragging, dragStart, selectedNode, contextMenu]);
 
   const handleMouseUp = useCallback(() => setIsDragging(false), []);
 
@@ -355,6 +357,12 @@ export function GraphView({ nodes, edges }: GraphViewProps) {
     if (!container) return;
 
     const handleWheel = (e: WheelEvent) => {
+      const target = e.target;
+      if (target instanceof HTMLElement) {
+        if (target.closest('.node-detail-panel') || target.closest('.context-menu')) {
+          return;
+        }
+      }
       e.preventDefault();
       const delta = e.deltaY > 0 ? -0.1 : 0.1;
       setZoom(z => Math.max(0.4, Math.min(2, z + delta)));
@@ -683,7 +691,7 @@ export function GraphView({ nodes, edges }: GraphViewProps) {
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseUp}
-      style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
+      style={{ cursor: selectedNode || contextMenu ? 'default' : isDragging ? 'grabbing' : 'grab' }}
     >
       {/* Legend */}
       <div className="graph-legend">
@@ -987,7 +995,13 @@ function NodeDetailPanel({ node, edges, allNodes, onClose }: NodeDetailPanelProp
 
   return (
     <div className="node-detail-backdrop" onClick={handleBackdropClick} onWheel={handleWheel}>
-      <div className="node-detail-panel">
+      <div
+        className="node-detail-panel"
+        onMouseDown={e => e.stopPropagation()}
+        onWheel={e => e.stopPropagation()}
+        onMouseDownCapture={e => e.stopPropagation()}
+        onWheelCapture={e => e.stopPropagation()}
+      >
         {/* Header */}
         <div className="node-detail-header">
           <div className="node-detail-title-row">
