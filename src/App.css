@@ -695,12 +695,16 @@ body {
   width: 100%;
   height: 100%;
   pointer-events: none;
-  z-index: 5;
+  z-index: 12;
   overflow: visible;
 }
 
 /* Graph Edge Styling */
 .graph-edge {
+  color: var(--text-faint);
+  opacity: 0.8;
+  stroke-dasharray: 6 6;
+  animation: graph-edge-dash 2.2s linear infinite;
   transition:
     opacity 0.2s ease,
     stroke-width 0.2s ease;
@@ -709,8 +713,25 @@ body {
 }
 
 .graph-edge:hover {
+  color: var(--text-muted);
   opacity: 0.7 !important;
   stroke-width: 2 !important;
+}
+
+.graph-edge-label {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10px;
+  fill: var(--text-faint);
+  letter-spacing: 0.02em;
+  paint-order: stroke;
+  stroke: var(--bg-white);
+  stroke-width: 3px;
+}
+
+@keyframes graph-edge-dash {
+  to {
+    stroke-dashoffset: -24;
+  }
 }
 
 /* Scrollbar */

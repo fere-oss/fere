@@ -319,7 +319,12 @@ export function GraphView({ nodes, edges }: GraphViewProps) {
 
   // Create connection list from edges
   const connections = useMemo(() =>
-    localEdges.map(edge => ({ from: edge.source, to: edge.target })),
+    localEdges.map(edge => ({
+      from: edge.source,
+      to: edge.target,
+      sourcePort: edge.sourcePort,
+      targetPort: edge.targetPort,
+    })),
     [localEdges]
   );
 
@@ -448,7 +453,14 @@ export function GraphView({ nodes, edges }: GraphViewProps) {
       layerGapY.set(`${upper}-${lower}`, gapY);
     }
 
-    const routes: { from: string; to: string; path: string }[] = [];
+    const routes: {
+      from: string;
+      to: string;
+      path: string;
+      label: string;
+      labelX: number;
+      labelY: number;
+    }[] = [];
 
     connections.forEach(conn => {
       const from = nodePositions.get(conn.from);
@@ -461,26 +473,42 @@ export function GraphView({ nodes, edges }: GraphViewProps) {
       const targetBottom = to.y + to.height / 2;
 
       let path: string;
+      let labelX = (from.x + to.x) / 2;
+      let labelY = (from.y + to.y) / 2;
 
       if (from.layer === to.layer) {
         // Same layer - arc above
         const arcY = Math.min(sourceTop, targetTop) - 30;
         path = `M ${from.x} ${sourceTop} L ${from.x} ${arcY} L ${to.x} ${arcY} L ${to.x} ${targetTop}`;
+        labelY = arcY - 6;
       } else if (from.layer < to.layer) {
         // Going DOWN - source above target
         // Always use orthogonal step path for clean, symmetrical appearance
         const gapKey = `${from.layer}-${from.layer + 1}`;
         const gapY = layerGapY.get(gapKey) ?? (sourceBottom + targetTop) / 2;
         path = `M ${from.x} ${sourceBottom} L ${from.x} ${gapY} L ${to.x} ${gapY} L ${to.x} ${targetTop}`;
+        labelY = gapY - 6;
       } else {
         // Going UP - source below target
         // Always use orthogonal step path for clean, symmetrical appearance
         const gapKey = `${to.layer}-${to.layer + 1}`;
         const gapY = layerGapY.get(gapKey) ?? (sourceTop + targetBottom) / 2;
         path = `M ${from.x} ${sourceTop} L ${from.x} ${gapY} L ${to.x} ${gapY} L ${to.x} ${targetBottom}`;
+        labelY = gapY - 6;
       }
 
-      routes.push({ from: conn.from, to: conn.to, path });
+      const sourcePort = conn.sourcePort ? `:${conn.sourcePort}` : '';
+      const targetPort = conn.targetPort ? `:${conn.targetPort}` : '';
+      const label = sourcePort || targetPort ? `${sourcePort} → ${targetPort}`.trim() : '';
+
+      routes.push({
+        from: conn.from,
+        to: conn.to,
+        path,
+        label,
+        labelX,
+        labelY,
+      });
     });
 
     return routes;
@@ -556,7 +584,7 @@ export function GraphView({ nodes, edges }: GraphViewProps) {
               <path
                 d="M 0 1 L 8 5 L 0 9"
                 fill="none"
-                stroke="#000000"
+                stroke="currentColor"
                 strokeWidth="1.5"
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -565,16 +593,26 @@ export function GraphView({ nodes, edges }: GraphViewProps) {
           </defs>
 
           {edgeRoutes.map((route, i) => (
-            <path
-              key={`${route.from}-${route.to}-${i}`}
-              d={route.path}
-              stroke="#000000"
-              strokeWidth="1.5"
-              fill="none"
-              markerEnd="url(#arrowhead)"
-              opacity="0.4"
-              className="graph-edge"
-            />
+            <g key={`${route.from}-${route.to}-${i}`}>
+              <path
+                d={route.path}
+                stroke="currentColor"
+                strokeWidth="1.5"
+                fill="none"
+                markerEnd="url(#arrowhead)"
+                className="graph-edge"
+              />
+              {route.label && (
+                <text
+                  x={route.labelX}
+                  y={route.labelY}
+                  textAnchor="middle"
+                  className="graph-edge-label"
+                >
+                  {route.label}
+                </text>
+              )}
+            </g>
           ))}
         </svg>
 

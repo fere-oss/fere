@@ -10,6 +10,7 @@
 
 const http = require('http');
 const url = require('url');
+const net = require('net');
 
 const PORT = process.env.PORT || 3001;
 const FLASK_API = process.env.FLASK_API || 'http://localhost:5001';
@@ -120,9 +121,72 @@ server.listen(PORT, '0.0.0.0', () => {
   `);
 });
 
+// Keep a persistent TCP connection to the Flask API so edges show up in the graph.
+let keepaliveSocket = null;
+let keepaliveTimer = null;
+const extraKeepalives = [];
+
+function scheduleKeepaliveReconnect() {
+  if (keepaliveTimer) return;
+  keepaliveTimer = setTimeout(() => {
+    keepaliveTimer = null;
+    startKeepalive();
+  }, 2000);
+}
+
+function startKeepalive() {
+  try {
+    const target = new URL(FLASK_API);
+    const port = target.port ? parseInt(target.port, 10) : 80;
+    keepaliveSocket = net.createConnection({ host: target.hostname, port }, () => {
+      keepaliveSocket.setKeepAlive(true, 10000);
+    });
+    keepaliveSocket.on('error', scheduleKeepaliveReconnect);
+    keepaliveSocket.on('close', scheduleKeepaliveReconnect);
+  } catch (err) {
+    scheduleKeepaliveReconnect();
+  }
+}
+
+startKeepalive();
+
+function startTcpKeepalive(host, port) {
+  const state = { socket: null, timer: null };
+
+  const reconnect = () => {
+    if (state.timer) return;
+    state.timer = setTimeout(() => {
+      state.timer = null;
+      connect();
+    }, 2000);
+  };
+
+  const connect = () => {
+    state.socket = net.createConnection({ host, port }, () => {
+      state.socket.setKeepAlive(true, 10000);
+    });
+    state.socket.on('error', reconnect);
+    state.socket.on('close', reconnect);
+  };
+
+  connect();
+  return state;
+}
+
+// Extra connections to surface multiple edges in the graph.
+extraKeepalives.push(startTcpKeepalive('127.0.0.1', 6379)); // Redis mock
+extraKeepalives.push(startTcpKeepalive('127.0.0.1', 2375)); // Docker mock
+extraKeepalives.push(startTcpKeepalive('127.0.0.1', 7070)); // Service mock
+
 // Graceful shutdown
 process.on('SIGINT', () => {
   console.log('\nShutting down...');
+  if (keepaliveTimer) clearTimeout(keepaliveTimer);
+  if (keepaliveSocket) keepaliveSocket.destroy();
+  extraKeepalives.forEach(state => {
+    if (state.timer) clearTimeout(state.timer);
+    if (state.socket) state.socket.destroy();
+  });
   server.close(() => {
     console.log('Server closed');
     process.exit(0);
