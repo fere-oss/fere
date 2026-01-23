@@ -73,30 +73,125 @@ const getBaseName = (name: string): string => {
   return base || name.toLowerCase();
 };
 
-// Assign layer based on node type
-const getTypeLayer = (type: string): number => {
+// Type priority for initial ordering (lower = higher in graph)
+const getTypePriority = (type: string): number => {
   switch (type) {
-    case 'frontend':
-      return 0;
+    case 'frontend': return 0;
     case 'backend':
     case 'webserver':
-    case 'nodejs':
+    case 'nodejs': return 1;
     case 'python':
     case 'broker':
     case 'realtime':
     case 'client':
-    case 'worker':
-      return 1;
+    case 'worker': return 2;
     case 'database':
-    case 'cache':
-      return 2;
-    case 'broker':
-    case 'realtime':
-    case 'worker':
-    case 'client':
-    default:
-      return 3;
+    case 'cache': return 3;
+    default: return 4;
   }
+};
+
+// Find all nodes that are connected (have at least one edge)
+const findConnectedNodes = (
+  nodes: GraphNode[],
+  edges: GraphEdge[]
+): { connected: Set<string>; standalone: Set<string> } => {
+  const connected = new Set<string>();
+  edges.forEach(edge => {
+    connected.add(edge.source);
+    connected.add(edge.target);
+  });
+
+  const nodeIds = new Set(nodes.map(n => n.id));
+  const standalone = new Set<string>();
+  nodeIds.forEach(id => {
+    if (!connected.has(id)) standalone.add(id);
+  });
+
+  return { connected, standalone };
+};
+
+// Topological sort using Kahn's algorithm to assign layers based on actual dependencies
+const computeTopologicalLayers = (
+  nodes: GraphNode[],
+  edges: GraphEdge[],
+  connectedNodeIds: Set<string>
+): Map<string, number> => {
+  const nodeMap = new Map(nodes.map(n => [n.id, n]));
+  const connectedNodes = nodes.filter(n => connectedNodeIds.has(n.id));
+
+  if (connectedNodes.length === 0) return new Map();
+
+  // Build adjacency lists
+  const outgoing = new Map<string, Set<string>>();
+  const incoming = new Map<string, Set<string>>();
+  const inDegree = new Map<string, number>();
+
+  connectedNodes.forEach(node => {
+    outgoing.set(node.id, new Set());
+    incoming.set(node.id, new Set());
+    inDegree.set(node.id, 0);
+  });
+
+  edges.forEach(edge => {
+    if (connectedNodeIds.has(edge.source) && connectedNodeIds.has(edge.target)) {
+      outgoing.get(edge.source)?.add(edge.target);
+      incoming.get(edge.target)?.add(edge.source);
+      inDegree.set(edge.target, (inDegree.get(edge.target) || 0) + 1);
+    }
+  });
+
+  // Find root nodes (no incoming edges) - these go at top
+  // Prioritize by type (frontends first)
+  const roots = connectedNodes
+    .filter(n => (inDegree.get(n.id) || 0) === 0)
+    .sort((a, b) => getTypePriority(a.type) - getTypePriority(b.type));
+
+  // If no roots found (cycle), pick the node with lowest type priority
+  if (roots.length === 0) {
+    const sorted = [...connectedNodes].sort((a, b) =>
+      getTypePriority(a.type) - getTypePriority(b.type)
+    );
+    roots.push(sorted[0]);
+  }
+
+  // BFS to assign layers
+  const layers = new Map<string, number>();
+  const queue: { node: GraphNode; layer: number }[] = roots.map(n => ({ node: n, layer: 0 }));
+  const visited = new Set<string>();
+
+  while (queue.length > 0) {
+    const { node, layer } = queue.shift()!;
+
+    if (visited.has(node.id)) {
+      // Update to max layer if revisited
+      if (layer > (layers.get(node.id) || 0)) {
+        layers.set(node.id, layer);
+      }
+      continue;
+    }
+
+    visited.add(node.id);
+    layers.set(node.id, layer);
+
+    // Add children
+    const children = outgoing.get(node.id) || new Set();
+    children.forEach(childId => {
+      const childNode = nodeMap.get(childId);
+      if (childNode) {
+        queue.push({ node: childNode, layer: layer + 1 });
+      }
+    });
+  }
+
+  // Handle any unvisited connected nodes (in case of disconnected subgraphs within connected set)
+  connectedNodes.forEach(node => {
+    if (!visited.has(node.id)) {
+      layers.set(node.id, 0);
+    }
+  });
+
+  return layers;
 };
 
 // Build adjacency lists for the graph
@@ -135,25 +230,33 @@ const computeBarycenter = (
   return count > 0 ? sum / count : Infinity;
 };
 
-// Hierarchical layout algorithm using barycenter method
+// Hierarchical layout algorithm using topological ordering + barycenter refinement
 const computeHierarchicalLayout = (
   nodes: GraphNode[],
   edges: GraphEdge[]
-): LayoutNode[] => {
-  if (nodes.length === 0) return [];
+): { connected: LayoutNode[]; standalone: LayoutNode[] } => {
+  if (nodes.length === 0) return { connected: [], standalone: [] };
+
+  // Step 1: Separate connected and standalone nodes
+  const { connected: connectedIds, standalone: standaloneIds } = findConnectedNodes(nodes, edges);
+  const connectedNodes = nodes.filter(n => connectedIds.has(n.id));
+  const standaloneNodes = nodes.filter(n => standaloneIds.has(n.id));
+
+  // Step 2: Compute topological layers for connected nodes based on actual edges
+  const topologicalLayers = computeTopologicalLayers(nodes, edges, connectedIds);
 
   const { outgoing, incoming } = buildAdjacencyLists(edges);
 
-  // Step 1: Assign layers based on type
+  // Step 3: Group connected nodes by layer
   const nodesByLayer = new Map<number, GraphNode[]>();
-  nodes.forEach(node => {
-    const layer = getTypeLayer(node.type);
+  connectedNodes.forEach(node => {
+    const layer = topologicalLayers.get(node.id) || 0;
     if (!nodesByLayer.has(layer)) nodesByLayer.set(layer, []);
     nodesByLayer.get(layer)!.push(node);
   });
 
-  // Step 2: Initial ordering within each layer - group by base name, then alphabetically
-  const layerOrders = new Map<string, number>(); // nodeId -> order within layer
+  // Step 4: Initial ordering within each layer - group by base name, sort by type priority
+  const layerOrders = new Map<string, number>();
 
   nodesByLayer.forEach((layerNodes) => {
     // Group by base name
@@ -164,25 +267,36 @@ const computeHierarchicalLayout = (
       groups.get(baseName)!.push(node);
     });
 
-    // Sort groups: multi-node groups first, then alphabetically
+    // Sort groups: multi-node groups first, then by type priority, then alphabetically
     const sortedGroups = Array.from(groups.entries()).sort((a, b) => {
+      // Multi-node groups first
       if (a[1].length !== b[1].length) return b[1].length - a[1].length;
+      // Then by lowest type priority in group
+      const aMinPriority = Math.min(...a[1].map(n => getTypePriority(n.type)));
+      const bMinPriority = Math.min(...b[1].map(n => getTypePriority(n.type)));
+      if (aMinPriority !== bMinPriority) return aMinPriority - bMinPriority;
+      // Then alphabetically
       return a[0].localeCompare(b[0]);
     });
 
     // Flatten and assign initial order
     let order = 0;
     sortedGroups.forEach(([, groupNodes]) => {
-      groupNodes.sort((a, b) => a.name.localeCompare(b.name));
+      groupNodes.sort((a, b) => {
+        // Sort by type priority first, then alphabetically
+        const priorityDiff = getTypePriority(a.type) - getTypePriority(b.type);
+        if (priorityDiff !== 0) return priorityDiff;
+        return a.name.localeCompare(b.name);
+      });
       groupNodes.forEach(node => {
         layerOrders.set(node.id, order++);
       });
     });
   });
 
-  // Step 3: Barycenter refinement - multiple passes to minimize crossings
+  // Step 5: Barycenter refinement - multiple passes to minimize crossings
   const sortedLayers = Array.from(nodesByLayer.keys()).sort((a, b) => a - b);
-  const NUM_ITERATIONS = 4;
+  const NUM_ITERATIONS = 6; // More iterations for better crossing minimization
 
   for (let iter = 0; iter < NUM_ITERATIONS; iter++) {
     // Forward pass: order based on connections from upper layers
@@ -190,22 +304,28 @@ const computeHierarchicalLayout = (
       const layer = sortedLayers[i];
       const layerNodes = nodesByLayer.get(layer) || [];
 
-      // Compute barycenter for each node based on incoming connections
-      const barycenters: { node: GraphNode; bc: number; originalOrder: number }[] = [];
+      const barycenters: { node: GraphNode; bc: number; originalOrder: number; groupId: string }[] = [];
       layerNodes.forEach(node => {
         const bc = computeBarycenter(node.id, incoming.get(node.id), layerOrders);
-        barycenters.push({ node, bc, originalOrder: layerOrders.get(node.id) || 0 });
+        barycenters.push({
+          node,
+          bc,
+          originalOrder: layerOrders.get(node.id) || 0,
+          groupId: getBaseName(node.name),
+        });
       });
 
-      // Sort by barycenter, keeping original order for nodes with same/no connections
+      // Sort by barycenter, keeping groups together
       barycenters.sort((a, b) => {
+        // If same group, keep original relative order
+        if (a.groupId === b.groupId) return a.originalOrder - b.originalOrder;
+        // Otherwise sort by barycenter
         if (a.bc === Infinity && b.bc === Infinity) return a.originalOrder - b.originalOrder;
         if (a.bc === Infinity) return 1;
         if (b.bc === Infinity) return -1;
         return a.bc - b.bc;
       });
 
-      // Update orders
       barycenters.forEach((item, idx) => {
         layerOrders.set(item.node.id, idx);
       });
@@ -216,41 +336,68 @@ const computeHierarchicalLayout = (
       const layer = sortedLayers[i];
       const layerNodes = nodesByLayer.get(layer) || [];
 
-      // Compute barycenter for each node based on outgoing connections
-      const barycenters: { node: GraphNode; bc: number; originalOrder: number }[] = [];
+      const barycenters: { node: GraphNode; bc: number; originalOrder: number; groupId: string }[] = [];
       layerNodes.forEach(node => {
         const bc = computeBarycenter(node.id, outgoing.get(node.id), layerOrders);
-        barycenters.push({ node, bc, originalOrder: layerOrders.get(node.id) || 0 });
+        barycenters.push({
+          node,
+          bc,
+          originalOrder: layerOrders.get(node.id) || 0,
+          groupId: getBaseName(node.name),
+        });
       });
 
-      // Sort by barycenter
       barycenters.sort((a, b) => {
+        if (a.groupId === b.groupId) return a.originalOrder - b.originalOrder;
         if (a.bc === Infinity && b.bc === Infinity) return a.originalOrder - b.originalOrder;
         if (a.bc === Infinity) return 1;
         if (b.bc === Infinity) return -1;
         return a.bc - b.bc;
       });
 
-      // Update orders
       barycenters.forEach((item, idx) => {
         layerOrders.set(item.node.id, idx);
       });
     }
   }
 
-  // Step 4: Build final layout
-  const result: LayoutNode[] = [];
-  nodes.forEach(node => {
-    const layer = getTypeLayer(node.type);
-    result.push({
-      node,
-      layer,
-      order: layerOrders.get(node.id) || 0,
-      groupId: getBaseName(node.name),
+  // Build connected layout result
+  const connectedResult: LayoutNode[] = connectedNodes.map(node => ({
+    node,
+    layer: topologicalLayers.get(node.id) || 0,
+    order: layerOrders.get(node.id) || 0,
+    groupId: getBaseName(node.name),
+  }));
+
+  // Build standalone layout result - group by type
+  const standaloneByType = new Map<string, GraphNode[]>();
+  standaloneNodes.forEach(node => {
+    const type = node.type;
+    if (!standaloneByType.has(type)) standaloneByType.set(type, []);
+    standaloneByType.get(type)!.push(node);
+  });
+
+  // Sort standalone types by priority and assign orders
+  const sortedTypes = Array.from(standaloneByType.keys()).sort((a, b) =>
+    getTypePriority(a) - getTypePriority(b)
+  );
+
+  let standaloneOrder = 0;
+  const standaloneResult: LayoutNode[] = [];
+  sortedTypes.forEach(type => {
+    const typeNodes = standaloneByType.get(type)!;
+    typeNodes.sort((a, b) => a.name.localeCompare(b.name));
+    typeNodes.forEach(node => {
+      standaloneResult.push({
+        node,
+        layer: -1, // Special layer for standalone
+        order: standaloneOrder++,
+        groupId: getBaseName(node.name),
+      });
     });
   });
 
-  return result;
+  return { connected: connectedResult, standalone: standaloneResult };
 };
 
 // Group layout nodes for rendering
@@ -327,15 +474,16 @@ export function GraphView({ nodes, edges }: GraphViewProps) {
     return displayEdges.filter(e => localNodeIds.has(e.source) && localNodeIds.has(e.target));
   }, [localNodes, displayEdges]);
 
-  // Compute hierarchical layout
-  const layoutNodes = useMemo(() =>
+  // Compute hierarchical layout (returns connected and standalone nodes separately)
+  const { connected: connectedLayout, standalone: standaloneLayout } = useMemo(() =>
     computeHierarchicalLayout(localNodes, localEdges),
     [localNodes, localEdges]
   );
 
-  const stableLayoutNodes = useMemo(() => {
+  // Stabilize connected node ordering to prevent jitter
+  const stableConnectedLayout = useMemo(() => {
     const byLayer = new Map<number, LayoutNode[]>();
-    layoutNodes.forEach(node => {
+    connectedLayout.forEach(node => {
       if (!byLayer.has(node.layer)) byLayer.set(node.layer, []);
       byLayer.get(node.layer)!.push(node);
     });
@@ -388,25 +536,81 @@ export function GraphView({ nodes, edges }: GraphViewProps) {
       });
     });
 
-    return layoutNodes.map(node => ({
+    return connectedLayout.map(node => ({
       ...node,
       order: stableOrders.get(node.node.id) ?? node.order,
     }));
-  }, [layoutNodes]);
+  }, [connectedLayout]);
 
-  // Group nodes by layer for rendering
-  const { frontendGroups, backendGroups, databaseGroups, otherGroups } = useMemo(() => ({
-    frontendGroups: groupLayoutNodes(stableLayoutNodes, 0),
-    backendGroups: groupLayoutNodes(stableLayoutNodes, 1),
-    databaseGroups: groupLayoutNodes(stableLayoutNodes, 2),
-    otherGroups: groupLayoutNodes(stableLayoutNodes, 3),
-  }), [stableLayoutNodes]);
+  // Get unique layers and sort them for connected topology
+  const sortedLayers = useMemo(() => {
+    const layers = new Set(stableConnectedLayout.map(ln => ln.layer));
+    return Array.from(layers).sort((a, b) => a - b);
+  }, [stableConnectedLayout]);
 
-  // Flatten for layer counts
-  const frontend = frontendGroups.flatMap(g => g.nodes);
-  const backendLayer = backendGroups.flatMap(g => g.nodes);
-  const database = databaseGroups.flatMap(g => g.nodes);
-  const other = otherGroups.flatMap(g => g.nodes);
+  // Group nodes by layer for rendering (dynamic layers based on topology)
+  const layerGroups = useMemo(() => {
+    const groups: Map<number, RenderGroup[]> = new Map();
+    sortedLayers.forEach(layer => {
+      groups.set(layer, groupLayoutNodes(stableConnectedLayout, layer));
+    });
+    return groups;
+  }, [stableConnectedLayout, sortedLayers]);
+
+  // Group standalone nodes for rendering
+  const standaloneGroups = useMemo(() => {
+    if (standaloneLayout.length === 0) return [];
+
+    // Group by type for standalone services
+    const byType = new Map<string, GraphNode[]>();
+    standaloneLayout.forEach(ln => {
+      const type = ln.node.type;
+      if (!byType.has(type)) byType.set(type, []);
+      byType.get(type)!.push(ln.node);
+    });
+
+    const result: RenderGroup[] = [];
+    byType.forEach((nodes, type) => {
+      result.push({
+        groupName: SERVICE_COLORS[type]?.label || type,
+        nodes: nodes.sort((a, b) => a.name.localeCompare(b.name)),
+        isGroup: nodes.length > 1,
+      });
+    });
+
+    return result.sort((a, b) => a.groupName.localeCompare(b.groupName));
+  }, [standaloneLayout]);
+
+  // Get layer label based on layer index and content
+  const getLayerLabel = useCallback((layer: number, nodes: GraphNode[]): string => {
+    // Analyze node types in this layer
+    const types = new Set(nodes.map(n => n.type));
+
+    if (layer === 0) {
+      if (types.has('frontend')) return 'FRONTEND';
+      return 'ENTRY POINTS';
+    }
+
+    if (types.has('database') || types.has('cache')) {
+      if (types.size === 1 && types.has('database')) return 'DATABASE';
+      if (types.size === 1 && types.has('cache')) return 'CACHE';
+      return 'DATA LAYER';
+    }
+
+    if (types.has('backend') || types.has('webserver') || types.has('nodejs') || types.has('python')) {
+      return `TIER ${layer}`;
+    }
+
+    if (types.has('broker') || types.has('realtime')) {
+      return 'MESSAGING';
+    }
+
+    if (types.has('worker') || types.has('client')) {
+      return 'WORKERS';
+    }
+
+    return `TIER ${layer}`;
+  }, []);
 
   // Create connection list from edges
   const connections = useMemo(() =>
@@ -486,14 +690,18 @@ export function GraphView({ nodes, edges }: GraphViewProps) {
     };
   }, [contextMenu]);
 
-  // Build layer mapping for nodes
+  // Build layer mapping for nodes (both connected and standalone)
   const nodeLayerMap = useMemo(() => {
     const map = new Map<string, { layer: number; indexInLayer: number }>();
-    stableLayoutNodes.forEach(ln => {
+    stableConnectedLayout.forEach(ln => {
       map.set(ln.node.id, { layer: ln.layer, indexInLayer: ln.order });
     });
+    // Standalone nodes get a special layer (-1)
+    standaloneLayout.forEach(ln => {
+      map.set(ln.node.id, { layer: -1, indexInLayer: ln.order });
+    });
     return map;
-  }, [stableLayoutNodes]);
+  }, [stableConnectedLayout, standaloneLayout]);
 
   // Calculate node positions after render
   useEffect(() => {
@@ -529,234 +737,51 @@ export function GraphView({ nodes, edges }: GraphViewProps) {
     return () => clearTimeout(timer);
   }, [localNodes, nodeLayerMap, zoom]);
 
-  // Edge routing that avoids node intersections by using side lanes
+  // Edge routing with simple smooth bezier curves
   const edgeRoutes = useMemo(() => {
     if (nodePositions.size === 0) return [];
-
-    const allNodes = Array.from(nodePositions.entries());
-
-    // Compute layer Y bounds (top/bottom of each layer)
-    const layerYBounds = new Map<number, { top: number; bottom: number }>();
-    // Compute global X bounds across all nodes
-    let globalMinX = Infinity;
-    let globalMaxX = -Infinity;
-
-    allNodes.forEach(([, pos]) => {
-      const nodeLeft = pos.x - pos.width / 2;
-      const nodeRight = pos.x + pos.width / 2;
-      const nodeTop = pos.y - pos.height / 2;
-      const nodeBottom = pos.y + pos.height / 2;
-
-      globalMinX = Math.min(globalMinX, nodeLeft);
-      globalMaxX = Math.max(globalMaxX, nodeRight);
-
-      const existing = layerYBounds.get(pos.layer);
-      if (existing) {
-        existing.top = Math.min(existing.top, nodeTop);
-        existing.bottom = Math.max(existing.bottom, nodeBottom);
-      } else {
-        layerYBounds.set(pos.layer, { top: nodeTop, bottom: nodeBottom });
-      }
-    });
-
-    // Define vertical lanes outside all node bounds
-    const LANE_MARGIN = 40;
-    const leftLaneX = globalMinX - LANE_MARGIN;
-    const rightLaneX = globalMaxX + LANE_MARGIN;
-
-    // Compute gap Y positions between consecutive layers
-    const sortedLayers = Array.from(layerYBounds.keys()).sort((a, b) => a - b);
-    const layerGapY = new Map<string, number>();
-    for (let i = 0; i < sortedLayers.length - 1; i++) {
-      const upperLayer = sortedLayers[i];
-      const lowerLayer = sortedLayers[i + 1];
-      const upperBottom = layerYBounds.get(upperLayer)!.bottom;
-      const lowerTop = layerYBounds.get(lowerLayer)!.top;
-      layerGapY.set(`${upperLayer}-${lowerLayer}`, (upperBottom + lowerTop) / 2);
-    }
-
-    // Helper: check if a vertical segment would intersect any node
-    const wouldIntersectNode = (
-      x: number,
-      yStart: number,
-      yEnd: number,
-      excludeNodeIds: Set<string>
-    ): boolean => {
-      const yMin = Math.min(yStart, yEnd);
-      const yMax = Math.max(yStart, yEnd);
-
-      for (const [nodeId, pos] of allNodes) {
-        if (excludeNodeIds.has(nodeId)) continue;
-
-        const nodeLeft = pos.x - pos.width / 2;
-        const nodeRight = pos.x + pos.width / 2;
-        const nodeTop = pos.y - pos.height / 2;
-        const nodeBottom = pos.y + pos.height / 2;
-
-        // Check if vertical line at x intersects this node's bounding box
-        if (x >= nodeLeft && x <= nodeRight) {
-          // Vertical ranges overlap?
-          if (yMax >= nodeTop && yMin <= nodeBottom) {
-            return true;
-          }
-        }
-      }
-      return false;
-    };
-
-    // Helper: pick lane based on edge direction and positions
-    const pickLane = (fromX: number, toX: number, edgeIndex: number): number => {
-      // If source is left of target, use left lane; otherwise use right lane
-      // This keeps edges from crossing over nodes in the middle
-      if (fromX < toX) {
-        return leftLaneX;
-      } else if (fromX > toX) {
-        return rightLaneX;
-      } else {
-        // Vertically aligned - alternate based on edge index
-        return edgeIndex % 2 === 0 ? leftLaneX : rightLaneX;
-      }
-    };
 
     const routes: {
       from: string;
       to: string;
       path: string;
-      label: string;
-      labelX: number;
-      labelY: number;
     }[] = [];
 
-    connections.forEach((conn, edgeIndex) => {
+    connections.forEach((conn) => {
       const from = nodePositions.get(conn.from);
       const to = nodePositions.get(conn.to);
       if (!from || !to) return;
 
-      const sourceTop = from.y - from.height / 2;
       const sourceBottom = from.y + from.height / 2;
+      const sourceTop = from.y - from.height / 2;
       const targetTop = to.y - to.height / 2;
       const targetBottom = to.y + to.height / 2;
 
       let path: string;
-      let labelX = (from.x + to.x) / 2;
-      let labelY = (from.y + to.y) / 2;
-
-      const excludeIds = new Set([conn.from, conn.to]);
-      const EXIT_PADDING = 15;
-      const ENTRY_PADDING = 15;
 
       if (from.layer === to.layer) {
-        // Same layer - arc above the nodes
+        // Same layer - smooth arc above the nodes
         const arcY = Math.min(sourceTop, targetTop) - 40;
-        path = `M ${from.x} ${sourceTop} ` +
-               `L ${from.x} ${arcY} ` +
-               `L ${to.x} ${arcY} ` +
-               `L ${to.x} ${targetTop}`;
-        labelY = arcY - 6;
+        const midX = (from.x + to.x) / 2;
+        path = `M ${from.x} ${sourceTop} Q ${midX} ${arcY}, ${to.x} ${targetTop}`;
       } else {
+        // Different layers - use simple cubic bezier S-curve
         const goingDown = from.layer < to.layer;
-        const exitY = goingDown ? sourceBottom : sourceTop;
-        const entryY = goingDown ? targetTop : targetBottom;
+        const startY = goingDown ? sourceBottom : sourceTop;
+        const endY = goingDown ? targetTop : targetBottom;
 
-        // Check if direct vertical path would intersect any nodes
-        const directPathIntersects = wouldIntersectNode(
-          to.x,
-          exitY,
-          entryY,
-          excludeIds
-        );
+        // Calculate control points for smooth S-curve
+        const verticalDist = Math.abs(endY - startY);
+        const controlOffset = Math.min(verticalDist * 0.4, 60);
 
-        // Also check if the horizontal segment at gap level would intersect
-        const gapKey = goingDown
-          ? `${from.layer}-${from.layer + 1}`
-          : `${to.layer}-${to.layer + 1}`;
-        const gapY = layerGapY.get(gapKey) ?? (exitY + entryY) / 2;
-
-        const horizontalIntersects = (() => {
-          const minX = Math.min(from.x, to.x);
-          const maxX = Math.max(from.x, to.x);
-          for (const [nodeId, pos] of allNodes) {
-            if (excludeIds.has(nodeId)) continue;
-            const nodeLeft = pos.x - pos.width / 2;
-            const nodeRight = pos.x + pos.width / 2;
-            const nodeTop = pos.y - pos.height / 2;
-            const nodeBottom = pos.y + pos.height / 2;
-            // Horizontal line at gapY from minX to maxX
-            if (gapY >= nodeTop && gapY <= nodeBottom) {
-              if (maxX >= nodeLeft && minX <= nodeRight) {
-                return true;
-              }
-            }
-          }
-          return false;
-        })();
-
-        // Check for intermediate layers (edge spans > 1 layer)
-        const hasIntermediateLayers = Math.abs(from.layer - to.layer) > 1;
-
-        // Decide routing strategy
-        const needsLaneRouting = directPathIntersects || horizontalIntersects || hasIntermediateLayers;
-
-        if (needsLaneRouting) {
-          // Route via side lane to avoid all node intersections
-          const laneX = pickLane(from.x, to.x, edgeIndex);
-
-          if (goingDown) {
-            // Going DOWN: exit bottom → lane → down → enter top
-            const exitSegmentY = sourceBottom + EXIT_PADDING;
-            const entrySegmentY = targetTop - ENTRY_PADDING;
-
-            path = `M ${from.x} ${sourceBottom} ` +
-                   `L ${from.x} ${exitSegmentY} ` +
-                   `L ${laneX} ${exitSegmentY} ` +
-                   `L ${laneX} ${entrySegmentY} ` +
-                   `L ${to.x} ${entrySegmentY} ` +
-                   `L ${to.x} ${targetTop}`;
-            labelX = laneX;
-            labelY = (exitSegmentY + entrySegmentY) / 2;
-          } else {
-            // Going UP: exit top → lane → up → enter bottom
-            const exitSegmentY = sourceTop - EXIT_PADDING;
-            const entrySegmentY = targetBottom + ENTRY_PADDING;
-
-            path = `M ${from.x} ${sourceTop} ` +
-                   `L ${from.x} ${exitSegmentY} ` +
-                   `L ${laneX} ${exitSegmentY} ` +
-                   `L ${laneX} ${entrySegmentY} ` +
-                   `L ${to.x} ${entrySegmentY} ` +
-                   `L ${to.x} ${targetBottom}`;
-            labelX = laneX;
-            labelY = (exitSegmentY + entrySegmentY) / 2;
-          }
-        } else {
-          // Direct orthogonal path through gap (no intersections)
-          if (goingDown) {
-            path = `M ${from.x} ${sourceBottom} ` +
-                   `L ${from.x} ${gapY} ` +
-                   `L ${to.x} ${gapY} ` +
-                   `L ${to.x} ${targetTop}`;
-            labelY = gapY - 6;
-          } else {
-            path = `M ${from.x} ${sourceTop} ` +
-                   `L ${from.x} ${gapY} ` +
-                   `L ${to.x} ${gapY} ` +
-                   `L ${to.x} ${targetBottom}`;
-            labelY = gapY - 6;
-          }
-        }
+        // Simple vertical bezier curve
+        path = `M ${from.x} ${startY} C ${from.x} ${startY + (goingDown ? controlOffset : -controlOffset)}, ${to.x} ${endY + (goingDown ? -controlOffset : controlOffset)}, ${to.x} ${endY}`;
       }
-
-      const sourcePort = conn.sourcePort ? `:${conn.sourcePort}` : '';
-      const targetPort = conn.targetPort ? `:${conn.targetPort}` : '';
-      const label = sourcePort || targetPort ? `${sourcePort} → ${targetPort}`.trim() : '';
 
       routes.push({
         from: conn.from,
         to: conn.to,
         path,
-        label,
-        labelX,
-        labelY,
       });
     });
 
@@ -841,70 +866,54 @@ export function GraphView({ nodes, edges }: GraphViewProps) {
           </defs>
 
           {edgeRoutes.map((route, i) => (
-            <g key={`${route.from}-${route.to}-${i}`}>
-              <path
-                d={route.path}
-                stroke="currentColor"
-                strokeWidth="1.5"
-                fill="none"
-                markerEnd="url(#arrowhead)"
-                className="graph-edge"
-              />
-              {route.label && (
-                <text
-                  x={route.labelX}
-                  y={route.labelY}
-                  textAnchor="middle"
-                  className="graph-edge-label"
-                >
-                  {route.label}
-                </text>
-              )}
-            </g>
+            <path
+              key={`${route.from}-${route.to}-${i}`}
+              d={route.path}
+              stroke="currentColor"
+              strokeWidth="1.5"
+              fill="none"
+              markerEnd="url(#arrowhead)"
+              className="graph-edge"
+            />
           ))}
         </svg>
 
-        {/* Layered nodes */}
+        {/* Layered nodes - Dynamic layers based on topology */}
         <div className="graph-layers">
-          {frontend.length > 0 && (
-            <div className="graph-layer">
-              <div className="graph-layer-label">FRONTEND</div>
-              <div className="graph-layer-nodes">
-                {frontendGroups.map((group, index) => (
-                  <NodeGroupContainer key={`frontend-${group.groupName}-${index}`} group={group} onNodeClick={setSelectedNode} onContextMenu={handleContextMenu} />
-                ))}
-              </div>
-            </div>
-          )}
+          {sortedLayers.map(layer => {
+            const groups = layerGroups.get(layer) || [];
+            const allNodes = groups.flatMap(g => g.nodes);
+            if (allNodes.length === 0) return null;
 
-          {backendLayer.length > 0 && (
-            <div className="graph-layer">
-              <div className="graph-layer-label">BACKEND / API</div>
-              <div className="graph-layer-nodes">
-                {backendGroups.map((group, index) => (
-                  <NodeGroupContainer key={`backend-${group.groupName}-${index}`} group={group} onNodeClick={setSelectedNode} onContextMenu={handleContextMenu} />
-                ))}
+            return (
+              <div key={`layer-${layer}`} className="graph-layer">
+                <div className="graph-layer-label">{getLayerLabel(layer, allNodes)}</div>
+                <div className="graph-layer-nodes">
+                  {groups.map((group, index) => (
+                    <NodeGroupContainer
+                      key={`layer${layer}-${group.groupName}-${index}`}
+                      group={group}
+                      onNodeClick={setSelectedNode}
+                      onContextMenu={handleContextMenu}
+                    />
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })}
 
-          {database.length > 0 && (
-            <div className="graph-layer">
-              <div className="graph-layer-label">DATA LAYER</div>
+          {/* Standalone Services Section */}
+          {standaloneGroups.length > 0 && (
+            <div className="graph-layer graph-layer-standalone">
+              <div className="graph-layer-label">STANDALONE SERVICES</div>
               <div className="graph-layer-nodes">
-                {databaseGroups.map((group, index) => (
-                  <NodeGroupContainer key={`database-${group.groupName}-${index}`} group={group} onNodeClick={setSelectedNode} onContextMenu={handleContextMenu} />
-                ))}
-              </div>
-            </div>
-          )}
-
-          {other.length > 0 && (
-            <div className="graph-layer">
-              <div className="graph-layer-label">OTHER SERVICES</div>
-              <div className="graph-layer-nodes">
-                {otherGroups.map((group, index) => (
-                  <NodeGroupContainer key={`other-${group.groupName}-${index}`} group={group} onNodeClick={setSelectedNode} onContextMenu={handleContextMenu} />
+                {standaloneGroups.map((group, index) => (
+                  <NodeGroupContainer
+                    key={`standalone-${group.groupName}-${index}`}
+                    group={group}
+                    onNodeClick={setSelectedNode}
+                    onContextMenu={handleContextMenu}
+                  />
                 ))}
               </div>
             </div>

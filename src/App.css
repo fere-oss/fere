@@ -404,30 +404,78 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 32px;
+  gap: 56px;
   position: relative;
   z-index: 10;
   min-width: fit-content;
+  padding: 40px 40px;
+  width: 100%;
 }
 
 .graph-layer {
   display: flex;
-  flex-direction: row;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 32px;
+  gap: 16px;
+  width: 100%;
 }
 
 .graph-layer-label {
-  display: none;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--text-muted);
+  padding: 4px 16px;
+  background: var(--bg-secondary);
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
 }
 
 .graph-layer-nodes {
-  display: flex;
-  gap: 32px;
-  flex-wrap: nowrap;
-  align-items: center;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, max-content));
+  gap: 24px 32px;
+  align-items: start;
   justify-content: center;
+  justify-items: center;
+  max-width: 1400px;
+  width: 100%;
+}
+
+/* Standalone Services Section - visually distinct from connected topology */
+.graph-layer-standalone {
+  margin-top: 32px;
+  padding-top: 32px;
+  border-top: 2px dashed var(--border-color);
+  position: relative;
+}
+
+.graph-layer-standalone::before {
+  content: '';
+  position: absolute;
+  top: -1px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100px;
+  height: 2px;
+  background: var(--bg-primary);
+}
+
+.graph-layer-standalone .graph-layer-label {
+  background: #fff3e0;
+  color: #e65100;
+  border-color: #ffcc80;
+}
+
+.graph-layer-standalone .service-node {
+  opacity: 0.85;
+  border-style: dashed;
+}
+
+.graph-layer-standalone .service-node:hover {
+  opacity: 1;
 }
 
 /* Legend */
@@ -475,31 +523,41 @@ body {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 16px;
-  background: #f5f5f5;
-  border: 1px dashed var(--border-color);
-  border-radius: 16px;
+  padding: 20px;
+  padding-top: 28px;
+  background: linear-gradient(135deg, rgba(0, 0, 0, 0.02) 0%, rgba(0, 0, 0, 0.04) 100%);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 20px;
   position: relative;
+  z-index: 15;
 }
 
 .node-group-label {
   position: absolute;
-  top: -10px;
-  left: 20px;
-  font-size: 11px;
-  font-weight: 600;
+  top: -12px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 10px;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--text-muted);
-  background: var(--bg-primary);
-  padding: 2px 10px;
-  border-radius: 4px;
+  letter-spacing: 0.1em;
+  color: var(--text-secondary);
+  background: var(--bg-white);
+  padding: 4px 14px;
+  border-radius: 8px;
   border: 1px solid var(--border-color);
+  white-space: nowrap;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.06);
 }
 
 .node-group-nodes {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 16px;
+  align-items: start;
+  justify-items: center;
+  min-width: 240px;
+  max-width: 500px;
 }
 
 /* Service Node (in graph) */
@@ -702,36 +760,31 @@ body {
 /* Graph Edge Styling */
 .graph-edge {
   color: var(--text-faint);
-  opacity: 0.8;
-  stroke-dasharray: 6 6;
-  animation: graph-edge-dash 2.2s linear infinite;
+  opacity: 0.6;
+  stroke-dasharray: none;
   transition:
     opacity 0.2s ease,
-    stroke-width 0.2s ease;
+    stroke-width 0.2s ease,
+    color 0.2s ease;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
 
 .graph-edge:hover {
-  color: var(--text-muted);
-  opacity: 0.7 !important;
-  stroke-width: 2 !important;
+  color: var(--text-secondary);
+  opacity: 0.9 !important;
+  stroke-width: 2.5 !important;
 }
 
 .graph-edge-label {
   font-family: "JetBrains Mono", monospace;
-  font-size: 10px;
+  font-size: 9px;
   fill: var(--text-faint);
   letter-spacing: 0.02em;
   paint-order: stroke;
   stroke: var(--bg-white);
-  stroke-width: 3px;
-}
-
-@keyframes graph-edge-dash {
-  to {
-    stroke-dashoffset: -24;
-  }
+  stroke-width: 4px;
+  opacity: 0.8;
 }
 
 /* Scrollbar */
