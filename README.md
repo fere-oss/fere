@@ -18,6 +18,11 @@ npm install
 npm run electron:dev
 ```
 
+## Tests
+```bash
+npm run test:node
+```
+
 ## Build (macOS)
 ```bash
 npm run electron:build:mac
