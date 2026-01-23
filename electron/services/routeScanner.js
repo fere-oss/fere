@@ -145,6 +145,7 @@ function extractRoutes(filePath, content, framework) {
           method,
           path: routePath,
           file: filePath,
+          framework,
         });
       }
     }
@@ -171,6 +172,7 @@ function extractRoutes(filePath, content, framework) {
           method: method === 'ROUTE' ? 'ALL' : method,
           path: routePath,
           file: filePath,
+          framework,
         });
       }
     }
@@ -236,7 +238,7 @@ async function scanRoutes(projectPath) {
   // Deduplicate routes
   const seen = new Set();
   const uniqueRoutes = routes.filter(route => {
-    const key = `${route.method}:${route.path}`;
+    const key = `${route.method}:${route.path}:${route.file}`;
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
@@ -250,12 +252,34 @@ async function scanRoutes(projectPath) {
  * Match routes to a service based on port/process
  */
 function matchRoutesToService(routes, service) {
-  // Try to match based on the working directory or command
+  if (!service.projectPath) return [];
+  const normalizedProjectPath = path.resolve(service.projectPath);
+
+  const serviceFrameworks = new Set();
+  const command = (service.command || '').toLowerCase();
+  const name = (service.name || '').toLowerCase();
+
+  if (command.includes('fastapi') || command.includes('uvicorn')) serviceFrameworks.add('fastapi');
+  if (command.includes('flask')) serviceFrameworks.add('flask');
+  if (command.includes('express')) serviceFrameworks.add('express');
+  if (command.includes('koa')) serviceFrameworks.add('koa');
+  if (command.includes('hono')) serviceFrameworks.add('hono');
+  if (command.includes('next')) serviceFrameworks.add('nextjs');
+  if (command.includes('node') && command.includes('express')) serviceFrameworks.add('express');
+  if (name.includes('python') && command.includes('fastapi')) serviceFrameworks.add('fastapi');
+  if (name.includes('python') && command.includes('flask')) serviceFrameworks.add('flask');
+
   const serviceRoutes = [];
 
   for (const route of routes) {
-    // Check if the route file is in the service's working directory
-    // This is a heuristic - in real usage we'd need better matching
+    if (!route.file) continue;
+    const routePath = path.resolve(route.file);
+    if (!routePath.startsWith(`${normalizedProjectPath}${path.sep}`)) continue;
+    if (serviceFrameworks.size > 0 && route.framework && !serviceFrameworks.has(route.framework)) continue;
+    if (serviceFrameworks.size === 0) {
+      const fileName = path.basename(routePath).toLowerCase();
+      if (!command.includes(fileName) && !command.includes(routePath.toLowerCase())) continue;
+    }
     serviceRoutes.push({
       method: route.method,
       path: route.path,
