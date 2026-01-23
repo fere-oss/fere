@@ -350,10 +350,20 @@ export function GraphView({ nodes, edges }: GraphViewProps) {
 
   const handleMouseUp = useCallback(() => setIsDragging(false), []);
 
-  const handleWheel = useCallback((e: React.WheelEvent) => {
-    e.preventDefault();
-    const delta = e.deltaY > 0 ? -0.1 : 0.1;
-    setZoom(z => Math.max(0.4, Math.min(2, z + delta)));
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const handleWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const delta = e.deltaY > 0 ? -0.1 : 0.1;
+      setZoom(z => Math.max(0.4, Math.min(2, z + delta)));
+    };
+
+    container.addEventListener('wheel', handleWheel, { passive: false });
+    return () => {
+      container.removeEventListener('wheel', handleWheel);
+    };
   }, []);
 
   // Context menu handler
@@ -673,7 +683,6 @@ export function GraphView({ nodes, edges }: GraphViewProps) {
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseUp}
-      onWheel={handleWheel}
       style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
     >
       {/* Legend */}
@@ -762,8 +771,8 @@ export function GraphView({ nodes, edges }: GraphViewProps) {
             <div className="graph-layer">
               <div className="graph-layer-label">FRONTEND</div>
               <div className="graph-layer-nodes">
-                {frontendGroups.map(group => (
-                  <NodeGroupContainer key={group.groupName} group={group} onNodeClick={setSelectedNode} onContextMenu={handleContextMenu} />
+                {frontendGroups.map((group, index) => (
+                  <NodeGroupContainer key={`frontend-${group.groupName}-${index}`} group={group} onNodeClick={setSelectedNode} onContextMenu={handleContextMenu} />
                 ))}
               </div>
             </div>
@@ -773,8 +782,8 @@ export function GraphView({ nodes, edges }: GraphViewProps) {
             <div className="graph-layer">
               <div className="graph-layer-label">BACKEND / API</div>
               <div className="graph-layer-nodes">
-                {backendGroups.map(group => (
-                  <NodeGroupContainer key={group.groupName} group={group} onNodeClick={setSelectedNode} onContextMenu={handleContextMenu} />
+                {backendGroups.map((group, index) => (
+                  <NodeGroupContainer key={`backend-${group.groupName}-${index}`} group={group} onNodeClick={setSelectedNode} onContextMenu={handleContextMenu} />
                 ))}
               </div>
             </div>
@@ -784,8 +793,8 @@ export function GraphView({ nodes, edges }: GraphViewProps) {
             <div className="graph-layer">
               <div className="graph-layer-label">DATA LAYER</div>
               <div className="graph-layer-nodes">
-                {databaseGroups.map(group => (
-                  <NodeGroupContainer key={group.groupName} group={group} onNodeClick={setSelectedNode} onContextMenu={handleContextMenu} />
+                {databaseGroups.map((group, index) => (
+                  <NodeGroupContainer key={`database-${group.groupName}-${index}`} group={group} onNodeClick={setSelectedNode} onContextMenu={handleContextMenu} />
                 ))}
               </div>
             </div>
@@ -795,8 +804,8 @@ export function GraphView({ nodes, edges }: GraphViewProps) {
             <div className="graph-layer">
               <div className="graph-layer-label">OTHER SERVICES</div>
               <div className="graph-layer-nodes">
-                {otherGroups.map(group => (
-                  <NodeGroupContainer key={group.groupName} group={group} onNodeClick={setSelectedNode} onContextMenu={handleContextMenu} />
+                {otherGroups.map((group, index) => (
+                  <NodeGroupContainer key={`other-${group.groupName}-${index}`} group={group} onNodeClick={setSelectedNode} onContextMenu={handleContextMenu} />
                 ))}
               </div>
             </div>
@@ -1232,7 +1241,12 @@ function ContextMenu({ node, x, y, onClose }: ContextMenuProps) {
             className="context-menu-item"
             onClick={handleAction('open-browser')}
           >
-            <span className="context-menu-icon">🌐</span>
+            <span className="context-menu-icon" aria-hidden="true">
+              <svg viewBox="0 0 20 20" width="14" height="14">
+                <circle cx="10" cy="10" r="7" fill="none" stroke="currentColor" strokeWidth="1.4" />
+                <path d="M3.5 10h13M10 3.5c2.2 2 2.2 11 0 13M10 3.5c-2.2 2-2.2 11 0 13" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+              </svg>
+            </span>
             <span>Open in Browser</span>
           </div>
         )}
@@ -1241,7 +1255,12 @@ function ContextMenu({ node, x, y, onClose }: ContextMenuProps) {
             className="context-menu-item"
             onClick={handleAction('open-terminal')}
           >
-            <span className="context-menu-icon">⬛</span>
+            <span className="context-menu-icon" aria-hidden="true">
+              <svg viewBox="0 0 20 20" width="14" height="14">
+                <rect x="2.5" y="4" width="15" height="12" rx="2" fill="none" stroke="currentColor" strokeWidth="1.4" />
+                <path d="M6 8l3 2-3 2M10 12h4" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </span>
             <span>Open in Terminal</span>
           </div>
         )}
@@ -1250,7 +1269,12 @@ function ContextMenu({ node, x, y, onClose }: ContextMenuProps) {
             className="context-menu-item"
             onClick={handleAction('restart')}
           >
-            <span className="context-menu-icon">🔄</span>
+            <span className="context-menu-icon" aria-hidden="true">
+              <svg viewBox="0 0 20 20" width="14" height="14">
+                <path d="M4 10a6 6 0 1 0 2-4.5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+                <path d="M5 4v3h3" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </span>
             <span>Kill Process</span>
           </div>
         )}
@@ -1262,7 +1286,12 @@ function ContextMenu({ node, x, y, onClose }: ContextMenuProps) {
             className="context-menu-item"
             onClick={handleAction('copy-port')}
           >
-            <span className="context-menu-icon">📋</span>
+            <span className="context-menu-icon" aria-hidden="true">
+              <svg viewBox="0 0 20 20" width="14" height="14">
+                <rect x="6" y="5" width="10" height="12" rx="2" fill="none" stroke="currentColor" strokeWidth="1.4" />
+                <rect x="3" y="3" width="10" height="12" rx="2" fill="none" stroke="currentColor" strokeWidth="1.4" />
+              </svg>
+            </span>
             <span>Copy Port ({mainPort})</span>
           </div>
         )}
@@ -1270,7 +1299,12 @@ function ContextMenu({ node, x, y, onClose }: ContextMenuProps) {
           className="context-menu-item"
           onClick={handleAction('copy-pid')}
         >
-          <span className="context-menu-icon">📋</span>
+          <span className="context-menu-icon" aria-hidden="true">
+            <svg viewBox="0 0 20 20" width="14" height="14">
+              <rect x="6" y="5" width="10" height="12" rx="2" fill="none" stroke="currentColor" strokeWidth="1.4" />
+              <rect x="3" y="3" width="10" height="12" rx="2" fill="none" stroke="currentColor" strokeWidth="1.4" />
+            </svg>
+          </span>
           <span>Copy PID ({node.pid})</span>
         </div>
       </div>
