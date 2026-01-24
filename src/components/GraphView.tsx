@@ -634,7 +634,7 @@ export function GraphView({ nodes, edges }: GraphViewProps) {
     [localEdges]
   );
 
-  const zoomStep = 0.01;
+  const zoomStep = 0.05;
   const clampZoom = useCallback((value: number) => Math.max(0.4, Math.min(2, value)), []);
 
   // Zoom handlers
