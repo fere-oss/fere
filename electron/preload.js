@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getConnectionGraph: () => ipcRenderer.invoke('get-connection-graph'),
   getEnvironmentSummary: () => ipcRenderer.invoke('get-environment-summary'),
   getSystemSnapshot: () => ipcRenderer.invoke('get-system-snapshot'),
+  getExternalApis: (projectPath) => ipcRenderer.invoke('get-external-apis', projectPath),
 
   // Process control
   killProcess: (pid) => ipcRenderer.invoke('kill-process', pid),

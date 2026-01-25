@@ -806,6 +806,50 @@ body {
   color: var(--text-faint);
 }
 
+.service-node-apis {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--border-color);
+}
+
+.service-node-apis-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.service-node-apis-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-faint);
+  font-weight: 600;
+}
+
+.service-node-apis-count {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.service-node-apis-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.service-api {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.service-api-more {
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
 /* Graph Empty State */
 .graph-empty {
   display: flex;
@@ -1202,6 +1246,43 @@ body {
   font-family: "JetBrains Mono", monospace;
   font-size: 12px;
   color: var(--text-secondary);
+}
+
+/* External APIs in detail panel */
+.node-detail-apis {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 240px;
+  overflow-y: auto;
+  padding: 2px;
+}
+
+.node-detail-api {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 12px;
+  background: var(--bg-primary);
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+}
+
+.node-detail-api-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.node-detail-api-hosts {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.node-detail-api-meta {
+  font-size: 11px;
+  color: var(--text-faint);
 }
 
 /* Connections in detail panel */

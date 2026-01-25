@@ -566,7 +566,6 @@ async function buildConnectionGraph(snapshot = null) {
   }
 
   await attachRoutesToNodes(nodes);
-
   return { nodes, edges };
 }
 
@@ -778,6 +777,7 @@ async function attachRoutesToNodes(nodes) {
     node.routes = matchRoutesToService(routes, node);
   }
 }
+
 
 async function getProcessCwd(pid, cache) {
   if (cache.has(pid)) {

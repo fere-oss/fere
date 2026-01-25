@@ -16,6 +16,7 @@ const {
   getEnvironmentSummary,
 } = require("./services/connectionGraph");
 const { getSystemSnapshot } = require("./services/systemSnapshot");
+const { scanExternalApis } = require("./services/externalApiScanner");
 
 // Keep a global reference of the window object
 let mainWindow;
@@ -39,7 +40,7 @@ function createWindow() {
 
   // Load the app
   if (isDev) {
-    mainWindow.loadURL("http://localhost:3000");
+    mainWindow.loadURL("http://localhost:3001");
     mainWindow.webContents.openDevTools();
   } else {
     mainWindow.loadFile(path.join(__dirname, "../build/index.html"));
@@ -152,6 +153,28 @@ ipcMain.handle("get-environment-summary", async () => {
   } catch (error) {
     console.error("Error getting environment summary:", error);
     return { totalServices: 0, totalConnections: 0, services: [] };
+  }
+});
+
+// Get external APIs for a project path (on-demand)
+ipcMain.handle("get-external-apis", async (event, projectPath) => {
+  try {
+    const fs = require("fs");
+    if (!projectPath || typeof projectPath !== "string") {
+      return [];
+    }
+    const resolvedPath = path.resolve(projectPath);
+    if (!fs.existsSync(resolvedPath)) {
+      return [];
+    }
+    const stats = fs.statSync(resolvedPath);
+    if (!stats.isDirectory()) {
+      return [];
+    }
+    return await scanExternalApis(resolvedPath);
+  } catch (error) {
+    console.error("Error getting external APIs:", error);
+    return [];
   }
 });
 

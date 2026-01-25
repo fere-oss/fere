@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
-import type { GraphNode, GraphEdge, HealthStatus } from '../types/electron';
+import type { GraphNode, GraphEdge, HealthStatus, ExternalApi } from '../types/electron';
 
 interface GraphViewProps {
   nodes: GraphNode[];
@@ -74,6 +74,9 @@ const getTypeBadge = (type: string) => {
   };
   return labels[type] || 'Service';
 };
+
+const externalApiCache = new Map<string, ExternalApi[]>();
+const externalApiInFlight = new Set<string>();
 
 // Extract a normalized base name for grouping related services
 const getBaseName = (name: string): string => {
@@ -462,6 +465,7 @@ export function GraphView({ nodes, edges }: GraphViewProps) {
   const [contextMenu, setContextMenu] = useState<{ node: GraphNode; x: number; y: number } | null>(null);
   const orderCacheRef = useRef<Map<number, string[]>>(new Map());
   const groupOrderCacheRef = useRef<Map<number, string[]>>(new Map());
+  const [, setExternalApiVersion] = useState(0);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -484,6 +488,41 @@ export function GraphView({ nodes, edges }: GraphViewProps) {
     const localNodeIds = new Set(localNodes.map(n => n.id));
     return displayEdges.filter(e => localNodeIds.has(e.source) && localNodeIds.has(e.target));
   }, [localNodes, displayEdges]);
+
+  useEffect(() => {
+    if (!window.electronAPI?.getExternalApis) return;
+    const projectPaths = Array.from(
+      new Set(localNodes.map(node => node.projectPath).filter(Boolean))
+    ) as string[];
+    if (projectPaths.length === 0) return;
+
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      (async () => {
+        for (const projectPath of projectPaths) {
+          if (cancelled) return;
+          if (externalApiCache.has(projectPath) || externalApiInFlight.has(projectPath)) continue;
+          externalApiInFlight.add(projectPath);
+          try {
+            const apis = await window.electronAPI.getExternalApis(projectPath);
+            if (cancelled) return;
+            externalApiCache.set(projectPath, apis);
+            setExternalApiVersion(version => version + 1);
+          } catch (error) {
+            if (cancelled) return;
+          } finally {
+            externalApiInFlight.delete(projectPath);
+          }
+          await new Promise(resolve => setTimeout(resolve, 150));
+        }
+      })();
+    }, 350);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [localNodes]);
 
   // Compute hierarchical layout (returns connected and standalone nodes separately)
   const { connected: connectedLayout, standalone: standaloneLayout } = useMemo(() =>
@@ -998,6 +1037,8 @@ function ServiceNode({ node, onClick, onContextMenu }: {
   const mainPort = node.ports[0]?.port;
   const routes = node.routes || [];
   const visibleRoutes = routes.slice(0, 3);
+  const externalApis = node.projectPath ? (externalApiCache.get(node.projectPath) || []) : [];
+  const visibleApis = externalApis.slice(0, 3);
   const projectLabel = node.projectPath ? node.projectPath.split('/').pop() : null;
 
   const handleClick = (e: React.MouseEvent) => {
@@ -1080,6 +1121,28 @@ function ServiceNode({ node, onClick, onContextMenu }: {
           </div>
         </div>
       )}
+
+      {externalApis.length > 0 && (
+        <div className="service-node-apis">
+          <div className="service-node-apis-header">
+            <span className="service-node-apis-title">External APIs</span>
+            <span className="service-node-apis-count">{externalApis.length}</span>
+          </div>
+          <div className="service-node-apis-list">
+            {visibleApis.map(api => (
+              <div key={api.name} className="service-api">
+                {api.name}
+              </div>
+            ))}
+            {externalApis.length > visibleApis.length && (
+              <div className="service-api-more">
+                +{externalApis.length - visibleApis.length} more
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
@@ -1096,6 +1159,9 @@ function NodeDetailPanel({ node, edges, allNodes, onClose }: NodeDetailPanelProp
   const accentColor = getServiceColor(node.type);
   const healthInfo = getHealthInfo(node.healthStatus);
   const routes = node.routes || [];
+  const [externalApis, setExternalApis] = useState<ExternalApi[]>([]);
+  const [externalApiLoading, setExternalApiLoading] = useState(false);
+  const [externalApiError, setExternalApiError] = useState<string | null>(null);
 
   // Format last seen time
   const formatLastSeen = (timestamp: number) => {
@@ -1134,6 +1200,55 @@ function NodeDetailPanel({ node, edges, allNodes, onClose }: NodeDetailPanelProp
     window.addEventListener('keydown', handleEscape);
     return () => window.removeEventListener('keydown', handleEscape);
   }, [onClose]);
+
+  useEffect(() => {
+    let active = true;
+    const projectPath = node.projectPath;
+
+    if (!projectPath) {
+      setExternalApis([]);
+      setExternalApiLoading(false);
+      setExternalApiError(null);
+      return () => {
+        active = false;
+      };
+    }
+
+    const cached = externalApiCache.get(projectPath);
+    if (cached) {
+      setExternalApis(cached);
+      setExternalApiLoading(false);
+      setExternalApiError(null);
+      return () => {
+        active = false;
+      };
+    }
+
+    setExternalApiLoading(true);
+    setExternalApiError(null);
+
+    (async () => {
+      try {
+        if (!window.electronAPI?.getExternalApis) {
+          throw new Error('External API scan unavailable');
+        }
+        const apis = await window.electronAPI.getExternalApis(projectPath);
+        if (!active) return;
+        externalApiCache.set(projectPath, apis);
+        setExternalApis(apis);
+        setExternalApiLoading(false);
+      } catch (error) {
+        if (!active) return;
+        setExternalApis([]);
+        setExternalApiLoading(false);
+        setExternalApiError(error instanceof Error ? error.message : 'Failed to load external APIs');
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [node.projectPath]);
 
   return (
     <div className="node-detail-backdrop" onClick={handleBackdropClick} onWheel={handleWheel}>
@@ -1294,6 +1409,43 @@ function NodeDetailPanel({ node, edges, allNodes, onClose }: NodeDetailPanelProp
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+
+          {/* External APIs Section */}
+          {(externalApiLoading || externalApiError || externalApis.length > 0) && (
+            <div className="node-detail-section">
+              <h3 className="node-detail-section-title">
+                External APIs
+                {externalApis.length > 0 && (
+                  <span className="node-detail-count">{externalApis.length}</span>
+                )}
+              </h3>
+              {externalApiLoading && (
+                <div className="node-detail-apis">
+                  <div className="node-detail-api">Scanning project for APIs…</div>
+                </div>
+              )}
+              {externalApiError && !externalApiLoading && (
+                <div className="node-detail-apis">
+                  <div className="node-detail-api">{externalApiError}</div>
+                </div>
+              )}
+              {!externalApiLoading && !externalApiError && (
+                <div className="node-detail-apis">
+                  {externalApis.map((api, idx) => (
+                    <div key={`${api.name}-${idx}`} className="node-detail-api">
+                      <span className="node-detail-api-name">{api.name}</span>
+                      {api.hosts && api.hosts.length > 0 && (
+                        <span className="node-detail-api-hosts">{api.hosts.join(', ')}</span>
+                      )}
+                      {api.matchedOn.length > 0 && (
+                        <span className="node-detail-api-meta">{api.matchedOn.join(' · ')}</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 

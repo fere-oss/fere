@@ -32,6 +32,7 @@ export interface Service {
     description: string | null;
   }[];
   routes?: ApiRoute[];
+  externalApis?: ExternalApi[];
 }
 
 // Port types
@@ -80,6 +81,7 @@ export interface GraphNode {
     description: string | null;
   }[];
   routes?: ApiRoute[];
+  externalApis?: ExternalApi[];
   // Health tracking
   healthStatus: HealthStatus;
   lastSeen: number;
@@ -102,6 +104,13 @@ export interface ConnectionGraph {
 export interface ApiRoute {
   method: string;
   path: string;
+}
+
+export interface ExternalApi {
+  name: string;
+  kind: 'provider' | 'host';
+  matchedOn: string[];
+  hosts?: string[];
 }
 
 export interface SystemSnapshot {
@@ -143,6 +152,7 @@ export interface ElectronAPI {
   getConnectionGraph: () => Promise<ConnectionGraph>;
   getEnvironmentSummary: () => Promise<EnvironmentSummary>;
   getSystemSnapshot: () => Promise<SystemSnapshot>;
+  getExternalApis: (projectPath: string) => Promise<ExternalApi[]>;
 
   // Process control
   killProcess: (pid: number) => Promise<KillResult>;

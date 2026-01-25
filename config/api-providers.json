@@ -1,0 +1,331 @@
+{
+  "providers": [
+    {
+      "name": "OpenAI",
+      "domains": ["api.openai.com", "openai.com"],
+      "sdkPatterns": [
+        "from\\s+openai\\s+import",
+        "import\\s+openai",
+        "require\\(['\"]openai['\"]\\)",
+        "new\\s+OpenAI\\s*\\("
+      ],
+      "envPatterns": ["OPENAI_API_KEY"]
+    },
+    {
+      "name": "Anthropic",
+      "domains": ["api.anthropic.com", "anthropic.com"],
+      "sdkPatterns": [
+        "@anthropic-ai/sdk",
+        "from\\s+anthropic\\s+import",
+        "import\\s+anthropic",
+        "new\\s+Anthropic\\s*\\("
+      ],
+      "envPatterns": ["ANTHROPIC_API_KEY"]
+    },
+    {
+      "name": "Groq",
+      "domains": ["api.groq.com", "groq.com"],
+      "sdkPatterns": [
+        "groq-sdk",
+        "from\\s+groq\\s+import",
+        "import\\s+groq",
+        "new\\s+Groq\\s*\\("
+      ],
+      "envPatterns": ["GROQ_API_KEY"]
+    },
+    {
+      "name": "Google Gemini",
+      "domains": ["generativelanguage.googleapis.com", "ai.google.dev", "googleapis.com"],
+      "sdkPatterns": [
+        "@google/generative-ai",
+        "GoogleGenerativeAI",
+        "import\\s+\\{\\s*GoogleGenerativeAI\\s*\\}"
+      ],
+      "envPatterns": ["GEMINI_API_KEY", "GOOGLE_API_KEY"]
+    },
+    {
+      "name": "Azure OpenAI",
+      "domains": ["openai.azure.com"],
+      "sdkPatterns": [
+        "azure\\s+openai",
+        "OpenAIClient",
+        "@azure/openai"
+      ],
+      "envPatterns": ["AZURE_OPENAI_API_KEY", "AZURE_OPENAI_ENDPOINT"]
+    },
+    {
+      "name": "AWS Bedrock",
+      "domains": ["bedrock.amazonaws.com", "bedrock-runtime.amazonaws.com", "amazonaws.com"],
+      "sdkPatterns": [
+        "bedrock-runtime",
+        "BedrockRuntimeClient",
+        "bedrock\\s+client"
+      ],
+      "envPatterns": ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_REGION"]
+    },
+    {
+      "name": "Cohere",
+      "domains": ["api.cohere.ai", "cohere.ai"],
+      "sdkPatterns": [
+        "cohere",
+        "new\\s+Cohere\\s*\\("
+      ],
+      "envPatterns": ["COHERE_API_KEY"]
+    },
+    {
+      "name": "Mistral",
+      "domains": ["api.mistral.ai", "mistral.ai"],
+      "sdkPatterns": [
+        "mistralai",
+        "MistralClient",
+        "new\\s+Mistral\\s*\\("
+      ],
+      "envPatterns": ["MISTRAL_API_KEY"]
+    },
+    {
+      "name": "Together",
+      "domains": ["api.together.xyz", "together.xyz"],
+      "sdkPatterns": [
+        "together-ai",
+        "Together\\s*\\(",
+        "import\\s+Together"
+      ],
+      "envPatterns": ["TOGETHER_API_KEY"]
+    },
+    {
+      "name": "Replicate",
+      "domains": ["api.replicate.com", "replicate.com"],
+      "sdkPatterns": [
+        "replicate",
+        "new\\s+Replicate\\s*\\("
+      ],
+      "envPatterns": ["REPLICATE_API_TOKEN"]
+    },
+    {
+      "name": "Hugging Face",
+      "domains": ["api-inference.huggingface.co", "huggingface.co"],
+      "sdkPatterns": [
+        "huggingface",
+        "HfInference"
+      ],
+      "envPatterns": ["HUGGINGFACEHUB_API_TOKEN", "HF_API_TOKEN"]
+    },
+    {
+      "name": "OpenRouter",
+      "domains": ["openrouter.ai", "api.openrouter.ai"],
+      "sdkPatterns": [
+        "openrouter",
+        "OpenRouter"
+      ],
+      "envPatterns": ["OPENROUTER_API_KEY"]
+    },
+    {
+      "name": "Perplexity",
+      "domains": ["api.perplexity.ai", "perplexity.ai"],
+      "sdkPatterns": [
+        "perplexity",
+        "Perplexity"
+      ],
+      "envPatterns": ["PPLX_API_KEY"]
+    },
+    {
+      "name": "Deepgram",
+      "domains": ["api.deepgram.com", "deepgram.com"],
+      "sdkPatterns": [
+        "@deepgram/sdk",
+        "from\\s+deepgram",
+        "Deepgram"
+      ],
+      "envPatterns": ["DEEPGRAM_API_KEY"]
+    },
+    {
+      "name": "ElevenLabs",
+      "domains": ["api.elevenlabs.io", "elevenlabs.io"],
+      "sdkPatterns": [
+        "elevenlabs",
+        "ElevenLabs"
+      ],
+      "envPatterns": ["ELEVENLABS_API_KEY"]
+    },
+    {
+      "name": "Pinecone",
+      "domains": ["api.pinecone.io", "pinecone.io"],
+      "sdkPatterns": [
+        "pinecone",
+        "Pinecone"
+      ],
+      "envPatterns": ["PINECONE_API_KEY", "PINECONE_ENVIRONMENT"]
+    },
+    {
+      "name": "Weaviate",
+      "domains": ["weaviate.network", "weaviate.cloud", "weaviate.io"],
+      "sdkPatterns": [
+        "weaviate",
+        "Weaviate"
+      ],
+      "envPatterns": ["WEAVIATE_API_KEY", "WEAVIATE_URL"]
+    },
+    {
+      "name": "Supabase",
+      "domains": ["supabase.co", "api.supabase.com"],
+      "sdkPatterns": [
+        "@supabase/supabase-js",
+        "createClient\\("
+      ],
+      "envPatterns": ["SUPABASE_URL", "SUPABASE_ANON_KEY", "SUPABASE_SERVICE_ROLE_KEY"]
+    },
+    {
+      "name": "Firebase",
+      "domains": ["firebase.googleapis.com", "firebaseio.com", "firebaseapp.com"],
+      "sdkPatterns": [
+        "firebase",
+        "initializeApp\\("
+      ],
+      "envPatterns": ["FIREBASE_API_KEY", "FIREBASE_PROJECT_ID"]
+    },
+    {
+      "name": "Stripe",
+      "domains": ["api.stripe.com", "stripe.com"],
+      "sdkPatterns": [
+        "stripe",
+        "new\\s+Stripe\\s*\\("
+      ],
+      "envPatterns": ["STRIPE_API_KEY", "STRIPE_SECRET_KEY"]
+    },
+    {
+      "name": "Twilio",
+      "domains": ["api.twilio.com", "twilio.com"],
+      "sdkPatterns": [
+        "twilio",
+        "Twilio"
+      ],
+      "envPatterns": ["TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN"]
+    },
+    {
+      "name": "SendGrid",
+      "domains": ["api.sendgrid.com", "sendgrid.com"],
+      "sdkPatterns": [
+        "@sendgrid",
+        "sendgrid"
+      ],
+      "envPatterns": ["SENDGRID_API_KEY"]
+    },
+    {
+      "name": "Mailgun",
+      "domains": ["api.mailgun.net", "mailgun.net"],
+      "sdkPatterns": [
+        "mailgun",
+        "Mailgun"
+      ],
+      "envPatterns": ["MAILGUN_API_KEY", "MAILGUN_DOMAIN"]
+    },
+    {
+      "name": "Sentry",
+      "domains": ["sentry.io"],
+      "sdkPatterns": [
+        "@sentry/",
+        "Sentry"
+      ],
+      "envPatterns": ["SENTRY_DSN"]
+    },
+    {
+      "name": "PostHog",
+      "domains": ["posthog.com", "posthog.app", "app.posthog.com"],
+      "sdkPatterns": [
+        "posthog",
+        "PostHog"
+      ],
+      "envPatterns": ["POSTHOG_API_KEY", "POSTHOG_HOST"]
+    },
+    {
+      "name": "Segment",
+      "domains": ["api.segment.io", "segment.com"],
+      "sdkPatterns": [
+        "analytics-node",
+        "segment"
+      ],
+      "envPatterns": ["SEGMENT_WRITE_KEY"]
+    },
+    {
+      "name": "Amplitude",
+      "domains": ["api.amplitude.com", "amplitude.com"],
+      "sdkPatterns": [
+        "amplitude-js",
+        "Amplitude"
+      ],
+      "envPatterns": ["AMPLITUDE_API_KEY"]
+    },
+    {
+      "name": "Mixpanel",
+      "domains": ["api.mixpanel.com", "mixpanel.com"],
+      "sdkPatterns": [
+        "mixpanel",
+        "Mixpanel"
+      ],
+      "envPatterns": ["MIXPANEL_TOKEN"]
+    },
+    {
+      "name": "Algolia",
+      "domains": ["algolia.net", "algolia.com"],
+      "sdkPatterns": [
+        "algoliasearch",
+        "Algolia"
+      ],
+      "envPatterns": ["ALGOLIA_APP_ID", "ALGOLIA_API_KEY"]
+    },
+    {
+      "name": "Cloudflare",
+      "domains": ["api.cloudflare.com", "cloudflare.com"],
+      "sdkPatterns": [
+        "cloudflare",
+        "Cloudflare"
+      ],
+      "envPatterns": ["CLOUDFLARE_API_TOKEN"]
+    },
+    {
+      "name": "GitHub",
+      "domains": ["api.github.com", "github.com"],
+      "sdkPatterns": [
+        "@octokit",
+        "Octokit"
+      ],
+      "envPatterns": ["GITHUB_TOKEN"]
+    },
+    {
+      "name": "GitLab",
+      "domains": ["gitlab.com", "gitlab.com/api"],
+      "sdkPatterns": [
+        "gitbeaker",
+        "Gitlab"
+      ],
+      "envPatterns": ["GITLAB_TOKEN"]
+    },
+    {
+      "name": "Slack",
+      "domains": ["slack.com", "slack.com/api"],
+      "sdkPatterns": [
+        "@slack/web-api",
+        "WebClient"
+      ],
+      "envPatterns": ["SLACK_BOT_TOKEN"]
+    },
+    {
+      "name": "Discord",
+      "domains": ["discord.com", "discordapp.com"],
+      "sdkPatterns": [
+        "discord.js",
+        "new\\s+Client\\s*\\("
+      ],
+      "envPatterns": ["DISCORD_TOKEN"]
+    },
+    {
+      "name": "Notion",
+      "domains": ["api.notion.com", "notion.com"],
+      "sdkPatterns": [
+        "@notionhq/client",
+        "new\\s+Client\\s*\\("
+      ],
+      "envPatterns": ["NOTION_API_KEY", "NOTION_TOKEN"]
+    }
+  ]
+}
