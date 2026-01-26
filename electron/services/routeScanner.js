@@ -118,8 +118,8 @@ function detectFramework(filePath, content) {
     if (filePath.includes('/pages/api/') || filePath.includes('/app/api/')) {
       return 'nextjs';
     }
-    // Plain Node.js HTTP server (http.createServer or require('http'))
-    if (content.includes('http.createServer') || content.includes("require('http')") || content.includes('require("http")')) {
+    // Plain Node.js HTTP server - must have http.createServer (not just require('http') which could be a client)
+    if (content.includes('http.createServer')) {
       return 'node-http';
     }
   }
@@ -304,6 +304,14 @@ function matchRoutesToService(routes, service) {
     const routePath = path.resolve(route.file);
     if (!routePath.startsWith(`${normalizedProjectPath}${path.sep}`)) continue;
     if (serviceFrameworks.size > 0 && route.framework && !serviceFrameworks.has(route.framework)) continue;
+
+    // For node-http routes (plain Node.js servers), require the command to reference the actual file
+    // This prevents routes from one Node file being matched to a different Node process
+    if (route.framework === 'node-http') {
+      const fileName = path.basename(routePath).toLowerCase();
+      if (!command.includes(fileName) && !command.includes(routePath.toLowerCase())) continue;
+    }
+
     if (serviceFrameworks.size === 0) {
       const fileName = path.basename(routePath).toLowerCase();
       if (!command.includes(fileName) && !command.includes(routePath.toLowerCase())) continue;
