@@ -139,18 +139,23 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
     return parts.join(' ');
   }, [fullUrl, method, headers, body]);
 
-  // Sync edited curl with generated curl when not editing
-  useEffect(() => {
-    if (!isCurlEditing) {
-      setEditedCurl(curlCommand);
-    }
-  }, [curlCommand, isCurlEditing]);
+  // Track previous curl command to detect actual changes
+  const prevCurlCommand = useRef(curlCommand);
 
-  // The curl to display (edited or generated)
-  const displayCurl = isCurlEditing ? editedCurl : curlCommand;
+  // Sync edited curl with generated curl only when the generated command changes
+  // (not when toggling edit mode - that would lose user edits)
+  useEffect(() => {
+    if (curlCommand !== prevCurlCommand.current) {
+      setEditedCurl(curlCommand);
+      prevCurlCommand.current = curlCommand;
+    }
+  }, [curlCommand]);
 
   // Check if curl has been modified
   const isCurlModified = editedCurl !== curlCommand;
+
+  // The curl to display - show edited version if modified (even when locked), otherwise generated
+  const displayCurl = isCurlModified ? editedCurl : curlCommand;
 
   // Handle node selection
   const handleNodeSelect = useCallback((nodeId: string) => {
