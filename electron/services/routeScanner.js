@@ -27,6 +27,11 @@ const ROUTE_PATTERNS = {
   koa: [
     /router\.(get|post|put|delete|patch|all)\s*\(\s*["'`]([^"'`]+)["'`]/gi,
   ],
+  // Plain Node.js http server with object-based routes: "GET /path": handler
+  // Matches patterns like: "GET /", "POST /users", 'DELETE /items/:id'
+  'node-http': [
+    /["'](GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS|ALL)\s+(\/[^"']*)["']\s*:/gi,
+  ],
 };
 
 // File extensions to scan
@@ -112,6 +117,10 @@ function detectFramework(filePath, content) {
     // Check for Next.js API routes
     if (filePath.includes('/pages/api/') || filePath.includes('/app/api/')) {
       return 'nextjs';
+    }
+    // Plain Node.js HTTP server (http.createServer or require('http'))
+    if (content.includes('http.createServer') || content.includes("require('http')") || content.includes('require("http")')) {
+      return 'node-http';
     }
   }
 
@@ -283,6 +292,10 @@ function matchRoutesToService(routes, service) {
   if (command.includes('node') && command.includes('express')) serviceFrameworks.add('express');
   if (name.includes('python') && command.includes('fastapi')) serviceFrameworks.add('fastapi');
   if (name.includes('python') && command.includes('flask')) serviceFrameworks.add('flask');
+  // Plain Node.js HTTP servers
+  if (command.includes('node') && !command.includes('express') && !command.includes('next')) {
+    serviceFrameworks.add('node-http');
+  }
 
   const serviceRoutes = [];
 
