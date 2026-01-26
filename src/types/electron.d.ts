@@ -166,6 +166,29 @@ export interface HttpRequestResult {
   error?: string;
 }
 
+// History Entry for request logging
+export interface HistoryEntry {
+  id: string;
+  timestamp: number;
+  method: string;
+  url: string;
+  headers: Record<string, string>;
+  body?: string;
+  response: {
+    status: number;
+    statusText: string;
+    duration: number;
+    size: number;
+  };
+}
+
+// History operation result
+export interface HistoryResult {
+  success: boolean;
+  history?: HistoryEntry[];
+  error?: string;
+}
+
 // Electron API interface
 export interface ElectronAPI {
   // Process monitoring
@@ -189,6 +212,11 @@ export interface ElectronAPI {
 
   // API testing
   executeHttpRequest: (options: HttpRequestOptions) => Promise<HttpRequestResult>;
+
+  // Request History
+  loadRequestHistory: () => Promise<HistoryResult>;
+  saveRequestHistory: (entry: HistoryEntry) => Promise<{ success: boolean; error?: string }>;
+  clearRequestHistory: () => Promise<{ success: boolean; error?: string }>;
 
   // Platform info
   platform: string;

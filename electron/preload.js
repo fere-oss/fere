@@ -24,6 +24,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // API testing
   executeHttpRequest: (options) => ipcRenderer.invoke('execute-http-request', options),
 
+  // Request History
+  loadRequestHistory: () => ipcRenderer.invoke('load-request-history'),
+  saveRequestHistory: (entry) => ipcRenderer.invoke('save-request-history', entry),
+  clearRequestHistory: () => ipcRenderer.invoke('clear-request-history'),
+
   // Platform info
   platform: process.platform,
 });
