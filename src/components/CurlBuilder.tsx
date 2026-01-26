@@ -41,6 +41,10 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
   const [response, setResponse] = useState<HttpResponse | null>(null);
   const [requestError, setRequestError] = useState<string | null>(null);
 
+  // State for editable curl
+  const [isCurlEditing, setIsCurlEditing] = useState(false);
+  const [editedCurl, setEditedCurl] = useState<string>('');
+
   // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -135,6 +139,19 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
     return parts.join(' ');
   }, [fullUrl, method, headers, body]);
 
+  // Sync edited curl with generated curl when not editing
+  useEffect(() => {
+    if (!isCurlEditing) {
+      setEditedCurl(curlCommand);
+    }
+  }, [curlCommand, isCurlEditing]);
+
+  // The curl to display (edited or generated)
+  const displayCurl = isCurlEditing ? editedCurl : curlCommand;
+
+  // Check if curl has been modified
+  const isCurlModified = editedCurl !== curlCommand;
+
   // Handle node selection
   const handleNodeSelect = useCallback((nodeId: string) => {
     setSelectedNodeId(nodeId);
@@ -180,14 +197,32 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
 
   // Copy to clipboard
   const copyToClipboard = useCallback(async () => {
-    if (!curlCommand) return;
+    if (!displayCurl) return;
     try {
-      await navigator.clipboard.writeText(curlCommand);
+      await navigator.clipboard.writeText(displayCurl);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
       console.error('Failed to copy:', err);
     }
+  }, [displayCurl]);
+
+  // Toggle curl editing mode
+  const toggleCurlEditing = useCallback(() => {
+    if (isCurlEditing) {
+      // Exiting edit mode
+      setIsCurlEditing(false);
+    } else {
+      // Entering edit mode - copy current curl to edited
+      setEditedCurl(curlCommand);
+      setIsCurlEditing(true);
+    }
+  }, [isCurlEditing, curlCommand]);
+
+  // Reset curl to generated command
+  const resetCurl = useCallback(() => {
+    setEditedCurl(curlCommand);
+    setIsCurlEditing(false);
   }, [curlCommand]);
 
   // Execute the HTTP request
@@ -491,24 +526,55 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
             </button>
             <div className="curl-output-tabs-spacer" />
             {outputTab === 'curl' && (
-              <button
-                className={`curl-copy-btn ${copied ? 'copied' : ''}`}
-                onClick={copyToClipboard}
-                disabled={!curlCommand}
-              >
-                {copied ? 'Copied!' : 'Copy'}
-              </button>
+              <div className="curl-output-actions">
+                {isCurlModified && (
+                  <button
+                    className="curl-reset-btn"
+                    onClick={resetCurl}
+                    title="Reset to generated command"
+                  >
+                    Reset
+                  </button>
+                )}
+                <button
+                  className={`curl-edit-btn ${isCurlEditing ? 'active' : ''}`}
+                  onClick={toggleCurlEditing}
+                  disabled={!curlCommand}
+                  title={isCurlEditing ? 'Lock editing' : 'Enable editing'}
+                >
+                  {isCurlEditing ? 'Lock' : 'Edit'}
+                </button>
+                <button
+                  className={`curl-copy-btn ${copied ? 'copied' : ''}`}
+                  onClick={copyToClipboard}
+                  disabled={!displayCurl}
+                >
+                  {copied ? 'Copied!' : 'Copy'}
+                </button>
+              </div>
             )}
           </div>
 
           {/* Output Content */}
           <div className="curl-output-content">
             {outputTab === 'curl' ? (
-              <div className="curl-output-code">
-                {curlCommand || (
+              <div className={`curl-output-code ${isCurlEditing ? 'editing' : ''}`}>
+                {isCurlEditing ? (
+                  <textarea
+                    className="curl-output-textarea"
+                    value={editedCurl}
+                    onChange={(e) => setEditedCurl(e.target.value)}
+                    spellCheck={false}
+                  />
+                ) : displayCurl ? (
+                  <pre className="curl-output-pre">{displayCurl}</pre>
+                ) : (
                   <span className="curl-placeholder">
                     Select a service and configure your request to generate a curl command
                   </span>
+                )}
+                {isCurlModified && !isCurlEditing && (
+                  <span className="curl-modified-badge">Modified</span>
                 )}
               </div>
             ) : (
