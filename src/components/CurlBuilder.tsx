@@ -122,8 +122,9 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
   const handleRouteSelect = useCallback((index: number) => {
     setSelectedRouteIndex(index);
     if (index >= 0 && routes[index]) {
-      const routeMethod = routes[index].method.toUpperCase() as HttpMethod;
-      setMethod(routeMethod);
+      const routeMethod = routes[index].method.toUpperCase();
+      // "ALL" means the route accepts any method - default to GET
+      setMethod(routeMethod === 'ALL' ? 'GET' : routeMethod as HttpMethod);
     }
     setResponse(null);
     setRequestError(null);

@@ -483,12 +483,22 @@ async function buildConnectionGraph(snapshot = null) {
     return node;
   };
 
+  // First pass: build lookup maps and deduplicate by port number
+  // This handles cases like Flask debug mode where both reloader and server show up
+  const seenPorts = new Set();
   for (const port of ports) {
     portToPid.set(port.port, port.pid);
     if (!portProcessByPid.has(port.pid)) {
       portProcessByPid.set(port.pid, port.process);
       portUserByPid.set(port.pid, port.user);
     }
+  }
+
+  // Second pass: create nodes, but only one node per unique port number
+  for (const port of ports) {
+    // Skip if we've already processed this port number (deduplicate)
+    if (seenPorts.has(port.port)) continue;
+    seenPorts.add(port.port);
 
     const node = ensureProcessNode(port.pid, port.process);
     node.ports.push({
