@@ -20,6 +20,79 @@ const DEFAULT_HEADERS: Header[] = [
   { key: 'Authorization', value: 'Bearer ', enabled: false },
 ];
 
+// Parse a curl command string into its components
+function parseCurlCommand(curlStr: string): {
+  method: string;
+  url: string;
+  headers: Record<string, string>;
+  body?: string;
+} | null {
+  if (!curlStr || !curlStr.trim().startsWith('curl')) {
+    return null;
+  }
+
+  // Normalize the curl command - remove line continuations and extra whitespace
+  let remaining = curlStr
+    .replace(/\\\n\s*/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  let method = 'GET';
+  let url = '';
+  const headers: Record<string, string> = {};
+  let body: string | undefined;
+
+  // Remove 'curl' from the beginning
+  remaining = remaining.replace(/^curl\s*/, '');
+
+  // Extract method from -X flag
+  const methodMatch = remaining.match(/^(.*?)-X\s+(\w+)(.*)$/);
+  if (methodMatch) {
+    method = methodMatch[2].toUpperCase();
+    remaining = (methodMatch[1] + methodMatch[3]).trim();
+  }
+
+  // Extract URL - it's typically in single quotes
+  const urlMatch = remaining.match(/^(.*?)'(https?:\/\/[^']+)'(.*)$/);
+  if (urlMatch) {
+    url = urlMatch[2];
+    remaining = (urlMatch[1] + urlMatch[3]).trim();
+  } else {
+    // Try without quotes - URL is a non-whitespace sequence starting with http
+    const urlMatchNoQuotes = remaining.match(/^(.*?)(https?:\/\/\S+)(.*)$/);
+    if (urlMatchNoQuotes) {
+      url = urlMatchNoQuotes[2];
+      remaining = (urlMatchNoQuotes[1] + urlMatchNoQuotes[3]).trim();
+    }
+  }
+
+  // Extract all headers from -H flags
+  let headerMatch;
+  while ((headerMatch = remaining.match(/^(.*?)-H\s+'([^:]+):\s*([^']*)'(.*)$/)) !== null) {
+    headers[headerMatch[2]] = headerMatch[3];
+    remaining = (headerMatch[1] + headerMatch[4]).trim();
+  }
+
+  // Extract body from -d flag
+  const bodyMatch = remaining.match(/^(.*?)-d\s+'((?:[^'\\]|\\.)*)'(.*)$/);
+  if (bodyMatch) {
+    // Unescape single quotes in the body
+    body = bodyMatch[2].replace(/'\\''/g, "'");
+    remaining = (bodyMatch[1] + bodyMatch[3]).trim();
+  }
+
+  // If there's any remaining non-whitespace content, the curl is invalid
+  if (remaining.trim()) {
+    return null;
+  }
+
+  if (!url) {
+    return null;
+  }
+
+  return { method, url, headers, body };
+}
+
 export function CurlBuilder({ nodes }: CurlBuilderProps) {
   // State for request configuration
   const [selectedNodeId, setSelectedNodeId] = useState<string>('');
@@ -232,25 +305,49 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
 
   // Execute the HTTP request
   const executeRequest = useCallback(async () => {
-    if (!fullUrl) return;
-
     setIsLoading(true);
     setResponse(null);
     setRequestError(null);
     setOutputTab('response');
 
     try {
-      // Build headers object
-      const headerObj: Record<string, string> = {};
-      headers.filter(h => h.enabled && h.key && h.value).forEach(h => {
-        headerObj[h.key] = h.value;
-      });
+      let requestMethod: string;
+      let requestUrl: string;
+      let requestHeaders: Record<string, string>;
+      let requestBody: string | undefined;
+
+      // If curl has been modified, parse it and use those values
+      if (isCurlModified && editedCurl) {
+        const parsed = parseCurlCommand(editedCurl);
+        if (!parsed) {
+          setRequestError('Failed to parse edited curl command');
+          setIsLoading(false);
+          return;
+        }
+        requestMethod = parsed.method;
+        requestUrl = parsed.url;
+        requestHeaders = parsed.headers;
+        requestBody = parsed.body;
+      } else {
+        // Use the form values
+        if (!fullUrl) {
+          setIsLoading(false);
+          return;
+        }
+        requestMethod = method;
+        requestUrl = fullUrl;
+        requestHeaders = {};
+        headers.filter(h => h.enabled && h.key && h.value).forEach(h => {
+          requestHeaders[h.key] = h.value;
+        });
+        requestBody = ['POST', 'PUT', 'PATCH'].includes(method) ? body : undefined;
+      }
 
       const result = await window.electronAPI.executeHttpRequest({
-        method,
-        url: fullUrl,
-        headers: headerObj,
-        body: ['POST', 'PUT', 'PATCH'].includes(method) ? body : undefined,
+        method: requestMethod,
+        url: requestUrl,
+        headers: requestHeaders,
+        body: requestBody,
       });
 
       if (result.success && result.response) {
@@ -263,7 +360,7 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
     } finally {
       setIsLoading(false);
     }
-  }, [fullUrl, method, headers, body]);
+  }, [fullUrl, method, headers, body, isCurlModified, editedCurl]);
 
   // Format bytes to human readable
   const formatBytes = (bytes: number): string => {
@@ -488,7 +585,7 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
             <button
               className={`curl-run-btn ${isLoading ? 'loading' : ''}`}
               onClick={executeRequest}
-              disabled={!fullUrl || isLoading}
+              disabled={(!fullUrl && !isCurlModified) || isLoading}
             >
               {isLoading ? (
                 <>
