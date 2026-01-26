@@ -3,12 +3,14 @@
 fere is a native-feeling macOS Electron app that visualizes your local development environment in real time. It discovers dev processes, maps listening ports, and infers service connections to help you answer "what is running where" at a glance.
 
 ## Current features
-- Live service list with CPU/memory, ports, and inferred connections
-- Listening ports view with process metadata
-- Process termination for dev-related processes only
+- Live graph of local services with CPU/memory, ports, and connections
+- Health status tracking (active/idle/down) per service
+- Listening ports with process/user metadata
 - Connection graph model (nodes + edges) in the main process
-- API route discovery per service (framework-aware)
-- Project mapping from process CWD to repo root
+- API route discovery per service (framework-aware: FastAPI, Flask, Express, Next.js, Koa, Hono)
+- External API usage detection from code/env (configurable providers list)
+- Project mapping from process command/CWD to repo root
+- Quick actions: open service URL, open terminal at project path, kill dev processes
 - Real-time connection arrows with port labels
 
 ## Requirements
