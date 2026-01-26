@@ -218,6 +218,99 @@ ipcMain.handle("open-url", async (event, url) => {
   }
 });
 
+// Execute HTTP request (for API testing)
+ipcMain.handle("execute-http-request", async (event, options) => {
+  try {
+    const { method, url, headers, body } = options;
+
+    // Validate URL
+    if (!url || typeof url !== "string") {
+      return { success: false, error: "Invalid URL" };
+    }
+
+    // Parse URL to determine http vs https
+    const parsedUrl = new URL(url);
+    const isHttps = parsedUrl.protocol === "https:";
+    const httpModule = isHttps ? require("https") : require("http");
+
+    return new Promise((resolve) => {
+      const startTime = Date.now();
+
+      const requestOptions = {
+        method: method || "GET",
+        hostname: parsedUrl.hostname,
+        port: parsedUrl.port || (isHttps ? 443 : 80),
+        path: parsedUrl.pathname + parsedUrl.search,
+        headers: headers || {},
+        timeout: 30000, // 30 second timeout
+      };
+
+      const req = httpModule.request(requestOptions, (res) => {
+        let responseBody = "";
+
+        res.on("data", (chunk) => {
+          responseBody += chunk;
+        });
+
+        res.on("end", () => {
+          const duration = Date.now() - startTime;
+
+          // Try to parse as JSON for pretty display
+          let parsedBody = responseBody;
+          let isJson = false;
+          const contentType = res.headers["content-type"] || "";
+          if (contentType.includes("application/json")) {
+            try {
+              parsedBody = JSON.stringify(JSON.parse(responseBody), null, 2);
+              isJson = true;
+            } catch (e) {
+              // Keep as string
+            }
+          }
+
+          resolve({
+            success: true,
+            response: {
+              status: res.statusCode,
+              statusText: res.statusMessage,
+              headers: res.headers,
+              body: parsedBody,
+              isJson,
+              duration,
+              size: Buffer.byteLength(responseBody, "utf8"),
+            },
+          });
+        });
+      });
+
+      req.on("error", (error) => {
+        resolve({
+          success: false,
+          error: error.message,
+        });
+      });
+
+      req.on("timeout", () => {
+        req.destroy();
+        resolve({
+          success: false,
+          error: "Request timed out (30s)",
+        });
+      });
+
+      // Send body for POST/PUT/PATCH
+      if (body && ["POST", "PUT", "PATCH"].includes(method)) {
+        req.write(body);
+      }
+
+      req.end();
+    });
+  } catch (error) {
+    console.error("Error executing HTTP request:", error);
+    return { success: false, error: error.message };
+  }
+});
+
 // Open Terminal at specified path (macOS)
 ipcMain.handle("open-terminal", async (event, dirPath) => {
   try {

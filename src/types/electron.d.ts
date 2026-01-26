@@ -140,6 +140,32 @@ export interface KillResult {
   error?: string;
 }
 
+// HTTP Request options for API testing
+export interface HttpRequestOptions {
+  method: string;
+  url: string;
+  headers?: Record<string, string>;
+  body?: string;
+}
+
+// HTTP Response from API testing
+export interface HttpResponse {
+  status: number;
+  statusText: string;
+  headers: Record<string, string | string[] | undefined>;
+  body: string;
+  isJson: boolean;
+  duration: number;
+  size: number;
+}
+
+// HTTP Request result
+export interface HttpRequestResult {
+  success: boolean;
+  response?: HttpResponse;
+  error?: string;
+}
+
 // Electron API interface
 export interface ElectronAPI {
   // Process monitoring
@@ -160,6 +186,9 @@ export interface ElectronAPI {
   // Quick actions
   openUrl: (url: string) => Promise<{ success: boolean; error?: string }>;
   openTerminal: (path: string) => Promise<{ success: boolean; error?: string }>;
+
+  // API testing
+  executeHttpRequest: (options: HttpRequestOptions) => Promise<HttpRequestResult>;
 
   // Platform info
   platform: string;
