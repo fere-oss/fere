@@ -8,9 +8,10 @@ const ROUTE_PATTERNS = {
     /@(?:app|router)\.(get|post|put|delete|patch)\s*\(\s*["']([^"']+)["']/gi,
     /@(?:app|router)\.api_route\s*\(\s*["']([^"']+)["']/gi,
   ],
-  // Flask: @app.route("/path", methods=["GET"])
+  // Flask: @app.route("/path", methods=["GET"]) or @app.get("/path")
+  // Captures: 1=decorator type, 2=path, 3=optional methods list
   flask: [
-    /@(?:app|bp|blueprint)\.(route|get|post|put|delete|patch)\s*\(\s*["']([^"']+)["']/gi,
+    /@(?:app|bp|blueprint)\.(route|get|post|put|delete|patch)\s*\(\s*["']([^"']+)["'](?:\s*,\s*methods\s*=\s*\[([^\]]+)\])?/gi,
   ],
   // Express: app.get("/path"), router.post("/path")
   express: [
@@ -162,23 +163,32 @@ function extractRoutes(filePath, content, framework) {
     let match;
 
     while ((match = pattern.exec(content)) !== null) {
-      const methodToken = match[2] ? match[1] : null;
-      const method = methodToken ? methodToken.toUpperCase() : 'ALL';
+      const decoratorType = match[1]?.toUpperCase();
       const routePath = match[2] || match[1];
+      const methodsParam = match[3]; // Optional methods=['GET', 'POST'] for Flask
 
       // Skip if path looks like a variable
-      if (routePath && !routePath.startsWith('{') && !routePath.includes('${')) {
-        // Flask's @app.route() defaults to GET only (not all methods)
-        // Other frameworks' generic route handlers remain as ALL
-        const finalMethod = method === 'ROUTE'
-          ? (framework === 'flask' ? 'GET' : 'ALL')
-          : method;
-        routes.push({
-          method: finalMethod,
-          path: routePath,
-          file: filePath,
-          framework,
-        });
+      if (!routePath || routePath.startsWith('{') || routePath.includes('${')) {
+        continue;
+      }
+
+      // Handle Flask routes with methods= parameter
+      if (framework === 'flask' && decoratorType === 'ROUTE') {
+        if (methodsParam) {
+          // Parse methods like "'GET', 'POST'" or '"GET", "POST"'
+          const methods = methodsParam.match(/['"](\w+)['"]/g)
+            ?.map(m => m.replace(/['"]/g, '').toUpperCase()) || ['GET'];
+          for (const method of methods) {
+            routes.push({ method, path: routePath, file: filePath, framework });
+          }
+        } else {
+          // @app.route() without methods= defaults to GET
+          routes.push({ method: 'GET', path: routePath, file: filePath, framework });
+        }
+      } else {
+        // For @app.get(), @app.post(), etc. or other frameworks
+        const method = decoratorType === 'ROUTE' || decoratorType === 'ALL' ? 'ALL' : decoratorType;
+        routes.push({ method, path: routePath, file: filePath, framework });
       }
     }
   }
