@@ -1615,6 +1615,13 @@ body {
   border-color: var(--text-primary);
 }
 
+.curl-method-select:disabled {
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  cursor: not-allowed;
+  opacity: 0.8;
+}
+
 .curl-path-input {
   flex: 1;
   padding: 10px 14px;

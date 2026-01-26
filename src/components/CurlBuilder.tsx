@@ -279,6 +279,10 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
                   className="curl-method-select"
                   value={method}
                   onChange={(e) => setMethod(e.target.value as HttpMethod)}
+                  disabled={selectedRouteIndex >= 0 && routes[selectedRouteIndex]?.method !== 'ALL'}
+                  title={selectedRouteIndex >= 0 && routes[selectedRouteIndex]?.method !== 'ALL'
+                    ? `This route only supports ${routes[selectedRouteIndex]?.method}`
+                    : undefined}
                 >
                   <option value="GET">GET</option>
                   <option value="POST">POST</option>

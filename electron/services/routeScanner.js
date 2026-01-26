@@ -168,8 +168,13 @@ function extractRoutes(filePath, content, framework) {
 
       // Skip if path looks like a variable
       if (routePath && !routePath.startsWith('{') && !routePath.includes('${')) {
+        // Flask's @app.route() defaults to GET only (not all methods)
+        // Other frameworks' generic route handlers remain as ALL
+        const finalMethod = method === 'ROUTE'
+          ? (framework === 'flask' ? 'GET' : 'ALL')
+          : method;
         routes.push({
-          method: method === 'ROUTE' ? 'ALL' : method,
+          method: finalMethod,
           path: routePath,
           file: filePath,
           framework,
