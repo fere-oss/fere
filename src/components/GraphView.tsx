@@ -75,7 +75,8 @@ const getTypeBadge = (type: string) => {
   return labels[type] || 'Service';
 };
 
-const externalApiCache = new Map<string, ExternalApi[]>();
+const EXTERNAL_API_CACHE_TTL_MS = 60000;
+const externalApiCache = new Map<string, { timestamp: number; apis: ExternalApi[] }>();
 const externalApiInFlight = new Set<string>();
 
 // Extract a normalized base name for grouping related services
@@ -457,7 +458,7 @@ export function GraphView({ nodes, edges }: GraphViewProps) {
   const [displayNodes, setDisplayNodes] = useState<GraphNode[]>(nodes);
   const [displayEdges, setDisplayEdges] = useState<GraphEdge[]>(edges);
   const [nodePositions, setNodePositions] = useState<Map<string, NodePosition>>(new Map());
-  const [zoom, setZoom] = useState(1);
+  const [zoom, setZoom] = useState(0.6);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
@@ -501,12 +502,14 @@ export function GraphView({ nodes, edges }: GraphViewProps) {
       (async () => {
         for (const projectPath of projectPaths) {
           if (cancelled) return;
-          if (externalApiCache.has(projectPath) || externalApiInFlight.has(projectPath)) continue;
+          const cached = externalApiCache.get(projectPath);
+          if (cached && Date.now() - cached.timestamp < EXTERNAL_API_CACHE_TTL_MS) continue;
+          if (externalApiInFlight.has(projectPath)) continue;
           externalApiInFlight.add(projectPath);
           try {
             const apis = await window.electronAPI.getExternalApis(projectPath);
             if (cancelled) return;
-            externalApiCache.set(projectPath, apis);
+            externalApiCache.set(projectPath, { timestamp: Date.now(), apis });
             setExternalApiVersion(version => version + 1);
           } catch (error) {
             if (cancelled) return;
@@ -1037,7 +1040,9 @@ function ServiceNode({ node, onClick, onContextMenu }: {
   const mainPort = node.ports[0]?.port;
   const routes = node.routes || [];
   const visibleRoutes = routes.slice(0, 3);
-  const externalApis = node.projectPath ? (externalApiCache.get(node.projectPath) || []) : [];
+  const externalApis = node.projectPath
+    ? (externalApiCache.get(node.projectPath)?.apis || [])
+    : [];
   const visibleApis = externalApis.slice(0, 3);
   const projectLabel = node.projectPath ? node.projectPath.split('/').pop() : null;
 
@@ -1215,8 +1220,8 @@ function NodeDetailPanel({ node, edges, allNodes, onClose }: NodeDetailPanelProp
     }
 
     const cached = externalApiCache.get(projectPath);
-    if (cached) {
-      setExternalApis(cached);
+    if (cached && Date.now() - cached.timestamp < EXTERNAL_API_CACHE_TTL_MS) {
+      setExternalApis(cached.apis);
       setExternalApiLoading(false);
       setExternalApiError(null);
       return () => {
@@ -1234,7 +1239,7 @@ function NodeDetailPanel({ node, edges, allNodes, onClose }: NodeDetailPanelProp
         }
         const apis = await window.electronAPI.getExternalApis(projectPath);
         if (!active) return;
-        externalApiCache.set(projectPath, apis);
+        externalApiCache.set(projectPath, { timestamp: Date.now(), apis });
         setExternalApis(apis);
         setExternalApiLoading(false);
       } catch (error) {

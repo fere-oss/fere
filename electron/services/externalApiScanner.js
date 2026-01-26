@@ -31,6 +31,12 @@ const MAX_FILES = 2500;
 const API_CACHE_TTL_MS = 60000;
 const apiCache = new Map();
 const MAX_FILE_BYTES = 1024 * 1024; // 1MB
+const BLOCKED_HOSTS = new Set([
+  'www.w3.org',
+  'w3.org',
+  'github.com',
+  'bit.ly',
+]);
 
 const URL_REGEX = /\bhttps?:\/\/[^\s"'`<>]+/gi;
 
@@ -188,14 +194,15 @@ function recordProviderMatch(map, provider, matchType, host) {
 
 function extractHosts(content) {
   const hosts = new Set();
-  const matches = content.match(URL_REGEX) || [];
+  const sanitized = stripComments(content);
+  const matches = sanitized.match(URL_REGEX) || [];
 
   for (const match of matches) {
     const cleaned = match.replace(/[),.;]+$/, '');
     try {
       const url = new URL(cleaned);
       const host = normalizeHost(url.hostname);
-      if (host && !isLocalHost(host)) {
+      if (host && !isLocalHost(host) && !BLOCKED_HOSTS.has(host)) {
         hosts.add(host);
       }
     } catch (error) {
@@ -204,6 +211,15 @@ function extractHosts(content) {
   }
 
   return hosts;
+}
+
+function stripComments(content) {
+  let result = content;
+  result = result.replace(/\/\*[\s\S]*?\*\//g, '');
+  result = result.replace(/^\s*\/\/.*$/gm, '');
+  result = result.replace(/^\s*#.*$/gm, '');
+  result = result.replace(/<!--[\s\S]*?-->/g, '');
+  return result;
 }
 
 async function scanExternalApis(projectPath) {
@@ -226,32 +242,35 @@ async function scanExternalApis(projectPath) {
   const scanPromise = (async () => {
     const providerMatches = new Map();
     const hostMatches = new Set();
+    const ignoredFiles = new Set([PROVIDER_FILE_PATH, USER_PROVIDER_FILE_PATH]);
 
     const files = findApiFiles(projectPath).concat(findEnvFiles(projectPath));
 
     for (const filePath of files) {
+      if (ignoredFiles.has(filePath)) continue;
       try {
         const stats = fs.statSync(filePath);
         if (stats.size > MAX_FILE_BYTES) continue;
         const content = fs.readFileSync(filePath, 'utf-8');
-        const hosts = extractHosts(content);
+        const sanitizedContent = stripComments(content);
+        const hosts = extractHosts(sanitizedContent);
         for (const host of hosts) {
           hostMatches.add(host);
         }
 
         for (const provider of providers) {
           const hasDomain = provider.domains.some(domain =>
-            content.toLowerCase().includes(domain)
+            sanitizedContent.toLowerCase().includes(domain)
           );
           if (hasDomain) {
             recordProviderMatch(providerMatches, provider, 'domain');
           }
 
-          if (provider.sdkPatterns.some(pattern => pattern.test(content))) {
+          if (provider.sdkPatterns.some(pattern => pattern.test(sanitizedContent))) {
             recordProviderMatch(providerMatches, provider, 'sdk');
           }
 
-          if (provider.envPatterns.some(pattern => pattern.test(content))) {
+          if (provider.envPatterns.some(pattern => pattern.test(sanitizedContent))) {
             recordProviderMatch(providerMatches, provider, 'env');
           }
         }
