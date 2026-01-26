@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import type { GraphNode, ApiRoute, HttpResponse } from '../types/electron';
 
 interface CurlBuilderProps {
@@ -30,11 +30,27 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
   const [body, setBody] = useState<string>('');
   const [copied, setCopied] = useState(false);
 
+  // State for custom dropdowns
+  const [serviceDropdownOpen, setServiceDropdownOpen] = useState(false);
+  const [routeSearch, setRouteSearch] = useState('');
+  const serviceDropdownRef = useRef<HTMLDivElement>(null);
+
   // State for request execution
   const [outputTab, setOutputTab] = useState<OutputTab>('curl');
   const [isLoading, setIsLoading] = useState(false);
   const [response, setResponse] = useState<HttpResponse | null>(null);
   const [requestError, setRequestError] = useState<string | null>(null);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (serviceDropdownRef.current && !serviceDropdownRef.current.contains(event.target as Node)) {
+        setServiceDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   // Get nodes that have ports (can receive HTTP requests)
   const httpNodes = useMemo(() => {
@@ -53,6 +69,16 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
   const routes: ApiRoute[] = useMemo(() => {
     return selectedNode?.routes || [];
   }, [selectedNode]);
+
+  // Filter routes based on search
+  const filteredRoutes = useMemo(() => {
+    if (!routeSearch.trim()) return routes;
+    const search = routeSearch.toLowerCase();
+    return routes.filter(route =>
+      route.path.toLowerCase().includes(search) ||
+      route.method.toLowerCase().includes(search)
+    );
+  }, [routes, routeSearch]);
 
   // Get base URL for selected node
   const baseUrl = useMemo(() => {
@@ -114,8 +140,10 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
     setSelectedNodeId(nodeId);
     setSelectedRouteIndex(-1);
     setCustomPath('');
+    setRouteSearch('');
     setResponse(null);
     setRequestError(null);
+    setServiceDropdownOpen(false);
   }, []);
 
   // Handle route selection
@@ -125,6 +153,9 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
       const routeMethod = routes[index].method.toUpperCase();
       // "ALL" means the route accepts any method - default to GET
       setMethod(routeMethod === 'ALL' ? 'GET' : routeMethod as HttpMethod);
+    } else {
+      // Custom path selected - default to GET
+      setMethod('GET');
     }
     setResponse(null);
     setRequestError(null);
@@ -214,24 +245,52 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
       <div className="curl-builder-content">
         {/* Left Panel - Configuration */}
         <div className="curl-config-panel">
-          {/* Service Selector */}
+          {/* Service Selector - Custom Dropdown */}
           <div className="curl-section">
             <label className="curl-section-title">Service</label>
-            <select
-              className="curl-select"
-              value={selectedNodeId}
-              onChange={(e) => handleNodeSelect(e.target.value)}
-            >
-              <option value="">Select a service...</option>
-              {httpNodes.map(node => (
-                <option key={node.id} value={node.id}>
-                  {node.name} ({node.ports.map(p => p.port).join(', ')})
-                </option>
-              ))}
-            </select>
+            <div className="curl-custom-dropdown" ref={serviceDropdownRef}>
+              <button
+                className="curl-dropdown-trigger"
+                onClick={() => setServiceDropdownOpen(!serviceDropdownOpen)}
+              >
+                <span className="curl-dropdown-value">
+                  {selectedNode ? (
+                    <>
+                      <span className="curl-dropdown-node-name">{selectedNode.name}</span>
+                      <span className="curl-dropdown-port">:{selectedNode.ports[0]?.port}</span>
+                    </>
+                  ) : (
+                    <span className="curl-dropdown-placeholder">Select a service...</span>
+                  )}
+                </span>
+                <span className={`curl-dropdown-arrow ${serviceDropdownOpen ? 'open' : ''}`}>
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                    <path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </span>
+              </button>
+              {serviceDropdownOpen && (
+                <div className="curl-dropdown-menu">
+                  {httpNodes.length === 0 ? (
+                    <div className="curl-dropdown-empty">No services available</div>
+                  ) : (
+                    httpNodes.map(node => (
+                      <button
+                        key={node.id}
+                        className={`curl-dropdown-item ${node.id === selectedNodeId ? 'selected' : ''}`}
+                        onClick={() => handleNodeSelect(node.id)}
+                      >
+                        <span className="curl-dropdown-item-name">{node.name}</span>
+                        <span className="curl-dropdown-item-port">:{node.ports.map(p => p.port).join(', ')}</span>
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
           </div>
 
-          {/* Route Selector */}
+          {/* Route Selector with Search */}
           {selectedNode && (
             <div className="curl-section">
               <label className="curl-section-title">
@@ -240,27 +299,58 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
                   <span className="curl-section-count">{routes.length} discovered</span>
                 )}
               </label>
+              {routes.length > 0 && (
+                <div className="curl-route-search">
+                  <svg className="curl-search-icon" width="14" height="14" viewBox="0 0 14 14" fill="none">
+                    <path d="M6.5 11C9.26142 11 11.5 8.76142 11.5 6C11.5 3.23858 9.26142 1 6.5 1C3.73858 1 1.5 3.23858 1.5 6C1.5 8.76142 3.73858 11 6.5 11Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                    <path d="M12.5 12L10 9.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                  <input
+                    type="text"
+                    className="curl-route-search-input"
+                    placeholder="Search routes..."
+                    value={routeSearch}
+                    onChange={(e) => setRouteSearch(e.target.value)}
+                  />
+                  {routeSearch && (
+                    <button className="curl-search-clear" onClick={() => setRouteSearch('')}>
+                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                        <path d="M9 3L3 9M3 3L9 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    </button>
+                  )}
+                </div>
+              )}
               {routes.length > 0 ? (
                 <div className="curl-routes-list">
-                  <button
-                    className={`curl-route-option ${selectedRouteIndex === -1 ? 'selected' : ''}`}
-                    onClick={() => handleRouteSelect(-1)}
-                  >
-                    <span className="route-method route-custom">CUSTOM</span>
-                    <span className="route-path">Custom path</span>
-                  </button>
-                  {routes.map((route, index) => (
+                  {!routeSearch && (
                     <button
-                      key={index}
-                      className={`curl-route-option ${selectedRouteIndex === index ? 'selected' : ''}`}
-                      onClick={() => handleRouteSelect(index)}
+                      className={`curl-route-option ${selectedRouteIndex === -1 ? 'selected' : ''}`}
+                      onClick={() => handleRouteSelect(-1)}
                     >
-                      <span className={`route-method route-${route.method.toLowerCase()}`}>
-                        {route.method}
-                      </span>
-                      <span className="route-path">{route.path}</span>
+                      <span className="route-method route-custom">CUSTOM</span>
+                      <span className="route-path">Custom path</span>
                     </button>
-                  ))}
+                  )}
+                  {filteredRoutes.map((route, index) => {
+                    // Find original index in routes array
+                    const originalIndex = routes.findIndex(r => r.path === route.path && r.method === route.method);
+                    return (
+                      <button
+                        key={`${route.method}-${route.path}`}
+                        className={`curl-route-option ${selectedRouteIndex === originalIndex ? 'selected' : ''}`}
+                        onClick={() => handleRouteSelect(originalIndex)}
+                      >
+                        <span className={`route-method route-${route.method.toLowerCase()}`}>
+                          {route.method}
+                        </span>
+                        <span className="route-path">{route.path}</span>
+                      </button>
+                    );
+                  })}
+                  {filteredRoutes.length === 0 && routeSearch && (
+                    <div className="curl-no-routes">No routes match "{routeSearch}"</div>
+                  )}
                 </div>
               ) : (
                 <div className="curl-no-routes">
@@ -270,28 +360,14 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
             </div>
           )}
 
-          {/* Method & Path */}
+          {/* Request Path */}
           {selectedNode && (
             <div className="curl-section">
               <label className="curl-section-title">Request</label>
               <div className="curl-request-row">
-                <select
-                  className="curl-method-select"
-                  value={method}
-                  onChange={(e) => setMethod(e.target.value as HttpMethod)}
-                  disabled={selectedRouteIndex >= 0 && routes[selectedRouteIndex]?.method !== 'ALL'}
-                  title={selectedRouteIndex >= 0 && routes[selectedRouteIndex]?.method !== 'ALL'
-                    ? `This route only supports ${routes[selectedRouteIndex]?.method}`
-                    : undefined}
-                >
-                  <option value="GET">GET</option>
-                  <option value="POST">POST</option>
-                  <option value="PUT">PUT</option>
-                  <option value="PATCH">PATCH</option>
-                  <option value="DELETE">DELETE</option>
-                  <option value="HEAD">HEAD</option>
-                  <option value="OPTIONS">OPTIONS</option>
-                </select>
+                <span className={`curl-method-badge route-method route-${method.toLowerCase()}`}>
+                  {method}
+                </span>
                 <input
                   type="text"
                   className="curl-path-input"

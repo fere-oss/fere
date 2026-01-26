@@ -1524,27 +1524,170 @@ body {
   color: var(--text-faint);
 }
 
-/* Select */
-.curl-select {
+/* Custom Dropdown */
+.curl-custom-dropdown {
+  position: relative;
+}
+
+.curl-dropdown-trigger {
   width: 100%;
-  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
   font-family: inherit;
   font-size: 14px;
   border: 1px solid var(--border-color);
-  border-radius: 8px;
+  border-radius: 10px;
   background: var(--bg-white);
   color: var(--text-primary);
   cursor: pointer;
-  transition: border-color 0.15s;
+  transition: all 0.15s;
 }
 
-.curl-select:hover {
+.curl-dropdown-trigger:hover {
   border-color: var(--border-hover);
+  background: var(--bg-primary);
 }
 
-.curl-select:focus {
+.curl-dropdown-value {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.curl-dropdown-node-name {
+  font-weight: 500;
+}
+
+.curl-dropdown-port {
+  color: var(--text-muted);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 13px;
+}
+
+.curl-dropdown-placeholder {
+  color: var(--text-muted);
+}
+
+.curl-dropdown-arrow {
+  display: flex;
+  align-items: center;
+  color: var(--text-muted);
+  transition: transform 0.2s;
+}
+
+.curl-dropdown-arrow.open {
+  transform: rotate(180deg);
+}
+
+.curl-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  background: var(--bg-white);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  z-index: 100;
+  max-height: 240px;
+  overflow-y: auto;
+  padding: 6px;
+}
+
+.curl-dropdown-empty {
+  padding: 16px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.curl-dropdown-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  font-family: inherit;
+  font-size: 14px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background 0.1s;
+  text-align: left;
+}
+
+.curl-dropdown-item:hover {
+  background: var(--bg-primary);
+}
+
+.curl-dropdown-item.selected {
+  background: var(--bg-primary);
+  font-weight: 500;
+}
+
+.curl-dropdown-item-name {
+  font-weight: 500;
+}
+
+.curl-dropdown-item-port {
+  color: var(--text-muted);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 13px;
+}
+
+/* Route Search */
+.curl-route-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  margin-bottom: 8px;
+}
+
+.curl-search-icon {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.curl-route-search-input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--text-primary);
   outline: none;
-  border-color: var(--text-primary);
+}
+
+.curl-route-search-input::placeholder {
+  color: var(--text-faint);
+}
+
+.curl-search-clear {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: var(--border-color);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.curl-search-clear:hover {
+  background: var(--border-hover);
+  color: var(--text-primary);
 }
 
 /* Routes List */
@@ -1552,7 +1695,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  max-height: 200px;
+  max-height: 280px;
   overflow-y: auto;
   padding: 2px;
 }
@@ -1594,32 +1737,19 @@ body {
 /* Request Row */
 .curl-request-row {
   display: flex;
-  gap: 8px;
+  align-items: center;
+  gap: 10px;
 }
 
-.curl-method-select {
-  width: 100px;
-  padding: 10px 12px;
+.curl-method-badge {
+  flex-shrink: 0;
+  padding: 10px 14px;
   font-family: "JetBrains Mono", monospace;
-  font-size: 13px;
-  font-weight: 600;
-  border: 1px solid var(--border-color);
+  font-size: 12px;
+  font-weight: 700;
   border-radius: 8px;
-  background: var(--bg-white);
-  color: var(--text-primary);
-  cursor: pointer;
-}
-
-.curl-method-select:focus {
-  outline: none;
-  border-color: var(--text-primary);
-}
-
-.curl-method-select:disabled {
-  background: var(--bg-primary);
-  color: var(--text-secondary);
-  cursor: not-allowed;
-  opacity: 0.8;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
 }
 
 .curl-path-input {
