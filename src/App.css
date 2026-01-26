@@ -2007,16 +2007,44 @@ body {
   padding: 0;
 }
 
-/* Editable textarea for curl */
-.curl-output-textarea {
+/* Editor with syntax highlighting overlay */
+.curl-editor-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 200px;
+}
+
+.curl-editor-highlight {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  margin: 0;
+  padding: 20px;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 14px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  word-break: break-all;
+  pointer-events: none;
+  overflow: auto;
+}
+
+.curl-editor-textarea {
+  position: absolute;
+  top: 0;
+  left: 0;
   width: 100%;
   height: 100%;
   padding: 20px;
   font-family: "JetBrains Mono", monospace;
   font-size: 14px;
   line-height: 1.7;
-  color: #e0e0e0;
-  background: #1e1e1e;
+  color: transparent;
+  caret-color: #e0e0e0;
+  background: transparent;
   border: none;
   outline: none;
   resize: none;
@@ -2025,8 +2053,12 @@ body {
   box-sizing: border-box;
 }
 
-.curl-output-textarea:focus {
-  background: #1a1a1a;
+.curl-editor-textarea::selection {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.curl-editor-textarea::-moz-selection {
+  background: rgba(255, 255, 255, 0.2);
 }
 
 /* Pre element for display */
@@ -2035,6 +2067,49 @@ body {
   font-family: inherit;
   white-space: pre-wrap;
   word-break: break-all;
+}
+
+/* Curl syntax highlighting */
+.curl-hl-command {
+  color: #f472b6; /* Pink */
+  font-weight: 600;
+}
+
+.curl-hl-flag {
+  color: #60a5fa; /* Blue */
+}
+
+.curl-hl-method {
+  color: #34d399; /* Green */
+  font-weight: 600;
+}
+
+.curl-hl-url {
+  color: #fbbf24; /* Yellow/amber */
+}
+
+.curl-hl-quote {
+  color: #9ca3af; /* Gray */
+}
+
+.curl-hl-header-key {
+  color: #a78bfa; /* Purple */
+}
+
+.curl-hl-header-value {
+  color: #fb923c; /* Orange */
+}
+
+.curl-hl-body {
+  color: #2dd4bf; /* Teal */
+}
+
+.curl-hl-punctuation {
+  color: #9ca3af; /* Gray */
+}
+
+.curl-hl-continuation {
+  color: #6b7280; /* Dark gray */
 }
 
 /* Modified badge */

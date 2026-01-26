@@ -20,6 +20,108 @@ const DEFAULT_HEADERS: Header[] = [
   { key: 'Authorization', value: 'Bearer ', enabled: false },
 ];
 
+// Syntax highlight a curl command for display
+function highlightCurl(curlStr: string): React.ReactNode {
+  if (!curlStr) return null;
+
+  const lines = curlStr.split('\n');
+  const elements: React.ReactNode[] = [];
+
+  lines.forEach((line, lineIndex) => {
+    if (lineIndex > 0) {
+      elements.push(<br key={`br-${lineIndex}`} />);
+    }
+
+    // Process each line
+    let remaining = line;
+    const lineElements: React.ReactNode[] = [];
+    let keyIndex = 0;
+
+    // Match 'curl' command
+    if (remaining.startsWith('curl')) {
+      lineElements.push(<span key={`cmd-${lineIndex}`} className="curl-hl-command">curl</span>);
+      remaining = remaining.slice(4);
+    }
+
+    // Process the rest of the line
+    while (remaining.length > 0) {
+      // Match line continuation
+      if (remaining.match(/^\s*\\$/)) {
+        lineElements.push(<span key={`cont-${lineIndex}-${keyIndex++}`} className="curl-hl-continuation">{remaining}</span>);
+        remaining = '';
+        continue;
+      }
+
+      // Match -X METHOD
+      const methodMatch = remaining.match(/^(\s*)(-X)(\s+)(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)/);
+      if (methodMatch) {
+        lineElements.push(<span key={`ws-${lineIndex}-${keyIndex++}`}>{methodMatch[1]}</span>);
+        lineElements.push(<span key={`flag-${lineIndex}-${keyIndex++}`} className="curl-hl-flag">{methodMatch[2]}</span>);
+        lineElements.push(<span key={`ws2-${lineIndex}-${keyIndex++}`}>{methodMatch[3]}</span>);
+        lineElements.push(<span key={`method-${lineIndex}-${keyIndex++}`} className="curl-hl-method">{methodMatch[4]}</span>);
+        remaining = remaining.slice(methodMatch[0].length);
+        continue;
+      }
+
+      // Match -H flag with header
+      const headerMatch = remaining.match(/^(\s*)(-H)(\s+)'([^:]+):\s*([^']*)'/);
+      if (headerMatch) {
+        lineElements.push(<span key={`ws-${lineIndex}-${keyIndex++}`}>{headerMatch[1]}</span>);
+        lineElements.push(<span key={`flag-${lineIndex}-${keyIndex++}`} className="curl-hl-flag">{headerMatch[2]}</span>);
+        lineElements.push(<span key={`ws2-${lineIndex}-${keyIndex++}`}>{headerMatch[3]}</span>);
+        lineElements.push(<span key={`hq1-${lineIndex}-${keyIndex++}`} className="curl-hl-quote">'</span>);
+        lineElements.push(<span key={`hkey-${lineIndex}-${keyIndex++}`} className="curl-hl-header-key">{headerMatch[4]}</span>);
+        lineElements.push(<span key={`hcolon-${lineIndex}-${keyIndex++}`} className="curl-hl-punctuation">: </span>);
+        lineElements.push(<span key={`hval-${lineIndex}-${keyIndex++}`} className="curl-hl-header-value">{headerMatch[5]}</span>);
+        lineElements.push(<span key={`hq2-${lineIndex}-${keyIndex++}`} className="curl-hl-quote">'</span>);
+        remaining = remaining.slice(headerMatch[0].length);
+        continue;
+      }
+
+      // Match -d flag with body
+      const bodyMatch = remaining.match(/^(\s*)(-d)(\s+)'((?:[^'\\]|\\.)*)'/);
+      if (bodyMatch) {
+        lineElements.push(<span key={`ws-${lineIndex}-${keyIndex++}`}>{bodyMatch[1]}</span>);
+        lineElements.push(<span key={`flag-${lineIndex}-${keyIndex++}`} className="curl-hl-flag">{bodyMatch[2]}</span>);
+        lineElements.push(<span key={`ws2-${lineIndex}-${keyIndex++}`}>{bodyMatch[3]}</span>);
+        lineElements.push(<span key={`bq1-${lineIndex}-${keyIndex++}`} className="curl-hl-quote">'</span>);
+        lineElements.push(<span key={`body-${lineIndex}-${keyIndex++}`} className="curl-hl-body">{bodyMatch[4]}</span>);
+        lineElements.push(<span key={`bq2-${lineIndex}-${keyIndex++}`} className="curl-hl-quote">'</span>);
+        remaining = remaining.slice(bodyMatch[0].length);
+        continue;
+      }
+
+      // Match URL in quotes
+      const urlMatch = remaining.match(/^(\s*)'(https?:\/\/[^']+)'/);
+      if (urlMatch) {
+        lineElements.push(<span key={`ws-${lineIndex}-${keyIndex++}`}>{urlMatch[1]}</span>);
+        lineElements.push(<span key={`uq1-${lineIndex}-${keyIndex++}`} className="curl-hl-quote">'</span>);
+        lineElements.push(<span key={`url-${lineIndex}-${keyIndex++}`} className="curl-hl-url">{urlMatch[2]}</span>);
+        lineElements.push(<span key={`uq2-${lineIndex}-${keyIndex++}`} className="curl-hl-quote">'</span>);
+        remaining = remaining.slice(urlMatch[0].length);
+        continue;
+      }
+
+      // Match any other flag
+      const flagMatch = remaining.match(/^(\s*)(-\w+)/);
+      if (flagMatch) {
+        lineElements.push(<span key={`ws-${lineIndex}-${keyIndex++}`}>{flagMatch[1]}</span>);
+        lineElements.push(<span key={`flag-${lineIndex}-${keyIndex++}`} className="curl-hl-flag">{flagMatch[2]}</span>);
+        remaining = remaining.slice(flagMatch[0].length);
+        continue;
+      }
+
+      // Take one character and continue
+      lineElements.push(<span key={`char-${lineIndex}-${keyIndex++}`}>{remaining[0]}</span>);
+      remaining = remaining.slice(1);
+    }
+
+    elements.push(...lineElements);
+  });
+
+  return <>{elements}</>;
+}
+
 // Parse a curl command string into its components
 function parseCurlCommand(curlStr: string): {
   method: string;
@@ -129,11 +231,13 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Get nodes that have ports (can receive HTTP requests)
+  // Get nodes that have ports AND discovered routes (actually testable with curl)
   const httpNodes = useMemo(() => {
     return nodes.filter(node =>
       node.type !== 'external' &&
-      node.ports.length > 0
+      node.ports.length > 0 &&
+      node.routes &&
+      node.routes.length > 0
     );
   }, [nodes]);
 
@@ -662,14 +766,17 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
             {outputTab === 'curl' ? (
               <div className={`curl-output-code ${isCurlEditing ? 'editing' : ''}`}>
                 {isCurlEditing ? (
-                  <textarea
-                    className="curl-output-textarea"
-                    value={editedCurl}
-                    onChange={(e) => setEditedCurl(e.target.value)}
-                    spellCheck={false}
-                  />
+                  <div className="curl-editor-container">
+                    <pre className="curl-editor-highlight">{highlightCurl(editedCurl)}</pre>
+                    <textarea
+                      className="curl-editor-textarea"
+                      value={editedCurl}
+                      onChange={(e) => setEditedCurl(e.target.value)}
+                      spellCheck={false}
+                    />
+                  </div>
                 ) : displayCurl ? (
-                  <pre className="curl-output-pre">{displayCurl}</pre>
+                  <pre className="curl-output-pre">{highlightCurl(displayCurl)}</pre>
                 ) : (
                   <span className="curl-placeholder">
                     Select a service and configure your request to generate a curl command
