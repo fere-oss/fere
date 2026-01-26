@@ -12,6 +12,7 @@ fere is a native-feeling macOS Electron app that visualizes your local developme
 - Project mapping from process command/CWD to repo root
 - Quick actions: open service URL, open terminal at project path, kill dev processes
 - Real-time connection arrows with port labels
+- API tester tab with curl builder and in-app request execution
 
 ## Requirements
 - macOS with `lsof` and `ps` available (default)
@@ -40,3 +41,12 @@ npm run electron:build:mac
 ## Notes
 - Process discovery uses `ps` and `lsof`; output formats can vary across OS versions.
 - The renderer is sandboxed; all system calls occur in the Electron main process.
+
+## External API detection
+- Provider list lives in `config/api-providers.json`.
+- Optional per-user overrides in `~/.fere/api-providers.json` (same schema, overrides by name).
+- Detection scans code + env files for SDK imports, domains, and env var names.
+
+## API Tester
+- Switch to the API Tester tab to build curl requests against detected services.
+- Select a service + route, edit headers/body, and run requests from the app.
