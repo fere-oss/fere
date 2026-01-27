@@ -1002,6 +1002,11 @@ body {
   color: var(--text-faint);
 }
 
+.docker-empty-icon {
+  margin-bottom: 16px;
+  color: #0db7ed;
+}
+
 /* Connection Lines SVG */
 .graph-connections {
   position: absolute;
