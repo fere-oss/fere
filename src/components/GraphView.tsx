@@ -467,14 +467,44 @@ export function GraphView({ nodes, edges }: GraphViewProps) {
   const orderCacheRef = useRef<Map<number, string[]>>(new Map());
   const groupOrderCacheRef = useRef<Map<number, string[]>>(new Map());
   const [, setExternalApiVersion] = useState(0);
+  const [animationKey, setAnimationKey] = useState(0);
+
+  // Create a stable key based on node IDs to trigger re-animation only on actual changes
+  const nodeSetKey = useMemo(() => {
+    return nodes.map(n => n.id).sort().join(',');
+  }, [nodes]);
+
+  const edgeSetKey = useMemo(() => {
+    return edges.map(e => `${e.source}-${e.target}`).sort().join(',');
+  }, [edges]);
+
+  // Track previous keys to detect actual changes
+  const prevNodeSetKeyRef = useRef(nodeSetKey);
+  const prevEdgeSetKeyRef = useRef(edgeSetKey);
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setDisplayNodes(nodes);
-      setDisplayEdges(edges);
-    }, 50);
-    return () => clearTimeout(timer);
-  }, [nodes, edges]);
+    const nodesChanged = prevNodeSetKeyRef.current !== nodeSetKey;
+    const edgesChanged = prevEdgeSetKeyRef.current !== edgeSetKey;
+
+    // Only trigger animation if the node set actually changed (tab switch)
+    if (nodesChanged) {
+      setAnimationKey(k => k + 1);
+      prevNodeSetKeyRef.current = nodeSetKey;
+    }
+
+    if (edgesChanged) {
+      prevEdgeSetKeyRef.current = edgeSetKey;
+    }
+
+    // Only update display if there are actual changes
+    if (nodesChanged || edgesChanged) {
+      const timer = setTimeout(() => {
+        setDisplayNodes(nodes);
+        setDisplayEdges(edges);
+      }, 30);
+      return () => clearTimeout(timer);
+    }
+  }, [nodeSetKey, edgeSetKey, nodes, edges]);
 
   // Filter out external nodes
   const localNodes = useMemo(() => displayNodes.filter(n => {
@@ -687,21 +717,41 @@ export function GraphView({ nodes, edges }: GraphViewProps) {
     setPan({ x: 0, y: 0 });
   };
 
-  // Pan handlers
+  // Pan handlers with requestAnimationFrame for smooth movement
+  const rafRef = useRef<number | null>(null);
+  const panRef = useRef(pan);
+  panRef.current = pan;
+
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if (selectedNode || contextMenu) return;
     if (e.button !== 0) return;
     setIsDragging(true);
-    setDragStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
-  }, [pan, selectedNode, contextMenu]);
+    setDragStart({ x: e.clientX - panRef.current.x, y: e.clientY - panRef.current.y });
+  }, [selectedNode, contextMenu]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
     if (selectedNode || contextMenu) return;
     if (!isDragging) return;
-    setPan({ x: e.clientX - dragStart.x, y: e.clientY - dragStart.y });
+
+    const newX = e.clientX - dragStart.x;
+    const newY = e.clientY - dragStart.y;
+
+    if (rafRef.current) {
+      cancelAnimationFrame(rafRef.current);
+    }
+
+    rafRef.current = requestAnimationFrame(() => {
+      setPan({ x: newX, y: newY });
+    });
   }, [isDragging, dragStart, selectedNode, contextMenu]);
 
-  const handleMouseUp = useCallback(() => setIsDragging(false), []);
+  const handleMouseUp = useCallback(() => {
+    setIsDragging(false);
+    if (rafRef.current) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+  }, []);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -935,17 +985,17 @@ export function GraphView({ nodes, edges }: GraphViewProps) {
         </svg>
 
         {/* Layered nodes - Dynamic layers based on topology */}
-        <div className="graph-layers">
+        <div className="graph-layers" key={`layers-${animationKey}`}>
           {sortedLayers.map((layer, layerIdx) => {
             const groups = layerGroups.get(layer) || [];
             const allNodes = groups.flatMap(g => g.nodes);
             if (allNodes.length === 0) return null;
 
             // Calculate base animation index for this layer
-            let nodeIndex = layerIdx * 3;
+            let nodeIndex = layerIdx * 2;
 
             return (
-              <div key={`layer-${layer}`} className="graph-layer" style={{ animationDelay: `${layerIdx * 60}ms` }}>
+              <div key={`layer-${layer}`} className="graph-layer" style={{ animationDelay: `${layerIdx * 80}ms` }}>
                 <div className="graph-layer-label">{getLayerLabel(layer, allNodes)}</div>
                 <div className="graph-layer-nodes">
                   {groups.map((group, index) => {
@@ -968,11 +1018,11 @@ export function GraphView({ nodes, edges }: GraphViewProps) {
 
           {/* Standalone Services Section */}
           {standaloneGroups.length > 0 && (
-            <div className="graph-layer graph-layer-standalone" style={{ animationDelay: `${sortedLayers.length * 60}ms` }}>
+            <div className="graph-layer graph-layer-standalone" style={{ animationDelay: `${sortedLayers.length * 80 + 50}ms` }}>
               <div className="graph-layer-label">STANDALONE SERVICES</div>
               <div className="graph-layer-nodes">
                 {standaloneGroups.map((group, index) => {
-                  const baseIndex = sortedLayers.length * 3 + index * 2;
+                  const baseIndex = sortedLayers.length * 2 + index * 2;
                   return (
                     <NodeGroupContainer
                       key={`standalone-${group.groupName}-${index}`}
@@ -1028,7 +1078,7 @@ function NodeGroupContainer({ group, onNodeClick, onContextMenu, baseIndex = 0 }
   const groupStyle = {
     ['--group-columns' as string]: columnCount,
     ['--group-span' as string]: columnCount,
-    animationDelay: `${baseIndex * 40}ms`,
+    animationDelay: `${baseIndex * 50}ms`,
   } as React.CSSProperties;
 
   return (
@@ -1078,7 +1128,7 @@ function ServiceNode({ node, onClick, onContextMenu, animationIndex = 0 }: {
       onContextMenu={handleContextMenu}
       style={{
         '--node-color': accentColor,
-        animationDelay: `${animationIndex * 40}ms`,
+        animationDelay: `${animationIndex * 50}ms`,
       } as React.CSSProperties}
     >
       <div className="service-node-header">

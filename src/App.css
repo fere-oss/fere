@@ -523,6 +523,10 @@ body {
   overflow: hidden;
   padding: 0;
   user-select: none;
+  -webkit-transform: translateZ(0);
+  transform: translateZ(0);
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
 }
 
 /* Zoom Controls */
@@ -581,6 +585,9 @@ body {
   align-items: center;
   justify-content: center;
   padding: 48px;
+  will-change: transform;
+  transform: translateZ(0);
+  backface-visibility: hidden;
 }
 
 .graph-layers {
@@ -602,16 +609,15 @@ body {
   justify-content: center;
   gap: 16px;
   width: 100%;
-  opacity: 0;
-  animation: layerAppear 0.35s ease-out both;
+  animation: layerAppear 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 @keyframes layerAppear {
-  from {
+  0% {
     opacity: 0;
-    transform: translateY(10px);
+    transform: translateY(30px);
   }
-  to {
+  100% {
     opacity: 1;
     transform: translateY(0);
   }
@@ -627,6 +633,18 @@ body {
   background: var(--bg-secondary);
   border-radius: 12px;
   border: 1px solid var(--border-color);
+  animation: labelAppear 0.45s cubic-bezier(0.22, 1, 0.36, 1) 0.1s both;
+}
+
+@keyframes labelAppear {
+  0% {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .graph-layer-nodes {
@@ -651,11 +669,12 @@ body {
   background: #fff3e0;
   color: #e65100;
   border-color: #ffcc80;
+  animation-delay: 0.15s;
 }
 
 .graph-layer-standalone .service-node {
-  opacity: 0.85;
   border-style: dashed;
+  filter: saturate(0.9);
 }
 
 .graph-layer-standalone .service-node:hover {
@@ -717,18 +736,17 @@ body {
   width: 100%;
   grid-column: span var(--group-span, 1);
   box-sizing: border-box;
-  opacity: 0;
-  animation: groupAppear 0.35s ease-out both;
+  animation: groupAppear 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 @keyframes groupAppear {
-  from {
+  0% {
     opacity: 0;
-    transform: scale(0.97);
+    transform: translateY(20px);
   }
-  to {
+  100% {
     opacity: 1;
-    transform: scale(1);
+    transform: translateY(0);
   }
 }
 
@@ -774,25 +792,30 @@ body {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
   -webkit-app-region: no-drag;
   cursor: pointer;
-  opacity: 0;
-  animation: nodeAppear 0.3s ease-out both;
+  animation: nodeAppear 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+  -webkit-font-smoothing: antialiased;
 }
 
 @keyframes nodeAppear {
-  from {
+  0% {
     opacity: 0;
-    transform: translateY(10px) scale(0.96);
+    transform: translateY(24px);
   }
-  to {
+  100% {
     opacity: 1;
-    transform: translateY(0) scale(1);
+    transform: translateY(0);
   }
 }
 
 .service-node:hover {
   border-color: var(--border-hover);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.service-node:active {
+  transform: translateY(1px) translateZ(0);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
 }
 
 .service-node-header {
@@ -1050,15 +1073,14 @@ body {
   stroke-dasharray: none;
   stroke-linecap: round;
   stroke-linejoin: round;
-  opacity: 0;
-  animation: edgeAppear 0.4s ease-out 0.15s both;
+  animation: edgeAppear 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.3s both;
 }
 
 @keyframes edgeAppear {
-  from {
+  0% {
     opacity: 0;
   }
-  to {
+  100% {
     opacity: 0.6;
   }
 }
