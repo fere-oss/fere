@@ -472,7 +472,7 @@ export function GraphView({ nodes, edges }: GraphViewProps) {
     const timer = setTimeout(() => {
       setDisplayNodes(nodes);
       setDisplayEdges(edges);
-    }, 300);
+    }, 50);
     return () => clearTimeout(timer);
   }, [nodes, edges]);
 
@@ -936,23 +936,31 @@ export function GraphView({ nodes, edges }: GraphViewProps) {
 
         {/* Layered nodes - Dynamic layers based on topology */}
         <div className="graph-layers">
-          {sortedLayers.map(layer => {
+          {sortedLayers.map((layer, layerIdx) => {
             const groups = layerGroups.get(layer) || [];
             const allNodes = groups.flatMap(g => g.nodes);
             if (allNodes.length === 0) return null;
 
+            // Calculate base animation index for this layer
+            let nodeIndex = layerIdx * 3;
+
             return (
-              <div key={`layer-${layer}`} className="graph-layer">
+              <div key={`layer-${layer}`} className="graph-layer" style={{ animationDelay: `${layerIdx * 60}ms` }}>
                 <div className="graph-layer-label">{getLayerLabel(layer, allNodes)}</div>
                 <div className="graph-layer-nodes">
-                  {groups.map((group, index) => (
-                    <NodeGroupContainer
-                      key={`layer${layer}-${group.groupName}-${index}`}
-                      group={group}
-                      onNodeClick={setSelectedNode}
-                      onContextMenu={handleContextMenu}
-                    />
-                  ))}
+                  {groups.map((group, index) => {
+                    const currentIndex = nodeIndex;
+                    nodeIndex += group.nodes.length;
+                    return (
+                      <NodeGroupContainer
+                        key={`layer${layer}-${group.groupName}-${index}`}
+                        group={group}
+                        onNodeClick={setSelectedNode}
+                        onContextMenu={handleContextMenu}
+                        baseIndex={currentIndex}
+                      />
+                    );
+                  })}
                 </div>
               </div>
             );
@@ -960,17 +968,21 @@ export function GraphView({ nodes, edges }: GraphViewProps) {
 
           {/* Standalone Services Section */}
           {standaloneGroups.length > 0 && (
-            <div className="graph-layer graph-layer-standalone">
+            <div className="graph-layer graph-layer-standalone" style={{ animationDelay: `${sortedLayers.length * 60}ms` }}>
               <div className="graph-layer-label">STANDALONE SERVICES</div>
               <div className="graph-layer-nodes">
-                {standaloneGroups.map((group, index) => (
-                  <NodeGroupContainer
-                    key={`standalone-${group.groupName}-${index}`}
-                    group={group}
-                    onNodeClick={setSelectedNode}
-                    onContextMenu={handleContextMenu}
-                  />
-                ))}
+                {standaloneGroups.map((group, index) => {
+                  const baseIndex = sortedLayers.length * 3 + index * 2;
+                  return (
+                    <NodeGroupContainer
+                      key={`standalone-${group.groupName}-${index}`}
+                      group={group}
+                      onNodeClick={setSelectedNode}
+                      onContextMenu={handleContextMenu}
+                      baseIndex={baseIndex}
+                    />
+                  );
+                })}
               </div>
             </div>
           )}
@@ -1001,13 +1013,14 @@ export function GraphView({ nodes, edges }: GraphViewProps) {
 }
 
 // Node Group Container
-function NodeGroupContainer({ group, onNodeClick, onContextMenu }: {
+function NodeGroupContainer({ group, onNodeClick, onContextMenu, baseIndex = 0 }: {
   group: RenderGroup;
   onNodeClick: (node: GraphNode) => void;
   onContextMenu: (e: React.MouseEvent, node: GraphNode) => void;
+  baseIndex?: number;
 }) {
   if (!group.isGroup) {
-    return <ServiceNode node={group.nodes[0]} onClick={onNodeClick} onContextMenu={onContextMenu} />;
+    return <ServiceNode node={group.nodes[0]} onClick={onNodeClick} onContextMenu={onContextMenu} animationIndex={baseIndex} />;
   }
 
   const groupCount = group.nodes.length;
@@ -1015,14 +1028,15 @@ function NodeGroupContainer({ group, onNodeClick, onContextMenu }: {
   const groupStyle = {
     ['--group-columns' as string]: columnCount,
     ['--group-span' as string]: columnCount,
+    animationDelay: `${baseIndex * 40}ms`,
   } as React.CSSProperties;
 
   return (
     <div className="node-group" style={groupStyle}>
       <div className="node-group-label">{group.groupName}</div>
       <div className="node-group-nodes">
-        {group.nodes.map(node => (
-          <ServiceNode key={node.id} node={node} onClick={onNodeClick} onContextMenu={onContextMenu} />
+        {group.nodes.map((node, idx) => (
+          <ServiceNode key={node.id} node={node} onClick={onNodeClick} onContextMenu={onContextMenu} animationIndex={baseIndex + idx} />
         ))}
       </div>
     </div>
@@ -1030,10 +1044,11 @@ function NodeGroupContainer({ group, onNodeClick, onContextMenu }: {
 }
 
 // Service Node Component
-function ServiceNode({ node, onClick, onContextMenu }: {
+function ServiceNode({ node, onClick, onContextMenu, animationIndex = 0 }: {
   node: GraphNode;
   onClick: (node: GraphNode) => void;
   onContextMenu: (e: React.MouseEvent, node: GraphNode) => void;
+  animationIndex?: number;
 }) {
   const accentColor = getServiceColor(node.type);
   const healthInfo = getHealthInfo(node.healthStatus);
@@ -1061,7 +1076,10 @@ function ServiceNode({ node, onClick, onContextMenu }: {
       className="service-node"
       onClick={handleClick}
       onContextMenu={handleContextMenu}
-      style={{ '--node-color': accentColor } as React.CSSProperties}
+      style={{
+        '--node-color': accentColor,
+        animationDelay: `${animationIndex * 40}ms`,
+      } as React.CSSProperties}
     >
       <div className="service-node-header">
         <div className="service-node-status-row">

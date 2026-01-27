@@ -581,7 +581,6 @@ body {
   align-items: center;
   justify-content: center;
   padding: 48px;
-  transition: transform 0.05s ease-out;
 }
 
 .graph-layers {
@@ -603,6 +602,19 @@ body {
   justify-content: center;
   gap: 16px;
   width: 100%;
+  opacity: 0;
+  animation: layerAppear 0.35s ease-out both;
+}
+
+@keyframes layerAppear {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .graph-layer-label {
@@ -705,6 +717,19 @@ body {
   width: 100%;
   grid-column: span var(--group-span, 1);
   box-sizing: border-box;
+  opacity: 0;
+  animation: groupAppear 0.35s ease-out both;
+}
+
+@keyframes groupAppear {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 .node-group-label {
@@ -747,14 +772,27 @@ body {
   width: 100%;
   box-sizing: border-box;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-  transition: all 0.2s ease;
   -webkit-app-region: no-drag;
   cursor: pointer;
+  opacity: 0;
+  animation: nodeAppear 0.3s ease-out both;
+}
+
+@keyframes nodeAppear {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 .service-node:hover {
   border-color: var(--border-hover);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .service-node-header {
@@ -1009,20 +1047,27 @@ body {
 /* Graph Edge Styling */
 .graph-edge {
   color: var(--text-faint);
-  opacity: 0.6;
   stroke-dasharray: none;
-  transition:
-    opacity 0.2s ease,
-    stroke-width 0.2s ease,
-    color 0.2s ease;
   stroke-linecap: round;
   stroke-linejoin: round;
+  opacity: 0;
+  animation: edgeAppear 0.4s ease-out 0.15s both;
+}
+
+@keyframes edgeAppear {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 0.6;
+  }
 }
 
 .graph-edge:hover {
   color: var(--text-secondary);
   opacity: 0.9 !important;
   stroke-width: 2.5 !important;
+  transition: opacity 0.2s ease, stroke-width 0.2s ease, color 0.2s ease;
 }
 
 .graph-edge-label {
