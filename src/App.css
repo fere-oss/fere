@@ -633,19 +633,6 @@ body {
 .graph-layer-standalone {
   margin-top: 32px;
   padding-top: 32px;
-  border-top: 2px dashed var(--border-color);
-  position: relative;
-}
-
-.graph-layer-standalone::before {
-  content: '';
-  position: absolute;
-  top: -1px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 100px;
-  height: 2px;
-  background: var(--bg-primary);
 }
 
 .graph-layer-standalone .graph-layer-label {
