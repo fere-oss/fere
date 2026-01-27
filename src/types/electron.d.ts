@@ -14,6 +14,95 @@ export interface Process {
   name: string;
 }
 
+// Docker types
+export interface DockerPort {
+  hostIp: string | null;
+  hostPort: number | null;
+  containerPort: number;
+  protocol: string;
+  type: 'mapped' | 'exposed';
+}
+
+export interface DockerNetwork {
+  name: string;
+  networkId: string;
+  ipAddress: string;
+  gateway: string;
+  macAddress: string;
+  aliases: string[];
+}
+
+export interface DockerMount {
+  type: 'bind' | 'volume' | 'tmpfs';
+  source: string;
+  destination: string;
+  mode: string;
+  readWrite: boolean;
+  name: string | null;
+}
+
+export interface DockerHealthCheck {
+  start: string;
+  end: string;
+  exitCode: number;
+  output: string;
+}
+
+export interface DockerHealth {
+  status: 'healthy' | 'unhealthy' | 'starting' | 'running' | 'paused' | 'restarting' | 'exited' | 'dead' | 'unknown';
+  failingStreak?: number;
+  exitCode?: number;
+  checks: DockerHealthCheck[];
+}
+
+export interface DockerContainer {
+  id: string;
+  name: string;
+  image: string;
+  command: string;
+  created: string;
+  status: string;
+  state: 'running' | 'exited' | 'paused' | 'restarting' | 'dead' | 'created';
+  ports: DockerPort[];
+  networks: DockerNetwork[];
+  mounts: DockerMount[];
+  health: DockerHealth;
+  labels: Record<string, string>;
+  cpu: number;
+  memory: number;
+  memoryUsage?: string;
+}
+
+export interface DockerNetworkInfo {
+  id: string;
+  name: string;
+  driver: string;
+  scope: string;
+  internal: boolean;
+  attachable: boolean;
+  containers: {
+    id: string;
+    name: string;
+    ipv4Address: string;
+    ipv6Address: string;
+    macAddress: string;
+  }[];
+}
+
+export interface DockerContainerConnection {
+  sourceContainerId: string;
+  targetContainerId: string;
+  networkName: string;
+  networkId: string;
+}
+
+export interface DockerSnapshot {
+  containers: DockerContainer[];
+  networks: DockerNetworkInfo[];
+  containerConnections: DockerContainerConnection[];
+  isAvailable: boolean;
+}
+
 export interface Service {
   id: string;
   pid: number;
@@ -85,6 +174,17 @@ export interface GraphNode {
   // Health tracking
   healthStatus: HealthStatus;
   lastSeen: number;
+  // Docker-specific properties (only present for container nodes)
+  isDockerContainer?: boolean;
+  containerId?: string;
+  containerImage?: string;
+  containerState?: 'running' | 'exited' | 'paused' | 'restarting' | 'dead' | 'created';
+  containerStatus?: string;
+  containerHealth?: DockerHealth;
+  containerNetworks?: DockerNetwork[];
+  containerMounts?: DockerMount[];
+  containerPorts?: DockerPort[];
+  memoryUsage?: string;
 }
 
 export interface GraphEdge {
@@ -118,6 +218,7 @@ export interface SystemSnapshot {
   ports: Port[];
   connections: Connection[];
   graph: ConnectionGraph;
+  docker?: DockerSnapshot;
 }
 
 export interface EnvironmentSummary {
@@ -179,6 +280,12 @@ export interface ElectronAPI {
   getEnvironmentSummary: () => Promise<EnvironmentSummary>;
   getSystemSnapshot: () => Promise<SystemSnapshot>;
   getExternalApis: (projectPath: string) => Promise<ExternalApi[]>;
+
+  // Docker monitoring
+  getDockerContainers: () => Promise<DockerContainer[]>;
+  getDockerNetworks: () => Promise<DockerNetworkInfo[]>;
+  getDockerSnapshot: () => Promise<DockerSnapshot>;
+  isDockerAvailable: () => Promise<boolean>;
 
   // Process control
   killProcess: (pid: number) => Promise<KillResult>;

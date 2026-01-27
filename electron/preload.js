@@ -14,6 +14,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getSystemSnapshot: () => ipcRenderer.invoke('get-system-snapshot'),
   getExternalApis: (projectPath) => ipcRenderer.invoke('get-external-apis', projectPath),
 
+  // Docker monitoring
+  isDockerAvailable: () => ipcRenderer.invoke('is-docker-available'),
+  getDockerContainers: () => ipcRenderer.invoke('get-docker-containers'),
+  getDockerNetworks: () => ipcRenderer.invoke('get-docker-networks'),
+  getDockerSnapshot: () => ipcRenderer.invoke('get-docker-snapshot'),
+
   // Process control
   killProcess: (pid) => ipcRenderer.invoke('kill-process', pid),
 

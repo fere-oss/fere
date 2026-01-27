@@ -9,13 +9,17 @@ async function getSystemSnapshot() {
     getEstablishedConnections(),
   ]);
 
-  const graph = await buildConnectionGraph({ processes, ports, connections });
+  const graphResult = await buildConnectionGraph({ processes, ports, connections });
+
+  // Extract docker snapshot from graph result (if available)
+  const { nodes, edges, dockerSnapshot } = graphResult;
 
   return {
     processes,
     ports,
     connections,
-    graph,
+    graph: { nodes, edges },
+    docker: dockerSnapshot || null,
   };
 }
 

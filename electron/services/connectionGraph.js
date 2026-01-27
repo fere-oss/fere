@@ -6,6 +6,10 @@ const { getDevProcesses } = require('./processMonitor');
 const { getListeningPorts, getEstablishedConnections, getPortDescription } = require('./portMonitor');
 const { scanRoutes, matchRoutesToService } = require('./routeScanner');
 const { updateHealthTracking, getHealthStatus } = require('./healthTracker');
+const {
+  getDockerSnapshot,
+  containerHealthToGraphHealth,
+} = require('./dockerMonitor');
 
 const execAsync = promisify(exec);
 
@@ -576,7 +580,14 @@ async function buildConnectionGraph(snapshot = null) {
   }
 
   await attachRoutesToNodes(nodes);
-  return { nodes, edges };
+
+  // Add Docker containers as nodes
+  const dockerSnapshot = await getDockerSnapshot();
+  if (dockerSnapshot.isAvailable && dockerSnapshot.containers.length > 0) {
+    addDockerContainerNodes(nodes, edges, dockerSnapshot, nodesByPid, portToPid);
+  }
+
+  return { nodes, edges, dockerSnapshot };
 }
 
 /**
@@ -740,6 +751,209 @@ function inferProjectPathFromCommand(command = '') {
     if (projectRoot) {
       return projectRoot;
     }
+  }
+
+  return null;
+}
+
+/**
+ * Add Docker containers as graph nodes and create edges for container networking
+ */
+function addDockerContainerNodes(nodes, edges, dockerSnapshot, nodesByPid, portToPid) {
+  const { containers, containerConnections } = dockerSnapshot;
+  const containerNodesById = new Map();
+
+  // Create nodes for each Docker container
+  for (const container of containers) {
+    const nodeId = `docker-${container.id}`;
+
+    // Check if we should merge with an existing node (e.g., if container has a mapped port
+    // that matches a native process port - unlikely but possible with port forwarding)
+    const existingNode = findMatchingNativeNode(container, nodes);
+    if (existingNode) {
+      // Enhance existing node with Docker info
+      enhanceNodeWithDockerInfo(existingNode, container);
+      containerNodesById.set(container.id, existingNode);
+      continue;
+    }
+
+    // Convert container ports to graph port format
+    const graphPorts = container.ports
+      .filter(p => p.hostPort) // Only show mapped ports
+      .map(p => ({
+        port: p.hostPort,
+        host: p.hostIp || '0.0.0.0',
+        description: `Container port ${p.containerPort}/${p.protocol}`,
+      }));
+
+    // Determine node type based on container image
+    const nodeType = categorizeContainerImage(container.image);
+
+    // Create the Docker container node
+    const node = {
+      id: nodeId,
+      pid: -1, // Docker containers don't have a direct PID in host context
+      name: container.name,
+      command: `docker: ${container.image}`,
+      type: nodeType,
+      cpu: container.cpu || 0,
+      memory: container.memory || 0,
+      user: 'docker',
+      tty: null,
+      project: extractProjectFromContainerName(container.name),
+      projectPath: null,
+      description: `Docker container running ${container.image}`,
+      ports: graphPorts,
+      routes: [],
+      healthStatus: containerHealthToGraphHealth(container),
+      lastSeen: Date.now(),
+      // Docker-specific properties
+      isDockerContainer: true,
+      containerId: container.id,
+      containerImage: container.image,
+      containerState: container.state,
+      containerStatus: container.status,
+      containerHealth: container.health,
+      containerNetworks: container.networks,
+      containerMounts: container.mounts,
+      containerPorts: container.ports,
+      memoryUsage: container.memoryUsage,
+    };
+
+    nodes.push(node);
+    containerNodesById.set(container.id, node);
+
+    // Register mapped ports so native processes can connect to containers
+    for (const port of container.ports) {
+      if (port.hostPort) {
+        portToPid.set(port.hostPort, nodeId);
+      }
+    }
+  }
+
+  // Create edges for container-to-container connections (shared networks)
+  const edgeSet = new Set(edges.map(e => e.id));
+  for (const conn of containerConnections) {
+    const sourceNode = containerNodesById.get(conn.sourceContainerId);
+    const targetNode = containerNodesById.get(conn.targetContainerId);
+
+    if (!sourceNode || !targetNode) continue;
+
+    const edgeId = `docker-network-${conn.sourceContainerId.substring(0, 12)}-${conn.targetContainerId.substring(0, 12)}`;
+    if (edgeSet.has(edgeId)) continue;
+
+    edgeSet.add(edgeId);
+    edges.push({
+      id: edgeId,
+      source: sourceNode.id,
+      target: targetNode.id,
+      sourcePort: 0, // Network-level connection, no specific port
+      targetPort: 0,
+      protocol: `docker-network:${conn.networkName}`,
+    });
+  }
+}
+
+/**
+ * Find a native process node that might correspond to a Docker container
+ * (e.g., if they're using the same mapped port)
+ */
+function findMatchingNativeNode(container, nodes) {
+  // Look for a node that has the same mapped port
+  for (const port of container.ports) {
+    if (port.hostPort) {
+      const matchingNode = nodes.find(n =>
+        !n.isDockerContainer &&
+        n.ports.some(p => p.port === port.hostPort)
+      );
+      if (matchingNode) return matchingNode;
+    }
+  }
+  return null;
+}
+
+/**
+ * Enhance an existing native node with Docker container information
+ */
+function enhanceNodeWithDockerInfo(node, container) {
+  node.isDockerContainer = true;
+  node.containerId = container.id;
+  node.containerImage = container.image;
+  node.containerState = container.state;
+  node.containerStatus = container.status;
+  node.containerHealth = container.health;
+  node.containerNetworks = container.networks;
+  node.containerMounts = container.mounts;
+  node.containerPorts = container.ports;
+  node.memoryUsage = container.memoryUsage;
+  // Update description
+  node.description = `Docker container: ${container.image}`;
+}
+
+/**
+ * Categorize container image into a node type
+ */
+function categorizeContainerImage(image) {
+  const imageLower = image.toLowerCase();
+
+  // Databases
+  if (imageLower.includes('postgres') || imageLower.includes('pg')) return 'database';
+  if (imageLower.includes('mysql') || imageLower.includes('mariadb')) return 'database';
+  if (imageLower.includes('mongo')) return 'database';
+  if (imageLower.includes('sqlite')) return 'database';
+
+  // Cache/Memory stores
+  if (imageLower.includes('redis')) return 'cache';
+  if (imageLower.includes('memcached')) return 'cache';
+
+  // Message brokers
+  if (imageLower.includes('rabbitmq')) return 'broker';
+  if (imageLower.includes('kafka')) return 'broker';
+  if (imageLower.includes('nats')) return 'broker';
+
+  // Web servers
+  if (imageLower.includes('nginx')) return 'webserver';
+  if (imageLower.includes('apache') || imageLower.includes('httpd')) return 'webserver';
+  if (imageLower.includes('traefik')) return 'webserver';
+  if (imageLower.includes('haproxy')) return 'webserver';
+
+  // Frontend
+  if (imageLower.includes('node') && (imageLower.includes('react') || imageLower.includes('vue') || imageLower.includes('angular'))) {
+    return 'frontend';
+  }
+
+  // Python backends
+  if (imageLower.includes('python') || imageLower.includes('django') || imageLower.includes('flask') || imageLower.includes('fastapi')) {
+    return 'backend';
+  }
+
+  // Node backends
+  if (imageLower.includes('node') || imageLower.includes('express') || imageLower.includes('nestjs')) {
+    return 'nodejs';
+  }
+
+  // Workers
+  if (imageLower.includes('worker') || imageLower.includes('celery') || imageLower.includes('sidekiq')) {
+    return 'worker';
+  }
+
+  // Default to container type
+  return 'container';
+}
+
+/**
+ * Extract project name from container name (e.g., "myproject_web_1" -> "myproject")
+ */
+function extractProjectFromContainerName(containerName) {
+  // Docker Compose naming: project_service_number
+  const composeMatch = containerName.match(/^([^_]+)_[^_]+_\d+$/);
+  if (composeMatch) return composeMatch[1];
+
+  // Try to extract meaningful project name from container name
+  const cleanName = containerName.replace(/^\//, ''); // Remove leading slash
+  const parts = cleanName.split(/[-_]/);
+  if (parts.length > 1) {
+    return parts[0];
   }
 
   return null;

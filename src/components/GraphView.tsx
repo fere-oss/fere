@@ -1079,6 +1079,13 @@ function ServiceNode({ node, onClick, onContextMenu }: {
           >
             {healthInfo.label}
           </span>
+          {node.isDockerContainer && (
+            <span className="service-node-docker-badge" title="Docker Container">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M13.983 11.078h2.119a.186.186 0 00.186-.185V9.006a.186.186 0 00-.186-.186h-2.119a.185.185 0 00-.185.185v1.888c0 .102.083.185.185.185m-2.954-5.43h2.118a.186.186 0 00.186-.186V3.574a.186.186 0 00-.186-.185h-2.118a.185.185 0 00-.185.185v1.888c0 .102.082.185.185.186m0 2.716h2.118a.187.187 0 00.186-.186V6.29a.186.186 0 00-.186-.185h-2.118a.185.185 0 00-.185.185v1.887c0 .102.082.185.185.186m-2.93 0h2.12a.186.186 0 00.184-.186V6.29a.185.185 0 00-.185-.185H8.1a.185.185 0 00-.185.185v1.887c0 .102.083.185.185.186m-2.964 0h2.119a.186.186 0 00.185-.186V6.29a.185.185 0 00-.185-.185H5.136a.186.186 0 00-.186.185v1.887c0 .102.084.185.186.186m5.893 2.715h2.118a.186.186 0 00.186-.185V9.006a.186.186 0 00-.186-.186h-2.118a.185.185 0 00-.185.185v1.888c0 .102.082.185.185.185m-2.93 0h2.12a.185.185 0 00.184-.185V9.006a.185.185 0 00-.184-.186h-2.12a.185.185 0 00-.184.185v1.888c0 .102.083.185.185.185m-2.964 0h2.119a.185.185 0 00.185-.185V9.006a.185.185 0 00-.185-.186h-2.119a.185.185 0 00-.186.185v1.888c0 .102.084.185.186.185m-2.92 0h2.12a.185.185 0 00.184-.185V9.006a.185.185 0 00-.184-.186h-2.12a.186.186 0 00-.186.186v1.887c0 .102.084.185.186.185m-2.929 0h2.119a.185.185 0 00.185-.185V9.006a.186.186 0 00-.185-.186h-2.12a.185.185 0 00-.184.185v1.888c0 .102.083.185.185.185M23.763 9.89c-.065-.051-.672-.51-1.954-.51-.338.001-.676.03-1.01.087-.248-1.7-1.653-2.53-1.716-2.566l-.344-.199-.226.327c-.284.438-.49.922-.612 1.43-.23.97-.09 1.882.403 2.661-.595.332-1.55.413-1.744.42H.751a.751.751 0 00-.75.748 11.376 11.376 0 00.692 4.062c.545 1.428 1.355 2.48 2.41 3.124 1.18.723 3.1 1.137 5.275 1.137.983.003 1.963-.086 2.93-.266a12.248 12.248 0 003.823-1.389c.98-.567 1.86-1.288 2.61-2.136 1.252-1.418 1.998-2.997 2.553-4.4h.221c1.372 0 2.215-.549 2.68-1.009.309-.293.55-.65.707-1.046l.098-.288Z"/>
+              </svg>
+            </span>
+          )}
         </div>
         <span
           className="service-node-badge"
@@ -1092,7 +1099,12 @@ function ServiceNode({ node, onClick, onContextMenu }: {
       </div>
 
       <h3 className="service-node-name">{node.name}</h3>
-      {projectLabel && (
+      {node.isDockerContainer && node.containerImage && (
+        <div className="service-node-docker-image" title={node.containerImage}>
+          {node.containerImage.split('/').pop()?.split(':')[0] || node.containerImage}
+        </div>
+      )}
+      {!node.isDockerContainer && projectLabel && (
         <div className="service-node-project">{projectLabel}</div>
       )}
 
@@ -1102,6 +1114,17 @@ function ServiceNode({ node, onClick, onContextMenu }: {
           :{mainPort || '?'}
         </span>
       </div>
+
+      {/* Docker container networks */}
+      {node.isDockerContainer && node.containerNetworks && node.containerNetworks.length > 0 && (
+        <div className="service-node-docker-networks">
+          <span className="service-node-docker-networks-label">Networks:</span>
+          <span className="service-node-docker-networks-list">
+            {node.containerNetworks.slice(0, 2).map(n => n.name).join(', ')}
+            {node.containerNetworks.length > 2 && ` +${node.containerNetworks.length - 2}`}
+          </span>
+        </div>
+      )}
 
       {routes.length > 0 && (
         <div className="service-node-routes">
@@ -1326,28 +1349,195 @@ function NodeDetailPanel({ node, edges, allNodes, onClose }: NodeDetailPanelProp
             </div>
           )}
 
-          {/* Process Info Section */}
-          <div className="node-detail-section">
-            <h3 className="node-detail-section-title">Process Information</h3>
-            <div className="node-detail-grid">
-              <div className="node-detail-item">
-                <span className="node-detail-label">PID</span>
-                <span className="node-detail-value mono">{node.pid}</span>
-              </div>
-              <div className="node-detail-item">
-                <span className="node-detail-label">User</span>
-                <span className="node-detail-value">{node.user}</span>
-              </div>
-              <div className="node-detail-item">
-                <span className="node-detail-label">CPU</span>
-                <span className="node-detail-value mono">{node.cpu.toFixed(1)}%</span>
-              </div>
-              <div className="node-detail-item">
-                <span className="node-detail-label">Memory</span>
-                <span className="node-detail-value mono">{node.memory.toFixed(1)}%</span>
+          {/* Process Info Section (for non-Docker nodes) */}
+          {!node.isDockerContainer && (
+            <div className="node-detail-section">
+              <h3 className="node-detail-section-title">Process Information</h3>
+              <div className="node-detail-grid">
+                <div className="node-detail-item">
+                  <span className="node-detail-label">PID</span>
+                  <span className="node-detail-value mono">{node.pid}</span>
+                </div>
+                <div className="node-detail-item">
+                  <span className="node-detail-label">User</span>
+                  <span className="node-detail-value">{node.user}</span>
+                </div>
+                <div className="node-detail-item">
+                  <span className="node-detail-label">CPU</span>
+                  <span className="node-detail-value mono">{node.cpu.toFixed(1)}%</span>
+                </div>
+                <div className="node-detail-item">
+                  <span className="node-detail-label">Memory</span>
+                  <span className="node-detail-value mono">{node.memory.toFixed(1)}%</span>
+                </div>
               </div>
             </div>
-          </div>
+          )}
+
+          {/* Docker Container Info Section */}
+          {node.isDockerContainer && (
+            <div className="node-detail-section">
+              <h3 className="node-detail-section-title">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style={{ marginRight: '6px', verticalAlign: 'middle' }}>
+                  <path d="M13.983 11.078h2.119a.186.186 0 00.186-.185V9.006a.186.186 0 00-.186-.186h-2.119a.185.185 0 00-.185.185v1.888c0 .102.083.185.185.185m-2.954-5.43h2.118a.186.186 0 00.186-.186V3.574a.186.186 0 00-.186-.185h-2.118a.185.185 0 00-.185.185v1.888c0 .102.082.185.185.186m0 2.716h2.118a.187.187 0 00.186-.186V6.29a.186.186 0 00-.186-.185h-2.118a.185.185 0 00-.185.185v1.887c0 .102.082.185.185.186m-2.93 0h2.12a.186.186 0 00.184-.186V6.29a.185.185 0 00-.185-.185H8.1a.185.185 0 00-.185.185v1.887c0 .102.083.185.185.186m-2.964 0h2.119a.186.186 0 00.185-.186V6.29a.185.185 0 00-.185-.185H5.136a.186.186 0 00-.186.185v1.887c0 .102.084.185.186.186m5.893 2.715h2.118a.186.186 0 00.186-.185V9.006a.186.186 0 00-.186-.186h-2.118a.185.185 0 00-.185.185v1.888c0 .102.082.185.185.185m-2.93 0h2.12a.185.185 0 00.184-.185V9.006a.185.185 0 00-.184-.186h-2.12a.185.185 0 00-.184.185v1.888c0 .102.083.185.185.185m-2.964 0h2.119a.185.185 0 00.185-.185V9.006a.185.185 0 00-.185-.186h-2.119a.185.185 0 00-.186.185v1.888c0 .102.084.185.186.185m-2.92 0h2.12a.185.185 0 00.184-.185V9.006a.185.185 0 00-.184-.186h-2.12a.186.186 0 00-.186.186v1.887c0 .102.084.185.186.185m-2.929 0h2.119a.185.185 0 00.185-.185V9.006a.186.186 0 00-.185-.186h-2.12a.185.185 0 00-.184.185v1.888c0 .102.083.185.185.185M23.763 9.89c-.065-.051-.672-.51-1.954-.51-.338.001-.676.03-1.01.087-.248-1.7-1.653-2.53-1.716-2.566l-.344-.199-.226.327c-.284.438-.49.922-.612 1.43-.23.97-.09 1.882.403 2.661-.595.332-1.55.413-1.744.42H.751a.751.751 0 00-.75.748 11.376 11.376 0 00.692 4.062c.545 1.428 1.355 2.48 2.41 3.124 1.18.723 3.1 1.137 5.275 1.137.983.003 1.963-.086 2.93-.266a12.248 12.248 0 003.823-1.389c.98-.567 1.86-1.288 2.61-2.136 1.252-1.418 1.998-2.997 2.553-4.4h.221c1.372 0 2.215-.549 2.68-1.009.309-.293.55-.65.707-1.046l.098-.288Z"/>
+                </svg>
+                Container Information
+              </h3>
+              <div className="node-detail-grid">
+                <div className="node-detail-item">
+                  <span className="node-detail-label">Container ID</span>
+                  <span className="node-detail-value mono">{node.containerId?.substring(0, 12)}</span>
+                </div>
+                <div className="node-detail-item">
+                  <span className="node-detail-label">State</span>
+                  <span className={`node-detail-value docker-state docker-state-${node.containerState}`}>
+                    {node.containerState}
+                  </span>
+                </div>
+                <div className="node-detail-item">
+                  <span className="node-detail-label">CPU</span>
+                  <span className="node-detail-value mono">{node.cpu.toFixed(1)}%</span>
+                </div>
+                <div className="node-detail-item">
+                  <span className="node-detail-label">Memory</span>
+                  <span className="node-detail-value mono">
+                    {node.memoryUsage || `${node.memory.toFixed(1)}%`}
+                  </span>
+                </div>
+              </div>
+              <div className="node-detail-item full-width" style={{ marginTop: '8px' }}>
+                <span className="node-detail-label">Image</span>
+                <span className="node-detail-value mono small">{node.containerImage}</span>
+              </div>
+              {node.containerStatus && (
+                <div className="node-detail-item full-width" style={{ marginTop: '4px' }}>
+                  <span className="node-detail-label">Status</span>
+                  <span className="node-detail-value small">{node.containerStatus}</span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Docker Container Health Section */}
+          {node.isDockerContainer && node.containerHealth && node.containerHealth.status !== 'unknown' && (
+            <div className="node-detail-section">
+              <h3 className="node-detail-section-title">Container Health</h3>
+              <div className="node-detail-docker-health">
+                <div className={`docker-health-status docker-health-${node.containerHealth.status}`}>
+                  {node.containerHealth.status}
+                </div>
+                {node.containerHealth.failingStreak !== undefined && node.containerHealth.failingStreak > 0 && (
+                  <div className="docker-health-failing">
+                    Failing streak: {node.containerHealth.failingStreak}
+                  </div>
+                )}
+                {node.containerHealth.checks && node.containerHealth.checks.length > 0 && (
+                  <div className="docker-health-checks">
+                    <span className="docker-health-checks-label">Recent checks:</span>
+                    {node.containerHealth.checks.map((check, idx) => (
+                      <div key={idx} className={`docker-health-check ${check.exitCode === 0 ? 'success' : 'failure'}`}>
+                        <span className="docker-health-check-code">Exit: {check.exitCode}</span>
+                        {check.output && (
+                          <span className="docker-health-check-output">{check.output.substring(0, 50)}</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Docker Networks Section */}
+          {node.isDockerContainer && node.containerNetworks && node.containerNetworks.length > 0 && (
+            <div className="node-detail-section">
+              <h3 className="node-detail-section-title">
+                Networks <span className="node-detail-count">{node.containerNetworks.length}</span>
+              </h3>
+              <div className="node-detail-docker-networks">
+                {node.containerNetworks.map((network, idx) => (
+                  <div key={idx} className="docker-network-item">
+                    <div className="docker-network-name">{network.name}</div>
+                    <div className="docker-network-details">
+                      {network.ipAddress && (
+                        <span className="docker-network-ip">IP: {network.ipAddress}</span>
+                      )}
+                      {network.gateway && (
+                        <span className="docker-network-gateway">Gateway: {network.gateway}</span>
+                      )}
+                    </div>
+                    {network.aliases && network.aliases.length > 0 && (
+                      <div className="docker-network-aliases">
+                        Aliases: {network.aliases.join(', ')}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Docker Mounts/Volumes Section */}
+          {node.isDockerContainer && node.containerMounts && node.containerMounts.length > 0 && (
+            <div className="node-detail-section">
+              <h3 className="node-detail-section-title">
+                Volumes & Mounts <span className="node-detail-count">{node.containerMounts.length}</span>
+              </h3>
+              <div className="node-detail-docker-mounts">
+                {node.containerMounts.map((mount, idx) => (
+                  <div key={idx} className="docker-mount-item">
+                    <div className="docker-mount-header">
+                      <span className={`docker-mount-type docker-mount-type-${mount.type}`}>
+                        {mount.type}
+                      </span>
+                      {!mount.readWrite && (
+                        <span className="docker-mount-readonly">read-only</span>
+                      )}
+                    </div>
+                    <div className="docker-mount-paths">
+                      <div className="docker-mount-source" title={mount.source}>
+                        {mount.name || mount.source.split('/').slice(-2).join('/')}
+                      </div>
+                      <span className="docker-mount-arrow">→</span>
+                      <div className="docker-mount-dest" title={mount.destination}>
+                        {mount.destination}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Docker Container Ports Section */}
+          {node.isDockerContainer && node.containerPorts && node.containerPorts.length > 0 && (
+            <div className="node-detail-section">
+              <h3 className="node-detail-section-title">
+                Container Ports <span className="node-detail-count">{node.containerPorts.length}</span>
+              </h3>
+              <div className="node-detail-docker-ports">
+                {node.containerPorts.map((port, idx) => (
+                  <div key={idx} className="docker-port-item">
+                    {port.type === 'mapped' ? (
+                      <>
+                        <span className="docker-port-host">
+                          {port.hostIp}:{port.hostPort}
+                        </span>
+                        <span className="docker-port-arrow">→</span>
+                        <span className="docker-port-container">
+                          {port.containerPort}/{port.protocol}
+                        </span>
+                      </>
+                    ) : (
+                      <span className="docker-port-exposed">
+                        {port.containerPort}/{port.protocol} (exposed)
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Command Section */}
           <div className="node-detail-section">

@@ -17,6 +17,12 @@ const {
 } = require("./services/connectionGraph");
 const { getSystemSnapshot } = require("./services/systemSnapshot");
 const { scanExternalApis } = require("./services/externalApiScanner");
+const {
+  isDockerAvailable,
+  getDockerContainers,
+  getDockerNetworks,
+  getDockerSnapshot,
+} = require("./services/dockerMonitor");
 
 // Keep a global reference of the window object
 let mainWindow;
@@ -351,5 +357,54 @@ ipcMain.handle("open-terminal", async (event, dirPath) => {
   } catch (error) {
     console.error("Error opening terminal:", error);
     return { success: false, error: error.message };
+  }
+});
+
+// ============================================
+// IPC Handlers - Docker Monitoring
+// ============================================
+
+// Check if Docker is available
+ipcMain.handle("is-docker-available", async () => {
+  try {
+    return await isDockerAvailable();
+  } catch (error) {
+    console.error("Error checking Docker availability:", error);
+    return false;
+  }
+});
+
+// Get Docker containers
+ipcMain.handle("get-docker-containers", async () => {
+  try {
+    return await getDockerContainers();
+  } catch (error) {
+    console.error("Error getting Docker containers:", error);
+    return [];
+  }
+});
+
+// Get Docker networks
+ipcMain.handle("get-docker-networks", async () => {
+  try {
+    return await getDockerNetworks();
+  } catch (error) {
+    console.error("Error getting Docker networks:", error);
+    return [];
+  }
+});
+
+// Get full Docker snapshot (containers, networks, connections)
+ipcMain.handle("get-docker-snapshot", async () => {
+  try {
+    return await getDockerSnapshot();
+  } catch (error) {
+    console.error("Error getting Docker snapshot:", error);
+    return {
+      containers: [],
+      networks: [],
+      containerConnections: [],
+      isAvailable: false,
+    };
   }
 });

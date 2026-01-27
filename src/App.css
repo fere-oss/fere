@@ -1333,6 +1333,330 @@ body {
 }
 
 /* ============================================
+   Docker Container Styles
+   ============================================ */
+
+/* Docker badge in service node header */
+.service-node-docker-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #0db7ed;
+  margin-left: 6px;
+}
+
+/* Docker image name in service node */
+.service-node-docker-image {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-top: -2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Docker networks summary in service node */
+.service-node-docker-networks {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  color: var(--text-faint);
+  margin-top: 4px;
+}
+
+.service-node-docker-networks-label {
+  font-weight: 500;
+}
+
+.service-node-docker-networks-list {
+  font-family: "JetBrains Mono", monospace;
+}
+
+/* Docker state colors */
+.docker-state {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.docker-state-running {
+  color: #22C55E;
+}
+
+.docker-state-paused {
+  color: #EAB308;
+}
+
+.docker-state-restarting {
+  color: #F97316;
+}
+
+.docker-state-exited,
+.docker-state-dead {
+  color: #EF4444;
+}
+
+.docker-state-created {
+  color: #6B7280;
+}
+
+/* Docker health in detail panel */
+.node-detail-docker-health {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.docker-health-status {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.docker-health-healthy,
+.docker-health-running {
+  background: rgba(34, 197, 94, 0.15);
+  color: #22C55E;
+}
+
+.docker-health-starting {
+  background: rgba(234, 179, 8, 0.15);
+  color: #EAB308;
+}
+
+.docker-health-unhealthy {
+  background: rgba(239, 68, 68, 0.15);
+  color: #EF4444;
+}
+
+.docker-health-paused,
+.docker-health-restarting {
+  background: rgba(249, 115, 22, 0.15);
+  color: #F97316;
+}
+
+.docker-health-exited,
+.docker-health-dead {
+  background: rgba(107, 114, 128, 0.15);
+  color: #6B7280;
+}
+
+.docker-health-failing {
+  font-size: 12px;
+  color: #EF4444;
+}
+
+.docker-health-checks {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.docker-health-checks-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.docker-health-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+}
+
+.docker-health-check.success {
+  background: rgba(34, 197, 94, 0.1);
+}
+
+.docker-health-check.failure {
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.docker-health-check-code {
+  font-family: "JetBrains Mono", monospace;
+  font-weight: 500;
+}
+
+.docker-health-check-output {
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Docker networks in detail panel */
+.node-detail-docker-networks {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.docker-network-item {
+  padding: 10px 12px;
+  background: var(--bg-primary);
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+}
+
+.docker-network-name {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+
+.docker-network-details {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.docker-network-ip,
+.docker-network-gateway {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.docker-network-aliases {
+  font-size: 11px;
+  color: var(--text-faint);
+  margin-top: 4px;
+}
+
+/* Docker mounts/volumes in detail panel */
+.node-detail-docker-mounts {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.docker-mount-item {
+  padding: 8px 12px;
+  background: var(--bg-primary);
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+}
+
+.docker-mount-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.docker-mount-type {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+
+.docker-mount-type-bind {
+  background: rgba(13, 183, 237, 0.15);
+  color: #0db7ed;
+}
+
+.docker-mount-type-volume {
+  background: rgba(34, 197, 94, 0.15);
+  color: #22C55E;
+}
+
+.docker-mount-type-tmpfs {
+  background: rgba(234, 179, 8, 0.15);
+  color: #EAB308;
+}
+
+.docker-mount-readonly {
+  font-size: 10px;
+  color: #F97316;
+  font-weight: 500;
+}
+
+.docker-mount-paths {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+}
+
+.docker-mount-source {
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 150px;
+}
+
+.docker-mount-arrow {
+  color: var(--text-faint);
+  flex-shrink: 0;
+}
+
+.docker-mount-dest {
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Docker ports in detail panel */
+.node-detail-docker-ports {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.docker-port-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--bg-primary);
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 12px;
+}
+
+.docker-port-host {
+  color: #0db7ed;
+  font-weight: 500;
+}
+
+.docker-port-arrow {
+  color: var(--text-faint);
+}
+
+.docker-port-container {
+  color: var(--text-secondary);
+}
+
+.docker-port-exposed {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* ============================================
    Context Menu Styles
    ============================================ */
 
