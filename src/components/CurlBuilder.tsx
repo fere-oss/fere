@@ -1,8 +1,14 @@
-import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
-import type { GraphNode, ApiRoute, HttpResponse } from '../types/electron';
+import { useState, useMemo, useCallback, useRef, useEffect } from "react";
+import type {
+  GraphNode,
+  ApiRoute,
+  HttpResponse,
+  HistoryEntry,
+} from "../types/electron";
 
 interface CurlBuilderProps {
   nodes: GraphNode[];
+  initialServiceId?: string;
 }
 
 interface Header {
@@ -11,20 +17,27 @@ interface Header {
   enabled: boolean;
 }
 
-type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD' | 'OPTIONS';
-type OutputTab = 'curl' | 'response';
+type HttpMethod =
+  | "GET"
+  | "POST"
+  | "PUT"
+  | "PATCH"
+  | "DELETE"
+  | "HEAD"
+  | "OPTIONS";
+type OutputTab = "curl" | "response" | "history";
 
 const DEFAULT_HEADERS: Header[] = [
-  { key: 'Content-Type', value: 'application/json', enabled: true },
-  { key: 'Accept', value: 'application/json', enabled: true },
-  { key: 'Authorization', value: 'Bearer ', enabled: false },
+  { key: "Content-Type", value: "application/json", enabled: true },
+  { key: "Accept", value: "application/json", enabled: true },
+  { key: "Authorization", value: "Bearer ", enabled: false },
 ];
 
 // Syntax highlight a curl command for display
 function highlightCurl(curlStr: string): React.ReactNode {
   if (!curlStr) return null;
 
-  const lines = curlStr.split('\n');
+  const lines = curlStr.split("\n");
   const elements: React.ReactNode[] = [];
 
   lines.forEach((line, lineIndex) => {
@@ -38,8 +51,12 @@ function highlightCurl(curlStr: string): React.ReactNode {
     let keyIndex = 0;
 
     // Match 'curl' command
-    if (remaining.startsWith('curl')) {
-      lineElements.push(<span key={`cmd-${lineIndex}`} className="curl-hl-command">curl</span>);
+    if (remaining.startsWith("curl")) {
+      lineElements.push(
+        <span key={`cmd-${lineIndex}`} className="curl-hl-command">
+          curl
+        </span>,
+      );
       remaining = remaining.slice(4);
     }
 
@@ -47,33 +64,108 @@ function highlightCurl(curlStr: string): React.ReactNode {
     while (remaining.length > 0) {
       // Match line continuation
       if (remaining.match(/^\s*\\$/)) {
-        lineElements.push(<span key={`cont-${lineIndex}-${keyIndex++}`} className="curl-hl-continuation">{remaining}</span>);
-        remaining = '';
+        lineElements.push(
+          <span
+            key={`cont-${lineIndex}-${keyIndex++}`}
+            className="curl-hl-continuation"
+          >
+            {remaining}
+          </span>,
+        );
+        remaining = "";
         continue;
       }
 
       // Match -X METHOD
-      const methodMatch = remaining.match(/^(\s*)(-X)(\s+)(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)/);
+      const methodMatch = remaining.match(
+        /^(\s*)(-X)(\s+)(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)/,
+      );
       if (methodMatch) {
-        lineElements.push(<span key={`ws-${lineIndex}-${keyIndex++}`}>{methodMatch[1]}</span>);
-        lineElements.push(<span key={`flag-${lineIndex}-${keyIndex++}`} className="curl-hl-flag">{methodMatch[2]}</span>);
-        lineElements.push(<span key={`ws2-${lineIndex}-${keyIndex++}`}>{methodMatch[3]}</span>);
-        lineElements.push(<span key={`method-${lineIndex}-${keyIndex++}`} className="curl-hl-method">{methodMatch[4]}</span>);
+        lineElements.push(
+          <span key={`ws-${lineIndex}-${keyIndex++}`}>{methodMatch[1]}</span>,
+        );
+        lineElements.push(
+          <span
+            key={`flag-${lineIndex}-${keyIndex++}`}
+            className="curl-hl-flag"
+          >
+            {methodMatch[2]}
+          </span>,
+        );
+        lineElements.push(
+          <span key={`ws2-${lineIndex}-${keyIndex++}`}>{methodMatch[3]}</span>,
+        );
+        lineElements.push(
+          <span
+            key={`method-${lineIndex}-${keyIndex++}`}
+            className="curl-hl-method"
+          >
+            {methodMatch[4]}
+          </span>,
+        );
         remaining = remaining.slice(methodMatch[0].length);
         continue;
       }
 
       // Match -H flag with header
-      const headerMatch = remaining.match(/^(\s*)(-H)(\s+)'([^:]+):\s*([^']*)'/);
+      const headerMatch = remaining.match(
+        /^(\s*)(-H)(\s+)'([^:]+):\s*([^']*)'/,
+      );
       if (headerMatch) {
-        lineElements.push(<span key={`ws-${lineIndex}-${keyIndex++}`}>{headerMatch[1]}</span>);
-        lineElements.push(<span key={`flag-${lineIndex}-${keyIndex++}`} className="curl-hl-flag">{headerMatch[2]}</span>);
-        lineElements.push(<span key={`ws2-${lineIndex}-${keyIndex++}`}>{headerMatch[3]}</span>);
-        lineElements.push(<span key={`hq1-${lineIndex}-${keyIndex++}`} className="curl-hl-quote">'</span>);
-        lineElements.push(<span key={`hkey-${lineIndex}-${keyIndex++}`} className="curl-hl-header-key">{headerMatch[4]}</span>);
-        lineElements.push(<span key={`hcolon-${lineIndex}-${keyIndex++}`} className="curl-hl-punctuation">: </span>);
-        lineElements.push(<span key={`hval-${lineIndex}-${keyIndex++}`} className="curl-hl-header-value">{headerMatch[5]}</span>);
-        lineElements.push(<span key={`hq2-${lineIndex}-${keyIndex++}`} className="curl-hl-quote">'</span>);
+        lineElements.push(
+          <span key={`ws-${lineIndex}-${keyIndex++}`}>{headerMatch[1]}</span>,
+        );
+        lineElements.push(
+          <span
+            key={`flag-${lineIndex}-${keyIndex++}`}
+            className="curl-hl-flag"
+          >
+            {headerMatch[2]}
+          </span>,
+        );
+        lineElements.push(
+          <span key={`ws2-${lineIndex}-${keyIndex++}`}>{headerMatch[3]}</span>,
+        );
+        lineElements.push(
+          <span
+            key={`hq1-${lineIndex}-${keyIndex++}`}
+            className="curl-hl-quote"
+          >
+            '
+          </span>,
+        );
+        lineElements.push(
+          <span
+            key={`hkey-${lineIndex}-${keyIndex++}`}
+            className="curl-hl-header-key"
+          >
+            {headerMatch[4]}
+          </span>,
+        );
+        lineElements.push(
+          <span
+            key={`hcolon-${lineIndex}-${keyIndex++}`}
+            className="curl-hl-punctuation"
+          >
+            :{" "}
+          </span>,
+        );
+        lineElements.push(
+          <span
+            key={`hval-${lineIndex}-${keyIndex++}`}
+            className="curl-hl-header-value"
+          >
+            {headerMatch[5]}
+          </span>,
+        );
+        lineElements.push(
+          <span
+            key={`hq2-${lineIndex}-${keyIndex++}`}
+            className="curl-hl-quote"
+          >
+            '
+          </span>,
+        );
         remaining = remaining.slice(headerMatch[0].length);
         continue;
       }
@@ -81,12 +173,44 @@ function highlightCurl(curlStr: string): React.ReactNode {
       // Match -d flag with body
       const bodyMatch = remaining.match(/^(\s*)(-d)(\s+)'((?:[^'\\]|\\.)*)'/);
       if (bodyMatch) {
-        lineElements.push(<span key={`ws-${lineIndex}-${keyIndex++}`}>{bodyMatch[1]}</span>);
-        lineElements.push(<span key={`flag-${lineIndex}-${keyIndex++}`} className="curl-hl-flag">{bodyMatch[2]}</span>);
-        lineElements.push(<span key={`ws2-${lineIndex}-${keyIndex++}`}>{bodyMatch[3]}</span>);
-        lineElements.push(<span key={`bq1-${lineIndex}-${keyIndex++}`} className="curl-hl-quote">'</span>);
-        lineElements.push(<span key={`body-${lineIndex}-${keyIndex++}`} className="curl-hl-body">{bodyMatch[4]}</span>);
-        lineElements.push(<span key={`bq2-${lineIndex}-${keyIndex++}`} className="curl-hl-quote">'</span>);
+        lineElements.push(
+          <span key={`ws-${lineIndex}-${keyIndex++}`}>{bodyMatch[1]}</span>,
+        );
+        lineElements.push(
+          <span
+            key={`flag-${lineIndex}-${keyIndex++}`}
+            className="curl-hl-flag"
+          >
+            {bodyMatch[2]}
+          </span>,
+        );
+        lineElements.push(
+          <span key={`ws2-${lineIndex}-${keyIndex++}`}>{bodyMatch[3]}</span>,
+        );
+        lineElements.push(
+          <span
+            key={`bq1-${lineIndex}-${keyIndex++}`}
+            className="curl-hl-quote"
+          >
+            '
+          </span>,
+        );
+        lineElements.push(
+          <span
+            key={`body-${lineIndex}-${keyIndex++}`}
+            className="curl-hl-body"
+          >
+            {bodyMatch[4]}
+          </span>,
+        );
+        lineElements.push(
+          <span
+            key={`bq2-${lineIndex}-${keyIndex++}`}
+            className="curl-hl-quote"
+          >
+            '
+          </span>,
+        );
         remaining = remaining.slice(bodyMatch[0].length);
         continue;
       }
@@ -94,10 +218,30 @@ function highlightCurl(curlStr: string): React.ReactNode {
       // Match URL in quotes
       const urlMatch = remaining.match(/^(\s*)'(https?:\/\/[^']+)'/);
       if (urlMatch) {
-        lineElements.push(<span key={`ws-${lineIndex}-${keyIndex++}`}>{urlMatch[1]}</span>);
-        lineElements.push(<span key={`uq1-${lineIndex}-${keyIndex++}`} className="curl-hl-quote">'</span>);
-        lineElements.push(<span key={`url-${lineIndex}-${keyIndex++}`} className="curl-hl-url">{urlMatch[2]}</span>);
-        lineElements.push(<span key={`uq2-${lineIndex}-${keyIndex++}`} className="curl-hl-quote">'</span>);
+        lineElements.push(
+          <span key={`ws-${lineIndex}-${keyIndex++}`}>{urlMatch[1]}</span>,
+        );
+        lineElements.push(
+          <span
+            key={`uq1-${lineIndex}-${keyIndex++}`}
+            className="curl-hl-quote"
+          >
+            '
+          </span>,
+        );
+        lineElements.push(
+          <span key={`url-${lineIndex}-${keyIndex++}`} className="curl-hl-url">
+            {urlMatch[2]}
+          </span>,
+        );
+        lineElements.push(
+          <span
+            key={`uq2-${lineIndex}-${keyIndex++}`}
+            className="curl-hl-quote"
+          >
+            '
+          </span>,
+        );
         remaining = remaining.slice(urlMatch[0].length);
         continue;
       }
@@ -105,14 +249,25 @@ function highlightCurl(curlStr: string): React.ReactNode {
       // Match any other flag
       const flagMatch = remaining.match(/^(\s*)(-\w+)/);
       if (flagMatch) {
-        lineElements.push(<span key={`ws-${lineIndex}-${keyIndex++}`}>{flagMatch[1]}</span>);
-        lineElements.push(<span key={`flag-${lineIndex}-${keyIndex++}`} className="curl-hl-flag">{flagMatch[2]}</span>);
+        lineElements.push(
+          <span key={`ws-${lineIndex}-${keyIndex++}`}>{flagMatch[1]}</span>,
+        );
+        lineElements.push(
+          <span
+            key={`flag-${lineIndex}-${keyIndex++}`}
+            className="curl-hl-flag"
+          >
+            {flagMatch[2]}
+          </span>,
+        );
         remaining = remaining.slice(flagMatch[0].length);
         continue;
       }
 
       // Take one character and continue
-      lineElements.push(<span key={`char-${lineIndex}-${keyIndex++}`}>{remaining[0]}</span>);
+      lineElements.push(
+        <span key={`char-${lineIndex}-${keyIndex++}`}>{remaining[0]}</span>,
+      );
       remaining = remaining.slice(1);
     }
 
@@ -129,23 +284,23 @@ function parseCurlCommand(curlStr: string): {
   headers: Record<string, string>;
   body?: string;
 } | null {
-  if (!curlStr || !curlStr.trim().startsWith('curl')) {
+  if (!curlStr || !curlStr.trim().startsWith("curl")) {
     return null;
   }
 
   // Normalize the curl command - remove line continuations and extra whitespace
   let remaining = curlStr
-    .replace(/\\\n\s*/g, ' ')
-    .replace(/\s+/g, ' ')
+    .replace(/\\\n\s*/g, " ")
+    .replace(/\s+/g, " ")
     .trim();
 
-  let method = 'GET';
-  let url = '';
+  let method = "GET";
+  let url = "";
   const headers: Record<string, string> = {};
   let body: string | undefined;
 
   // Remove 'curl' from the beginning
-  remaining = remaining.replace(/^curl\s*/, '');
+  remaining = remaining.replace(/^curl\s*/, "");
 
   // Extract method from -X flag
   const methodMatch = remaining.match(/^(.*?)-X\s+(\w+)(.*)$/);
@@ -170,7 +325,10 @@ function parseCurlCommand(curlStr: string): {
 
   // Extract all headers from -H flags
   let headerMatch;
-  while ((headerMatch = remaining.match(/^(.*?)-H\s+'([^:]+):\s*([^']*)'(.*)$/)) !== null) {
+  while (
+    (headerMatch = remaining.match(/^(.*?)-H\s+'([^:]+):\s*([^']*)'(.*)$/)) !==
+    null
+  ) {
     headers[headerMatch[2]] = headerMatch[3];
     remaining = (headerMatch[1] + headerMatch[4]).trim();
   }
@@ -195,55 +353,98 @@ function parseCurlCommand(curlStr: string): {
   return { method, url, headers, body };
 }
 
-export function CurlBuilder({ nodes }: CurlBuilderProps) {
+// Generate unique ID for history entries
+function generateHistoryId(): string {
+  return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+}
+
+export function CurlBuilder({ nodes, initialServiceId }: CurlBuilderProps) {
   // State for request configuration
-  const [selectedNodeId, setSelectedNodeId] = useState<string>('');
+  const [selectedNodeId, setSelectedNodeId] = useState<string>("");
   const [selectedRouteIndex, setSelectedRouteIndex] = useState<number>(-1);
-  const [method, setMethod] = useState<HttpMethod>('GET');
-  const [customPath, setCustomPath] = useState<string>('');
+  const [method, setMethod] = useState<HttpMethod>("GET");
+  const [customPath, setCustomPath] = useState<string>("");
   const [headers, setHeaders] = useState<Header[]>(DEFAULT_HEADERS);
-  const [body, setBody] = useState<string>('');
+  const [body, setBody] = useState<string>("");
   const [copied, setCopied] = useState(false);
 
   // State for custom dropdowns
   const [serviceDropdownOpen, setServiceDropdownOpen] = useState(false);
-  const [routeSearch, setRouteSearch] = useState('');
+  const [routeSearch, setRouteSearch] = useState("");
   const serviceDropdownRef = useRef<HTMLDivElement>(null);
 
   // State for request execution
-  const [outputTab, setOutputTab] = useState<OutputTab>('curl');
+  const [outputTab, setOutputTab] = useState<OutputTab>("curl");
   const [isLoading, setIsLoading] = useState(false);
   const [response, setResponse] = useState<HttpResponse | null>(null);
   const [requestError, setRequestError] = useState<string | null>(null);
 
   // State for editable curl
   const [isCurlEditing, setIsCurlEditing] = useState(false);
-  const [editedCurl, setEditedCurl] = useState<string>('');
+  const [editedCurl, setEditedCurl] = useState<string>("");
+
+  // State for request history
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
 
   // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (serviceDropdownRef.current && !serviceDropdownRef.current.contains(event.target as Node)) {
+      if (
+        serviceDropdownRef.current &&
+        !serviceDropdownRef.current.contains(event.target as Node)
+      ) {
         setServiceDropdownOpen(false);
       }
     };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  // Load request history on mount
+  useEffect(() => {
+    const loadHistory = async () => {
+      setHistoryLoading(true);
+      try {
+        const result = await window.electronAPI.loadRequestHistory();
+        if (result.success && result.history) {
+          setHistory(result.history);
+        }
+      } catch (err) {
+        console.error("Failed to load history:", err);
+      } finally {
+        setHistoryLoading(false);
+      }
+    };
+    loadHistory();
+  }, []);
+
+  // Auto-select service when initialServiceId is provided
+  useEffect(() => {
+    if (initialServiceId) {
+      setSelectedNodeId(initialServiceId);
+      setSelectedRouteIndex(-1);
+      setCustomPath("");
+      setRouteSearch("");
+      setResponse(null);
+      setRequestError(null);
+    }
+  }, [initialServiceId]);
 
   // Get nodes that have ports AND discovered routes (actually testable with curl)
   const httpNodes = useMemo(() => {
-    return nodes.filter(node =>
-      node.type !== 'external' &&
-      node.ports.length > 0 &&
-      node.routes &&
-      node.routes.length > 0
+    return nodes.filter(
+      (node) =>
+        node.type !== "external" &&
+        node.ports.length > 0 &&
+        node.routes &&
+        node.routes.length > 0,
     );
   }, [nodes]);
 
   // Get selected node
   const selectedNode = useMemo(() => {
-    return httpNodes.find(n => n.id === selectedNodeId);
+    return httpNodes.find((n) => n.id === selectedNodeId);
   }, [httpNodes, selectedNodeId]);
 
   // Get routes for selected node
@@ -255,17 +456,19 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
   const filteredRoutes = useMemo(() => {
     if (!routeSearch.trim()) return routes;
     const search = routeSearch.toLowerCase();
-    return routes.filter(route =>
-      route.path.toLowerCase().includes(search) ||
-      route.method.toLowerCase().includes(search)
+    return routes.filter(
+      (route) =>
+        route.path.toLowerCase().includes(search) ||
+        route.method.toLowerCase().includes(search),
     );
   }, [routes, routeSearch]);
 
   // Get base URL for selected node
   const baseUrl = useMemo(() => {
-    if (!selectedNode || selectedNode.ports.length === 0) return '';
+    if (!selectedNode || selectedNode.ports.length === 0) return "";
     const port = selectedNode.ports[0];
-    const host = port.host === '0.0.0.0' || port.host === '*' ? 'localhost' : port.host;
+    const host =
+      port.host === "0.0.0.0" || port.host === "*" ? "localhost" : port.host;
     return `http://${host}:${port.port}`;
   }, [selectedNode]);
 
@@ -274,23 +477,23 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
     if (selectedRouteIndex >= 0 && routes[selectedRouteIndex]) {
       return routes[selectedRouteIndex].path;
     }
-    return customPath || '/';
+    return customPath || "/";
   }, [selectedRouteIndex, routes, customPath]);
 
   // Full URL
   const fullUrl = useMemo(() => {
-    if (!baseUrl) return '';
+    if (!baseUrl) return "";
     return `${baseUrl}${currentPath}`;
   }, [baseUrl, currentPath]);
 
   // Generate curl command
   const curlCommand = useMemo(() => {
-    if (!fullUrl) return '';
+    if (!fullUrl) return "";
 
-    const parts: string[] = ['curl'];
+    const parts: string[] = ["curl"];
 
     // Method (only add -X if not GET)
-    if (method !== 'GET') {
+    if (method !== "GET") {
       parts.push(`-X ${method}`);
     }
 
@@ -298,12 +501,14 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
     parts.push(`'${fullUrl}'`);
 
     // Headers
-    headers.filter(h => h.enabled && h.key && h.value).forEach(h => {
-      parts.push(`-H '${h.key}: ${h.value}'`);
-    });
+    headers
+      .filter((h) => h.enabled && h.key && h.value)
+      .forEach((h) => {
+        parts.push(`-H '${h.key}: ${h.value}'`);
+      });
 
     // Body (for POST, PUT, PATCH)
-    if (['POST', 'PUT', 'PATCH'].includes(method) && body.trim()) {
+    if (["POST", "PUT", "PATCH"].includes(method) && body.trim()) {
       // Escape single quotes in the body
       const escapedBody = body.replace(/'/g, "'\\''");
       parts.push(`-d '${escapedBody}'`);
@@ -311,9 +516,9 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
 
     // Format with line breaks for readability
     if (parts.length > 3) {
-      return parts.join(' \\\n  ');
+      return parts.join(" \\\n  ");
     }
-    return parts.join(' ');
+    return parts.join(" ");
   }, [fullUrl, method, headers, body]);
 
   // Track previous curl command to detect actual changes
@@ -338,43 +543,49 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
   const handleNodeSelect = useCallback((nodeId: string) => {
     setSelectedNodeId(nodeId);
     setSelectedRouteIndex(-1);
-    setCustomPath('');
-    setRouteSearch('');
+    setCustomPath("");
+    setRouteSearch("");
     setResponse(null);
     setRequestError(null);
     setServiceDropdownOpen(false);
   }, []);
 
   // Handle route selection
-  const handleRouteSelect = useCallback((index: number) => {
-    setSelectedRouteIndex(index);
-    if (index >= 0 && routes[index]) {
-      const routeMethod = routes[index].method.toUpperCase();
-      // "ALL" means the route accepts any method - default to GET
-      setMethod(routeMethod === 'ALL' ? 'GET' : routeMethod as HttpMethod);
-    } else {
-      // Custom path selected - default to GET
-      setMethod('GET');
-    }
-    setResponse(null);
-    setRequestError(null);
-  }, [routes]);
+  const handleRouteSelect = useCallback(
+    (index: number) => {
+      setSelectedRouteIndex(index);
+      if (index >= 0 && routes[index]) {
+        const routeMethod = routes[index].method.toUpperCase();
+        // "ALL" means the route accepts any method - default to GET
+        setMethod(routeMethod === "ALL" ? "GET" : (routeMethod as HttpMethod));
+      } else {
+        // Custom path selected - default to GET
+        setMethod("GET");
+      }
+      setResponse(null);
+      setRequestError(null);
+    },
+    [routes],
+  );
 
   // Handle header changes
-  const updateHeader = useCallback((index: number, field: keyof Header, value: string | boolean) => {
-    setHeaders(prev => {
-      const newHeaders = [...prev];
-      newHeaders[index] = { ...newHeaders[index], [field]: value };
-      return newHeaders;
-    });
-  }, []);
+  const updateHeader = useCallback(
+    (index: number, field: keyof Header, value: string | boolean) => {
+      setHeaders((prev) => {
+        const newHeaders = [...prev];
+        newHeaders[index] = { ...newHeaders[index], [field]: value };
+        return newHeaders;
+      });
+    },
+    [],
+  );
 
   const addHeader = useCallback(() => {
-    setHeaders(prev => [...prev, { key: '', value: '', enabled: true }]);
+    setHeaders((prev) => [...prev, { key: "", value: "", enabled: true }]);
   }, []);
 
   const removeHeader = useCallback((index: number) => {
-    setHeaders(prev => prev.filter((_, i) => i !== index));
+    setHeaders((prev) => prev.filter((_, i) => i !== index));
   }, []);
 
   // Copy to clipboard
@@ -385,7 +596,7 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
-      console.error('Failed to copy:', err);
+      console.error("Failed to copy:", err);
     }
   }, [displayCurl]);
 
@@ -407,12 +618,42 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
     setIsCurlEditing(false);
   }, [curlCommand]);
 
+  // Load a request from history into the builder
+  const loadFromHistory = useCallback((entry: HistoryEntry) => {
+    // Build curl command from history entry
+    const headerParts = Object.entries(entry.headers || {})
+      .map(([key, value]) => `-H '${key}: ${value}'`)
+      .join(" \\\n  ");
+
+    let curlParts = [`curl -X ${entry.method}`, `'${entry.url}'`];
+    if (headerParts) {
+      curlParts.push(headerParts);
+    }
+    if (entry.body) {
+      const escapedBody = entry.body.replace(/'/g, "'\\''");
+      curlParts.push(`-d '${escapedBody}'`);
+    }
+
+    const curl = curlParts.join(" \\\n  ");
+    setEditedCurl(curl);
+    setIsCurlEditing(true);
+    setOutputTab("curl");
+  }, []);
+
+  // Clear all history
+  const handleClearHistory = useCallback(async () => {
+    const result = await window.electronAPI.clearRequestHistory();
+    if (result.success) {
+      setHistory([]);
+    }
+  }, []);
+
   // Execute the HTTP request
   const executeRequest = useCallback(async () => {
     setIsLoading(true);
     setResponse(null);
     setRequestError(null);
-    setOutputTab('response');
+    setOutputTab("response");
 
     try {
       let requestMethod: string;
@@ -424,7 +665,7 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
       if (isCurlModified && editedCurl) {
         const parsed = parseCurlCommand(editedCurl);
         if (!parsed) {
-          setRequestError('Failed to parse edited curl command');
+          setRequestError("Failed to parse edited curl command");
           setIsLoading(false);
           return;
         }
@@ -441,10 +682,14 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
         requestMethod = method;
         requestUrl = fullUrl;
         requestHeaders = {};
-        headers.filter(h => h.enabled && h.key && h.value).forEach(h => {
-          requestHeaders[h.key] = h.value;
-        });
-        requestBody = ['POST', 'PUT', 'PATCH'].includes(method) ? body : undefined;
+        headers
+          .filter((h) => h.enabled && h.key && h.value)
+          .forEach((h) => {
+            requestHeaders[h.key] = h.value;
+          });
+        requestBody = ["POST", "PUT", "PATCH"].includes(method)
+          ? body
+          : undefined;
       }
 
       const result = await window.electronAPI.executeHttpRequest({
@@ -456,11 +701,35 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
 
       if (result.success && result.response) {
         setResponse(result.response);
+
+        // Save to history
+        const historyEntry: HistoryEntry = {
+          id: generateHistoryId(),
+          timestamp: Date.now(),
+          method: requestMethod,
+          url: requestUrl,
+          headers: requestHeaders,
+          body: requestBody,
+          response: {
+            status: result.response.status,
+            statusText: result.response.statusText,
+            duration: result.response.duration,
+            size: result.response.size,
+          },
+        };
+
+        // Save to file
+        await window.electronAPI.saveRequestHistory(historyEntry);
+
+        // Update local state (prepend to show most recent first)
+        setHistory((prev) => [historyEntry, ...prev].slice(0, 100));
       } else {
-        setRequestError(result.error || 'Unknown error');
+        setRequestError(result.error || "Unknown error");
       }
     } catch (err) {
-      setRequestError(err instanceof Error ? err.message : 'Failed to execute request');
+      setRequestError(
+        err instanceof Error ? err.message : "Failed to execute request",
+      );
     } finally {
       setIsLoading(false);
     }
@@ -475,10 +744,10 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
 
   // Get status color
   const getStatusColor = (status: number): string => {
-    if (status >= 200 && status < 300) return '#22c55e';
-    if (status >= 300 && status < 400) return '#eab308';
-    if (status >= 400 && status < 500) return '#f97316';
-    return '#ef4444';
+    if (status >= 200 && status < 300) return "#22c55e";
+    if (status >= 300 && status < 400) return "#eab308";
+    if (status >= 400 && status < 500) return "#f97316";
+    return "#ef4444";
   };
 
   return (
@@ -497,32 +766,52 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
                 <span className="curl-dropdown-value">
                   {selectedNode ? (
                     <>
-                      <span className="curl-dropdown-node-name">{selectedNode.name}</span>
-                      <span className="curl-dropdown-port">:{selectedNode.ports[0]?.port}</span>
+                      <span className="curl-dropdown-node-name">
+                        {selectedNode.name}
+                      </span>
+                      <span className="curl-dropdown-port">
+                        :{selectedNode.ports[0]?.port}
+                      </span>
                     </>
                   ) : (
-                    <span className="curl-dropdown-placeholder">Select a service...</span>
+                    <span className="curl-dropdown-placeholder">
+                      Select a service...
+                    </span>
                   )}
                 </span>
-                <span className={`curl-dropdown-arrow ${serviceDropdownOpen ? 'open' : ''}`}>
+                <span
+                  className={`curl-dropdown-arrow ${serviceDropdownOpen ? "open" : ""}`}
+                >
                   <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                    <path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                    <path
+                      d="M3 4.5L6 7.5L9 4.5"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
                   </svg>
                 </span>
               </button>
               {serviceDropdownOpen && (
                 <div className="curl-dropdown-menu">
                   {httpNodes.length === 0 ? (
-                    <div className="curl-dropdown-empty">No services available</div>
+                    <div className="curl-dropdown-empty">
+                      No services available
+                    </div>
                   ) : (
-                    httpNodes.map(node => (
+                    httpNodes.map((node) => (
                       <button
                         key={node.id}
-                        className={`curl-dropdown-item ${node.id === selectedNodeId ? 'selected' : ''}`}
+                        className={`curl-dropdown-item ${node.id === selectedNodeId ? "selected" : ""}`}
                         onClick={() => handleNodeSelect(node.id)}
                       >
-                        <span className="curl-dropdown-item-name">{node.name}</span>
-                        <span className="curl-dropdown-item-port">:{node.ports.map(p => p.port).join(', ')}</span>
+                        <span className="curl-dropdown-item-name">
+                          {node.name}
+                        </span>
+                        <span className="curl-dropdown-item-port">
+                          :{node.ports.map((p) => p.port).join(", ")}
+                        </span>
                       </button>
                     ))
                   )}
@@ -537,14 +826,34 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
               <label className="curl-section-title">
                 Route
                 {routes.length > 0 && (
-                  <span className="curl-section-count">{routes.length} discovered</span>
+                  <span className="curl-section-count">
+                    {routes.length} discovered
+                  </span>
                 )}
               </label>
               {routes.length > 0 && (
                 <div className="curl-route-search">
-                  <svg className="curl-search-icon" width="14" height="14" viewBox="0 0 14 14" fill="none">
-                    <path d="M6.5 11C9.26142 11 11.5 8.76142 11.5 6C11.5 3.23858 9.26142 1 6.5 1C3.73858 1 1.5 3.23858 1.5 6C1.5 8.76142 3.73858 11 6.5 11Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                    <path d="M12.5 12L10 9.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                  <svg
+                    className="curl-search-icon"
+                    width="14"
+                    height="14"
+                    viewBox="0 0 14 14"
+                    fill="none"
+                  >
+                    <path
+                      d="M6.5 11C9.26142 11 11.5 8.76142 11.5 6C11.5 3.23858 9.26142 1 6.5 1C3.73858 1 1.5 3.23858 1.5 6C1.5 8.76142 3.73858 11 6.5 11Z"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                    <path
+                      d="M12.5 12L10 9.5"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
                   </svg>
                   <input
                     type="text"
@@ -554,9 +863,23 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
                     onChange={(e) => setRouteSearch(e.target.value)}
                   />
                   {routeSearch && (
-                    <button className="curl-search-clear" onClick={() => setRouteSearch('')}>
-                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                        <path d="M9 3L3 9M3 3L9 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                    <button
+                      className="curl-search-clear"
+                      onClick={() => setRouteSearch("")}
+                    >
+                      <svg
+                        width="12"
+                        height="12"
+                        viewBox="0 0 12 12"
+                        fill="none"
+                      >
+                        <path
+                          d="M9 3L3 9M3 3L9 9"
+                          stroke="currentColor"
+                          strokeWidth="1.5"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
                       </svg>
                     </button>
                   )}
@@ -566,7 +889,7 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
                 <div className="curl-routes-list">
                   {!routeSearch && (
                     <button
-                      className={`curl-route-option ${selectedRouteIndex === -1 ? 'selected' : ''}`}
+                      className={`curl-route-option ${selectedRouteIndex === -1 ? "selected" : ""}`}
                       onClick={() => handleRouteSelect(-1)}
                     >
                       <span className="route-method route-custom">CUSTOM</span>
@@ -575,14 +898,18 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
                   )}
                   {filteredRoutes.map((route, index) => {
                     // Find original index in routes array
-                    const originalIndex = routes.findIndex(r => r.path === route.path && r.method === route.method);
+                    const originalIndex = routes.findIndex(
+                      (r) => r.path === route.path && r.method === route.method,
+                    );
                     return (
                       <button
                         key={`${route.method}-${route.path}`}
-                        className={`curl-route-option ${selectedRouteIndex === originalIndex ? 'selected' : ''}`}
+                        className={`curl-route-option ${selectedRouteIndex === originalIndex ? "selected" : ""}`}
                         onClick={() => handleRouteSelect(originalIndex)}
                       >
-                        <span className={`route-method route-${route.method.toLowerCase()}`}>
+                        <span
+                          className={`route-method route-${route.method.toLowerCase()}`}
+                        >
                           {route.method}
                         </span>
                         <span className="route-path">{route.path}</span>
@@ -590,7 +917,9 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
                     );
                   })}
                   {filteredRoutes.length === 0 && routeSearch && (
-                    <div className="curl-no-routes">No routes match "{routeSearch}"</div>
+                    <div className="curl-no-routes">
+                      No routes match "{routeSearch}"
+                    </div>
                   )}
                 </div>
               ) : (
@@ -606,7 +935,9 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
             <div className="curl-section">
               <label className="curl-section-title">Request</label>
               <div className="curl-request-row">
-                <span className={`curl-method-badge route-method route-${method.toLowerCase()}`}>
+                <span
+                  className={`curl-method-badge route-method route-${method.toLowerCase()}`}
+                >
                   {method}
                 </span>
                 <input
@@ -623,7 +954,7 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
                 />
               </div>
               <div className="curl-url-preview">
-                {fullUrl || 'Select a service to build URL'}
+                {fullUrl || "Select a service to build URL"}
               </div>
             </div>
           )}
@@ -633,7 +964,9 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
             <div className="curl-section">
               <div className="curl-section-header">
                 <label className="curl-section-title">Headers</label>
-                <button className="curl-add-btn" onClick={addHeader}>+ Add</button>
+                <button className="curl-add-btn" onClick={addHeader}>
+                  + Add
+                </button>
               </div>
               <div className="curl-headers-list">
                 {headers.map((header, index) => (
@@ -641,21 +974,27 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
                     <input
                       type="checkbox"
                       checked={header.enabled}
-                      onChange={(e) => updateHeader(index, 'enabled', e.target.checked)}
+                      onChange={(e) =>
+                        updateHeader(index, "enabled", e.target.checked)
+                      }
                       className="curl-header-checkbox"
                     />
                     <input
                       type="text"
                       placeholder="Header name"
                       value={header.key}
-                      onChange={(e) => updateHeader(index, 'key', e.target.value)}
+                      onChange={(e) =>
+                        updateHeader(index, "key", e.target.value)
+                      }
                       className="curl-header-key"
                     />
                     <input
                       type="text"
                       placeholder="Value"
                       value={header.value}
-                      onChange={(e) => updateHeader(index, 'value', e.target.value)}
+                      onChange={(e) =>
+                        updateHeader(index, "value", e.target.value)
+                      }
                       className="curl-header-value"
                     />
                     <button
@@ -671,7 +1010,7 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
           )}
 
           {/* Body */}
-          {selectedNode && ['POST', 'PUT', 'PATCH'].includes(method) && (
+          {selectedNode && ["POST", "PUT", "PATCH"].includes(method) && (
             <div className="curl-section">
               <label className="curl-section-title">Request Body</label>
               <textarea
@@ -687,7 +1026,7 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
           {/* Run Button */}
           {selectedNode && (
             <button
-              className={`curl-run-btn ${isLoading ? 'loading' : ''}`}
+              className={`curl-run-btn ${isLoading ? "loading" : ""}`}
               onClick={executeRequest}
               disabled={(!fullUrl && !isCurlModified) || isLoading}
             >
@@ -711,14 +1050,14 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
           {/* Output Tabs */}
           <div className="curl-output-tabs">
             <button
-              className={`curl-output-tab ${outputTab === 'curl' ? 'active' : ''}`}
-              onClick={() => setOutputTab('curl')}
+              className={`curl-output-tab ${outputTab === "curl" ? "active" : ""}`}
+              onClick={() => setOutputTab("curl")}
             >
               cURL
             </button>
             <button
-              className={`curl-output-tab ${outputTab === 'response' ? 'active' : ''}`}
-              onClick={() => setOutputTab('response')}
+              className={`curl-output-tab ${outputTab === "response" ? "active" : ""}`}
+              onClick={() => setOutputTab("response")}
             >
               Response
               {response && (
@@ -730,8 +1069,17 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
                 </span>
               )}
             </button>
+            <button
+              className={`curl-output-tab ${outputTab === "history" ? "active" : ""}`}
+              onClick={() => setOutputTab("history")}
+            >
+              History
+              {history.length > 0 && (
+                <span className="curl-history-count">{history.length}</span>
+              )}
+            </button>
             <div className="curl-output-tabs-spacer" />
-            {outputTab === 'curl' && (
+            {outputTab === "curl" && (
               <div className="curl-output-actions">
                 {isCurlModified && (
                   <button
@@ -743,19 +1091,19 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
                   </button>
                 )}
                 <button
-                  className={`curl-edit-btn ${isCurlEditing ? 'active' : ''}`}
+                  className={`curl-edit-btn ${isCurlEditing ? "active" : ""}`}
                   onClick={toggleCurlEditing}
                   disabled={!curlCommand}
-                  title={isCurlEditing ? 'Lock editing' : 'Enable editing'}
+                  title={isCurlEditing ? "Lock editing" : "Enable editing"}
                 >
-                  {isCurlEditing ? 'Lock' : 'Edit'}
+                  {isCurlEditing ? "Lock" : "Edit"}
                 </button>
                 <button
-                  className={`curl-copy-btn ${copied ? 'copied' : ''}`}
+                  className={`curl-copy-btn ${copied ? "copied" : ""}`}
                   onClick={copyToClipboard}
                   disabled={!displayCurl}
                 >
-                  {copied ? 'Copied!' : 'Copy'}
+                  {copied ? "Copied!" : "Copy"}
                 </button>
               </div>
             )}
@@ -763,11 +1111,78 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
 
           {/* Output Content */}
           <div className="curl-output-content">
-            {outputTab === 'curl' ? (
-              <div className={`curl-output-code ${isCurlEditing ? 'editing' : ''}`}>
+            {outputTab === "history" ? (
+              <div className="curl-history-panel">
+                {historyLoading ? (
+                  <div className="curl-response-loading">
+                    <span className="curl-loading-spinner" />
+                    <span>Loading history...</span>
+                  </div>
+                ) : history.length === 0 ? (
+                  <div className="curl-response-empty">
+                    <span>No request history yet</span>
+                  </div>
+                ) : (
+                  <>
+                    <div className="curl-history-header">
+                      <span className="curl-history-title">
+                        Recent Requests ({history.length})
+                      </span>
+                      <button
+                        className="curl-clear-history-btn"
+                        onClick={handleClearHistory}
+                      >
+                        Clear All
+                      </button>
+                    </div>
+                    <div className="curl-history-list">
+                      {history.map((entry) => (
+                        <button
+                          key={entry.id}
+                          className="curl-history-item"
+                          onClick={() => loadFromHistory(entry)}
+                        >
+                          <div className="curl-history-item-main">
+                            <span
+                              className={`route-method route-${entry.method.toLowerCase()}`}
+                            >
+                              {entry.method}
+                            </span>
+                            <span className="curl-history-url">
+                              {entry.url}
+                            </span>
+                          </div>
+                          <div className="curl-history-item-meta">
+                            <span
+                              className="curl-history-status"
+                              style={{
+                                color: getStatusColor(entry.response.status),
+                              }}
+                            >
+                              {entry.response.status}
+                            </span>
+                            <span className="curl-history-duration">
+                              {entry.response.duration}ms
+                            </span>
+                            <span className="curl-history-time">
+                              {new Date(entry.timestamp).toLocaleString()}
+                            </span>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            ) : outputTab === "curl" ? (
+              <div
+                className={`curl-output-code ${isCurlEditing ? "editing" : ""}`}
+              >
                 {isCurlEditing ? (
                   <div className="curl-editor-container">
-                    <pre className="curl-editor-highlight">{highlightCurl(editedCurl)}</pre>
+                    <pre className="curl-editor-highlight">
+                      {highlightCurl(editedCurl)}
+                    </pre>
                     <textarea
                       className="curl-editor-textarea"
                       value={editedCurl}
@@ -776,10 +1191,13 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
                     />
                   </div>
                 ) : displayCurl ? (
-                  <pre className="curl-output-pre">{highlightCurl(displayCurl)}</pre>
+                  <pre className="curl-output-pre">
+                    {highlightCurl(displayCurl)}
+                  </pre>
                 ) : (
                   <span className="curl-placeholder">
-                    Select a service and configure your request to generate a curl command
+                    Select a service and configure your request to generate a
+                    curl command
                   </span>
                 )}
                 {isCurlModified && !isCurlEditing && (
@@ -810,8 +1228,12 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
                         {response.status} {response.statusText}
                       </span>
                       <span className="curl-response-meta">
-                        <span className="curl-meta-item">{response.duration}ms</span>
-                        <span className="curl-meta-item">{formatBytes(response.size)}</span>
+                        <span className="curl-meta-item">
+                          {response.duration}ms
+                        </span>
+                        <span className="curl-meta-item">
+                          {formatBytes(response.size)}
+                        </span>
                       </span>
                     </div>
 
@@ -821,12 +1243,16 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
                         Headers ({Object.keys(response.headers).length})
                       </summary>
                       <div className="curl-headers-content">
-                        {Object.entries(response.headers).map(([key, value]) => (
-                          <div key={key} className="curl-header-item">
-                            <span className="curl-header-name">{key}:</span>
-                            <span className="curl-header-val">{String(value)}</span>
-                          </div>
-                        ))}
+                        {Object.entries(response.headers).map(
+                          ([key, value]) => (
+                            <div key={key} className="curl-header-item">
+                              <span className="curl-header-name">{key}:</span>
+                              <span className="curl-header-val">
+                                {String(value)}
+                              </span>
+                            </div>
+                          ),
+                        )}
                       </div>
                     </details>
 
@@ -834,10 +1260,12 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
                     <div className="curl-response-body">
                       <div className="curl-response-body-header">
                         Body
-                        {response.isJson && <span className="curl-json-badge">JSON</span>}
+                        {response.isJson && (
+                          <span className="curl-json-badge">JSON</span>
+                        )}
                       </div>
                       <pre className="curl-response-body-content">
-                        {response.body || '(empty response)'}
+                        {response.body || "(empty response)"}
                       </pre>
                     </div>
                   </>

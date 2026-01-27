@@ -18,11 +18,10 @@ const {
 const { getSystemSnapshot } = require("./services/systemSnapshot");
 const { scanExternalApis } = require("./services/externalApiScanner");
 const {
-  isDockerAvailable,
-  getDockerContainers,
-  getDockerNetworks,
-  getDockerSnapshot,
-} = require("./services/dockerMonitor");
+  loadHistory,
+  saveHistoryEntry,
+  clearHistory,
+} = require("./services/requestHistory");
 
 // Keep a global reference of the window object
 let mainWindow;
@@ -313,6 +312,40 @@ ipcMain.handle("execute-http-request", async (event, options) => {
     });
   } catch (error) {
     console.error("Error executing HTTP request:", error);
+    return { success: false, error: error.message };
+  }
+});
+
+// ============================================
+// IPC Handlers - Request History
+// ============================================
+
+ipcMain.handle("load-request-history", async () => {
+  try {
+    return loadHistory();
+  } catch (error) {
+    console.error("Error loading request history:", error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle("save-request-history", async (event, entry) => {
+  try {
+    if (!entry || !entry.id || !entry.url || !entry.method) {
+      return { success: false, error: "Invalid history entry" };
+    }
+    return saveHistoryEntry(entry);
+  } catch (error) {
+    console.error("Error saving request history:", error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle("clear-request-history", async () => {
+  try {
+    return clearHistory();
+  } catch (error) {
+    console.error("Error clearing request history:", error);
     return { success: false, error: error.message };
   }
 });
