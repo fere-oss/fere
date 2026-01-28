@@ -1105,7 +1105,8 @@ function ServiceNode({ node, onClick, onContextMenu, animationIndex = 0 }: {
   const mainPort = node.ports[0]?.port;
   const routes = node.routes || [];
   const visibleRoutes = routes.slice(0, 3);
-  const externalApis = node.projectPath
+  // Don't show external APIs for Docker containers - they're isolated and shouldn't scan project code
+  const externalApis = (node.projectPath && !node.isDockerContainer)
     ? (externalApiCache.get(node.projectPath)?.apis || [])
     : [];
   const visibleApis = externalApis.slice(0, 3);
@@ -1301,7 +1302,8 @@ function NodeDetailPanel({ node, edges, allNodes, onClose }: NodeDetailPanelProp
     let active = true;
     const projectPath = node.projectPath;
 
-    if (!projectPath) {
+    // Don't show external APIs for Docker containers - they're isolated and shouldn't scan project code
+    if (!projectPath || node.isDockerContainer) {
       setExternalApis([]);
       setExternalApiLoading(false);
       setExternalApiError(null);
@@ -1344,7 +1346,7 @@ function NodeDetailPanel({ node, edges, allNodes, onClose }: NodeDetailPanelProp
     return () => {
       active = false;
     };
-  }, [node.projectPath]);
+  }, [node.projectPath, node.isDockerContainer]);
 
   return (
     <div className="node-detail-backdrop" onClick={handleBackdropClick} onWheel={handleWheel}>
