@@ -399,7 +399,41 @@ function buildContainerConnections(containers, networks) {
   const connections = [];
   const connectionSet = new Set();
 
-  // For each network, create edges between all containers on that network
+  // First, group containers by Docker Compose project
+  const containersByProject = new Map();
+  for (const container of containers) {
+    const project = container.labels?.['com.docker.compose.project'];
+    if (project) {
+      if (!containersByProject.has(project)) {
+        containersByProject.set(project, []);
+      }
+      containersByProject.get(project).push(container);
+    }
+  }
+
+  // Create edges between containers in the same Docker Compose project
+  for (const [project, projectContainers] of containersByProject) {
+    for (let i = 0; i < projectContainers.length; i++) {
+      for (let j = i + 1; j < projectContainers.length; j++) {
+        const containerA = projectContainers[i];
+        const containerB = projectContainers[j];
+
+        const edgeKey = [containerA.id, containerB.id].sort().join('-');
+
+        if (!connectionSet.has(edgeKey)) {
+          connectionSet.add(edgeKey);
+          connections.push({
+            sourceContainerId: containerA.id,
+            targetContainerId: containerB.id,
+            networkName: `compose:${project}`,
+            networkId: null,
+          });
+        }
+      }
+    }
+  }
+
+  // Also create edges for containers on shared custom networks (non-default)
   for (const network of networks) {
     // Skip default networks that everything connects to
     if (network.name === 'bridge' || network.name === 'host' || network.name === 'none') {

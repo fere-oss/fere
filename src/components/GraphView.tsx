@@ -1073,41 +1073,43 @@ export function GraphView({ nodes, edges, isContainerView = false }: GraphViewPr
           transformOrigin: 'center center',
         }}
       >
-        {/* Connection lines SVG */}
-        <svg className="graph-connections">
-          <defs>
-            <marker
-              id="arrowhead"
-              markerWidth="10"
-              markerHeight="10"
-              refX="9"
-              refY="5"
-              orient="auto"
-              markerUnits="userSpaceOnUse"
-            >
+        {/* Connection lines SVG - only show in graph view, not container view */}
+        {!isContainerView && (
+          <svg className="graph-connections">
+            <defs>
+              <marker
+                id="arrowhead"
+                markerWidth="10"
+                markerHeight="10"
+                refX="9"
+                refY="5"
+                orient="auto"
+                markerUnits="userSpaceOnUse"
+              >
+                <path
+                  d="M 0 1 L 8 5 L 0 9"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </marker>
+            </defs>
+
+            {edgeRoutes.map((route, i) => (
               <path
-                d="M 0 1 L 8 5 L 0 9"
-                fill="none"
+                key={`${route.from}-${route.to}-${i}`}
+                d={route.path}
                 stroke="currentColor"
                 strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
+                fill="none"
+                markerEnd="url(#arrowhead)"
+                className="graph-edge"
               />
-            </marker>
-          </defs>
-
-          {edgeRoutes.map((route, i) => (
-            <path
-              key={`${route.from}-${route.to}-${i}`}
-              d={route.path}
-              stroke="currentColor"
-              strokeWidth="1.5"
-              fill="none"
-              markerEnd="url(#arrowhead)"
-              className="graph-edge"
-            />
-          ))}
-        </svg>
+            ))}
+          </svg>
+        )}
 
         {/* Container View: Project containers with type groups inside */}
         {isContainerView ? (

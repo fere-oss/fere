@@ -790,6 +790,12 @@ function addDockerContainerNodes(nodes, edges, dockerSnapshot, nodesByPid, portT
     const nodeType = categorizeContainerImage(container.image);
 
     // Create the Docker container node
+    // Infer projectPath from Docker Compose labels or bind mounts
+    const containerProjectPath = inferProjectPathFromContainer(container);
+    const containerProject = containerProjectPath
+      ? path.basename(containerProjectPath)
+      : extractProjectFromContainerName(container.name);
+
     const node = {
       id: nodeId,
       pid: -1, // Docker containers don't have a direct PID in host context
@@ -800,8 +806,8 @@ function addDockerContainerNodes(nodes, edges, dockerSnapshot, nodesByPid, portT
       memory: container.memory || 0,
       user: 'docker',
       tty: null,
-      project: extractProjectFromContainerName(container.name),
-      projectPath: null,
+      project: containerProject,
+      projectPath: containerProjectPath,
       description: `Docker container running ${container.image}`,
       ports: graphPorts,
       routes: [],
@@ -954,6 +960,39 @@ function extractProjectFromContainerName(containerName) {
   const parts = cleanName.split(/[-_]/);
   if (parts.length > 1) {
     return parts[0];
+  }
+
+  return null;
+}
+
+/**
+ * Infer projectPath from Docker container labels (Docker Compose) or bind mounts
+ */
+function inferProjectPathFromContainer(container) {
+  // First, check Docker Compose labels - this is the most reliable source
+  if (container.labels) {
+    // Docker Compose v2 uses this label for the working directory
+    const workingDir = container.labels['com.docker.compose.project.working_dir'];
+    if (workingDir) {
+      const projectRoot = findProjectRoot(workingDir);
+      if (projectRoot) {
+        return projectRoot;
+      }
+      // If no project markers found, use the working dir itself
+      return workingDir;
+    }
+  }
+
+  // Fallback: check bind mounts for project directories
+  if (container.mounts && Array.isArray(container.mounts)) {
+    for (const mount of container.mounts) {
+      if (mount.type === 'bind' && mount.source) {
+        const projectRoot = findProjectRoot(mount.source);
+        if (projectRoot) {
+          return projectRoot;
+        }
+      }
+    }
   }
 
   return null;
