@@ -1,5 +1,12 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import type { ConnectionGraph, EnvironmentSummary, Port, Process, SystemSnapshot } from '../types/electron';
+
+// Helper to create a stable key for comparing snapshots
+const createSnapshotKey = (snapshot: SystemSnapshot): string => {
+  const nodeIds = snapshot.graph.nodes.map(n => n.id).sort().join(',');
+  const edgeKeys = snapshot.graph.edges.map(e => `${e.source}-${e.target}`).sort().join(',');
+  return `${nodeIds}|${edgeKeys}`;
+};
 
 // Check if we're running in Electron
 const isElectron = () => {
@@ -53,6 +60,7 @@ export function useSystemSnapshot(pollInterval = 2000) {
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const snapshotKeyRef = useRef<string>('');
 
   const refresh = useCallback(async () => {
     if (!isElectron()) {
@@ -63,7 +71,12 @@ export function useSystemSnapshot(pollInterval = 2000) {
 
     try {
       const data = await window.electronAPI.getSystemSnapshot();
-      setSnapshot(data);
+      // Only update state if the graph content actually changed
+      const newKey = createSnapshotKey(data);
+      if (newKey !== snapshotKeyRef.current) {
+        snapshotKeyRef.current = newKey;
+        setSnapshot(data);
+      }
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch system snapshot');

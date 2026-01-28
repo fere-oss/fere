@@ -570,33 +570,49 @@ export function GraphView({ nodes, edges, isContainerView = false }: GraphViewPr
     return edges.map(e => `${e.source}-${e.target}`).sort().join(',');
   }, [edges]);
 
+  // Keep refs to latest nodes/edges for use in effect without causing re-runs
+  const nodesRef = useRef(nodes);
+  const edgesRef = useRef(edges);
+  nodesRef.current = nodes;
+  edgesRef.current = edges;
+
   // Track previous keys to detect actual changes
-  const prevNodeSetKeyRef = useRef(nodeSetKey);
-  const prevEdgeSetKeyRef = useRef(edgeSetKey);
+  const prevNodeSetKeyRef = useRef<string | null>(null);
+  const prevEdgeSetKeyRef = useRef<string | null>(null);
+  const isInitialRenderRef = useRef(true);
 
   useEffect(() => {
     const nodesChanged = prevNodeSetKeyRef.current !== nodeSetKey;
     const edgesChanged = prevEdgeSetKeyRef.current !== edgeSetKey;
 
-    // Only trigger animation if the node set actually changed (tab switch)
-    if (nodesChanged) {
+    // Skip if nothing changed
+    if (!nodesChanged && !edgesChanged) {
+      return;
+    }
+
+    // Update refs
+    prevNodeSetKeyRef.current = nodeSetKey;
+    prevEdgeSetKeyRef.current = edgeSetKey;
+
+    // Only trigger animation if not initial render (tab switch)
+    if (!isInitialRenderRef.current && nodesChanged) {
       setAnimationKey(k => k + 1);
-      prevNodeSetKeyRef.current = nodeSetKey;
     }
 
-    if (edgesChanged) {
-      prevEdgeSetKeyRef.current = edgeSetKey;
-    }
-
-    // Only update display if there are actual changes
-    if (nodesChanged || edgesChanged) {
+    // On initial render or when content changes, update immediately
+    if (isInitialRenderRef.current) {
+      isInitialRenderRef.current = false;
+      setDisplayNodes(nodesRef.current);
+      setDisplayEdges(edgesRef.current);
+    } else {
+      // Small delay for tab switches to allow animation setup
       const timer = setTimeout(() => {
-        setDisplayNodes(nodes);
-        setDisplayEdges(edges);
+        setDisplayNodes(nodesRef.current);
+        setDisplayEdges(edgesRef.current);
       }, 30);
       return () => clearTimeout(timer);
     }
-  }, [nodeSetKey, edgeSetKey, nodes, edges]);
+  }, [nodeSetKey, edgeSetKey]);
 
   // Filter out external nodes
   const localNodes = useMemo(() => displayNodes.filter(n => {
@@ -612,11 +628,22 @@ export function GraphView({ nodes, edges, isContainerView = false }: GraphViewPr
     return displayEdges.filter(e => localNodeIds.has(e.source) && localNodeIds.has(e.target));
   }, [localNodes, displayEdges]);
 
+  // Create a stable key for project paths to prevent unnecessary external API fetches
+  const projectPathsKey = useMemo(() => {
+    return Array.from(
+      new Set(localNodes.map(node => node.projectPath).filter(Boolean))
+    ).sort().join(',');
+  }, [localNodes]);
+
+  // Keep ref to localNodes for use in effect
+  const localNodesRef = useRef(localNodes);
+  localNodesRef.current = localNodes;
+
   useEffect(() => {
     if (!window.electronAPI?.getExternalApis) return;
-    const projectPaths = Array.from(
-      new Set(localNodes.map(node => node.projectPath).filter(Boolean))
-    ) as string[];
+    if (!projectPathsKey) return;
+
+    const projectPaths = projectPathsKey.split(',').filter(Boolean);
     if (projectPaths.length === 0) return;
 
     let cancelled = false;
@@ -647,7 +674,7 @@ export function GraphView({ nodes, edges, isContainerView = false }: GraphViewPr
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [localNodes]);
+  }, [projectPathsKey]);
 
   // Compute hierarchical layout (returns connected and standalone nodes separately)
   const { connected: connectedLayout, standalone: standaloneLayout } = useMemo(() =>
