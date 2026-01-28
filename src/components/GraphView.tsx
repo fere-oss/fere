@@ -4,6 +4,7 @@ import type { GraphNode, GraphEdge, HealthStatus, ExternalApi } from '../types/e
 interface GraphViewProps {
   nodes: GraphNode[];
   edges: GraphEdge[];
+  isContainerView?: boolean;
 }
 
 interface NodePosition {
@@ -420,7 +421,98 @@ interface RenderGroup {
   groupName: string;
   nodes: GraphNode[];
   isGroup: boolean;
+  groupType?: string; // For container type grouping
 }
+
+// Container type grouping categories with display order
+const CONTAINER_TYPE_ORDER: Record<string, number> = {
+  frontend: 0,
+  webserver: 1,
+  backend: 2,
+  nodejs: 3,
+  python: 4,
+  broker: 5,
+  realtime: 6,
+  worker: 7,
+  cache: 8,
+  database: 9,
+  search: 10,
+  service: 11,
+};
+
+// Group containers by their type (database, cache, backend, etc.)
+const groupContainersByType = (nodes: GraphNode[]): RenderGroup[] => {
+  const typeGroups = new Map<string, GraphNode[]>();
+
+  nodes.forEach(node => {
+    const type = node.type || 'service';
+    if (!typeGroups.has(type)) {
+      typeGroups.set(type, []);
+    }
+    typeGroups.get(type)!.push(node);
+  });
+
+  // Sort groups by the predefined order
+  const sortedTypes = Array.from(typeGroups.keys()).sort((a, b) => {
+    const orderA = CONTAINER_TYPE_ORDER[a] ?? 99;
+    const orderB = CONTAINER_TYPE_ORDER[b] ?? 99;
+    return orderA - orderB;
+  });
+
+  return sortedTypes.map(type => ({
+    groupName: SERVICE_COLORS[type]?.label || type.charAt(0).toUpperCase() + type.slice(1),
+    nodes: typeGroups.get(type)!.sort((a, b) => a.name.localeCompare(b.name)),
+    isGroup: true,
+    groupType: type,
+  }));
+};
+
+// Container project structure - groups containers by project, then by type within each project
+interface ContainerProject {
+  projectName: string;
+  typeGroups: RenderGroup[];
+  totalContainers: number;
+}
+
+// Extract project name from container name (Docker Compose naming: project_service_1)
+const extractProjectName = (containerName: string): string => {
+  // Try to extract from Docker Compose naming convention
+  const parts = containerName.split(/[-_]/);
+  if (parts.length >= 2) {
+    // Usually format is: project-service or project_service_1
+    return parts[0];
+  }
+  return 'docker';
+};
+
+// Group containers by project first, then by type within each project
+const groupContainersByProject = (nodes: GraphNode[]): ContainerProject[] => {
+  // First, group by project
+  const projectMap = new Map<string, GraphNode[]>();
+
+  nodes.forEach(node => {
+    const projectName = extractProjectName(node.name);
+    if (!projectMap.has(projectName)) {
+      projectMap.set(projectName, []);
+    }
+    projectMap.get(projectName)!.push(node);
+  });
+
+  // For each project, group by type
+  const projects: ContainerProject[] = [];
+
+  projectMap.forEach((projectNodes, projectName) => {
+    const typeGroups = groupContainersByType(projectNodes);
+    projects.push({
+      projectName,
+      typeGroups,
+      totalContainers: projectNodes.length,
+    });
+  });
+
+  // Sort projects by name
+  return projects.sort((a, b) => a.projectName.localeCompare(b.projectName));
+};
 
 const groupLayoutNodes = (layoutNodes: LayoutNode[], layer: number): RenderGroup[] => {
   // Filter nodes for this layer and sort by order
@@ -452,7 +544,7 @@ const groupLayoutNodes = (layoutNodes: LayoutNode[], layer: number): RenderGroup
   });
 };
 
-export function GraphView({ nodes, edges }: GraphViewProps) {
+export function GraphView({ nodes, edges, isContainerView = false }: GraphViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
   const [displayNodes, setDisplayNodes] = useState<GraphNode[]>(nodes);
@@ -663,6 +755,12 @@ export function GraphView({ nodes, edges }: GraphViewProps) {
 
     return result.sort((a, b) => a.groupName.localeCompare(b.groupName));
   }, [standaloneLayout]);
+
+  // Container projects for container view mode (grouped by project, then by type)
+  const containerProjects = useMemo(() => {
+    if (!isContainerView) return [];
+    return groupContainersByProject(localNodes);
+  }, [isContainerView, localNodes]);
 
   // Get layer label based on layer index and content
   const getLayerLabel = useCallback((layer: number, nodes: GraphNode[]): string => {
@@ -984,59 +1082,74 @@ export function GraphView({ nodes, edges }: GraphViewProps) {
           ))}
         </svg>
 
-        {/* Layered nodes - Dynamic layers based on topology */}
-        <div className="graph-layers" key={`layers-${animationKey}`}>
-          {sortedLayers.map((layer, layerIdx) => {
-            const groups = layerGroups.get(layer) || [];
-            const allNodes = groups.flatMap(g => g.nodes);
-            if (allNodes.length === 0) return null;
+        {/* Container View: Project containers with type groups inside */}
+        {isContainerView ? (
+          <div className="container-projects-view" key={`containers-${animationKey}`}>
+            {containerProjects.map((project, projectIdx) => (
+              <ProjectContainer
+                key={`project-${project.projectName}`}
+                project={project}
+                onNodeClick={setSelectedNode}
+                onContextMenu={handleContextMenu}
+                animationDelay={projectIdx * 150}
+              />
+            ))}
+          </div>
+        ) : (
+          /* Regular Service Map: Layered nodes based on topology */
+          <div className="graph-layers" key={`layers-${animationKey}`}>
+            {sortedLayers.map((layer, layerIdx) => {
+              const groups = layerGroups.get(layer) || [];
+              const allNodes = groups.flatMap(g => g.nodes);
+              if (allNodes.length === 0) return null;
 
-            // Calculate base animation index for this layer
-            let nodeIndex = layerIdx * 2;
+              // Calculate base animation index for this layer
+              let nodeIndex = layerIdx * 2;
 
-            return (
-              <div key={`layer-${layer}`} className="graph-layer" style={{ animationDelay: `${layerIdx * 80}ms` }}>
-                <div className="graph-layer-label">{getLayerLabel(layer, allNodes)}</div>
+              return (
+                <div key={`layer-${layer}`} className="graph-layer" style={{ animationDelay: `${layerIdx * 80}ms` }}>
+                  <div className="graph-layer-label">{getLayerLabel(layer, allNodes)}</div>
+                  <div className="graph-layer-nodes">
+                    {groups.map((group, index) => {
+                      const currentIndex = nodeIndex;
+                      nodeIndex += group.nodes.length;
+                      return (
+                        <NodeGroupContainer
+                          key={`layer${layer}-${group.groupName}-${index}`}
+                          group={group}
+                          onNodeClick={setSelectedNode}
+                          onContextMenu={handleContextMenu}
+                          baseIndex={currentIndex}
+                        />
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+
+            {/* Standalone Services Section */}
+            {standaloneGroups.length > 0 && (
+              <div className="graph-layer graph-layer-standalone" style={{ animationDelay: `${sortedLayers.length * 80 + 50}ms` }}>
+                <div className="graph-layer-label">STANDALONE SERVICES</div>
                 <div className="graph-layer-nodes">
-                  {groups.map((group, index) => {
-                    const currentIndex = nodeIndex;
-                    nodeIndex += group.nodes.length;
+                  {standaloneGroups.map((group, index) => {
+                    const baseIndex = sortedLayers.length * 2 + index * 2;
                     return (
                       <NodeGroupContainer
-                        key={`layer${layer}-${group.groupName}-${index}`}
+                        key={`standalone-${group.groupName}-${index}`}
                         group={group}
                         onNodeClick={setSelectedNode}
                         onContextMenu={handleContextMenu}
-                        baseIndex={currentIndex}
+                        baseIndex={baseIndex}
                       />
                     );
                   })}
                 </div>
               </div>
-            );
-          })}
-
-          {/* Standalone Services Section */}
-          {standaloneGroups.length > 0 && (
-            <div className="graph-layer graph-layer-standalone" style={{ animationDelay: `${sortedLayers.length * 80 + 50}ms` }}>
-              <div className="graph-layer-label">STANDALONE SERVICES</div>
-              <div className="graph-layer-nodes">
-                {standaloneGroups.map((group, index) => {
-                  const baseIndex = sortedLayers.length * 2 + index * 2;
-                  return (
-                    <NodeGroupContainer
-                      key={`standalone-${group.groupName}-${index}`}
-                      group={group}
-                      onNodeClick={setSelectedNode}
-                      onContextMenu={handleContextMenu}
-                      baseIndex={baseIndex}
-                    />
-                  );
-                })}
-              </div>
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Context Menu */}
@@ -1058,6 +1171,84 @@ export function GraphView({ nodes, edges }: GraphViewProps) {
           onClose={() => setSelectedNode(null)}
         />
       )}
+    </div>
+  );
+}
+
+// Project Container - Big box containing all containers for a Docker project
+function ProjectContainer({ project, onNodeClick, onContextMenu, animationDelay = 0 }: {
+  project: ContainerProject;
+  onNodeClick: (node: GraphNode) => void;
+  onContextMenu: (e: React.MouseEvent, node: GraphNode) => void;
+  animationDelay?: number;
+}) {
+  return (
+    <div
+      className="project-container"
+      style={{ animationDelay: `${animationDelay}ms` } as React.CSSProperties}
+    >
+      {/* Project Header */}
+      <div className="project-container-header">
+        <svg className="project-docker-icon" width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M13.983 11.078h2.119a.186.186 0 00.186-.185V9.006a.186.186 0 00-.186-.186h-2.119a.185.185 0 00-.185.185v1.888c0 .102.083.185.185.185m-2.954-5.43h2.118a.186.186 0 00.186-.186V3.574a.186.186 0 00-.186-.185h-2.118a.185.185 0 00-.185.185v1.888c0 .102.082.185.185.186m0 2.716h2.118a.187.187 0 00.186-.186V6.29a.186.186 0 00-.186-.185h-2.118a.185.185 0 00-.185.185v1.887c0 .102.082.185.185.186m-2.93 0h2.12a.186.186 0 00.184-.186V6.29a.185.185 0 00-.185-.185H8.1a.185.185 0 00-.185.185v1.887c0 .102.083.185.185.186m-2.964 0h2.119a.186.186 0 00.185-.186V6.29a.185.185 0 00-.185-.185H5.136a.186.186 0 00-.186.185v1.887c0 .102.084.185.186.186m5.893 2.715h2.118a.186.186 0 00.186-.185V9.006a.186.186 0 00-.186-.186h-2.118a.185.185 0 00-.185.185v1.888c0 .102.082.185.185.185m-2.93 0h2.12a.185.185 0 00.184-.185V9.006a.185.185 0 00-.184-.186h-2.12a.185.185 0 00-.184.185v1.888c0 .102.083.185.185.185m-2.964 0h2.119a.185.185 0 00.185-.185V9.006a.185.185 0 00-.185-.186h-2.119a.185.185 0 00-.186.185v1.888c0 .102.084.185.186.185m-2.92 0h2.12a.185.185 0 00.184-.185V9.006a.185.185 0 00-.184-.186h-2.12a.186.186 0 00-.186.186v1.887c0 .102.084.185.186.185m-2.929 0h2.119a.185.185 0 00.185-.185V9.006a.186.186 0 00-.185-.186h-2.12a.185.185 0 00-.184.185v1.888c0 .102.083.185.185.185M23.763 9.89c-.065-.051-.672-.51-1.954-.51-.338.001-.676.03-1.01.087-.248-1.7-1.653-2.53-1.716-2.566l-.344-.199-.226.327c-.284.438-.49.922-.612 1.43-.23.97-.09 1.882.403 2.661-.595.332-1.55.413-1.744.42H.751a.751.751 0 00-.75.748 11.376 11.376 0 00.692 4.062c.545 1.428 1.355 2.48 2.41 3.124 1.18.723 3.1 1.137 5.275 1.137.983.003 1.963-.086 2.93-.266a12.248 12.248 0 003.823-1.389c.98-.567 1.86-1.288 2.61-2.136 1.252-1.418 1.998-2.997 2.553-4.4h.221c1.372 0 2.215-.549 2.68-1.009.309-.293.55-.65.707-1.046l.098-.288Z"/>
+        </svg>
+        <span className="project-container-name">{project.projectName.toUpperCase()}</span>
+        <span className="project-container-count">{project.totalContainers} containers</span>
+      </div>
+
+      {/* Type Groups Grid */}
+      <div className="project-type-groups">
+        {project.typeGroups.map((group, groupIdx) => (
+          <TypeGroupBox
+            key={`${project.projectName}-${group.groupType || group.groupName}`}
+            group={group}
+            onNodeClick={onNodeClick}
+            onContextMenu={onContextMenu}
+            animationDelay={animationDelay + groupIdx * 80}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Type Group Box - Smaller box inside project container for each service type
+function TypeGroupBox({ group, onNodeClick, onContextMenu, animationDelay = 0 }: {
+  group: RenderGroup;
+  onNodeClick: (node: GraphNode) => void;
+  onContextMenu: (e: React.MouseEvent, node: GraphNode) => void;
+  animationDelay?: number;
+}) {
+  const typeColor = group.groupType ? getServiceColor(group.groupType) : '#6B7280';
+  const nodeCount = group.nodes.length;
+
+  return (
+    <div
+      className="type-group-box"
+      style={{
+        '--type-color': typeColor,
+        animationDelay: `${animationDelay}ms`,
+      } as React.CSSProperties}
+    >
+      <div className="type-group-header">
+        <div
+          className="type-group-indicator"
+          style={{ backgroundColor: typeColor }}
+        />
+        <span className="type-group-label">{group.groupName}</span>
+        {nodeCount > 1 && <span className="type-group-count">{nodeCount}</span>}
+      </div>
+      <div className="type-group-nodes">
+        {group.nodes.map((node, idx) => (
+          <ServiceNode
+            key={node.id}
+            node={node}
+            onClick={onNodeClick}
+            onContextMenu={onContextMenu}
+            animationIndex={idx}
+          />
+        ))}
+      </div>
     </div>
   );
 }

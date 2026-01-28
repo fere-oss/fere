@@ -1,0 +1,217 @@
+version: '3.8'
+
+# Mock Docker environment for testing Fere container visualization
+# Run with: docker-compose up -d
+# Stop with: docker-compose down
+
+services:
+  # Frontend - React app
+  frontend:
+    image: nginx:alpine
+    container_name: fere-test-frontend
+    ports:
+      - "4001:80"
+    networks:
+      - frontend-network
+      - backend-network
+    depends_on:
+      - api-gateway
+    labels:
+      fere.type: "frontend"
+      fere.description: "React Frontend App"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:80"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # API Gateway
+  api-gateway:
+    image: nginx:alpine
+    container_name: fere-test-gateway
+    ports:
+      - "8080:80"
+    networks:
+      - backend-network
+    depends_on:
+      - user-service
+      - order-service
+    labels:
+      fere.type: "gateway"
+      fere.description: "API Gateway / Load Balancer"
+
+  # User Service - Python API
+  user-service:
+    image: python:3.11-alpine
+    container_name: fere-test-user-service
+    command: sh -c "pip install flask && python /app/server.py"
+    ports:
+      - "5001:5000"
+    networks:
+      - backend-network
+      - database-network
+    depends_on:
+      - postgres
+      - redis
+    volumes:
+      - ./services/user-service:/app
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/users
+      - REDIS_URL=redis://redis:6379
+    labels:
+      fere.type: "backend"
+      fere.description: "User Authentication Service"
+
+  # Order Service - Node.js API
+  order-service:
+    image: node:20-alpine
+    container_name: fere-test-order-service
+    command: sh -c "cd /app && npm install express && node server.js"
+    ports:
+      - "5002:3000"
+    networks:
+      - backend-network
+      - database-network
+      - queue-network
+    depends_on:
+      - postgres
+      - rabbitmq
+    volumes:
+      - ./services/order-service:/app
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/orders
+      - RABBITMQ_URL=amqp://rabbitmq:5672
+    labels:
+      fere.type: "backend"
+      fere.description: "Order Processing Service"
+
+  # Notification Service - Worker
+  notification-service:
+    image: node:20-alpine
+    container_name: fere-test-notification
+    command: sh -c "cd /app && npm install amqplib && node worker.js"
+    networks:
+      - queue-network
+    depends_on:
+      - rabbitmq
+    volumes:
+      - ./services/notification-service:/app
+    environment:
+      - RABBITMQ_URL=amqp://rabbitmq:5672
+    labels:
+      fere.type: "worker"
+      fere.description: "Notification Worker Service"
+
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: fere-test-postgres
+    ports:
+      - "5433:5432"
+    networks:
+      - database-network
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=main
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    labels:
+      fere.type: "database"
+      fere.description: "PostgreSQL Database"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: fere-test-redis
+    ports:
+      - "6380:6379"
+    networks:
+      - database-network
+      - backend-network
+    labels:
+      fere.type: "cache"
+      fere.description: "Redis Cache"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # RabbitMQ Message Queue
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: fere-test-rabbitmq
+    ports:
+      - "5673:5672"
+      - "15673:15672"
+    networks:
+      - queue-network
+      - backend-network
+    environment:
+      - RABBITMQ_DEFAULT_USER=guest
+      - RABBITMQ_DEFAULT_PASS=guest
+    labels:
+      fere.type: "queue"
+      fere.description: "RabbitMQ Message Broker"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "check_running"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # MongoDB (secondary database)
+  mongodb:
+    image: mongo:6
+    container_name: fere-test-mongodb
+    ports:
+      - "27018:27017"
+    networks:
+      - database-network
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=mongo
+      - MONGO_INITDB_ROOT_PASSWORD=mongo
+    volumes:
+      - mongodb-data:/data/db
+    labels:
+      fere.type: "database"
+      fere.description: "MongoDB Document Store"
+
+  # Elasticsearch
+  elasticsearch:
+    image: elasticsearch:8.11.0
+    container_name: fere-test-elasticsearch
+    ports:
+      - "9201:9200"
+    networks:
+      - backend-network
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms256m -Xmx256m"
+    labels:
+      fere.type: "search"
+      fere.description: "Elasticsearch Search Engine"
+
+networks:
+  frontend-network:
+    name: fere-frontend
+    driver: bridge
+  backend-network:
+    name: fere-backend
+    driver: bridge
+  database-network:
+    name: fere-database
+    driver: bridge
+  queue-network:
+    name: fere-queue
+    driver: bridge
+
+volumes:
+  postgres-data:
+  mongodb-data:

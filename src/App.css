@@ -780,6 +780,169 @@ body {
   box-sizing: border-box;
 }
 
+/* Container Projects View - for container view */
+.container-projects-view {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+  padding: 40px;
+  width: 100%;
+  max-width: 1600px;
+  margin: 0 auto;
+  box-sizing: border-box;
+}
+
+/* Project Container - Big outer box for each Docker project */
+.project-container {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: 32px;
+  padding-top: 24px;
+  background: linear-gradient(
+    180deg,
+    rgba(14, 165, 233, 0.03) 0%,
+    rgba(14, 165, 233, 0.06) 100%
+  );
+  border: 2px solid rgba(14, 165, 233, 0.2);
+  border-radius: 24px;
+  position: relative;
+  box-sizing: border-box;
+  animation: projectAppear 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+  box-shadow:
+    0 8px 32px rgba(14, 165, 233, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+@keyframes projectAppear {
+  0% {
+    opacity: 0;
+    transform: translateY(40px) scale(0.97);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.project-container-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid rgba(14, 165, 233, 0.15);
+  margin-bottom: 8px;
+}
+
+.project-docker-icon {
+  color: #0ea5e9;
+  flex-shrink: 0;
+}
+
+.project-container-name {
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  color: #0ea5e9;
+}
+
+.project-container-count {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  margin-left: auto;
+  background: rgba(14, 165, 233, 0.1);
+  padding: 4px 12px;
+  border-radius: 8px;
+}
+
+/* Type Groups Grid - Inside project container */
+.project-type-groups {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 20px;
+  width: 100%;
+}
+
+/* Type Group Box - Smaller box for each service type within a project */
+.type-group-box {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  padding-top: 12px;
+  background: var(--bg-white);
+  border: 1px solid color-mix(in srgb, var(--type-color, #6B7280) 30%, transparent);
+  border-left: 4px solid var(--type-color, #6B7280);
+  border-radius: 12px;
+  position: relative;
+  box-sizing: border-box;
+  animation: typeGroupAppear 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+@keyframes typeGroupAppear {
+  0% {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.type-group-box:hover {
+  box-shadow: 0 4px 16px color-mix(in srgb, var(--type-color, #6B7280) 15%, transparent);
+  border-color: color-mix(in srgb, var(--type-color, #6B7280) 50%, transparent);
+}
+
+.type-group-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.type-group-indicator {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.type-group-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--type-color, #6B7280);
+}
+
+.type-group-count {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--bg-white);
+  background: var(--type-color, #6B7280);
+  padding: 1px 6px;
+  border-radius: 4px;
+  margin-left: auto;
+}
+
+.type-group-nodes {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+}
+
+/* Compact service nodes inside type groups */
+.type-group-nodes .service-node {
+  padding: 14px 18px;
+  min-width: unset;
+}
+
 /* Service Node (in graph) */
 .service-node {
   background: var(--bg-white);

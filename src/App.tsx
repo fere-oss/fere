@@ -123,10 +123,12 @@ function App() {
     };
   }, [graph.nodes, graph.edges, ports, selectedTab]);
 
-  // Filter to show only Docker containers
+  // Filter to show only running Docker containers
   const dockerContainerData = useMemo(() => {
-    // Get only Docker container nodes
-    const containerNodes = graph.nodes.filter((node) => node.isDockerContainer);
+    // Get only running Docker container nodes (exclude exited, dead, etc.)
+    const containerNodes = graph.nodes.filter(
+      (node) => node.isDockerContainer && node.containerState === "running"
+    );
     const containerNodeIds = new Set(containerNodes.map((n) => n.id));
 
     // Filter edges to only include those between Docker containers
@@ -313,6 +315,7 @@ function App() {
                 <GraphView
                   nodes={dockerContainerData.nodes}
                   edges={dockerContainerData.edges}
+                  isContainerView={true}
                 />
               )}
             </div>
