@@ -1240,7 +1240,7 @@ function TypeGroupBox({ group, onNodeClick, onContextMenu, animationDelay = 0 }:
       </div>
       <div className="type-group-nodes">
         {group.nodes.map((node, idx) => (
-          <ServiceNode
+          <CompactServiceNode
             key={node.id}
             node={node}
             onClick={onNodeClick}
@@ -1249,6 +1249,62 @@ function TypeGroupBox({ group, onNodeClick, onContextMenu, animationDelay = 0 }:
           />
         ))}
       </div>
+    </div>
+  );
+}
+
+// Compact Service Node for container view - smaller, less verbose
+function CompactServiceNode({ node, onClick, onContextMenu, animationIndex = 0 }: {
+  node: GraphNode;
+  onClick: (node: GraphNode) => void;
+  onContextMenu: (e: React.MouseEvent, node: GraphNode) => void;
+  animationIndex?: number;
+}) {
+  const accentColor = getServiceColor(node.type);
+  const healthInfo = getHealthInfo(node.healthStatus);
+  const mainPort = node.ports[0]?.port;
+
+  const handleClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onClick(node);
+  };
+
+  const handleContextMenu = (e: React.MouseEvent) => {
+    onContextMenu(e, node);
+  };
+
+  return (
+    <div
+      data-node-id={node.id}
+      className="compact-service-node"
+      onClick={handleClick}
+      onContextMenu={handleContextMenu}
+      style={{
+        '--node-color': accentColor,
+        animationDelay: `${animationIndex * 40}ms`,
+      } as React.CSSProperties}
+    >
+      <div className="compact-node-header">
+        <div
+          className="compact-node-health"
+          style={{
+            backgroundColor: healthInfo.color,
+            boxShadow: healthInfo.glow,
+          }}
+          title={healthInfo.label}
+        />
+        <span className="compact-node-name">{node.name}</span>
+      </div>
+      {mainPort && (
+        <div className="compact-node-port">
+          <span className="compact-port-number" style={{ color: accentColor }}>:{mainPort}</span>
+        </div>
+      )}
+      {node.containerImage && (
+        <div className="compact-node-image" title={node.containerImage}>
+          {node.containerImage.split('/').pop()?.split(':')[0]}
+        </div>
+      )}
     </div>
   );
 }
