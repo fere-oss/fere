@@ -126,7 +126,9 @@ export function DatabasePage({ node, onBack }: DatabasePageProps) {
 
   const handleCreateTable = useCallback(async (tableName: string, columns: ColumnDefinition[]) => {
     if (!window.electronAPI?.createDatabaseTable) {
-      throw new Error('Create table API not available');
+      console.error('electronAPI:', window.electronAPI);
+      console.error('Available methods:', Object.keys(window.electronAPI || {}));
+      throw new Error('Create table API not available. Please restart the Electron app.');
     }
 
     const result = await window.electronAPI.createDatabaseTable(containerId, containerImage, tableName, columns);
