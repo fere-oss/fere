@@ -2,10 +2,28 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import type { ConnectionGraph, EnvironmentSummary, Port, Process, SystemSnapshot } from '../types/electron';
 
 // Helper to create a stable key for comparing snapshots
+// Only includes structural changes (new/removed nodes, edges, ports, state changes)
+// Excludes frequently changing metrics (cpu, memory) to prevent unnecessary re-renders
 const createSnapshotKey = (snapshot: SystemSnapshot): string => {
-  const nodeIds = snapshot.graph.nodes.map(n => n.id).sort().join(',');
-  const edgeKeys = snapshot.graph.edges.map(e => `${e.source}-${e.target}`).sort().join(',');
-  return `${nodeIds}|${edgeKeys}`;
+  // Include node IDs, types, names, and container states (structural properties)
+  const nodeKeys = snapshot.graph.nodes
+    .map(n => `${n.id}:${n.type}:${n.name}:${n.containerState || ''}:${n.healthStatus}`)
+    .sort()
+    .join(',');
+
+  // Include edges
+  const edgeKeys = snapshot.graph.edges
+    .map(e => `${e.source}-${e.target}:${e.sourcePort}-${e.targetPort}`)
+    .sort()
+    .join(',');
+
+  // Include port numbers (not all details, just which ports exist)
+  const portKeys = snapshot.ports
+    .map(p => `${p.port}:${p.pid}`)
+    .sort()
+    .join(',');
+
+  return `${nodeKeys}|${edgeKeys}|${portKeys}`;
 };
 
 // Check if we're running in Electron
@@ -71,12 +89,17 @@ export function useSystemSnapshot(pollInterval = 2000) {
 
     try {
       const data = await window.electronAPI.getSystemSnapshot();
-      // Only update state if the graph content actually changed
       const newKey = createSnapshotKey(data);
+
+      // Only update state if the structural content actually changed
+      // (new/removed nodes, edges, ports, state changes, health changes)
+      // Skip updates for metric-only changes (cpu, memory) to prevent unnecessary re-renders
       if (newKey !== snapshotKeyRef.current) {
         snapshotKeyRef.current = newKey;
         setSnapshot(data);
       }
+      // If key is same, don't update state - metrics changed but structure didn't
+
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch system snapshot');
