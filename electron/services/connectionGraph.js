@@ -13,6 +13,19 @@ const {
 
 const execAsync = promisify(exec);
 
+// Performance timing
+const PERF_LOGGING = process.env.FERE_PERF_LOG === '1';
+const perfLog = (label, duration) => {
+  if (PERF_LOGGING) {
+    console.log(`[PERF] ${label}: ${duration.toFixed(2)}ms`);
+  }
+};
+
+// Persistent cache for process CWD (survives across polls)
+// Cache entries: { pid: { cwd: string, timestamp: number } }
+const CWD_CACHE_TTL_MS = 60000; // 60 seconds
+const persistentCwdCache = new Map();
+
 /**
  * Known macOS system services and their descriptions
  */
@@ -579,12 +592,20 @@ async function buildConnectionGraph(snapshot = null) {
     }
   }
 
-  await attachRoutesToNodes(nodes);
+  // OPTIMIZATION: Parallelize route attachment and Docker snapshot
+  // These operations are independent and can run concurrently
+  const startParallel = Date.now();
+  const [dockerSnapshot] = await Promise.all([
+    getDockerSnapshot(),
+    attachRoutesToNodes(nodes),
+  ]);
+  perfLog('Parallel operations (routes + docker)', Date.now() - startParallel);
 
   // Add Docker containers as nodes
-  const dockerSnapshot = await getDockerSnapshot();
   if (dockerSnapshot.isAvailable && dockerSnapshot.containers.length > 0) {
+    const startDocker = Date.now();
     addDockerContainerNodes(nodes, edges, dockerSnapshot, nodesByPid, portToPid);
+    perfLog('Add Docker container nodes', Date.now() - startDocker);
   }
 
   return { nodes, edges, dockerSnapshot };
@@ -999,9 +1020,11 @@ function inferProjectPathFromContainer(container) {
 }
 
 async function attachRoutesToNodes(nodes) {
+  const startRoutes = Date.now();
   const projects = new Map();
   const cwdByPid = new Map();
 
+  // Collect known project paths
   for (const node of nodes) {
     if (node.projectPath) {
       projects.set(node.projectPath, null);
@@ -1011,8 +1034,12 @@ async function attachRoutesToNodes(nodes) {
     }
   }
 
+  // Discover project paths from process CWDs
+  const startCwd = Date.now();
+  let cwdLookupCount = 0;
   for (const node of nodes) {
     if (node.pid <= 0) continue;
+    cwdLookupCount++;
     const cwd = await getProcessCwd(node.pid, cwdByPid);
     if (!cwd) continue;
     const projectRoot = findProjectRoot(cwd);
@@ -1024,37 +1051,64 @@ async function attachRoutesToNodes(nodes) {
     node.project = path.basename(projectRoot);
     projects.set(projectRoot, null);
   }
+  perfLog(`CWD lookups (${cwdLookupCount} processes)`, Date.now() - startCwd);
 
-  for (const projectPath of projects.keys()) {
+  // Scan routes for all projects in parallel
+  const startScan = Date.now();
+  const scanPromises = Array.from(projects.keys()).map(async (projectPath) => {
     try {
       const routes = await scanRoutes(projectPath);
-      projects.set(projectPath, routes);
+      return { projectPath, routes };
     } catch (error) {
-      projects.set(projectPath, []);
+      return { projectPath, routes: [] };
     }
-  }
+  });
 
+  const scanResults = await Promise.all(scanPromises);
+  for (const { projectPath, routes } of scanResults) {
+    projects.set(projectPath, routes);
+  }
+  perfLog(`Route scanning (${projects.size} projects)`, Date.now() - startScan);
+
+  // Attach routes to nodes
   for (const node of nodes) {
     if (!node.projectPath) continue;
     const routes = projects.get(node.projectPath) || [];
     node.routes = matchRoutesToService(routes, node);
   }
+
+  perfLog('Total route attachment', Date.now() - startRoutes);
 }
 
 
 async function getProcessCwd(pid, cache) {
+  // Check per-request cache first
   if (cache.has(pid)) {
     return cache.get(pid);
   }
 
+  // Check persistent cache (survives across polls)
+  const persistentEntry = persistentCwdCache.get(pid);
+  if (persistentEntry && Date.now() - persistentEntry.timestamp < CWD_CACHE_TTL_MS) {
+    const cwd = persistentEntry.cwd;
+    cache.set(pid, cwd); // Also populate per-request cache
+    return cwd;
+  }
+
+  // Cache miss - fetch from system
   try {
     const { stdout } = await execAsync(`lsof -a -p ${pid} -d cwd -Fn`);
     const line = stdout.split('\n').find(entry => entry.startsWith('n'));
     const cwd = line ? line.slice(1).trim() : null;
+
+    // Update both caches
     cache.set(pid, cwd);
+    persistentCwdCache.set(pid, { cwd, timestamp: Date.now() });
+
     return cwd;
   } catch (error) {
     cache.set(pid, null);
+    persistentCwdCache.set(pid, { cwd: null, timestamp: Date.now() });
     return null;
   }
 }

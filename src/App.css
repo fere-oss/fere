@@ -4035,6 +4035,11 @@ body {
   color: #a3a3a3;
 }
 
+.db-data-table th.db-actions-col {
+  width: 80px;
+  text-align: center;
+}
+
 .db-data-table td {
   padding: 12px 16px;
   border-bottom: 1px solid #f5f5f5;
@@ -4052,6 +4057,40 @@ body {
   color: #a3a3a3;
   font-size: 11px;
   background: #fafafa;
+}
+
+.db-data-table td.db-actions-col {
+  width: 80px;
+  text-align: center;
+  background: #fafafa;
+}
+
+.db-delete-row-btn {
+  padding: 6px 8px;
+  background: transparent;
+  border: 1px solid #e5e5e5;
+  border-radius: 4px;
+  cursor: pointer;
+  color: #737373;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.db-delete-row-btn:hover:not(:disabled) {
+  background: #fef2f2;
+  border-color: #fca5a5;
+  color: #dc2626;
+}
+
+.db-delete-row-btn:active:not(:disabled) {
+  transform: scale(0.95);
+}
+
+.db-delete-row-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .db-data-table tbody tr {
@@ -4689,4 +4728,176 @@ body {
   border-top-color: #ffffff;
   border-radius: 50%;
   animation: dbSpin 0.8s linear infinite;
+}
+
+/* ========================================
+   Delete Confirmation Dialog
+   ======================================== */
+
+.db-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  animation: fadeIn 0.15s ease;
+}
+
+.db-delete-confirm-dialog {
+  background: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  max-width: 480px;
+  width: 90%;
+  animation: slideUp 0.2s ease;
+}
+
+.db-delete-confirm-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 24px 28px 16px 28px;
+  color: #dc2626;
+}
+
+.db-delete-confirm-header svg {
+  flex-shrink: 0;
+}
+
+.db-delete-confirm-header h3 {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0;
+  color: #171717;
+}
+
+.db-delete-confirm-message {
+  padding: 0 28px 20px 28px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #525252;
+}
+
+.db-delete-confirm-message strong {
+  color: #171717;
+  font-weight: 600;
+}
+
+.db-delete-confirm-preview {
+  margin: 0 28px 24px 28px;
+  padding: 16px;
+  background: #fafafa;
+  border: 1px solid #e5e5e5;
+  border-radius: 8px;
+}
+
+.db-delete-preview-field {
+  display: flex;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 13px;
+}
+
+.db-delete-preview-label {
+  font-weight: 600;
+  color: #525252;
+  min-width: 100px;
+}
+
+.db-delete-preview-value {
+  font-family: "JetBrains Mono", monospace;
+  color: #171717;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.db-delete-preview-more {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #e5e5e5;
+  font-size: 12px;
+  color: #737373;
+  font-style: italic;
+}
+
+.db-delete-confirm-actions {
+  display: flex;
+  gap: 12px;
+  padding: 20px 28px 24px 28px;
+  border-top: 1px solid #e5e5e5;
+}
+
+.db-delete-cancel-btn,
+.db-delete-confirm-btn {
+  flex: 1;
+  padding: 12px 20px;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.db-delete-cancel-btn {
+  background: #f5f5f5;
+  color: #525252;
+  border: 1px solid #e5e5e5;
+}
+
+.db-delete-cancel-btn:hover:not(:disabled) {
+  background: #e5e5e5;
+  color: #171717;
+}
+
+.db-delete-confirm-btn {
+  background: #dc2626;
+  color: #ffffff;
+  box-shadow: 0 2px 4px rgba(220, 38, 38, 0.2);
+}
+
+.db-delete-confirm-btn:hover:not(:disabled) {
+  background: #b91c1c;
+  box-shadow: 0 3px 8px rgba(220, 38, 38, 0.3);
+}
+
+.db-delete-confirm-btn:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.db-delete-cancel-btn:disabled,
+.db-delete-confirm-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
