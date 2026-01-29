@@ -2,28 +2,23 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import type { ConnectionGraph, EnvironmentSummary, Port, Process, SystemSnapshot } from '../types/electron';
 
 // Helper to create a stable key for comparing snapshots
-// Only includes structural changes (new/removed nodes, edges, ports, state changes)
-// Excludes frequently changing metrics (cpu, memory) to prevent unnecessary re-renders
+// Only includes actual topology changes (new/removed services and connections)
+// Excludes frequently changing properties (health, state, metrics) to prevent unnecessary re-renders
 const createSnapshotKey = (snapshot: SystemSnapshot): string => {
-  // Include node IDs, types, names, and container states (structural properties)
+  // Include only node IDs and types (topology structure)
+  // Exclude: healthStatus, containerState, cpu, memory, name changes
   const nodeKeys = snapshot.graph.nodes
-    .map(n => `${n.id}:${n.type}:${n.name}:${n.containerState || ''}:${n.healthStatus}`)
+    .map(n => `${n.id}:${n.type}`)
     .sort()
     .join(',');
 
-  // Include edges
+  // Include edges (connections between services)
   const edgeKeys = snapshot.graph.edges
-    .map(e => `${e.source}-${e.target}:${e.sourcePort}-${e.targetPort}`)
+    .map(e => `${e.source}-${e.target}`)
     .sort()
     .join(',');
 
-  // Include port numbers (not all details, just which ports exist)
-  const portKeys = snapshot.ports
-    .map(p => `${p.port}:${p.pid}`)
-    .sort()
-    .join(',');
-
-  return `${nodeKeys}|${edgeKeys}|${portKeys}`;
+  return `${nodeKeys}|${edgeKeys}`;
 };
 
 // Check if we're running in Electron
