@@ -83,31 +83,6 @@ export function DatabasePage({ node, onBack }: DatabasePageProps) {
     }
   }, [containerId, containerImage]);
 
-  const executeQuery = useCallback(async () => {
-    if (!window.electronAPI?.executeDatabaseQuery || !query.trim()) return;
-
-    try {
-      setExecutingQuery(true);
-      setQueryResult(null);
-
-      const result = await window.electronAPI.executeDatabaseQuery(containerId, containerImage, query);
-      setQueryResult(result);
-    } catch (err) {
-      setQueryResult({
-        error: err instanceof Error ? err.message : 'Query execution failed',
-      });
-    } finally {
-      setExecutingQuery(false);
-    }
-  }, [containerId, containerImage, query]);
-
-  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-      e.preventDefault();
-      executeQuery();
-    }
-  }, [executeQuery]);
-
   const refreshTables = useCallback(async () => {
     if (!window.electronAPI?.getDatabaseTables || !containerId || !containerImage) {
       return;
@@ -124,6 +99,42 @@ export function DatabasePage({ node, onBack }: DatabasePageProps) {
     }
   }, [containerId, containerImage]);
 
+  const executeQuery = useCallback(async () => {
+    if (!window.electronAPI?.executeDatabaseQuery || !query.trim()) return;
+
+    try {
+      setExecutingQuery(true);
+      setQueryResult(null);
+
+      const result = await window.electronAPI.executeDatabaseQuery(containerId, containerImage, query);
+      setQueryResult(result);
+
+      // Auto-refresh tables list and current table data after query execution
+      if (!result.error) {
+        // Refresh tables list (in case tables were created/dropped)
+        await refreshTables();
+
+        // If a table is currently selected, reload its data (in case rows were modified)
+        if (selectedTable) {
+          await loadTableData(selectedTable);
+        }
+      }
+    } catch (err) {
+      setQueryResult({
+        error: err instanceof Error ? err.message : 'Query execution failed',
+      });
+    } finally {
+      setExecutingQuery(false);
+    }
+  }, [containerId, containerImage, query, refreshTables, selectedTable, loadTableData]);
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+      e.preventDefault();
+      executeQuery();
+    }
+  }, [executeQuery]);
+
   const handleCreateTable = useCallback(async (tableName: string, columns: ColumnDefinition[]) => {
     if (!window.electronAPI?.createDatabaseTable) {
       console.error('electronAPI:', window.electronAPI);
@@ -139,7 +150,11 @@ export function DatabasePage({ node, onBack }: DatabasePageProps) {
 
     // Refresh the tables list
     await refreshTables();
-  }, [containerId, containerImage, refreshTables]);
+
+    // Auto-select the newly created table and switch to Data tab
+    setActiveTab('data');
+    await loadTableData(tableName);
+  }, [containerId, containerImage, refreshTables, loadTableData]);
 
   const formatCellValue = (value: unknown): string => {
     if (value === null || value === undefined) return 'NULL';
