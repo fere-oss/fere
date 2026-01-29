@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import type { GraphNode, GraphEdge, HealthStatus, ExternalApi } from '../types/electron';
+import { DatabaseViewer } from './DatabaseViewer';
 
 interface GraphViewProps {
   nodes: GraphNode[];
   edges: GraphEdge[];
   isContainerView?: boolean;
+  onDatabaseClick?: (node: GraphNode) => void;
 }
 
 interface NodePosition {
@@ -544,7 +546,7 @@ const groupLayoutNodes = (layoutNodes: LayoutNode[], layer: number): RenderGroup
   });
 };
 
-export function GraphView({ nodes, edges, isContainerView = false }: GraphViewProps) {
+export function GraphView({ nodes, edges, isContainerView = false, onDatabaseClick }: GraphViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
   const [displayNodes, setDisplayNodes] = useState<GraphNode[]>(nodes);
@@ -556,6 +558,16 @@ export function GraphView({ nodes, edges, isContainerView = false }: GraphViewPr
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
   const [contextMenu, setContextMenu] = useState<{ node: GraphNode; x: number; y: number } | null>(null);
+
+  // Handle node click - navigate to database page for database containers, otherwise show detail panel
+  const handleNodeClick = useCallback((node: GraphNode) => {
+    if (isContainerView && node.isDockerContainer && node.type === 'database' && onDatabaseClick) {
+      onDatabaseClick(node);
+    } else {
+      setSelectedNode(node);
+    }
+  }, [isContainerView, onDatabaseClick]);
+
   const orderCacheRef = useRef<Map<number, string[]>>(new Map());
   const groupOrderCacheRef = useRef<Map<number, string[]>>(new Map());
   const [, setExternalApiVersion] = useState(0);
@@ -1118,7 +1130,7 @@ export function GraphView({ nodes, edges, isContainerView = false }: GraphViewPr
               <ProjectContainer
                 key={`project-${project.projectName}`}
                 project={project}
-                onNodeClick={setSelectedNode}
+                onNodeClick={handleNodeClick}
                 onContextMenu={handleContextMenu}
                 animationDelay={projectIdx * 150}
               />
@@ -1146,7 +1158,7 @@ export function GraphView({ nodes, edges, isContainerView = false }: GraphViewPr
                         <NodeGroupContainer
                           key={`layer${layer}-${group.groupName}-${index}`}
                           group={group}
-                          onNodeClick={setSelectedNode}
+                          onNodeClick={handleNodeClick}
                           onContextMenu={handleContextMenu}
                           baseIndex={currentIndex}
                         />
@@ -1168,7 +1180,7 @@ export function GraphView({ nodes, edges, isContainerView = false }: GraphViewPr
                       <NodeGroupContainer
                         key={`standalone-${group.groupName}-${index}`}
                         group={group}
-                        onNodeClick={setSelectedNode}
+                        onNodeClick={handleNodeClick}
                         onContextMenu={handleContextMenu}
                         baseIndex={baseIndex}
                       />
@@ -1762,6 +1774,14 @@ function NodeDetailPanel({ node, edges, allNodes, onClose }: NodeDetailPanelProp
                 </div>
               )}
             </div>
+          )}
+
+          {/* Database Viewer for database containers */}
+          {node.isDockerContainer && node.type === 'database' && node.containerId && node.containerImage && (
+            <DatabaseViewer
+              containerId={node.containerId}
+              containerImage={node.containerImage}
+            />
           )}
 
           {/* Docker Container Health Section */}

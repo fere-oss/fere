@@ -103,6 +103,30 @@ export interface DockerSnapshot {
   isAvailable: boolean;
 }
 
+export interface DatabaseTablesResult {
+  tables: string[];
+  dbType?: 'postgresql' | 'mysql' | 'mongodb';
+  database?: string;
+  error?: string;
+}
+
+export interface TableDataResult {
+  columns: string[];
+  rows: Record<string, unknown>[];
+  dbType?: 'postgresql' | 'mysql' | 'mongodb';
+  tableName?: string;
+  error?: string;
+}
+
+export interface QueryResult {
+  columns?: string[];
+  rows?: Record<string, unknown>[];
+  rowCount?: number;
+  output?: string;
+  dbType?: 'postgresql' | 'mysql' | 'mongodb';
+  error?: string;
+}
+
 export interface Service {
   id: string;
   pid: number;
@@ -309,6 +333,11 @@ export interface ElectronAPI {
   getDockerNetworks: () => Promise<DockerNetworkInfo[]>;
   getDockerSnapshot: () => Promise<DockerSnapshot>;
   isDockerAvailable: () => Promise<boolean>;
+
+  // Database queries
+  getDatabaseTables: (containerId: string, containerImage: string) => Promise<DatabaseTablesResult>;
+  getTableData: (containerId: string, containerImage: string, tableName: string, limit?: number) => Promise<TableDataResult>;
+  executeDatabaseQuery: (containerId: string, containerImage: string, query: string) => Promise<QueryResult>;
 
   // Process control
   killProcess: (pid: number) => Promise<KillResult>;

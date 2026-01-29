@@ -22,6 +22,11 @@ const {
   saveHistoryEntry,
   clearHistory,
 } = require("./services/requestHistory");
+const {
+  getDatabaseTables,
+  getTableData,
+  executeQuery,
+} = require("./services/databaseQuery");
 
 // Keep a global reference of the window object
 let mainWindow;
@@ -439,5 +444,35 @@ ipcMain.handle("get-docker-snapshot", async () => {
       containerConnections: [],
       isAvailable: false,
     };
+  }
+});
+
+// Get database tables from a container
+ipcMain.handle("get-database-tables", async (_, containerId, containerImage) => {
+  try {
+    return await getDatabaseTables(containerId, containerImage);
+  } catch (error) {
+    console.error("Error getting database tables:", error);
+    return { error: error.message, tables: [] };
+  }
+});
+
+// Get table data from a database container
+ipcMain.handle("get-table-data", async (_, containerId, containerImage, tableName, limit) => {
+  try {
+    return await getTableData(containerId, containerImage, tableName, limit || 100);
+  } catch (error) {
+    console.error("Error getting table data:", error);
+    return { error: error.message, columns: [], rows: [] };
+  }
+});
+
+// Execute a query on a database container
+ipcMain.handle("execute-database-query", async (_, containerId, containerImage, query) => {
+  try {
+    return await executeQuery(containerId, containerImage, query);
+  } catch (error) {
+    console.error("Error executing database query:", error);
+    return { error: error.message, result: null };
   }
 });

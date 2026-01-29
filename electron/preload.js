@@ -20,6 +20,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getDockerNetworks: () => ipcRenderer.invoke('get-docker-networks'),
   getDockerSnapshot: () => ipcRenderer.invoke('get-docker-snapshot'),
 
+  // Database queries
+  getDatabaseTables: (containerId, containerImage) => ipcRenderer.invoke('get-database-tables', containerId, containerImage),
+  getTableData: (containerId, containerImage, tableName, limit) => ipcRenderer.invoke('get-table-data', containerId, containerImage, tableName, limit),
+  executeDatabaseQuery: (containerId, containerImage, query) => ipcRenderer.invoke('execute-database-query', containerId, containerImage, query),
+
   // Process control
   killProcess: (pid) => ipcRenderer.invoke('kill-process', pid),
 

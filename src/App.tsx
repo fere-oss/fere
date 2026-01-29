@@ -3,6 +3,8 @@ import { useSystemSnapshot } from "./hooks/useSystemMonitor";
 import { GraphView } from "./components/GraphView";
 import { ServiceSidebar } from "./components/ServiceSidebar";
 import { CurlBuilder } from "./components/CurlBuilder";
+import { DatabasePage } from "./components/DatabasePage";
+import type { GraphNode } from "./types/electron";
 import "./App.css";
 
 // Detect platform for default tab label
@@ -11,7 +13,7 @@ const SYSTEM_TAB_LABEL = isMacOS ? "macOS" : "System";
 const SYSTEM_TAB_ID = "__system__";
 
 // View modes
-type ViewMode = "graph" | "containers" | "api-tester";
+type ViewMode = "graph" | "containers" | "api-tester" | "database";
 
 function App() {
   const { snapshot, loading, error } = useSystemSnapshot(2000);
@@ -26,10 +28,25 @@ function App() {
   // Service to pre-select in API tester when navigating from sidebar
   const [testServiceId, setTestServiceId] = useState<string | undefined>();
 
+  // Database node for database page
+  const [databaseNode, setDatabaseNode] = useState<GraphNode | null>(null);
+
   // Handle "Test" button click from sidebar - switch to API tester with service pre-selected
   const handleTestService = useCallback((nodeId: string) => {
     setTestServiceId(nodeId);
     setViewMode("api-tester");
+  }, []);
+
+  // Handle database container click - navigate to database page
+  const handleDatabaseClick = useCallback((node: GraphNode) => {
+    setDatabaseNode(node);
+    setViewMode("database");
+  }, []);
+
+  // Handle going back from database page
+  const handleDatabaseBack = useCallback(() => {
+    setDatabaseNode(null);
+    setViewMode("containers");
   }, []);
 
   // Build tabs from unique projectPaths
@@ -316,6 +333,7 @@ function App() {
                   nodes={dockerContainerData.nodes}
                   edges={dockerContainerData.edges}
                   isContainerView={true}
+                  onDatabaseClick={handleDatabaseClick}
                 />
               )}
             </div>
@@ -330,6 +348,9 @@ function App() {
               />
             </div>
           </>
+        ) : viewMode === "database" && databaseNode ? (
+          /* Database Management Page */
+          <DatabasePage node={databaseNode} onBack={handleDatabaseBack} />
         ) : (
           /* API Tester View */
           <div className="api-tester-container">
