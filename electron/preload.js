@@ -24,6 +24,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getDatabaseTables: (containerId, containerImage) => ipcRenderer.invoke('get-database-tables', containerId, containerImage),
   getTableData: (containerId, containerImage, tableName, limit) => ipcRenderer.invoke('get-table-data', containerId, containerImage, tableName, limit),
   executeDatabaseQuery: (containerId, containerImage, query) => ipcRenderer.invoke('execute-database-query', containerId, containerImage, query),
+  createDatabaseTable: (containerId, containerImage, tableName, columns) => ipcRenderer.invoke('create-database-table', containerId, containerImage, tableName, columns),
 
   // Process control
   killProcess: (pid) => ipcRenderer.invoke('kill-process', pid),

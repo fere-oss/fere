@@ -127,6 +127,23 @@ export interface QueryResult {
   error?: string;
 }
 
+export interface ColumnDefinition {
+  name: string;
+  type: string;
+  primaryKey?: boolean;
+  notNull?: boolean;
+  unique?: boolean;
+  defaultValue?: string;
+}
+
+export interface CreateTableResult {
+  success: boolean;
+  message?: string;
+  query?: string;
+  note?: string;
+  error?: string;
+}
+
 export interface Service {
   id: string;
   pid: number;
@@ -338,6 +355,7 @@ export interface ElectronAPI {
   getDatabaseTables: (containerId: string, containerImage: string) => Promise<DatabaseTablesResult>;
   getTableData: (containerId: string, containerImage: string, tableName: string, limit?: number) => Promise<TableDataResult>;
   executeDatabaseQuery: (containerId: string, containerImage: string, query: string) => Promise<QueryResult>;
+  createDatabaseTable: (containerId: string, containerImage: string, tableName: string, columns: ColumnDefinition[]) => Promise<CreateTableResult>;
 
   // Process control
   killProcess: (pid: number) => Promise<KillResult>;

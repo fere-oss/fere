@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import type { GraphNode, DatabaseTablesResult, TableDataResult, QueryResult } from '../types/electron';
+import type { GraphNode, DatabaseTablesResult, TableDataResult, QueryResult, ColumnDefinition } from '../types/electron';
+import { CreateTableModal } from './CreateTableModal';
 
 interface DatabasePageProps {
   node: GraphNode;
@@ -18,6 +19,7 @@ export function DatabasePage({ node, onBack }: DatabasePageProps) {
   const [executingQuery, setExecutingQuery] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'data' | 'query'>('data');
+  const [showCreateModal, setShowCreateModal] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const containerId = node.containerId || '';
@@ -105,6 +107,37 @@ export function DatabasePage({ node, onBack }: DatabasePageProps) {
       executeQuery();
     }
   }, [executeQuery]);
+
+  const refreshTables = useCallback(async () => {
+    if (!window.electronAPI?.getDatabaseTables || !containerId || !containerImage) {
+      return;
+    }
+
+    try {
+      const result: DatabaseTablesResult = await window.electronAPI.getDatabaseTables(containerId, containerImage);
+      if (!result.error) {
+        setTables(result.tables);
+        setDbType(result.dbType || 'database');
+      }
+    } catch (err) {
+      console.error('Error refreshing tables:', err);
+    }
+  }, [containerId, containerImage]);
+
+  const handleCreateTable = useCallback(async (tableName: string, columns: ColumnDefinition[]) => {
+    if (!window.electronAPI?.createDatabaseTable) {
+      throw new Error('Create table API not available');
+    }
+
+    const result = await window.electronAPI.createDatabaseTable(containerId, containerImage, tableName, columns);
+
+    if (result.error) {
+      throw new Error(result.error);
+    }
+
+    // Refresh the tables list
+    await refreshTables();
+  }, [containerId, containerImage, refreshTables]);
 
   const formatCellValue = (value: unknown): string => {
     if (value === null || value === undefined) return 'NULL';
@@ -236,10 +269,22 @@ db.users.find().limit(10)
               {/* Sidebar with tables */}
               <aside className="db-sidebar">
                 <div className="db-sidebar-header">
-                  <span className="db-sidebar-title">
-                    {dbType === 'mongodb' ? 'Collections' : 'Tables'}
-                  </span>
-                  <span className="db-sidebar-count">{tables.length}</span>
+                  <div className="db-sidebar-header-left">
+                    <span className="db-sidebar-title">
+                      {dbType === 'mongodb' ? 'Collections' : 'Tables'}
+                    </span>
+                    <span className="db-sidebar-count">{tables.length}</span>
+                  </div>
+                  <button
+                    className="db-create-table-btn"
+                    onClick={() => setShowCreateModal(true)}
+                    title={`Create new ${dbType === 'mongodb' ? 'collection' : 'table'}`}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                      <line x1="12" y1="5" x2="12" y2="19"/>
+                      <line x1="5" y1="12" x2="19" y2="12"/>
+                    </svg>
+                  </button>
                 </div>
                 <div className="db-sidebar-list">
                   {tables.length > 0 ? (
@@ -468,6 +513,15 @@ db.users.find().limit(10)
             </div>
           )}
         </div>
+      )}
+
+      {/* Create Table Modal */}
+      {showCreateModal && (
+        <CreateTableModal
+          dbType={dbType as 'postgresql' | 'mysql' | 'mongodb'}
+          onClose={() => setShowCreateModal(false)}
+          onSubmit={handleCreateTable}
+        />
       )}
     </div>
   );

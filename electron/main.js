@@ -26,6 +26,7 @@ const {
   getDatabaseTables,
   getTableData,
   executeQuery,
+  createTable,
 } = require("./services/databaseQuery");
 
 // Keep a global reference of the window object
@@ -474,5 +475,15 @@ ipcMain.handle("execute-database-query", async (_, containerId, containerImage, 
   } catch (error) {
     console.error("Error executing database query:", error);
     return { error: error.message, result: null };
+  }
+});
+
+// Create a new table in a database container
+ipcMain.handle("create-database-table", async (_, containerId, containerImage, tableName, columns) => {
+  try {
+    return await createTable(containerId, containerImage, tableName, columns);
+  } catch (error) {
+    console.error("Error creating database table:", error);
+    return { error: error.message, success: false };
   }
 });

@@ -378,9 +378,149 @@ async function executeMongoCommand(containerId, command) {
   throw new Error('Could not execute MongoDB command');
 }
 
+/**
+ * Create a new table in the database
+ * @param {string} containerId - Docker container ID
+ * @param {string} containerImage - Container image name
+ * @param {string} tableName - Name of the table to create
+ * @param {Array} columns - Array of column definitions {name, type, constraints}
+ * @returns {Promise<Object>} Result of the operation
+ */
+async function createTable(containerId, containerImage, tableName, columns) {
+  const dbType = detectDatabaseType(containerImage);
+  if (!dbType) {
+    return { error: 'Unsupported database type', success: false };
+  }
+
+  // Sanitize table name
+  const safeTableName = tableName.replace(/[^a-zA-Z0-9_]/g, '');
+  if (!safeTableName || safeTableName.length === 0) {
+    return { error: 'Invalid table name', success: false };
+  }
+
+  try {
+    switch (dbType) {
+      case 'postgresql':
+        return await createPostgresTable(containerId, safeTableName, columns);
+      case 'mysql':
+        return await createMySQLTable(containerId, safeTableName, columns);
+      case 'mongodb':
+        return await createMongoCollection(containerId, safeTableName, columns);
+      default:
+        return { error: 'Unsupported database type', success: false };
+    }
+  } catch (error) {
+    return { error: error.message, success: false };
+  }
+}
+
+async function createPostgresTable(containerId, tableName, columns) {
+  if (!columns || columns.length === 0) {
+    return { error: 'At least one column is required', success: false };
+  }
+
+  // Build column definitions
+  const columnDefs = columns.map(col => {
+    const safeName = col.name.replace(/[^a-zA-Z0-9_]/g, '');
+    let def = `${safeName} ${col.type}`;
+
+    if (col.primaryKey) def += ' PRIMARY KEY';
+    if (col.notNull && !col.primaryKey) def += ' NOT NULL';
+    if (col.unique && !col.primaryKey) def += ' UNIQUE';
+    if (col.defaultValue !== undefined && col.defaultValue !== '') {
+      // Handle different default value types
+      if (col.type.toLowerCase().includes('serial') || col.type.toLowerCase().includes('auto_increment')) {
+        // Skip default for auto-increment columns
+      } else if (col.type.toLowerCase().includes('int') || col.type.toLowerCase().includes('numeric') || col.type.toLowerCase().includes('decimal')) {
+        def += ` DEFAULT ${col.defaultValue}`;
+      } else {
+        def += ` DEFAULT '${col.defaultValue.replace(/'/g, "''")}'`;
+      }
+    }
+
+    return def;
+  }).join(', ');
+
+  const query = `CREATE TABLE ${tableName} (${columnDefs});`;
+  const result = await executePostgresQuery(containerId, query);
+
+  if (result.error) {
+    throw new Error(result.error);
+  }
+
+  return { success: true, message: `Table '${tableName}' created successfully`, query };
+}
+
+async function createMySQLTable(containerId, tableName, columns) {
+  if (!columns || columns.length === 0) {
+    return { error: 'At least one column is required', success: false };
+  }
+
+  // Build column definitions
+  const columnDefs = columns.map(col => {
+    const safeName = col.name.replace(/[^a-zA-Z0-9_]/g, '');
+    let def = `${safeName} ${col.type}`;
+
+    if (col.notNull || col.primaryKey) def += ' NOT NULL';
+    if (col.type.toLowerCase().includes('auto_increment')) {
+      def += ' AUTO_INCREMENT';
+    }
+    if (col.defaultValue !== undefined && col.defaultValue !== '' && !col.type.toLowerCase().includes('auto_increment')) {
+      if (col.type.toLowerCase().includes('int') || col.type.toLowerCase().includes('numeric') || col.type.toLowerCase().includes('decimal')) {
+        def += ` DEFAULT ${col.defaultValue}`;
+      } else {
+        def += ` DEFAULT '${col.defaultValue.replace(/'/g, "''")}'`;
+      }
+    }
+
+    return def;
+  }).join(', ');
+
+  // Find primary key column
+  const primaryKeyCol = columns.find(col => col.primaryKey);
+  const primaryKeyDef = primaryKeyCol ? `, PRIMARY KEY (${primaryKeyCol.name.replace(/[^a-zA-Z0-9_]/g, '')})` : '';
+
+  const query = `CREATE TABLE ${tableName} (${columnDefs}${primaryKeyDef});`;
+  const result = await executeMySQLQuery(containerId, query);
+
+  if (result.error) {
+    throw new Error(result.error);
+  }
+
+  return { success: true, message: `Table '${tableName}' created successfully`, query };
+}
+
+async function createMongoCollection(containerId, collectionName, columns) {
+  // MongoDB doesn't require schema, so we just create the collection
+  // If columns are provided, we can create a sample document or validation schema
+
+  const commands = [
+    `db.createCollection('${collectionName}')`,
+    `db.createCollection("${collectionName}")`
+  ];
+
+  for (const command of commands) {
+    try {
+      const result = await executeMongoCommand(containerId, command);
+      if (!result.error) {
+        return {
+          success: true,
+          message: `Collection '${collectionName}' created successfully`,
+          note: 'MongoDB is schemaless - documents can have any structure'
+        };
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  throw new Error('Could not create MongoDB collection');
+}
+
 module.exports = {
   detectDatabaseType,
   getDatabaseTables,
   getTableData,
   executeQuery,
+  createTable,
 };
