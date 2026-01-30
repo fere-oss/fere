@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { GraphNode, GraphEdge, ExternalApi } from '../../types/electron';
 import { DatabaseViewer } from '../DatabaseViewer';
-import { getHealthInfo } from './constants';
+import { getHealthInfo, getServiceColor } from './constants';
 import { externalApiCache, EXTERNAL_API_CACHE_TTL_MS } from './externalApis';
 
 interface NodeDetailContentProps {
@@ -11,6 +11,7 @@ interface NodeDetailContentProps {
 }
 
 export function NodeDetailContent({ node, edges, allNodes }: NodeDetailContentProps) {
+  const accentColor = getServiceColor(node.type);
   const healthInfo = getHealthInfo(node.healthStatus);
   const routes = node.routes || [];
   const [externalApis, setExternalApis] = useState<ExternalApi[]>([]);
@@ -212,6 +213,140 @@ export function NodeDetailContent({ node, edges, allNodes }: NodeDetailContentPr
                 ))}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {node.isDockerContainer && node.containerNetworks && node.containerNetworks.length > 0 && (
+        <div className="node-detail-section">
+          <h3 className="node-detail-section-title">
+            Networks <span className="node-detail-count">{node.containerNetworks.length}</span>
+          </h3>
+          <div className="node-detail-docker-networks">
+            {node.containerNetworks.map((network, idx) => (
+              <div key={idx} className="docker-network-item">
+                <div className="docker-network-name">{network.name}</div>
+                <div className="docker-network-details">
+                  {network.ipAddress && (
+                    <span className="docker-network-ip">IP: {network.ipAddress}</span>
+                  )}
+                  {network.gateway && (
+                    <span className="docker-network-gateway">Gateway: {network.gateway}</span>
+                  )}
+                </div>
+                {network.aliases && network.aliases.length > 0 && (
+                  <div className="docker-network-aliases">
+                    Aliases: {network.aliases.join(', ')}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {node.isDockerContainer && node.containerMounts && node.containerMounts.length > 0 && (
+        <div className="node-detail-section">
+          <h3 className="node-detail-section-title">
+            Volumes & Mounts <span className="node-detail-count">{node.containerMounts.length}</span>
+          </h3>
+          <div className="node-detail-docker-mounts">
+            {node.containerMounts.map((mount, idx) => (
+              <div key={idx} className="docker-mount-item">
+                <div className="docker-mount-header">
+                  <span className={`docker-mount-type docker-mount-type-${mount.type}`}>
+                    {mount.type}
+                  </span>
+                  {!mount.readWrite && (
+                    <span className="docker-mount-readonly">read-only</span>
+                  )}
+                </div>
+                <div className="docker-mount-paths">
+                  <div className="docker-mount-source" title={mount.source}>
+                    {mount.name || mount.source.split('/').slice(-2).join('/')}
+                  </div>
+                  <span className="docker-mount-arrow">→</span>
+                  <div className="docker-mount-dest" title={mount.destination}>
+                    {mount.destination}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {node.isDockerContainer && node.containerPorts && node.containerPorts.length > 0 && (
+        <div className="node-detail-section">
+          <h3 className="node-detail-section-title">
+            Container Ports <span className="node-detail-count">{node.containerPorts.length}</span>
+          </h3>
+          <div className="node-detail-docker-ports">
+            {node.containerPorts.map((port, idx) => (
+              <div key={idx} className="docker-port-item">
+                {port.type === 'mapped' ? (
+                  <>
+                    <span className="docker-port-host">
+                      {port.hostIp}:{port.hostPort}
+                    </span>
+                    <span className="docker-port-arrow">→</span>
+                    <span className="docker-port-container">
+                      {port.containerPort}/{port.protocol}
+                    </span>
+                  </>
+                ) : (
+                  <span className="docker-port-exposed">
+                    {port.containerPort}/{port.protocol} (exposed)
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="node-detail-section">
+        <h3 className="node-detail-section-title">Command</h3>
+        <div className="node-detail-command">{node.command}</div>
+      </div>
+
+      {(node.project || node.projectPath) && (
+        <div className="node-detail-section">
+          <h3 className="node-detail-section-title">Project</h3>
+          <div className="node-detail-grid">
+            {node.project && (
+              <div className="node-detail-item full-width">
+                <span className="node-detail-label">Name</span>
+                <span className="node-detail-value">{node.project}</span>
+              </div>
+            )}
+            {node.projectPath && (
+              <div className="node-detail-item full-width">
+                <span className="node-detail-label">Path</span>
+                <span className="node-detail-value mono small">{node.projectPath}</span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {node.ports.length > 0 && (
+        <div className="node-detail-section">
+          <h3 className="node-detail-section-title">
+            Ports <span className="node-detail-count">{node.ports.length}</span>
+          </h3>
+          <div className="node-detail-ports">
+            {node.ports.map((port, idx) => (
+              <div key={idx} className="node-detail-port">
+                <span className="node-detail-port-number" style={{ color: accentColor }}>
+                  :{port.port}
+                </span>
+                <span className="node-detail-port-host">{port.host}</span>
+                {port.description && (
+                  <span className="node-detail-port-desc">{port.description}</span>
+                )}
+              </div>
+            ))}
           </div>
         </div>
       )}
