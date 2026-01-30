@@ -571,7 +571,6 @@ export function GraphView({ nodes, edges, isContainerView = false, onDatabaseCli
   const orderCacheRef = useRef<Map<number, string[]>>(new Map());
   const groupOrderCacheRef = useRef<Map<number, string[]>>(new Map());
   const [, setExternalApiVersion] = useState(0);
-  const [animationKey, setAnimationKey] = useState(0);
 
   // Create a stable key based on node IDs to trigger re-animation only on actual changes
   const nodeSetKey = useMemo(() => {
@@ -605,11 +604,6 @@ export function GraphView({ nodes, edges, isContainerView = false, onDatabaseCli
     // Update refs
     prevNodeSetKeyRef.current = nodeSetKey;
     prevEdgeSetKeyRef.current = edgeSetKey;
-
-    // Only trigger animation if not initial render (tab switch)
-    if (!isInitialRenderRef.current && nodesChanged) {
-      setAnimationKey(k => k + 1);
-    }
 
     // On initial render or when content changes, update immediately
     if (isInitialRenderRef.current) {
@@ -1125,7 +1119,7 @@ export function GraphView({ nodes, edges, isContainerView = false, onDatabaseCli
 
         {/* Container View: Project containers with type groups inside */}
         {isContainerView ? (
-          <div className="container-projects-view" key={`containers-${animationKey}`}>
+          <div className="container-projects-view">
             {containerProjects.map((project, projectIdx) => (
               <ProjectContainer
                 key={`project-${project.projectName}`}
@@ -1138,7 +1132,7 @@ export function GraphView({ nodes, edges, isContainerView = false, onDatabaseCli
           </div>
         ) : (
           /* Regular Service Map: Layered nodes based on topology */
-          <div className="graph-layers" key={`layers-${animationKey}`}>
+          <div className="graph-layers">
             {sortedLayers.map((layer, layerIdx) => {
               const groups = layerGroups.get(layer) || [];
               const allNodes = groups.flatMap(g => g.nodes);
