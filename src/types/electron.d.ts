@@ -245,6 +245,7 @@ export interface ConnectionGraph {
 export interface ApiRoute {
   method: string;
   path: string;
+  framework?: string | null;
 }
 
 export interface ExternalApi {

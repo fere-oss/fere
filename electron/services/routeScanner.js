@@ -322,6 +322,7 @@ function matchRoutesToService(routes, service) {
     serviceRoutes.push({
       method: route.method,
       path: route.path,
+      framework: route.framework || null,
     });
   }
 

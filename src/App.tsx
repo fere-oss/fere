@@ -12,6 +12,112 @@ const isMacOS = navigator.userAgent.toLowerCase().includes("mac");
 const SYSTEM_TAB_LABEL = isMacOS ? "macOS" : "System";
 const SYSTEM_TAB_ID = "__system__";
 
+const STACK_FRAMEWORK_LABELS: Record<string, string> = {
+  nextjs: "Next",
+  express: "Express",
+  nestjs: "Nest",
+  fastapi: "FastAPI",
+  flask: "Flask",
+  django: "Django",
+  koa: "Koa",
+  hono: "Hono",
+  "node-http": "Node",
+};
+
+const BACKEND_FRAMEWORK_ORDER = [
+  "express",
+  "nestjs",
+  "fastapi",
+  "flask",
+  "django",
+  "koa",
+  "hono",
+  "node-http",
+];
+
+function detectDbLabel(command: string, name: string) {
+  if (command.includes("postgres") || name.includes("postgres")) return "Postgres";
+  if (command.includes("mysql") || name.includes("mysql") || command.includes("mariadb")) return "MySQL";
+  if (command.includes("mongo") || name.includes("mongo")) return "MongoDB";
+  if (command.includes("sqlite") || name.includes("sqlite")) return "SQLite";
+  return "Database";
+}
+
+function detectCacheLabel(command: string, name: string) {
+  if (command.includes("redis") || name.includes("redis")) return "Redis";
+  if (command.includes("memcached") || name.includes("memcached")) return "Memcached";
+  return "Cache";
+}
+
+function detectBrokerLabel(command: string, name: string) {
+  if (command.includes("nats") || name.includes("nats")) return "NATS";
+  if (command.includes("kafka") || name.includes("kafka")) return "Kafka";
+  if (command.includes("rabbit") || name.includes("rabbit")) return "RabbitMQ";
+  return "Broker";
+}
+
+function detectProjectStack(nodes: GraphNode[]) {
+  const frameworks = new Set<string>();
+  const dbLabels = new Set<string>();
+  const cacheLabels = new Set<string>();
+  const brokerLabels = new Set<string>();
+  let hasFrontend = false;
+  let hasBackend = false;
+
+  nodes.forEach((node) => {
+    const command = (node.command || "").toLowerCase();
+    const name = (node.name || "").toLowerCase();
+
+    node.routes?.forEach((route) => {
+      if (route.framework) frameworks.add(route.framework);
+    });
+
+    if (command.includes("next")) frameworks.add("nextjs");
+    if (command.includes("express")) frameworks.add("express");
+    if (command.includes("nestjs")) frameworks.add("nestjs");
+    if (command.includes("fastapi") || command.includes("uvicorn")) frameworks.add("fastapi");
+    if (command.includes("flask")) frameworks.add("flask");
+    if (command.includes("django")) frameworks.add("django");
+    if (command.includes("koa")) frameworks.add("koa");
+    if (command.includes("hono")) frameworks.add("hono");
+
+    if (node.type === "frontend") hasFrontend = true;
+    if (node.type === "backend" || node.type === "nodejs" || node.type === "python") hasBackend = true;
+
+    if (node.type === "database") dbLabels.add(detectDbLabel(command, name));
+    if (node.type === "cache") cacheLabels.add(detectCacheLabel(command, name));
+    if (node.type === "broker") brokerLabels.add(detectBrokerLabel(command, name));
+  });
+
+  const parts: string[] = [];
+
+  if (frameworks.has("nextjs")) {
+    parts.push("Next");
+  } else if (hasFrontend) {
+    parts.push("Frontend");
+  }
+
+  BACKEND_FRAMEWORK_ORDER.forEach((framework) => {
+    if (frameworks.has(framework)) {
+      parts.push(STACK_FRAMEWORK_LABELS[framework]);
+    }
+  });
+
+  if (!BACKEND_FRAMEWORK_ORDER.some((f) => frameworks.has(f)) && hasBackend) {
+    parts.push("Backend");
+  }
+
+  parts.push(
+    ...Array.from(dbLabels),
+    ...Array.from(cacheLabels),
+    ...Array.from(brokerLabels),
+  );
+
+  const unique = parts.filter((part, index) => parts.indexOf(part) === index);
+  if (unique.length === 0) return null;
+  return unique.slice(0, 4).join(" + ");
+}
+
 // View modes
 type ViewMode = "graph" | "containers" | "api-tester" | "database";
 
@@ -64,17 +170,27 @@ function App() {
     const nonExternalNodes = graph.nodes.filter((node) => node.type !== "external");
     const systemCount = nonExternalNodes.filter((node) => !node.projectPath).length;
 
+    const stackByProject = new Map<string, string | null>();
+    projectPaths.forEach((_, path) => {
+      const projectNodes = graph.nodes.filter((node) => node.projectPath === path);
+      stackByProject.set(path, detectProjectStack(projectNodes));
+    });
+
     // Sort project tabs alphabetically by label and include counts per project
     const projectTabs = Array.from(projectPaths.entries())
       .map(([path, label]) => ({
         id: path,
         label,
         count: nonExternalNodes.filter((node) => node.projectPath === path).length,
+        stackLabel: stackByProject.get(path) || null,
       }))
       .sort((a, b) => a.label.localeCompare(b.label));
 
     // System tab first, then project tabs
-    return [{ id: SYSTEM_TAB_ID, label: SYSTEM_TAB_LABEL, count: systemCount }, ...projectTabs];
+    return [
+      { id: SYSTEM_TAB_ID, label: SYSTEM_TAB_LABEL, count: systemCount, stackLabel: null },
+      ...projectTabs,
+    ];
   }, [graph.nodes]);
 
   // Auto-select first available tab if current selection becomes invalid
@@ -274,6 +390,9 @@ function App() {
               onClick={() => setSelectedTab(tab.id)}
             >
               {tab.label}
+              {tab.stackLabel && (
+                <span className="app-tab-stack">{tab.stackLabel}</span>
+              )}
               <span className="app-tab-count">{tab.count ?? 0}</span>
             </button>
           ))}
