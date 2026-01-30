@@ -93,20 +93,21 @@ function parseConnections(lsofOutput) {
     const { command, pid, user, node, name } = parsed;
     const cleaned = normalizeName(name);
 
-    // Parse connection format: "localhost:52341->localhost:5432"
-    const connMatch = cleaned.match(/(.+):(\d+)->(.+):(\d+)/);
-    if (!connMatch) continue;
+    const parts = cleaned.split('->');
+    if (parts.length !== 2) continue;
 
-    const [, localHostRaw, localPort, remoteHostRaw, remotePort] = connMatch;
+    const local = parseHostPort(parts[0].trim());
+    const remote = parseHostPort(parts[1].trim());
+    if (!local || !remote) continue;
 
     connections.push({
       pid: parseInt(pid, 10),
       process: command,
       user,
-      localHost: stripBrackets(localHostRaw),
-      localPort: parseInt(localPort, 10),
-      remoteHost: stripBrackets(remoteHostRaw),
-      remotePort: parseInt(remotePort, 10),
+      localHost: local.host,
+      localPort: local.port,
+      remoteHost: remote.host,
+      remotePort: remote.port,
       protocol: node.toLowerCase(),
     });
   }

@@ -538,8 +538,8 @@ async function buildConnectionGraph(snapshot = null) {
       memory: proc?.memory || 0,
       user: proc?.user || portUserByPid.get(pid) || 'unknown',
       tty: proc?.tty || null,
-      project: inferProjectFromCommand(command),
-      projectPath: inferProjectPathFromCommand(command),
+      project: null,
+      projectPath: null,
       description: getServiceDescription(rawName, command),
       ports: [],
       routes: [],
@@ -623,7 +623,7 @@ async function buildConnectionGraph(snapshot = null) {
     if (!sourceProc) continue;
 
     const sourceNode = ensureProcessNode(conn.pid, conn.process);
-    const targetPid = portToPid.get(conn.remotePort);
+    const targetPid = isLocalHost(conn.remoteHost) ? portToPid.get(conn.remotePort) : null;
     const targetNode = targetPid
       ? ensureProcessNode(targetPid, conn.process)
       : getExternalNode(conn.remoteHost, conn.remotePort);
@@ -739,6 +739,17 @@ function categorizeProcess(processName, command = '') {
   }
 
   return 'service';
+}
+
+function isLocalHost(host = '') {
+  const normalized = host.toLowerCase();
+  return (
+    normalized === 'localhost' ||
+    normalized === '127.0.0.1' ||
+    normalized === '::1' ||
+    normalized === '0.0.0.0' ||
+    normalized === '::'
+  );
 }
 
 function inferProjectFromCommand(command = '') {
@@ -1127,6 +1138,12 @@ async function attachRoutesToNodes(nodes) {
     if (!node.projectPath) continue;
     const routes = projects.get(node.projectPath) || [];
     node.routes = matchRoutesToService(routes, node);
+  }
+
+  for (const node of nodes) {
+    if (!node.projectPath) {
+      node.project = null;
+    }
   }
 
   perfLog('Total route attachment', Date.now() - startRoutes);
