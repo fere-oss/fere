@@ -283,21 +283,25 @@ async function executeQuery(containerId, containerImage, query) {
 }
 
 async function executePostgresQuery(containerId, query) {
-  // Escape single quotes in the query for shell
-  const escapedQuery = query.replace(/'/g, "'\\''");
-  const cmd = `docker exec ${containerId} psql -U postgres -c '${escapedQuery}' 2>&1`;
-
   try {
-    const { stdout, stderr } = await execAsync(cmd, { timeout: 30000 });
+    // Use stdin instead of -c to avoid shell escaping issues
+    const cmd = `echo ${JSON.stringify(query)} | docker exec -i ${containerId} psql -U postgres 2>&1`;
+    const { stdout, stderr } = await execAsync(cmd, { timeout: 30000, shell: '/bin/bash' });
     const output = stdout || stderr;
+
+    // Check if there's an error in the output
+    if (output.toLowerCase().includes('error:') || output.toLowerCase().includes('fatal:')) {
+      throw new Error(output);
+    }
 
     // Check if it's a SELECT query - try to parse as JSON
     if (query.trim().toLowerCase().startsWith('select')) {
-      const jsonCmd = `docker exec ${containerId} psql -U postgres -t -c "SELECT json_agg(t) FROM (${query.replace(/'/g, "'\\''")} ) t;" 2>&1`;
+      const jsonQuery = `SELECT json_agg(t) FROM (${query}) t;`;
+      const jsonCmd = `echo ${JSON.stringify(jsonQuery)} | docker exec -i ${containerId} psql -U postgres -t 2>&1`;
       try {
-        const { stdout: jsonOut } = await execAsync(jsonCmd, { timeout: 30000 });
+        const { stdout: jsonOut } = await execAsync(jsonCmd, { timeout: 30000, shell: '/bin/bash' });
         const trimmed = jsonOut.trim();
-        if (trimmed && trimmed !== 'null') {
+        if (trimmed && trimmed !== 'null' && !trimmed.toLowerCase().includes('error:')) {
           const rows = JSON.parse(trimmed);
           if (Array.isArray(rows) && rows.length > 0) {
             const columns = Object.keys(rows[0]);
@@ -312,21 +316,25 @@ async function executePostgresQuery(containerId, query) {
     // For non-SELECT queries, return the text output
     return { output, dbType: 'postgresql' };
   } catch (error) {
-    throw new Error(error.stderr || error.message);
+    throw new Error(error.stderr || error.stdout || error.message);
   }
 }
 
 async function executeMySQLQuery(containerId, query) {
-  const escapedQuery = query.replace(/'/g, "'\\''");
-  const cmd = `docker exec ${containerId} mysql -u root -e '${escapedQuery}' --batch 2>&1`;
-
   try {
-    const { stdout, stderr } = await execAsync(cmd, { timeout: 30000 });
+    // Use stdin instead of -e to avoid shell escaping issues
+    const cmd = `echo ${JSON.stringify(query)} | docker exec -i ${containerId} mysql -u root --batch 2>&1`;
+    const { stdout, stderr } = await execAsync(cmd, { timeout: 30000, shell: '/bin/bash' });
     const output = stdout || stderr;
+
+    // Check if there's an error in the output
+    if (output.toLowerCase().includes('error') && !query.trim().toLowerCase().startsWith('select')) {
+      throw new Error(output);
+    }
 
     // Parse tabular output for SELECT queries
     if (query.trim().toLowerCase().startsWith('select')) {
-      const lines = output.split('\n').filter(l => l.trim());
+      const lines = output.split('\n').filter(l => l.trim() && !l.toLowerCase().includes('error'));
       if (lines.length > 0) {
         const columns = lines[0].split('\t');
         const rows = lines.slice(1).map(line => {
@@ -343,21 +351,26 @@ async function executeMySQLQuery(containerId, query) {
 
     return { output, dbType: 'mysql' };
   } catch (error) {
-    throw new Error(error.stderr || error.message);
+    throw new Error(error.stderr || error.stdout || error.message);
   }
 }
 
 async function executeMongoCommand(containerId, command) {
   // Try mongosh first, then mongo
-  const commands = [
-    `docker exec ${containerId} mongosh --quiet --eval '${command.replace(/'/g, "'\\''")}' 2>&1`,
-    `docker exec ${containerId} mongo --quiet --eval '${command.replace(/'/g, "'\\''")}' 2>&1`
+  const shellCommands = [
+    `echo ${JSON.stringify(command)} | docker exec -i ${containerId} mongosh --quiet 2>&1`,
+    `echo ${JSON.stringify(command)} | docker exec -i ${containerId} mongo --quiet 2>&1`
   ];
 
-  for (const cmd of commands) {
+  for (const cmd of shellCommands) {
     try {
-      const { stdout } = await execAsync(cmd, { timeout: 30000 });
-      const output = stdout.trim();
+      const { stdout, stderr } = await execAsync(cmd, { timeout: 30000, shell: '/bin/bash' });
+      const output = (stdout || stderr).trim();
+
+      // Check for errors
+      if (output.toLowerCase().includes('error') && !output.includes('ObjectId')) {
+        continue; // Try next shell
+      }
 
       // Try to parse as JSON
       try {

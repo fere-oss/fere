@@ -13,10 +13,54 @@ const {
 
 const execAsync = promisify(exec);
 
+// Performance timing
+const PERF_LOGGING = process.env.FERE_PERF_LOG === '1';
+const perfLog = (label, duration) => {
+  if (PERF_LOGGING) {
+    console.log(`[PERF] ${label}: ${duration.toFixed(2)}ms`);
+  }
+};
+
+// Persistent cache for process CWD (survives across polls)
+// Cache entries: { pid: { cwd: string, timestamp: number } }
+const CWD_CACHE_TTL_MS = 60000; // 60 seconds
+const persistentCwdCache = new Map();
+
 /**
  * Known macOS system services and their descriptions
  */
 const KNOWN_SERVICES = {
+  // Common developer apps
+  'visual studio code': {
+    description: 'Visual Studio Code - a code editor for development workflows.',
+    category: 'developer',
+    displayName: 'VS Code'
+  },
+  'code': {
+    description: 'Visual Studio Code - a code editor for development workflows.',
+    category: 'developer',
+    displayName: 'VS Code'
+  },
+  'google chrome': {
+    description: 'Google Chrome - web browser often used for local dev testing.',
+    category: 'developer',
+    displayName: 'Google Chrome'
+  },
+  'discord': {
+    description: 'Discord - collaboration and chat client.',
+    category: 'developer',
+    displayName: 'Discord'
+  },
+  'electron': {
+    description: 'Electron - runtime for desktop apps built with web tech.',
+    category: 'developer',
+    displayName: 'Electron'
+  },
+  'next-server': {
+    description: 'Next.js dev server.',
+    category: 'frontend',
+    displayName: 'Next.js Dev Server'
+  },
   // macOS System Services
   // Note: macOS truncates process names in ps output, so we include both full and truncated versions
   'controlcenter': {
@@ -317,6 +361,17 @@ const KNOWN_SERVICES = {
   },
 };
 
+function extractAppNameFromCommand(command = '') {
+  if (!command) return null;
+  const appMatch = command.match(/\/Applications\/([^/]+)\.app\//i)
+    || command.match(/\/System\/Applications\/([^/]+)\.app\//i)
+    || command.match(/\/Users\/[^/]+\/Applications\/([^/]+)\.app\//i);
+  if (appMatch && appMatch[1]) {
+    return appMatch[1];
+  }
+  return null;
+}
+
 /**
  * Get service info (description and display name) for a known service
  */
@@ -329,33 +384,43 @@ function getServiceInfo(processName, command = '') {
 
   // Extract base name if it looks like a path (e.g., /usr/sbin/rapportd -> rapportd)
   const baseName = name.includes('/') ? name.split('/').pop() : name;
+  const appName = extractAppNameFromCommand(command);
+  const appKey = appName ? appName.trim().toLowerCase() : null;
 
-  // Debug logging - check electron dev tools console
-  console.log('[getServiceInfo] Looking up:', { processName, name, baseName });
+  const shouldLog = process.env.FERE_DEBUG_SERVICE_INFO === '1';
+  if (shouldLog) {
+    console.log('[getServiceInfo] Looking up:', { processName, name, baseName });
+  }
 
   // Check direct match first (case-sensitive)
   if (KNOWN_SERVICES[processName]) {
-    console.log('[getServiceInfo] Direct match found for:', processName);
+    if (shouldLog) console.log('[getServiceInfo] Direct match found for:', processName);
     return KNOWN_SERVICES[processName];
   }
 
   // Check lowercase match
   if (KNOWN_SERVICES[name]) {
-    console.log('[getServiceInfo] Lowercase match found for:', name);
+    if (shouldLog) console.log('[getServiceInfo] Lowercase match found for:', name);
     return KNOWN_SERVICES[name];
   }
 
   // Check base name match
   if (baseName && KNOWN_SERVICES[baseName]) {
-    console.log('[getServiceInfo] Base name match found for:', baseName);
+    if (shouldLog) console.log('[getServiceInfo] Base name match found for:', baseName);
     return KNOWN_SERVICES[baseName];
+  }
+
+  // Check app name inferred from command path
+  if (appKey && KNOWN_SERVICES[appKey]) {
+    if (shouldLog) console.log('[getServiceInfo] App name match found for:', appKey);
+    return KNOWN_SERVICES[appKey];
   }
 
   // Check case-insensitive match against all keys
   for (const [key, value] of Object.entries(KNOWN_SERVICES)) {
     const keyLower = key.toLowerCase();
-    if (keyLower === name || keyLower === baseName) {
-      console.log('[getServiceInfo] Case-insensitive match found:', key);
+    if (keyLower === name || keyLower === baseName || (appKey && keyLower === appKey)) {
+      if (shouldLog) console.log('[getServiceInfo] Case-insensitive match found:', key);
       return value;
     }
   }
@@ -366,21 +431,21 @@ function getServiceInfo(processName, command = '') {
     const keyLower = key.toLowerCase();
     // Check if name starts with key or key starts with name (handles truncation)
     if (name.startsWith(keyLower) || keyLower.startsWith(name)) {
-      console.log('[getServiceInfo] Prefix match found:', key, 'for', name);
+      if (shouldLog) console.log('[getServiceInfo] Prefix match found:', key, 'for', name);
       return value;
     }
     if (baseName && (baseName.startsWith(keyLower) || keyLower.startsWith(baseName))) {
-      console.log('[getServiceInfo] Base prefix match found:', key, 'for', baseName);
+      if (shouldLog) console.log('[getServiceInfo] Base prefix match found:', key, 'for', baseName);
       return value;
     }
     // Check substring matching
     if (name.includes(keyLower) || keyLower.includes(name)) {
-      console.log('[getServiceInfo] Substring match found:', key, 'for', name);
+      if (shouldLog) console.log('[getServiceInfo] Substring match found:', key, 'for', name);
       return value;
     }
   }
 
-  console.log('[getServiceInfo] No match found for:', processName);
+  if (shouldLog) console.log('[getServiceInfo] No match found for:', processName);
   return null;
 }
 
@@ -579,12 +644,20 @@ async function buildConnectionGraph(snapshot = null) {
     }
   }
 
-  await attachRoutesToNodes(nodes);
+  // OPTIMIZATION: Parallelize route attachment and Docker snapshot
+  // These operations are independent and can run concurrently
+  const startParallel = Date.now();
+  const [dockerSnapshot] = await Promise.all([
+    getDockerSnapshot(),
+    attachRoutesToNodes(nodes),
+  ]);
+  perfLog('Parallel operations (routes + docker)', Date.now() - startParallel);
 
   // Add Docker containers as nodes
-  const dockerSnapshot = await getDockerSnapshot();
   if (dockerSnapshot.isAvailable && dockerSnapshot.containers.length > 0) {
+    const startDocker = Date.now();
     addDockerContainerNodes(nodes, edges, dockerSnapshot, nodesByPid, portToPid);
+    perfLog('Add Docker container nodes', Date.now() - startDocker);
   }
 
   return { nodes, edges, dockerSnapshot };
@@ -999,9 +1072,11 @@ function inferProjectPathFromContainer(container) {
 }
 
 async function attachRoutesToNodes(nodes) {
+  const startRoutes = Date.now();
   const projects = new Map();
   const cwdByPid = new Map();
 
+  // Collect known project paths
   for (const node of nodes) {
     if (node.projectPath) {
       projects.set(node.projectPath, null);
@@ -1011,8 +1086,12 @@ async function attachRoutesToNodes(nodes) {
     }
   }
 
+  // Discover project paths from process CWDs
+  const startCwd = Date.now();
+  let cwdLookupCount = 0;
   for (const node of nodes) {
     if (node.pid <= 0) continue;
+    cwdLookupCount++;
     const cwd = await getProcessCwd(node.pid, cwdByPid);
     if (!cwd) continue;
     const projectRoot = findProjectRoot(cwd);
@@ -1024,37 +1103,64 @@ async function attachRoutesToNodes(nodes) {
     node.project = path.basename(projectRoot);
     projects.set(projectRoot, null);
   }
+  perfLog(`CWD lookups (${cwdLookupCount} processes)`, Date.now() - startCwd);
 
-  for (const projectPath of projects.keys()) {
+  // Scan routes for all projects in parallel
+  const startScan = Date.now();
+  const scanPromises = Array.from(projects.keys()).map(async (projectPath) => {
     try {
       const routes = await scanRoutes(projectPath);
-      projects.set(projectPath, routes);
+      return { projectPath, routes };
     } catch (error) {
-      projects.set(projectPath, []);
+      return { projectPath, routes: [] };
     }
-  }
+  });
 
+  const scanResults = await Promise.all(scanPromises);
+  for (const { projectPath, routes } of scanResults) {
+    projects.set(projectPath, routes);
+  }
+  perfLog(`Route scanning (${projects.size} projects)`, Date.now() - startScan);
+
+  // Attach routes to nodes
   for (const node of nodes) {
     if (!node.projectPath) continue;
     const routes = projects.get(node.projectPath) || [];
     node.routes = matchRoutesToService(routes, node);
   }
+
+  perfLog('Total route attachment', Date.now() - startRoutes);
 }
 
 
 async function getProcessCwd(pid, cache) {
+  // Check per-request cache first
   if (cache.has(pid)) {
     return cache.get(pid);
   }
 
+  // Check persistent cache (survives across polls)
+  const persistentEntry = persistentCwdCache.get(pid);
+  if (persistentEntry && Date.now() - persistentEntry.timestamp < CWD_CACHE_TTL_MS) {
+    const cwd = persistentEntry.cwd;
+    cache.set(pid, cwd); // Also populate per-request cache
+    return cwd;
+  }
+
+  // Cache miss - fetch from system
   try {
     const { stdout } = await execAsync(`lsof -a -p ${pid} -d cwd -Fn`);
     const line = stdout.split('\n').find(entry => entry.startsWith('n'));
     const cwd = line ? line.slice(1).trim() : null;
+
+    // Update both caches
     cache.set(pid, cwd);
+    persistentCwdCache.set(pid, { cwd, timestamp: Date.now() });
+
     return cwd;
   } catch (error) {
     cache.set(pid, null);
+    persistentCwdCache.set(pid, { cwd: null, timestamp: Date.now() });
     return null;
   }
 }

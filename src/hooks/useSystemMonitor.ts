@@ -2,10 +2,23 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import type { ConnectionGraph, EnvironmentSummary, Port, Process, SystemSnapshot } from '../types/electron';
 
 // Helper to create a stable key for comparing snapshots
+// Only includes actual topology changes (new/removed services and connections)
+// Excludes frequently changing properties (health, state, metrics) to prevent unnecessary re-renders
 const createSnapshotKey = (snapshot: SystemSnapshot): string => {
-  const nodeIds = snapshot.graph.nodes.map(n => n.id).sort().join(',');
-  const edgeKeys = snapshot.graph.edges.map(e => `${e.source}-${e.target}`).sort().join(',');
-  return `${nodeIds}|${edgeKeys}`;
+  // Include only node IDs and types (topology structure)
+  // Exclude: healthStatus, containerState, cpu, memory, name changes
+  const nodeKeys = snapshot.graph.nodes
+    .map(n => `${n.id}:${n.type}`)
+    .sort()
+    .join(',');
+
+  // Include edges (connections between services)
+  const edgeKeys = snapshot.graph.edges
+    .map(e => `${e.source}-${e.target}`)
+    .sort()
+    .join(',');
+
+  return `${nodeKeys}|${edgeKeys}`;
 };
 
 // Check if we're running in Electron
@@ -71,12 +84,17 @@ export function useSystemSnapshot(pollInterval = 2000) {
 
     try {
       const data = await window.electronAPI.getSystemSnapshot();
-      // Only update state if the graph content actually changed
       const newKey = createSnapshotKey(data);
+
+      // Only update state if the structural content actually changed
+      // (new/removed nodes, edges, ports, state changes, health changes)
+      // Skip updates for metric-only changes (cpu, memory) to prevent unnecessary re-renders
       if (newKey !== snapshotKeyRef.current) {
         snapshotKeyRef.current = newKey;
         setSnapshot(data);
       }
+      // If key is same, don't update state - metrics changed but structure didn't
+
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch system snapshot');

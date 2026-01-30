@@ -54,7 +54,10 @@ const SKIP_DIRS = [
   '.pnpm-store',
 ];
 const MAX_FILES = 2000;
-const ROUTE_CACHE_TTL_MS = 10000;
+// OPTIMIZATION: Extended cache TTL from 10s to 2min
+// Route definitions rarely change during active development,
+// so longer caching significantly reduces filesystem I/O
+const ROUTE_CACHE_TTL_MS = 120000; // 2 minutes (was 10 seconds)
 const routeCache = new Map();
 
 /**
