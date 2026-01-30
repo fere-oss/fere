@@ -1294,14 +1294,13 @@ function TypeGroupBox({ group, onNodeClick, onContextMenu, animationDelay = 0 }:
   );
 }
 
-// Compact Service Node for container view - smaller, less verbose
+// Compact Service Node for container view - enhanced styling with blue theme
 function CompactServiceNode({ node, onClick, onContextMenu, animationIndex = 0 }: {
   node: GraphNode;
   onClick: (node: GraphNode) => void;
   onContextMenu: (e: React.MouseEvent, node: GraphNode) => void;
   animationIndex?: number;
 }) {
-  const accentColor = getServiceColor(node.type);
   const healthInfo = getHealthInfo(node.healthStatus);
   const mainPort = node.ports[0]?.port;
 
@@ -1321,29 +1320,66 @@ function CompactServiceNode({ node, onClick, onContextMenu, animationIndex = 0 }
       onClick={handleClick}
       onContextMenu={handleContextMenu}
       style={{
-        '--node-color': accentColor,
         animationDelay: `${animationIndex * 40}ms`,
       } as React.CSSProperties}
     >
+      {/* Header with status and type badge */}
       <div className="compact-node-header">
-        <div
-          className="compact-node-health"
-          style={{
-            backgroundColor: healthInfo.color,
-            boxShadow: healthInfo.glow,
-          }}
-          title={healthInfo.label}
-        />
-        <span className="compact-node-name">{node.name}</span>
-      </div>
-      {mainPort && (
-        <div className="compact-node-port">
-          <span className="compact-port-number" style={{ color: accentColor }}>:{mainPort}</span>
+        <div className="compact-node-status">
+          <div
+            className="compact-node-health"
+            style={{
+              backgroundColor: healthInfo.color,
+              boxShadow: healthInfo.glow,
+            }}
+          />
+          <span
+            className="compact-node-health-label"
+            style={{ color: healthInfo.color }}
+          >
+            {healthInfo.label}
+          </span>
         </div>
-      )}
+        <span className="compact-node-badge">
+          {getTypeBadge(node.type)}
+        </span>
+      </div>
+
+      {/* Container name */}
+      <h4 className="compact-node-name">{node.name}</h4>
+
+      {/* Docker image */}
       {node.containerImage && (
         <div className="compact-node-image" title={node.containerImage}>
-          {node.containerImage.split('/').pop()?.split(':')[0]}
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+            <circle cx="8.5" cy="8.5" r="1.5"/>
+            <polyline points="21 15 16 10 5 21"/>
+          </svg>
+          <span>{node.containerImage.split('/').pop()?.split(':')[0]}</span>
+        </div>
+      )}
+
+      {/* Port info */}
+      {mainPort && (
+        <div className="compact-node-port">
+          <span className="compact-port-host">localhost</span>
+          <span className="compact-port-number">:{mainPort}</span>
+        </div>
+      )}
+
+      {/* Networks */}
+      {node.containerNetworks && node.containerNetworks.length > 0 && (
+        <div className="compact-node-networks">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="2" y1="12" x2="22" y2="12"/>
+            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+          </svg>
+          <span className="compact-networks-list">
+            {node.containerNetworks.slice(0, 2).map(n => n.name).join(', ')}
+            {node.containerNetworks.length > 2 && ` +${node.containerNetworks.length - 2}`}
+          </span>
         </div>
       )}
     </div>
