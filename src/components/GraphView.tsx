@@ -463,35 +463,55 @@ export function GraphView({ nodes, edges, isContainerView = false, onDatabaseCli
       path: string;
     }[] = [];
 
+    const getEdgePoint = (from: NodePosition, to: NodePosition, pad = 10) => {
+      const dx = to.x - from.x;
+      const dy = to.y - from.y;
+      const absDx = Math.abs(dx);
+      const absDy = Math.abs(dy);
+      const halfW = from.width / 2 + pad;
+      const halfH = from.height / 2 + pad;
+
+      if (absDx < 0.001 && absDy < 0.001) {
+        return { x: from.x, y: from.y };
+      }
+
+      const tx = absDx > 0 ? halfW / absDx : Number.POSITIVE_INFINITY;
+      const ty = absDy > 0 ? halfH / absDy : Number.POSITIVE_INFINITY;
+      const t = Math.min(tx, ty);
+
+      return {
+        x: from.x + dx * t,
+        y: from.y + dy * t,
+      };
+    };
+
     connections.forEach((conn) => {
       const from = nodePositions.get(conn.from);
       const to = nodePositions.get(conn.to);
       if (!from || !to) return;
 
-      const sourceBottom = from.y + from.height / 2;
-      const sourceTop = from.y - from.height / 2;
-      const targetTop = to.y - to.height / 2;
-      const targetBottom = to.y + to.height / 2;
+      const start = getEdgePoint(from, to, 8);
+      const end = getEdgePoint(to, from, 6);
+
+      const dx = end.x - start.x;
+      const dy = end.y - start.y;
+      const absDx = Math.abs(dx);
+      const absDy = Math.abs(dy);
 
       let path: string;
 
       if (from.layer === to.layer) {
-        // Same layer - smooth arc above the nodes
-        const arcY = Math.min(sourceTop, targetTop) - 40;
-        const midX = (from.x + to.x) / 2;
-        path = `M ${from.x} ${sourceTop} Q ${midX} ${arcY}, ${to.x} ${targetTop}`;
+        const arcY = Math.min(start.y, end.y) - Math.max(40, absDx * 0.12);
+        const midX = (start.x + end.x) / 2;
+        path = `M ${start.x} ${start.y} Q ${midX} ${arcY}, ${end.x} ${end.y}`;
       } else {
-        // Different layers - use simple cubic bezier S-curve
-        const goingDown = from.layer < to.layer;
-        const startY = goingDown ? sourceBottom : sourceTop;
-        const endY = goingDown ? targetTop : targetBottom;
-
-        // Calculate control points for smooth S-curve
-        const verticalDist = Math.abs(endY - startY);
-        const controlOffset = Math.min(verticalDist * 0.4, 60);
-
-        // Simple vertical bezier curve
-        path = `M ${from.x} ${startY} C ${from.x} ${startY + (goingDown ? controlOffset : -controlOffset)}, ${to.x} ${endY + (goingDown ? -controlOffset : controlOffset)}, ${to.x} ${endY}`;
+        const verticalDist = Math.max(absDy, 40);
+        const controlOffset = Math.min(verticalDist * 0.45, 140);
+        const c1x = start.x;
+        const c1y = start.y + (dy >= 0 ? controlOffset : -controlOffset);
+        const c2x = end.x;
+        const c2y = end.y + (dy >= 0 ? -controlOffset : controlOffset);
+        path = `M ${start.x} ${start.y} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${end.x} ${end.y}`;
       }
 
       routes.push({
@@ -569,15 +589,11 @@ export function GraphView({ nodes, edges, isContainerView = false, onDatabaseCli
                 refX="9"
                 refY="5"
                 orient="auto"
-                markerUnits="userSpaceOnUse"
+                markerUnits="strokeWidth"
               >
                 <path
-                  d="M 0 1 L 8 5 L 0 9"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
+                  d="M 0 0 L 10 5 L 0 10 L 3 5 Z"
+                  fill="currentColor"
                 />
               </marker>
             </defs>
@@ -587,7 +603,7 @@ export function GraphView({ nodes, edges, isContainerView = false, onDatabaseCli
                 key={`${route.from}-${route.to}-${i}`}
                 d={route.path}
                 stroke="currentColor"
-                strokeWidth="1.5"
+                strokeWidth="1.6"
                 fill="none"
                 markerEnd="url(#arrowhead)"
                 className="graph-edge"

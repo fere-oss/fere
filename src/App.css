@@ -1374,14 +1374,18 @@ body {
   pointer-events: none;
   z-index: 12;
   overflow: visible;
+  shape-rendering: geometricPrecision;
 }
 
 /* Graph Edge Styling */
 .graph-edge {
   color: var(--text-faint);
+  stroke: currentColor;
   stroke-dasharray: none;
   stroke-linecap: round;
   stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+  shape-rendering: geometricPrecision;
   animation: edgeAppear 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.3s both;
 }
 
