@@ -2151,7 +2151,7 @@ body {
    ============================================ */
 
 .context-menu-backdrop {
-  position: fixed;
+  position: absolute;
   top: 0;
   left: 0;
   right: 0;
@@ -2160,7 +2160,7 @@ body {
 }
 
 .context-menu {
-  position: fixed;
+  position: absolute;
   background: var(--bg-primary);
   border: 1px solid var(--border-color);
   border-radius: 8px;

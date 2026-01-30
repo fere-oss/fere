@@ -4,19 +4,23 @@ interface ContextMenuProps {
   node: GraphNode;
   x: number;
   y: number;
+  width: number;
+  height: number;
   onClose: () => void;
 }
 
-export function ContextMenu({ node, x, y, onClose }: ContextMenuProps) {
+export function ContextMenu({ node, x, y, width, height, onClose }: ContextMenuProps) {
   const hasPort = node.ports.length > 0;
   const hasProjectPath = !!node.projectPath;
   const isExternal = node.type === 'external';
   const mainPort = node.ports[0]?.port;
 
+  const menuWidth = 200;
+  const menuHeight = 250;
   const menuStyle: React.CSSProperties = {
-    position: 'fixed',
-    left: Math.min(x, window.innerWidth - 200),
-    top: Math.min(y, window.innerHeight - 250),
+    position: 'absolute',
+    left: Math.min(x, width - menuWidth),
+    top: Math.min(y, height - menuHeight),
     zIndex: 201,
   };
 

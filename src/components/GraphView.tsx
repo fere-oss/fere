@@ -21,7 +21,13 @@ export function GraphView({ nodes, edges, isContainerView = false, onDatabaseCli
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
-  const [contextMenu, setContextMenu] = useState<{ node: GraphNode; x: number; y: number } | null>(null);
+  const [contextMenu, setContextMenu] = useState<{
+    node: GraphNode;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  } | null>(null);
 
   // Handle node click - navigate to database page for database containers, otherwise show detail panel
   const handleNodeClick = useCallback((node: GraphNode) => {
@@ -374,7 +380,16 @@ export function GraphView({ nodes, edges, isContainerView = false, onDatabaseCli
   const handleContextMenu = useCallback((e: React.MouseEvent, node: GraphNode) => {
     e.preventDefault();
     e.stopPropagation();
-    setContextMenu({ node, x: e.clientX, y: e.clientY });
+    const container = containerRef.current;
+    if (!container) return;
+    const rect = container.getBoundingClientRect();
+    setContextMenu({
+      node,
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top,
+      width: rect.width,
+      height: rect.height,
+    });
   }, []);
 
   // Close context menu on Escape key
@@ -657,6 +672,8 @@ export function GraphView({ nodes, edges, isContainerView = false, onDatabaseCli
           node={contextMenu.node}
           x={contextMenu.x}
           y={contextMenu.y}
+          width={contextMenu.width}
+          height={contextMenu.height}
           onClose={() => setContextMenu(null)}
         />
       )}
