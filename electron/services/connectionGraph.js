@@ -30,6 +30,37 @@ const persistentCwdCache = new Map();
  * Known macOS system services and their descriptions
  */
 const KNOWN_SERVICES = {
+  // Common developer apps
+  'visual studio code': {
+    description: 'Visual Studio Code - a code editor for development workflows.',
+    category: 'developer',
+    displayName: 'VS Code'
+  },
+  'code': {
+    description: 'Visual Studio Code - a code editor for development workflows.',
+    category: 'developer',
+    displayName: 'VS Code'
+  },
+  'google chrome': {
+    description: 'Google Chrome - web browser often used for local dev testing.',
+    category: 'developer',
+    displayName: 'Google Chrome'
+  },
+  'discord': {
+    description: 'Discord - collaboration and chat client.',
+    category: 'developer',
+    displayName: 'Discord'
+  },
+  'electron': {
+    description: 'Electron - runtime for desktop apps built with web tech.',
+    category: 'developer',
+    displayName: 'Electron'
+  },
+  'next-server': {
+    description: 'Next.js dev server.',
+    category: 'frontend',
+    displayName: 'Next.js Dev Server'
+  },
   // macOS System Services
   // Note: macOS truncates process names in ps output, so we include both full and truncated versions
   'controlcenter': {
@@ -330,6 +361,17 @@ const KNOWN_SERVICES = {
   },
 };
 
+function extractAppNameFromCommand(command = '') {
+  if (!command) return null;
+  const appMatch = command.match(/\/Applications\/([^/]+)\.app\//i)
+    || command.match(/\/System\/Applications\/([^/]+)\.app\//i)
+    || command.match(/\/Users\/[^/]+\/Applications\/([^/]+)\.app\//i);
+  if (appMatch && appMatch[1]) {
+    return appMatch[1];
+  }
+  return null;
+}
+
 /**
  * Get service info (description and display name) for a known service
  */
@@ -342,33 +384,43 @@ function getServiceInfo(processName, command = '') {
 
   // Extract base name if it looks like a path (e.g., /usr/sbin/rapportd -> rapportd)
   const baseName = name.includes('/') ? name.split('/').pop() : name;
+  const appName = extractAppNameFromCommand(command);
+  const appKey = appName ? appName.trim().toLowerCase() : null;
 
-  // Debug logging - check electron dev tools console
-  console.log('[getServiceInfo] Looking up:', { processName, name, baseName });
+  const shouldLog = process.env.FERE_DEBUG_SERVICE_INFO === '1';
+  if (shouldLog) {
+    console.log('[getServiceInfo] Looking up:', { processName, name, baseName });
+  }
 
   // Check direct match first (case-sensitive)
   if (KNOWN_SERVICES[processName]) {
-    console.log('[getServiceInfo] Direct match found for:', processName);
+    if (shouldLog) console.log('[getServiceInfo] Direct match found for:', processName);
     return KNOWN_SERVICES[processName];
   }
 
   // Check lowercase match
   if (KNOWN_SERVICES[name]) {
-    console.log('[getServiceInfo] Lowercase match found for:', name);
+    if (shouldLog) console.log('[getServiceInfo] Lowercase match found for:', name);
     return KNOWN_SERVICES[name];
   }
 
   // Check base name match
   if (baseName && KNOWN_SERVICES[baseName]) {
-    console.log('[getServiceInfo] Base name match found for:', baseName);
+    if (shouldLog) console.log('[getServiceInfo] Base name match found for:', baseName);
     return KNOWN_SERVICES[baseName];
+  }
+
+  // Check app name inferred from command path
+  if (appKey && KNOWN_SERVICES[appKey]) {
+    if (shouldLog) console.log('[getServiceInfo] App name match found for:', appKey);
+    return KNOWN_SERVICES[appKey];
   }
 
   // Check case-insensitive match against all keys
   for (const [key, value] of Object.entries(KNOWN_SERVICES)) {
     const keyLower = key.toLowerCase();
-    if (keyLower === name || keyLower === baseName) {
-      console.log('[getServiceInfo] Case-insensitive match found:', key);
+    if (keyLower === name || keyLower === baseName || (appKey && keyLower === appKey)) {
+      if (shouldLog) console.log('[getServiceInfo] Case-insensitive match found:', key);
       return value;
     }
   }
@@ -379,21 +431,21 @@ function getServiceInfo(processName, command = '') {
     const keyLower = key.toLowerCase();
     // Check if name starts with key or key starts with name (handles truncation)
     if (name.startsWith(keyLower) || keyLower.startsWith(name)) {
-      console.log('[getServiceInfo] Prefix match found:', key, 'for', name);
+      if (shouldLog) console.log('[getServiceInfo] Prefix match found:', key, 'for', name);
       return value;
     }
     if (baseName && (baseName.startsWith(keyLower) || keyLower.startsWith(baseName))) {
-      console.log('[getServiceInfo] Base prefix match found:', key, 'for', baseName);
+      if (shouldLog) console.log('[getServiceInfo] Base prefix match found:', key, 'for', baseName);
       return value;
     }
     // Check substring matching
     if (name.includes(keyLower) || keyLower.includes(name)) {
-      console.log('[getServiceInfo] Substring match found:', key, 'for', name);
+      if (shouldLog) console.log('[getServiceInfo] Substring match found:', key, 'for', name);
       return value;
     }
   }
 
-  console.log('[getServiceInfo] No match found for:', processName);
+  if (shouldLog) console.log('[getServiceInfo] No match found for:', processName);
   return null;
 }
 
