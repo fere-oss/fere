@@ -29,6 +29,10 @@ const {
   createTable,
 } = require("./services/databaseQuery");
 
+app.setName("Fere");
+app.name = "Fere";
+process.title = "Fere";
+
 // Keep a global reference of the window object
 let mainWindow;
 
@@ -40,6 +44,7 @@ function createWindow() {
     height: 900,
     minWidth: 800,
     minHeight: 600,
+    title: "Fere",
     titleBarStyle: "hiddenInset",
     trafficLightPosition: { x: 15, y: 15 },
     webPreferences: {
@@ -61,8 +66,6 @@ function createWindow() {
     mainWindow = null;
   });
 }
-
-app.setName("Fere");
 
 app.whenReady().then(() => {
   if (process.platform === "darwin") {
