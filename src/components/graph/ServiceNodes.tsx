@@ -1,0 +1,264 @@
+import type { GraphNode } from '../../types/electron';
+import type { RenderGroup } from './types';
+import { getHealthInfo, getServiceColor, getTypeBadge } from './constants';
+import { externalApiCache } from './externalApis';
+
+export function CompactServiceNode({
+  node,
+  onClick,
+  onContextMenu,
+  animationIndex = 0,
+}: {
+  node: GraphNode;
+  onClick: (node: GraphNode) => void;
+  onContextMenu: (e: React.MouseEvent, node: GraphNode) => void;
+  animationIndex?: number;
+}) {
+  const accentColor = getServiceColor(node.type);
+  const healthInfo = getHealthInfo(node.healthStatus);
+  const mainPort = node.ports[0]?.port;
+
+  const handleClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onClick(node);
+  };
+
+  const handleContextMenu = (e: React.MouseEvent) => {
+    onContextMenu(e, node);
+  };
+
+  return (
+    <div
+      data-node-id={node.id}
+      className="compact-service-node"
+      onClick={handleClick}
+      onContextMenu={handleContextMenu}
+      style={{
+        '--node-color': accentColor,
+        animationDelay: `${animationIndex * 40}ms`,
+      } as React.CSSProperties}
+    >
+      <div className="compact-node-header">
+        <div
+          className="compact-node-health"
+          style={{
+            backgroundColor: healthInfo.color,
+            boxShadow: healthInfo.glow,
+          }}
+          title={healthInfo.label}
+        />
+        <span className="compact-node-name">{node.name}</span>
+      </div>
+      {mainPort && (
+        <div className="compact-node-port">
+          <span className="compact-port-number" style={{ color: accentColor }}>:{mainPort}</span>
+        </div>
+      )}
+      {node.containerImage && (
+        <div className="compact-node-image" title={node.containerImage}>
+          {node.containerImage.split('/').pop()?.split(':')[0]}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function NodeGroupContainer({
+  group,
+  onNodeClick,
+  onContextMenu,
+  baseIndex = 0,
+}: {
+  group: RenderGroup;
+  onNodeClick: (node: GraphNode) => void;
+  onContextMenu: (e: React.MouseEvent, node: GraphNode) => void;
+  baseIndex?: number;
+}) {
+  if (!group.isGroup) {
+    return (
+      <ServiceNode
+        node={group.nodes[0]}
+        onClick={onNodeClick}
+        onContextMenu={onContextMenu}
+        animationIndex={baseIndex}
+      />
+    );
+  }
+
+  const groupCount = group.nodes.length;
+  const columnCount = Math.max(2, Math.ceil(Math.sqrt(groupCount)));
+  const groupStyle = {
+    ['--group-columns' as string]: columnCount,
+    ['--group-span' as string]: columnCount,
+    animationDelay: `${baseIndex * 50}ms`,
+  } as React.CSSProperties;
+
+  return (
+    <div className="node-group" style={groupStyle}>
+      <div className="node-group-label">{group.groupName}</div>
+      <div className="node-group-nodes">
+        {group.nodes.map((node, idx) => (
+          <ServiceNode
+            key={node.id}
+            node={node}
+            onClick={onNodeClick}
+            onContextMenu={onContextMenu}
+            animationIndex={baseIndex + idx}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export function ServiceNode({
+  node,
+  onClick,
+  onContextMenu,
+  animationIndex = 0,
+}: {
+  node: GraphNode;
+  onClick: (node: GraphNode) => void;
+  onContextMenu: (e: React.MouseEvent, node: GraphNode) => void;
+  animationIndex?: number;
+}) {
+  const accentColor = getServiceColor(node.type);
+  const healthInfo = getHealthInfo(node.healthStatus);
+  const mainPort = node.ports[0]?.port;
+  const routes = node.routes || [];
+  const visibleRoutes = routes.slice(0, 3);
+  const externalApis = (node.projectPath && !node.isDockerContainer)
+    ? (externalApiCache.get(node.projectPath)?.apis || [])
+    : [];
+  const visibleApis = externalApis.slice(0, 3);
+  const projectLabel = node.projectPath ? node.projectPath.split('/').pop() : null;
+
+  const handleClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onClick(node);
+  };
+
+  const handleContextMenu = (e: React.MouseEvent) => {
+    onContextMenu(e, node);
+  };
+
+  return (
+    <div
+      data-node-id={node.id}
+      className="service-node"
+      onClick={handleClick}
+      onContextMenu={handleContextMenu}
+      style={{
+        '--node-color': accentColor,
+        animationDelay: `${animationIndex * 50}ms`,
+      } as React.CSSProperties}
+    >
+      <div className="service-node-header">
+        <div className="service-node-status-row">
+          <div
+            className="service-node-health-dot"
+            style={{
+              backgroundColor: healthInfo.color,
+              boxShadow: healthInfo.glow,
+            }}
+            title={healthInfo.label}
+          />
+          <span
+            className="service-node-health-label"
+            style={{ color: healthInfo.color }}
+          >
+            {healthInfo.label}
+          </span>
+          {node.isDockerContainer && (
+            <span className="service-node-docker-badge" title="Docker Container">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M13.983 11.078h2.119a.186.186 0 00.186-.185V9.006a.186.186 0 00-.186-.186h-2.119a.185.185 0 00-.185.185v1.888c0 .102.083.185.185.185m-2.954-5.43h2.118a.186.186 0 00.186-.186V3.574a.186.186 0 00-.186-.185h-2.118a.185.185 0 00-.185.185v1.888c0 .102.082.185.185.186m0 2.716h2.118a.187.187 0 00.186-.186V6.29a.186.186 0 00-.186-.185h-2.118a.185.185 0 00-.185.185v1.887c0 .102.082.185.185.186m-2.93 0h2.12a.186.186 0 00.184-.186V6.29a.185.185 0 00-.185-.185H8.1a.185.185 0 00-.185.185v1.887c0 .102.083.185.185.186m-2.964 0h2.119a.186.186 0 00.185-.186V6.29a.185.185 0 00-.185-.185H5.136a.186.186 0 00-.186.185v1.887c0 .102.084.185.186.186m5.893 2.715h2.118a.186.186 0 00.186-.185V9.006a.186.186 0 00-.186-.186h-2.118a.185.185 0 00-.185.185v1.888c0 .102.082.185.185.185m-2.93 0h2.12a.185.185 0 00.184-.185V9.006a.185.185 0 00-.184-.186h-2.12a.185.185 0 00-.184.185v1.888c0 .102.083.185.185.185m-2.964 0h2.119a.185.185 0 00.185-.185V9.006a.186.186 0 00-.185-.186h-2.119a.185.185 0 00-.186.185v1.888c0 .102.084.185.186.185m-2.92 0h2.12a.185.185 0 00.184-.185V9.006a.185.185 0 00-.184-.186h-2.12a.186.186 0 00-.186.186v1.887c0 .102.084.185.186.185m-2.929 0h2.119a.185.185 0 00.185-.185V9.006a.186.186 0 00-.185-.186h-2.12a.185.185 0 00-.184.185v1.888c0 .102.083.185.185.185M23.763 9.89c-.065-.051-.672-.51-1.954-.51-.338.001-.676.03-1.01.087-.248-1.7-1.653-2.53-1.716-2.566l-.344-.199-.226.327c-.284.438-.49.922-.612 1.43-.23.97-.09 1.882.403 2.661-.595.332-1.55.413-1.744.42H.751a.751.751 0 00-.75.748 11.376 11.376 0 00.692 4.062c.545 1.428 1.355 2.48 2.41 3.124 1.18.723 3.1 1.137 5.275 1.137.983.003 1.963-.086 2.93-.266a12.248 12.248 0 003.823-1.389c.98-.567 1.86-1.288 2.61-2.136 1.252-1.418 1.998-2.997 2.553-4.4h.221c1.372 0 2.215-.549 2.68-1.009.309-.293.55-.65.707-1.046l.098-.288Z"/>
+              </svg>
+            </span>
+          )}
+        </div>
+        <span
+          className="service-node-badge"
+          style={{
+            backgroundColor: `${accentColor}15`,
+            color: accentColor,
+          }}
+        >
+          {getTypeBadge(node.type)}
+        </span>
+      </div>
+
+      <h3 className="service-node-name">{node.name}</h3>
+      {node.isDockerContainer && node.containerImage && (
+        <div className="service-node-docker-image" title={node.containerImage}>
+          {node.containerImage.split('/').pop()?.split(':')[0] || node.containerImage}
+        </div>
+      )}
+      {!node.isDockerContainer && projectLabel && (
+        <div className="service-node-project">{projectLabel}</div>
+      )}
+
+      <div className="service-node-port">
+        <span className="service-node-port-host">localhost</span>
+        <span className="service-node-port-number" style={{ color: accentColor }}>
+          :{mainPort || '?'}
+        </span>
+      </div>
+
+      {node.isDockerContainer && node.containerNetworks && node.containerNetworks.length > 0 && (
+        <div className="service-node-docker-networks">
+          <span className="service-node-docker-networks-label">Networks:</span>
+          <span className="service-node-docker-networks-list">
+            {node.containerNetworks.slice(0, 2).map(n => n.name).join(', ')}
+            {node.containerNetworks.length > 2 && ` +${node.containerNetworks.length - 2}`}
+          </span>
+        </div>
+      )}
+
+      {routes.length > 0 && (
+        <div className="service-node-routes">
+          <div className="service-node-routes-header">
+            <span className="service-node-routes-title">API routes</span>
+            <span className="service-node-routes-count">{routes.length}</span>
+          </div>
+          <div className="service-node-routes-list">
+            {visibleRoutes.map(route => (
+              <div key={`${route.method}-${route.path}`} className="service-route">
+                <span className={`route-method route-${route.method.toLowerCase()}`}>
+                  {route.method}
+                </span>
+                <span className="route-path">{route.path}</span>
+              </div>
+            ))}
+            {routes.length > visibleRoutes.length && (
+              <div className="service-route-more">
+                +{routes.length - visibleRoutes.length} more
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {externalApis.length > 0 && (
+        <div className="service-node-apis">
+          <div className="service-node-apis-header">
+            <span className="service-node-apis-title">External APIs</span>
+            <span className="service-node-apis-count">{externalApis.length}</span>
+          </div>
+          <div className="service-node-apis-list">
+            {visibleApis.map(api => (
+              <div key={api.name} className="service-api">
+                {api.name}
+              </div>
+            ))}
+            {externalApis.length > visibleApis.length && (
+              <div className="service-api-more">
+                +{externalApis.length - visibleApis.length} more
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
