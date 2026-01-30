@@ -61,13 +61,20 @@ function App() {
       }
     });
 
-    // Sort project tabs alphabetically by label
+    const nonExternalNodes = graph.nodes.filter((node) => node.type !== "external");
+    const systemCount = nonExternalNodes.filter((node) => !node.projectPath).length;
+
+    // Sort project tabs alphabetically by label and include counts per project
     const projectTabs = Array.from(projectPaths.entries())
-      .map(([path, label]) => ({ id: path, label }))
+      .map(([path, label]) => ({
+        id: path,
+        label,
+        count: nonExternalNodes.filter((node) => node.projectPath === path).length,
+      }))
       .sort((a, b) => a.label.localeCompare(b.label));
 
     // System tab first, then project tabs
-    return [{ id: SYSTEM_TAB_ID, label: SYSTEM_TAB_LABEL }, ...projectTabs];
+    return [{ id: SYSTEM_TAB_ID, label: SYSTEM_TAB_LABEL, count: systemCount }, ...projectTabs];
   }, [graph.nodes]);
 
   // Auto-select first available tab if current selection becomes invalid
@@ -267,14 +274,7 @@ function App() {
               onClick={() => setSelectedTab(tab.id)}
             >
               {tab.label}
-              {selectedTab === tab.id && (
-                <span className="app-tab-count">
-                  {
-                    filteredData.nodes.filter((n) => n.type !== "external")
-                      .length
-                  }
-                </span>
-              )}
+              <span className="app-tab-count">{tab.count ?? 0}</span>
             </button>
           ))}
         </div>
