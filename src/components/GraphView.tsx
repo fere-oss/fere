@@ -584,15 +584,16 @@ export function GraphView({ nodes, edges, isContainerView = false, onDatabaseCli
             <defs>
               <marker
                 id="arrowhead"
-                markerWidth="10"
-                markerHeight="10"
-                refX="9"
-                refY="5"
+                markerWidth="8"
+                markerHeight="8"
+                refX="8"
+                refY="4"
                 orient="auto"
-                markerUnits="strokeWidth"
+                markerUnits="userSpaceOnUse"
+                viewBox="0 0 8 8"
               >
                 <path
-                  d="M 0 0 L 10 5 L 0 10 L 3 5 Z"
+                  d="M 0 0 L 8 4 L 0 8 Z"
                   fill="currentColor"
                 />
               </marker>
