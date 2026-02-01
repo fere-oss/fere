@@ -41,6 +41,29 @@ contextBridge.exposeInMainWorld('electronAPI', {
   saveRequestHistory: (entry) => ipcRenderer.invoke('save-request-history', entry),
   clearRequestHistory: () => ipcRenderer.invoke('clear-request-history'),
 
+  // Container Logs Streaming
+  startContainerLogs: (containerId, options) => ipcRenderer.invoke('start-container-logs', containerId, options),
+  stopContainerLogs: (streamId) => ipcRenderer.invoke('stop-container-logs', streamId),
+  stopContainerStreams: (containerId) => ipcRenderer.invoke('stop-container-streams', containerId),
+  stopAllContainerLogs: () => ipcRenderer.invoke('stop-all-container-logs'),
+
+  // Container Logs Event Listeners
+  onContainerLogData: (callback) => {
+    const listener = (event, data) => callback(data);
+    ipcRenderer.on('container-log-data', listener);
+    return () => ipcRenderer.removeListener('container-log-data', listener);
+  },
+  onContainerLogError: (callback) => {
+    const listener = (event, data) => callback(data);
+    ipcRenderer.on('container-log-error', listener);
+    return () => ipcRenderer.removeListener('container-log-error', listener);
+  },
+  onContainerLogClose: (callback) => {
+    const listener = (event, data) => callback(data);
+    ipcRenderer.on('container-log-close', listener);
+    return () => ipcRenderer.removeListener('container-log-close', listener);
+  },
+
   // Platform info
   platform: process.platform,
 });
