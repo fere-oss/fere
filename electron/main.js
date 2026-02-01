@@ -28,6 +28,18 @@ const {
   executeQuery,
   createTable,
 } = require("./services/databaseQuery");
+const {
+  isDockerAvailable,
+  getDockerContainers,
+  getDockerNetworks,
+  getDockerSnapshot,
+} = require("./services/dockerMonitor");
+const {
+  startLogStream,
+  stopLogStream,
+  stopContainerStreams,
+  stopAllStreams,
+} = require("./services/containerLogs");
 
 app.setName("Fere");
 app.name = "Fere";
@@ -488,5 +500,77 @@ ipcMain.handle("create-database-table", async (_, containerId, containerImage, t
   } catch (error) {
     console.error("Error creating database table:", error);
     return { error: error.message, success: false };
+  }
+});
+
+// ============================================
+// IPC Handlers - Container Logs Streaming
+// ============================================
+
+// Start streaming logs from a container
+ipcMain.handle("start-container-logs", async (event, containerId, options = {}) => {
+  try {
+    const streamId = startLogStream(
+      containerId,
+      options,
+      // onData callback - send log data to renderer
+      (logData) => {
+        event.sender.send("container-log-data", logData);
+      },
+      // onError callback - send error to renderer
+      (error) => {
+        event.sender.send("container-log-error", {
+          streamId,
+          containerId,
+          error: error.message,
+        });
+      },
+      // onClose callback - notify renderer that stream closed
+      (code) => {
+        event.sender.send("container-log-close", {
+          streamId,
+          containerId,
+          exitCode: code,
+        });
+      }
+    );
+
+    return { success: true, streamId };
+  } catch (error) {
+    console.error("Error starting container logs:", error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Stop a specific log stream
+ipcMain.handle("stop-container-logs", async (_, streamId) => {
+  try {
+    const stopped = stopLogStream(streamId);
+    return { success: stopped };
+  } catch (error) {
+    console.error("Error stopping container logs:", error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Stop all log streams for a container
+ipcMain.handle("stop-container-streams", async (_, containerId) => {
+  try {
+    const count = stopContainerStreams(containerId);
+    return { success: true, count };
+  } catch (error) {
+    console.error("Error stopping container streams:", error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Stop all active log streams
+ipcMain.handle("stop-all-container-logs", async () => {
+  try {
+    stopAllStreams();
+    return { success: true };
+  } catch (error) {
+    console.error("Error stopping all container logs:", error);
+    return { success: false, error: error.message };
   }
 });

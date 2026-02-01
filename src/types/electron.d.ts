@@ -96,6 +96,45 @@ export interface DockerContainerConnection {
   networkId: string;
 }
 
+// Container Logs types
+export interface ContainerLogData {
+  line: string;
+  timestamp: string | null;
+  stream: 'stdout' | 'stderr';
+  containerId: string;
+  streamId: string;
+}
+
+export interface ContainerLogError {
+  streamId: string;
+  containerId: string;
+  error: string;
+}
+
+export interface ContainerLogClose {
+  streamId: string;
+  containerId: string;
+  exitCode: number;
+}
+
+export interface ContainerLogOptions {
+  tail?: number;
+  timestamps?: boolean;
+  follow?: boolean;
+}
+
+export interface ContainerLogStreamResult {
+  success: boolean;
+  streamId?: string;
+  error?: string;
+}
+
+export interface ContainerLogStopResult {
+  success: boolean;
+  count?: number;
+  error?: string;
+}
+
 export interface DockerSnapshot {
   containers: DockerContainer[];
   networks: DockerNetworkInfo[];
@@ -379,6 +418,15 @@ export interface ElectronAPI {
   loadRequestHistory: () => Promise<HistoryResult>;
   saveRequestHistory: (entry: HistoryEntry) => Promise<{ success: boolean; error?: string }>;
   clearRequestHistory: () => Promise<{ success: boolean; error?: string }>;
+
+  // Container Logs Streaming
+  startContainerLogs: (containerId: string, options?: ContainerLogOptions) => Promise<ContainerLogStreamResult>;
+  stopContainerLogs: (streamId: string) => Promise<ContainerLogStopResult>;
+  stopContainerStreams: (containerId: string) => Promise<ContainerLogStopResult>;
+  stopAllContainerLogs: () => Promise<{ success: boolean; error?: string }>;
+  onContainerLogData: (callback: (data: ContainerLogData) => void) => () => void;
+  onContainerLogError: (callback: (data: ContainerLogError) => void) => () => void;
+  onContainerLogClose: (callback: (data: ContainerLogClose) => void) => () => void;
 
   // Platform info
   platform: string;
