@@ -10,7 +10,13 @@ import { NodeDetailPanel } from './graph/NodeDetailPanel';
 import { ProjectContainer } from './graph/ContainerGroups';
 import { NodeGroupContainer } from './graph/ServiceNodes';
 
-export function GraphView({ nodes, edges, isContainerView = false, onDatabaseClick }: GraphViewProps) {
+export function GraphView({
+  nodes,
+  edges,
+  isContainerView = false,
+  onDatabaseClick,
+  dataStatus,
+}: GraphViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
   const [displayNodes, setDisplayNodes] = useState<GraphNode[]>(nodes);
@@ -296,6 +302,17 @@ export function GraphView({ nodes, edges, isContainerView = false, onDatabaseCli
     return `TIER ${layer}`;
   }, []);
 
+  const formatAge = useCallback((ageMs?: number | null) => {
+    if (ageMs === null || ageMs === undefined) return '—';
+    if (ageMs < 1000) return `${Math.max(0, Math.round(ageMs))}ms`;
+    if (ageMs < 60000) return `${(ageMs / 1000).toFixed(1)}s`;
+    return `${Math.round(ageMs / 60000)}m`;
+  }, []);
+
+  const lastUpdated = dataStatus?.collectedAt
+    ? formatAge(Date.now() - dataStatus.collectedAt)
+    : '—';
+
   // Create connection list from edges
   const connections = useMemo(() =>
     localEdges.map(edge => ({
@@ -303,6 +320,7 @@ export function GraphView({ nodes, edges, isContainerView = false, onDatabaseCli
       to: edge.target,
       sourcePort: edge.sourcePort,
       targetPort: edge.targetPort,
+      confidence: edge.confidence ?? 0.6,
     })),
     [localEdges]
   );
@@ -461,6 +479,7 @@ export function GraphView({ nodes, edges, isContainerView = false, onDatabaseCli
       from: string;
       to: string;
       path: string;
+      confidence: number;
     }[] = [];
 
     const getEdgePoint = (from: NodePosition, to: NodePosition, pad = 10) => {
@@ -518,6 +537,7 @@ export function GraphView({ nodes, edges, isContainerView = false, onDatabaseCli
         from: conn.from,
         to: conn.to,
         path,
+        confidence: conn.confidence ?? 0.6,
       });
     });
 
@@ -569,6 +589,17 @@ export function GraphView({ nodes, edges, isContainerView = false, onDatabaseCli
         <span className="graph-zoom-level">{Math.round(zoom * 100)}%</span>
       </div>
 
+      {/* Data Freshness */}
+      {dataStatus && (
+        <div className="graph-freshness">
+          <span className="graph-freshness-title">Last updated</span>
+          <span className="graph-freshness-value">{lastUpdated} ago</span>
+          <span className="graph-freshness-meta">
+            ps {formatAge(dataStatus.processesAgeMs)} · lsof {formatAge(dataStatus.portsAgeMs)} · tcp {formatAge(dataStatus.connectionsAgeMs)}
+          </span>
+        </div>
+      )}
+
       {/* Zoomable/Pannable Canvas */}
       <div
         className="graph-canvas"
@@ -599,7 +630,9 @@ export function GraphView({ nodes, edges, isContainerView = false, onDatabaseCli
               </marker>
             </defs>
 
-            {edgeRoutes.map((route, i) => (
+            {edgeRoutes.map((route, i) => {
+              const opacity = Math.max(0.2, Math.min(1, 0.25 + route.confidence * 0.75));
+              return (
               <path
                 key={`${route.from}-${route.to}-${i}`}
                 d={route.path}
@@ -608,8 +641,9 @@ export function GraphView({ nodes, edges, isContainerView = false, onDatabaseCli
                 fill="none"
                 markerEnd="url(#arrowhead)"
                 className="graph-edge"
+                style={{ opacity }}
               />
-            ))}
+            )})}
           </svg>
         )}
 

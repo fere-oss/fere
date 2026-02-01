@@ -124,6 +124,7 @@ type ViewMode = "graph" | "containers" | "api-tester" | "database";
 function App() {
   const { snapshot, loading, error } = useSystemSnapshot(2000);
   const { graph, ports } = snapshot;
+  const dataStatus = useMemo(() => snapshot.meta, [snapshot.meta]);
 
   // View mode state - graph or api-tester
   const [viewMode, setViewMode] = useState<ViewMode>("graph");
@@ -411,6 +412,7 @@ function App() {
                 <GraphView
                   nodes={filteredData.nodes}
                   edges={filteredData.edges}
+                  dataStatus={dataStatus}
                 />
               )}
             </div>
@@ -453,6 +455,7 @@ function App() {
                   edges={dockerContainerData.edges}
                   isContainerView={true}
                   onDatabaseClick={handleDatabaseClick}
+                  dataStatus={dataStatus}
                 />
               )}
             </div>
