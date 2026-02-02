@@ -1,5 +1,5 @@
-const { getDevProcesses } = require('./processMonitor');
-const { getListeningPorts, getEstablishedConnections } = require('./portMonitor');
+const { getDevProcesses, getProcessCacheInfo } = require('./processMonitor');
+const { getListeningPorts, getEstablishedConnections, getPortCacheInfo } = require('./portMonitor');
 const { buildConnectionGraph } = require('./connectionGraph');
 
 // Performance timing - only log if enabled via env var
@@ -32,12 +32,32 @@ async function getSystemSnapshot() {
 
   perfLog('Total snapshot time', Date.now() - startTotal);
 
+  const collectedAt = Date.now();
+  const processCacheInfo = getProcessCacheInfo();
+  const portCacheInfo = getPortCacheInfo();
+
+  const processesAgeMs = processCacheInfo.timestamp
+    ? collectedAt - processCacheInfo.timestamp
+    : null;
+  const portsAgeMs = portCacheInfo.listeningTimestamp
+    ? collectedAt - portCacheInfo.listeningTimestamp
+    : null;
+  const connectionsAgeMs = portCacheInfo.connectionsTimestamp
+    ? collectedAt - portCacheInfo.connectionsTimestamp
+    : null;
+
   return {
     processes,
     ports,
     connections,
     graph: { nodes, edges },
     docker: dockerSnapshot || null,
+    meta: {
+      collectedAt,
+      processesAgeMs,
+      portsAgeMs,
+      connectionsAgeMs,
+    },
   };
 }
 

@@ -220,4 +220,8 @@ module.exports = {
   parseListeningPorts,
   parseConnections,
   COMMON_DEV_PORTS,
+  getPortCacheInfo: () => ({
+    listeningTimestamp: listeningCache.timestamp || 0,
+    connectionsTimestamp: connectionsCache.timestamp || 0,
+  }),
 };

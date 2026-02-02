@@ -5,6 +5,12 @@ export interface GraphViewProps {
   edges: GraphEdge[];
   isContainerView?: boolean;
   onDatabaseClick?: (node: GraphNode) => void;
+  dataStatus?: {
+    collectedAt: number;
+    processesAgeMs: number | null;
+    portsAgeMs: number | null;
+    connectionsAgeMs: number | null;
+  };
 }
 
 export interface NodePosition {

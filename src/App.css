@@ -557,6 +557,43 @@ body {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
 }
 
+.graph-freshness {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: var(--bg-white);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 8px 10px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.graph-freshness-title {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--text-faint);
+}
+
+.graph-freshness-value {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.graph-freshness-meta {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
 .graph-control-btn {
   width: 32px;
   height: 32px;
@@ -795,32 +832,42 @@ body {
 /* Container Projects View - for container view */
 .container-projects-view {
   display: flex;
-  flex-direction: column;
+  flex-wrap: wrap;
   gap: 32px;
   padding: 40px;
   width: 100%;
   box-sizing: border-box;
+  justify-content: center;
+  align-items: flex-start;
 }
 
-/* Project Container - Big outer box for each Docker project */
-.project-container {
+/* Docker Project View */
+.docker-project-view {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+  width: 100%;
+  justify-content: center;
+  align-items: flex-start;
+}
+
+/* Container Group - matches node-group styling */
+.container-group {
   display: flex;
   flex-direction: column;
   gap: 16px;
   padding: 24px 20px 20px;
-  background: linear-gradient(180deg, rgba(145, 185, 250, 0.08) 0%, rgba(145, 185, 250, 0.04) 100%);
-  border: 1px solid rgba(145, 185, 250, 0.2);
+  background: linear-gradient(135deg, rgba(0, 0, 0, 0.02) 0%, rgba(0, 0, 0, 0.04) 100%);
+  border: 1px solid rgba(0, 0, 0, 0.08);
   border-radius: 20px;
   position: relative;
-  box-sizing: border-box;
-  animation: projectAppear 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
-  box-shadow: 0 2px 12px rgba(145, 185, 250, 0.1);
+  animation: containerGroupAppear 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-@keyframes projectAppear {
+@keyframes containerGroupAppear {
   0% {
     opacity: 0;
-    transform: translateY(32px);
+    transform: translateY(24px);
   }
   100% {
     opacity: 1;
@@ -828,43 +875,212 @@ body {
   }
 }
 
-.project-container-header {
+.container-group-label {
+  position: absolute;
+  top: -12px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 4px 14px;
+  background: var(--bg-white);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.06);
+}
+
+.container-group-nodes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  justify-content: center;
+}
+
+/* Container Card - detailed like service-node but blue themed */
+.container-card {
+  background: var(--bg-white);
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+  padding: 20px 24px;
+  width: 240px;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  cursor: pointer;
+  animation: containerCardAppear 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+@keyframes containerCardAppear {
+  0% {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.container-card:hover {
+  border-color: var(--border-hover);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(0, 0, 0, 0.04);
+  transform: translateY(-2px);
+}
+
+.container-card:active {
+  transform: translateY(0);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.container-card-header {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 10px;
-  padding: 6px 14px;
-  position: absolute;
-  top: -14px;
-  left: 24px;
-  background: var(--bg-white);
-  border-radius: 10px;
-  border: 1px solid rgba(145, 185, 250, 0.3);
-  box-shadow: 0 2px 8px rgba(145, 185, 250, 0.15);
+  margin-bottom: 12px;
 }
 
-.project-docker-icon {
-  color: #5a9cf7;
+.container-card-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.container-card-docker-icon {
+  color: #0db7ed;
   flex-shrink: 0;
-  width: 16px;
-  height: 16px;
 }
 
-.project-container-name {
+.container-card-health-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.container-card-health-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.container-card-badge {
   font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background-color: rgba(145, 185, 250, 0.15);
   color: #4a8af4;
 }
 
-.project-container-count {
+.container-card-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 4px 0;
+  letter-spacing: -0.01em;
+}
+
+.container-card-project {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  margin-bottom: 12px;
+}
+
+.container-card-image {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.container-card-image-name {
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.container-card-image-tag {
   font-size: 10px;
   font-weight: 600;
+  color: #0db7ed;
+  background: rgba(13, 183, 237, 0.1);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.container-card-id {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+  color: var(--text-tertiary);
+  margin-bottom: 12px;
+  opacity: 0.7;
+}
+
+.container-card-id svg {
+  opacity: 0.5;
+}
+
+.container-card-port {
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+  margin-bottom: 16px;
+}
+
+.container-card-port-host {
+  font-size: 13px;
+  color: var(--text-tertiary);
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+}
+
+.container-card-port-number {
+  font-size: 14px;
+  font-weight: 600;
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
   color: #5a9cf7;
-  margin-left: 4px;
-  background: rgba(145, 185, 250, 0.15);
-  border: none;
-  padding: 2px 8px;
-  border-radius: 999px;
+}
+
+.container-card-section {
+  padding-top: 12px;
+  border-top: 1px dashed rgba(145, 185, 250, 0.2);
+}
+
+.container-card-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.container-card-section-title {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  color: var(--text-tertiary);
+}
+
+.container-card-section-count {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  background: rgba(0, 0, 0, 0.04);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.container-card-section-content {
+  font-size: 12px;
+  color: var(--text-secondary);
 }
 
 /* Type Groups - Grid layout */

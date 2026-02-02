@@ -131,6 +131,12 @@ async function getAllProcesses() {
   return processCache.promise;
 }
 
+function getProcessCacheInfo() {
+  return {
+    timestamp: processCache.timestamp || 0,
+  };
+}
+
 /**
  * Get only dev-related processes
  */
@@ -172,4 +178,5 @@ module.exports = {
   parseProcesses,
   filterDevProcesses,
   isDevProcess,
+  getProcessCacheInfo,
 };

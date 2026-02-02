@@ -630,6 +630,13 @@ async function buildConnectionGraph(snapshot = null) {
 
     if (sourceNode.id === targetNode.id) continue;
 
+    let confidence = 0.6;
+    if (targetPid) {
+      confidence = 0.9;
+    } else if (isLocalHost(conn.remoteHost)) {
+      confidence = 0.5;
+    }
+
     const edgeKey = `${sourceNode.id}->${targetNode.id}:${conn.remotePort}`;
     if (!edgeSet.has(edgeKey)) {
       edgeSet.add(edgeKey);
@@ -640,6 +647,7 @@ async function buildConnectionGraph(snapshot = null) {
         sourcePort: conn.localPort,
         targetPort: conn.remotePort,
         protocol: conn.protocol,
+        confidence,
       });
     }
   }
@@ -940,6 +948,7 @@ function addDockerContainerNodes(nodes, edges, dockerSnapshot, nodesByPid, portT
       sourcePort: 0, // Network-level connection, no specific port
       targetPort: 0,
       protocol: `docker-network:${conn.networkName}`,
+      confidence: 0.8,
     });
   }
 }

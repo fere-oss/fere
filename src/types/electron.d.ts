@@ -274,6 +274,7 @@ export interface GraphEdge {
   sourcePort: number;
   targetPort: number;
   protocol: string;
+  confidence?: number;
 }
 
 export interface ConnectionGraph {
@@ -300,6 +301,12 @@ export interface SystemSnapshot {
   connections: Connection[];
   graph: ConnectionGraph;
   docker?: DockerSnapshot;
+  meta?: {
+    collectedAt: number;
+    processesAgeMs: number | null;
+    portsAgeMs: number | null;
+    connectionsAgeMs: number | null;
+  };
 }
 
 export interface EnvironmentSummary {
