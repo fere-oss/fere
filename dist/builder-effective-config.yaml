@@ -16,4 +16,5 @@ files:
       - build/**/*
       - electron/**/*
       - package.json
+      - '!node_modules/**/*'
 electronVersion: 40.0.0

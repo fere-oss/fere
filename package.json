@@ -47,12 +47,16 @@
     },
     "mac": {
       "category": "public.app-category.developer-tools",
-      "target": ["dmg", "zip"]
+      "target": [
+        "dmg",
+        "zip"
+      ]
     },
     "files": [
       "build/**/*",
       "electron/**/*",
-      "package.json"
+      "package.json",
+      "!node_modules/**/*"
     ],
     "directories": {
       "buildResources": "assets"
