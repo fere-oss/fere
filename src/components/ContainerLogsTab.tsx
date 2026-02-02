@@ -5,6 +5,7 @@ import { getTypeBadge } from './graph/constants';
 
 interface ContainerLogsTabProps {
   containers: GraphNode[];
+  initialSelectedId?: string;
 }
 
 interface UnifiedLogEntry {
@@ -43,9 +44,11 @@ function detectLogLevel(line: string): UnifiedLogEntry['level'] {
   return 'unknown';
 }
 
-export function ContainerLogsTab({ containers }: ContainerLogsTabProps) {
+export function ContainerLogsTab({ containers, initialSelectedId }: ContainerLogsTabProps) {
   // Track which containers are selected for logging
   const [selectedContainerIds, setSelectedContainerIds] = useState<Set<string>>(new Set());
+  // Track if initial selection has been applied
+  const initialSelectionAppliedRef = useRef(false);
   // Track which containers are actively streaming
   const [activeStreams, setActiveStreams] = useState<Map<string, string>>(new Map()); // containerId -> streamId
   // Unified log entries from all containers
@@ -235,6 +238,19 @@ export function ContainerLogsTab({ containers }: ContainerLogsTabProps) {
       });
     };
   }, []);
+
+  // Handle initial container selection from navigation
+  useEffect(() => {
+    if (initialSelectedId && !initialSelectionAppliedRef.current) {
+      // Find container with matching containerId
+      const container = containers.find(c => c.containerId === initialSelectedId);
+      if (container?.containerId) {
+        initialSelectionAppliedRef.current = true;
+        setSelectedContainerIds(new Set([container.containerId]));
+        startStream(container.containerId);
+      }
+    }
+  }, [initialSelectedId, containers, startStream]);
 
   // Filter logs
   const filteredLogs = useMemo(() => {

@@ -143,6 +143,9 @@ function App() {
   // Sub-tab for containers view
   const [containerSubTab, setContainerSubTab] = useState<ContainerSubTab>("overview");
 
+  // Initial container ID to select in logs view (when navigating from freshness click)
+  const [initialLogContainerId, setInitialLogContainerId] = useState<string | undefined>();
+
   // Handle "Test" button click from sidebar - switch to API tester with service pre-selected
   const handleTestService = useCallback((nodeId: string) => {
     setTestServiceId(nodeId);
@@ -159,6 +162,13 @@ function App() {
   const handleDatabaseBack = useCallback(() => {
     setDatabaseNode(null);
     setViewMode("containers");
+  }, []);
+
+  // Handle freshness click from main graph - navigate to container logs
+  const handleFreshnessClick = useCallback(() => {
+    setViewMode("containers");
+    setContainerSubTab("logs");
+    setInitialLogContainerId(undefined); // Show all containers
   }, []);
 
   // Build tabs from unique projectPaths
@@ -297,6 +307,16 @@ function App() {
     };
   }, [graph.nodes, graph.edges, ports]);
 
+  // Handle freshness click from container overview - navigate to logs with first container selected
+  const handleContainerFreshnessClick = useCallback(() => {
+    setContainerSubTab("logs");
+    // Select the first container by default
+    const firstContainer = dockerContainerData.nodes[0];
+    if (firstContainer?.containerId) {
+      setInitialLogContainerId(firstContainer.containerId);
+    }
+  }, [dockerContainerData.nodes]);
+
   return (
     <div className="app">
       {/* App Title */}
@@ -418,6 +438,7 @@ function App() {
                   nodes={filteredData.nodes}
                   edges={filteredData.edges}
                   dataStatus={dataStatus}
+                  onFreshnessClick={handleFreshnessClick}
                 />
               )}
             </div>
@@ -490,6 +511,7 @@ function App() {
                       edges={dockerContainerData.edges}
                       isContainerView={true}
                       onDatabaseClick={handleDatabaseClick}
+                      onFreshnessClick={handleContainerFreshnessClick}
                       dataStatus={dataStatus}
                     />
                   )}
@@ -504,7 +526,10 @@ function App() {
                 </div>
               </div>
             ) : (
-              <ContainerLogsTab containers={dockerContainerData.nodes} />
+              <ContainerLogsTab
+                containers={dockerContainerData.nodes}
+                initialSelectedId={initialLogContainerId}
+              />
             )}
           </div>
         ) : viewMode === "database" && databaseNode ? (

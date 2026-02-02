@@ -5,6 +5,7 @@ export interface GraphViewProps {
   edges: GraphEdge[];
   isContainerView?: boolean;
   onDatabaseClick?: (node: GraphNode) => void;
+  onFreshnessClick?: () => void;
   dataStatus?: {
     collectedAt: number;
     processesAgeMs: number | null;

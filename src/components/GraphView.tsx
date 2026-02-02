@@ -15,6 +15,7 @@ export function GraphView({
   edges,
   isContainerView = false,
   onDatabaseClick,
+  onFreshnessClick,
   dataStatus,
 }: GraphViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -309,6 +310,15 @@ export function GraphView({
     return `${Math.round(ageMs / 60000)}m`;
   }, []);
 
+  // Force re-render every second to update the "time ago" display
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setTick(t => t + 1);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
   const lastUpdated = dataStatus?.collectedAt
     ? formatAge(Date.now() - dataStatus.collectedAt)
     : '—';
@@ -593,12 +603,27 @@ export function GraphView({
 
       {/* Data Freshness */}
       {dataStatus && (
-        <div className="graph-freshness">
+        <div
+          className={`graph-freshness ${onFreshnessClick ? 'graph-freshness-clickable' : ''}`}
+          onClick={onFreshnessClick}
+          title={onFreshnessClick ? 'Click to view container logs' : undefined}
+        >
           <span className="graph-freshness-title">Last updated</span>
           <span className="graph-freshness-value">{lastUpdated} ago</span>
           <span className="graph-freshness-meta">
             ps {formatAge(dataStatus.processesAgeMs)} · lsof {formatAge(dataStatus.portsAgeMs)} · tcp {formatAge(dataStatus.connectionsAgeMs)}
           </span>
+          {onFreshnessClick && (
+            <span className="graph-freshness-link">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                <polyline points="14 2 14 8 20 8" />
+                <line x1="16" y1="13" x2="8" y2="13" />
+                <line x1="16" y1="17" x2="8" y2="17" />
+              </svg>
+              View logs
+            </span>
+          )}
         </div>
       )}
 
