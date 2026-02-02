@@ -54,30 +54,16 @@ const extractProjectName = (containerName: string): string => {
   return 'docker';
 };
 
-// Group containers by project first, then by type within each project
+// Group all containers by type (simpler grouping - no project separation)
 export const groupContainersByProject = (nodes: GraphNode[]): ContainerProject[] => {
-  const projectMap = new Map<string, GraphNode[]>();
+  // Group all containers by type, return as a single "project"
+  const typeGroups = groupContainersByType(nodes);
 
-  nodes.forEach(node => {
-    const projectName = extractProjectName(node.name);
-    if (!projectMap.has(projectName)) {
-      projectMap.set(projectName, []);
-    }
-    projectMap.get(projectName)!.push(node);
-  });
-
-  const projects: ContainerProject[] = [];
-
-  projectMap.forEach((projectNodes, projectName) => {
-    const typeGroups = groupContainersByType(projectNodes);
-    projects.push({
-      projectName,
-      typeGroups,
-      totalContainers: projectNodes.length,
-    });
-  });
-
-  return projects.sort((a, b) => a.projectName.localeCompare(b.projectName));
+  return [{
+    projectName: 'Containers',
+    typeGroups,
+    totalContainers: nodes.length,
+  }];
 };
 
 export const groupLayoutNodes = (layoutNodes: LayoutNode[], layer: number): RenderGroup[] => {

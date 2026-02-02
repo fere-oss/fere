@@ -565,21 +565,23 @@ export function GraphView({
       onMouseLeave={handleMouseUp}
       style={{ cursor: selectedNode || contextMenu ? 'default' : isDragging ? 'grabbing' : 'grab' }}
     >
-      {/* Legend */}
-      <div className="graph-legend">
-        <div className="graph-legend-title">Service Types</div>
-        {Array.from(new Set(localNodes.map(n => n.type)))
-          .filter(type => SERVICE_COLORS[type])
-          .map(type => (
-            <div key={type} className="graph-legend-item">
-              <div
-                className="graph-legend-dot"
-                style={{ backgroundColor: SERVICE_COLORS[type].color }}
-              />
-              <span>{SERVICE_COLORS[type].label}</span>
-            </div>
-          ))}
-      </div>
+      {/* Legend - only show in service map view, not container view */}
+      {!isContainerView && (
+        <div className="graph-legend">
+          <div className="graph-legend-title">Service Types</div>
+          {Array.from(new Set(localNodes.map(n => n.type)))
+            .filter(type => SERVICE_COLORS[type])
+            .map(type => (
+              <div key={type} className="graph-legend-item">
+                <div
+                  className="graph-legend-dot"
+                  style={{ backgroundColor: SERVICE_COLORS[type].color }}
+                />
+                <span>{SERVICE_COLORS[type].label}</span>
+              </div>
+            ))}
+        </div>
+      )}
 
       {/* Zoom Controls */}
       <div className="graph-controls">
