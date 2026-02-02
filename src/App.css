@@ -1,5 +1,19 @@
-/* Import Inter, Instrument Serif, and JetBrains Mono fonts */
-@import url("https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap");
+/* Import Instrument Serif and JetBrains Mono fonts */
+@import url("https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500;600&display=swap");
+
+@font-face {
+  font-family: "ABC Diatype Mono";
+  src: url("https://db.onlinewebfonts.com/t/fbee28f49e99c472f1f569c6ddc24ebe.eot");
+  src:
+    url("https://db.onlinewebfonts.com/t/fbee28f49e99c472f1f569c6ddc24ebe.eot?#iefix") format("embedded-opentype"),
+    url("https://db.onlinewebfonts.com/t/fbee28f49e99c472f1f569c6ddc24ebe.woff2") format("woff2"),
+    url("https://db.onlinewebfonts.com/t/fbee28f49e99c472f1f569c6ddc24ebe.woff") format("woff"),
+    url("https://db.onlinewebfonts.com/t/fbee28f49e99c472f1f569c6ddc24ebe.ttf") format("truetype"),
+    url("https://db.onlinewebfonts.com/t/fbee28f49e99c472f1f569c6ddc24ebe.svg#ABC Diatype Mono") format("svg");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
 
 /* Base styles */
 * {
@@ -25,10 +39,9 @@
 
 body {
   font-family:
-    "Inter",
-    -apple-system,
-    BlinkMacSystemFont,
-    sans-serif;
+    "ABC Diatype Mono",
+    "JetBrains Mono",
+    monospace;
   background: var(--bg-primary);
   color: var(--text-primary);
   overflow: hidden;
@@ -559,8 +572,8 @@ body {
 
 .graph-freshness {
   position: absolute;
-  top: 16px;
-  left: 16px;
+  top: 64px;
+  right: 16px;
   z-index: 20;
   display: flex;
   flex-direction: column;
@@ -5903,19 +5916,23 @@ body {
 }
 
 .container-name-dot {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   flex-shrink: 0;
 }
 
 .container-name-code {
-  font-family: "JetBrains Mono", "Fira Code", monospace;
+  font-family: "ABC Diatype Mono", "JetBrains Mono", "Fira Code", monospace;
   font-size: 12px;
   background: var(--bg-muted);
   padding: 2px 5px;
   border-radius: 5px;
   color: var(--text-primary);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .container-col-main {
@@ -5926,9 +5943,9 @@ body {
 }
 
 .container-row-top {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr 110px;
   align-items: center;
-  justify-content: space-between;
   gap: 10px;
 }
 
@@ -5937,6 +5954,7 @@ body {
   align-items: center;
   gap: 8px;
   min-width: 0;
+  overflow: hidden;
 }
 
 .container-row-meta {
@@ -5960,15 +5978,18 @@ body {
 }
 
 .container-status-pill {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
   text-transform: none;
   letter-spacing: 0;
-  padding: 2px 8px;
+  padding: 1px 6px;
   border-radius: 999px;
   background: var(--bg-muted);
   color: var(--text-secondary);
   flex-shrink: 0;
+  min-width: 70px;
+  text-align: center;
+  justify-self: end;
 }
 
 .container-status-pill.status-running,
@@ -6011,7 +6032,7 @@ body {
   height: 32px;
   background: var(--bg-white);
   border: 1px solid var(--border-color);
-  border-radius: 8px;
+  border-radius: 10px;
   color: var(--text-secondary);
   cursor: pointer;
   transition: all 0.15s ease;
@@ -6025,9 +6046,9 @@ body {
 }
 
 .unified-logs-btn.active {
-  background: var(--text-primary);
-  border-color: var(--text-primary);
-  color: var(--bg-white);
+  background: var(--bg-muted);
+  border-color: var(--border-hover);
+  color: var(--text-primary);
 }
 
 .unified-logs-checkbox {
@@ -6042,6 +6063,8 @@ body {
 
 .unified-logs-checkbox input {
   margin: 0;
+  width: 16px;
+  height: 16px;
   accent-color: var(--text-primary);
 }
 
@@ -6058,7 +6081,7 @@ body {
   font-weight: 500;
   background: var(--bg-white);
   border: 1px solid var(--border-color);
-  border-radius: 8px;
+  border-radius: 10px;
   color: var(--text-primary);
   cursor: pointer;
   outline: none;
@@ -6108,7 +6131,7 @@ body {
 .unified-logs-select-option.selected {
   background: var(--bg-muted);
   color: var(--text-primary);
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .unified-logs-search {
@@ -6120,6 +6143,7 @@ body {
   color: var(--text-primary);
   width: 180px;
   outline: none;
+  font-family: "ABCDiatypemono", "JetBrains Mono", monospace;
 }
 
 .unified-logs-search:focus {
