@@ -60,9 +60,19 @@ export function ContainerLogsTab({ containers, initialSelectedId }: ContainerLog
   const [filterLevel, setFilterLevel] = useState<'all' | 'error' | 'warn' | 'info' | 'debug'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [searchRegex, setSearchRegex] = useState<RegExp | null>(null);
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
 
   const logsContainerRef = useRef<HTMLDivElement>(null);
   const bufferRef = useRef<UnifiedLogEntry[]>([]);
+  const filterRef = useRef<HTMLDivElement>(null);
+
+  const filterOptions = useMemo(() => ([
+    { value: 'all', label: 'All Levels' },
+    { value: 'error', label: 'Errors' },
+    { value: 'warn', label: 'Warnings' },
+    { value: 'info', label: 'Info' },
+    { value: 'debug', label: 'Debug' },
+  ]), []);
 
   // Assign colors to containers
   const containerColorMap = useMemo(() => {
@@ -83,6 +93,18 @@ export function ContainerLogsTab({ containers, initialSelectedId }: ContainerLog
     });
     return map;
   }, [containers]);
+
+  // Close custom select on outside click
+  useEffect(() => {
+    if (!isFilterOpen) return;
+    const onClick = (event: MouseEvent) => {
+      if (filterRef.current && !filterRef.current.contains(event.target as Node)) {
+        setIsFilterOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onClick);
+    return () => document.removeEventListener('mousedown', onClick);
+  }, [isFilterOpen]);
 
   // Process search query into regex
   useEffect(() => {
@@ -305,6 +327,48 @@ export function ContainerLogsTab({ containers, initialSelectedId }: ContainerLog
     return parts.length === 0 ? line : parts;
   }, [searchRegex]);
 
+  const getStatusLabel = useCallback((container: GraphNode) => {
+    if (container.containerHealth?.status && container.containerHealth.status !== 'unknown') {
+      return container.containerHealth.status;
+    }
+    if (container.containerState) return container.containerState;
+    return 'unknown';
+  }, []);
+
+  const getPortLabel = useCallback((container: GraphNode) => {
+    const ports = container.ports || [];
+    const firstPort = ports[0]?.port
+      ?? container.containerPorts?.[0]?.hostPort
+      ?? container.containerPorts?.[0]?.containerPort;
+    if (!firstPort) return '—';
+    const count = ports.length || (container.containerPorts?.length ?? 0);
+    return count > 1 ? `:${firstPort} +${count - 1}` : `:${firstPort}`;
+  }, []);
+
+  const getImageLabel = useCallback((container: GraphNode) => {
+    const image = container.containerImage;
+    if (!image) return '—';
+    const parts = image.split('/');
+    return parts[parts.length - 1];
+  }, []);
+
+  const getNetworkLabel = useCallback((container: GraphNode) => {
+    const count = container.containerNetworks?.length ?? 0;
+    if (count <= 1) return null;
+    return `${count} networks`;
+  }, []);
+
+  const getResourceLabel = useCallback((container: GraphNode) => {
+    const cpu = Number.isFinite(container.cpu) ? container.cpu : null;
+    const mem = Number.isFinite(container.memory) ? container.memory : null;
+    if (cpu === null && mem === null) return null;
+    const parts: string[] = [];
+    if (cpu !== null && cpu >= 0.5) parts.push(`${cpu.toFixed(1)}% CPU`);
+    if (mem !== null && mem >= 0.5) parts.push(`${mem.toFixed(1)}% MEM`);
+    if (parts.length === 0) return null;
+    return parts.join(' · ');
+  }, []);
+
   if (containers.length === 0) {
     return (
       <div className="logs-tab-empty">
@@ -324,64 +388,80 @@ export function ContainerLogsTab({ containers, initialSelectedId }: ContainerLog
 
   return (
     <div className="unified-logs">
-      {/* Container Selection Bar */}
-      <div className="unified-logs-containers">
-        <div className="unified-logs-containers-header">
-          <span className="unified-logs-containers-title">Containers</span>
-          <div className="unified-logs-containers-actions">
-            <button onClick={selectAll} className="unified-logs-action-btn">All</button>
-            <button onClick={deselectAll} className="unified-logs-action-btn">None</button>
+      <div className="unified-logs-layout">
+        {/* Container Selection Panel */}
+        <div className="unified-logs-panel unified-logs-panel-list">
+          <div className="unified-logs-containers">
+            <div className="unified-logs-containers-header">
+              <span className="unified-logs-containers-title">Containers</span>
+              <div className="unified-logs-containers-actions">
+                <button onClick={selectAll} className="unified-logs-action-btn">All</button>
+                <button onClick={deselectAll} className="unified-logs-action-btn">None</button>
+              </div>
+            </div>
+            <div className="unified-logs-container-list">
+              <div className="unified-logs-container-list-body">
+                {containers.map(container => {
+                  if (!container.containerId) return null;
+                  const isSelected = selectedContainerIds.has(container.containerId);
+                  const status = getStatusLabel(container);
+                  const color = containerColorMap.get(container.containerId) || '#6B7280';
+                  const imageLabel = getImageLabel(container);
+                  const portLabel = getPortLabel(container);
+                  const metaItems = [imageLabel, portLabel].filter(Boolean);
+
+                  return (
+                    <button
+                      key={container.containerId}
+                  className={`unified-logs-container-row ${isSelected ? 'selected' : ''}`}
+                  onClick={() => toggleContainer(container.containerId!)}
+                    >
+                      <span className="container-col container-col-check">
+                        <span className={`container-check ${isSelected ? 'checked' : ''}`} />
+                      </span>
+                      <span className="container-col container-col-main">
+                        <span className="container-row-top">
+                          <span className="container-name" title={container.name}>
+                            <span className="container-name-dot" style={{ backgroundColor: color }} />
+                            <span className="container-name-code">{container.name}</span>
+                          </span>
+                          <span className={`container-status-pill status-${status}`}>{status}</span>
+                        </span>
+                        <span className="container-row-meta">
+                          {metaItems.map((item, idx) => (
+                            <span key={`${container.containerId}-meta-${idx}`} className="container-meta">
+                              {item}
+                              {idx < metaItems.length - 1 && <span className="container-meta-sep">·</span>}
+                            </span>
+                          ))}
+                        </span>
+                      </span>
+                    </button>
+                  );
+            })}
+              </div>
+            </div>
           </div>
         </div>
-        <div className="unified-logs-container-chips">
-          {containers.map(container => {
-            if (!container.containerId) return null;
-            const isSelected = selectedContainerIds.has(container.containerId);
-            const isStreaming = activeStreams.has(container.containerId);
-            const color = containerColorMap.get(container.containerId) || '#6B7280';
 
-            return (
+        {/* Logs Panel */}
+        <div className="unified-logs-panel unified-logs-panel-output">
+          {/* Toolbar */}
+          <div className="unified-logs-toolbar">
+            <div className="unified-logs-toolbar-section">
               <button
-                key={container.containerId}
-                className={`unified-logs-chip ${isSelected ? 'unified-logs-chip-selected' : ''}`}
-                onClick={() => toggleContainer(container.containerId!)}
-                style={{
-                  '--chip-color': color,
-                  borderColor: isSelected ? color : undefined,
-                  backgroundColor: isSelected ? `${color}15` : undefined,
-                } as React.CSSProperties}
-              >
-                <div
-                  className="unified-logs-chip-dot"
-                  style={{
-                    backgroundColor: isSelected ? color : '#9CA3AF',
-                    boxShadow: isStreaming ? `0 0 6px ${color}` : undefined,
-                  }}
-                />
-                <span className="unified-logs-chip-name">{container.name}</span>
-                <span className="unified-logs-chip-badge">{getTypeBadge(container.type)}</span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Toolbar */}
-      <div className="unified-logs-toolbar">
-        <div className="unified-logs-toolbar-section">
-          <button
-            className={`unified-logs-btn ${isPaused ? 'active' : ''}`}
+                className={`unified-logs-btn ${isPaused ? 'active' : ''}`}
             onClick={() => setIsPaused(!isPaused)}
             title={isPaused ? 'Resume' : 'Pause'}
           >
             {isPaused ? (
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M8 5v14l11-7z"/>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round">
+                <path d="M8 5l11 7-11 7z" />
               </svg>
             ) : (
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                <rect x="6" y="4" width="4" height="16"/>
-                <rect x="14" y="4" width="4" height="16"/>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+                <line x1="7" y1="5" x2="7" y2="19" />
+                <line x1="17" y1="5" x2="17" y2="19" />
               </svg>
             )}
           </button>
@@ -417,17 +497,35 @@ export function ContainerLogsTab({ containers, initialSelectedId }: ContainerLog
             Time
           </label>
 
-          <select
-            className="unified-logs-select"
-            value={filterLevel}
-            onChange={(e) => setFilterLevel(e.target.value as typeof filterLevel)}
-          >
-            <option value="all">All Levels</option>
-            <option value="error">Errors</option>
-            <option value="warn">Warnings</option>
-            <option value="info">Info</option>
-            <option value="debug">Debug</option>
-          </select>
+          <div className="unified-logs-select" ref={filterRef}>
+            <button
+              type="button"
+              className="unified-logs-select-trigger"
+              onClick={() => setIsFilterOpen((prev) => !prev)}
+            >
+              <span>{filterOptions.find(o => o.value === filterLevel)?.label}</span>
+              <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <path d="M3.5 6l4.5 4 4.5-4" />
+              </svg>
+            </button>
+            {isFilterOpen && (
+              <div className="unified-logs-select-menu">
+                {filterOptions.map(option => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    className={`unified-logs-select-option ${filterLevel === option.value ? 'selected' : ''}`}
+                    onClick={() => {
+                      setFilterLevel(option.value as typeof filterLevel);
+                      setIsFilterOpen(false);
+                    }}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
 
           <input
             className="unified-logs-search"
@@ -439,68 +537,70 @@ export function ContainerLogsTab({ containers, initialSelectedId }: ContainerLog
         </div>
 
         <div className="unified-logs-toolbar-section">
-          <span className="unified-logs-stats">
-            {filteredLogs.length} lines from {selectedContainerIds.size} containers
-          </span>
-        </div>
-      </div>
-
-      {/* Logs Output */}
-      <div className="unified-logs-output" ref={logsContainerRef}>
-        {selectedContainerIds.size === 0 ? (
-          <div className="unified-logs-placeholder">
-            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-              <polyline points="14 2 14 8 20 8" />
-              <line x1="16" y1="13" x2="8" y2="13" />
-              <line x1="16" y1="17" x2="8" y2="17" />
-            </svg>
-            <h3>Select containers to stream logs</h3>
-            <p>Click on container chips above to start viewing their logs in real-time</p>
+            <span className="unified-logs-stats">
+              {filteredLogs.length} lines from {selectedContainerIds.size} containers
+            </span>
           </div>
-        ) : filteredLogs.length === 0 ? (
-          <div className="unified-logs-waiting">
-            <div className="unified-logs-spinner" />
-            <span>Waiting for logs...</span>
           </div>
-        ) : (
-          filteredLogs.map((log) => {
-            const highlighted = highlightMatches(log.line);
 
-            return (
-              <div
-                key={log.id}
-                className={`unified-log-line unified-log-level-${log.level} unified-log-stream-${log.stream}`}
-              >
-                {showTimestamps && (
-                  <span className="unified-log-time">{log.formattedTime}</span>
-                )}
-                <span
-                  className="unified-log-container"
-                  style={{ color: log.containerColor }}
-                >
-                  {log.containerName}
-                </span>
-                <span className={`unified-log-stream unified-log-stream-${log.stream}`}>
-                  {log.stream === 'stderr' ? 'ERR' : 'OUT'}
-                </span>
-                <span className="unified-log-text">
-                  {typeof highlighted === 'string' ? (
-                    highlighted
-                  ) : (
-                    highlighted.map((part, i) => (
-                      part.match ? (
-                        <mark key={i} className="unified-log-highlight">{part.text}</mark>
-                      ) : (
-                        <span key={i}>{part.text}</span>
-                      )
-                    ))
-                  )}
-                </span>
+          {/* Logs Output */}
+          <div className="unified-logs-output" ref={logsContainerRef}>
+            {selectedContainerIds.size === 0 ? (
+              <div className="unified-logs-placeholder">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                  <polyline points="14 2 14 8 20 8" />
+                  <line x1="16" y1="13" x2="8" y2="13" />
+                  <line x1="16" y1="17" x2="8" y2="17" />
+                </svg>
+                <h3>Select containers to stream logs</h3>
+                <p>Click on container chips above to start viewing their logs in real-time</p>
               </div>
-            );
-          })
-        )}
+            ) : filteredLogs.length === 0 ? (
+              <div className="unified-logs-waiting">
+                <div className="unified-logs-spinner" />
+                <span>Waiting for logs...</span>
+              </div>
+            ) : (
+              filteredLogs.map((log) => {
+                const highlighted = highlightMatches(log.line);
+
+                return (
+                  <div
+                    key={log.id}
+                    className={`unified-log-line unified-log-level-${log.level} unified-log-stream-${log.stream}`}
+                  >
+                    {showTimestamps && (
+                      <span className="unified-log-time">{log.formattedTime}</span>
+                    )}
+                    <span
+                      className="unified-log-container"
+                      style={{ color: log.containerColor }}
+                    >
+                      {log.containerName}
+                    </span>
+                    <span className={`unified-log-stream unified-log-stream-${log.stream}`}>
+                      {log.stream === 'stderr' ? 'ERR' : 'OUT'}
+                    </span>
+                    <span className="unified-log-text">
+                      {typeof highlighted === 'string' ? (
+                        highlighted
+                      ) : (
+                        highlighted.map((part, i) => (
+                          part.match ? (
+                            <mark key={i} className="unified-log-highlight">{part.text}</mark>
+                          ) : (
+                            <span key={i}>{part.text}</span>
+                          )
+                        ))
+                      )}
+                    </span>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );

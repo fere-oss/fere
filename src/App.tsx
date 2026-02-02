@@ -461,11 +461,18 @@ function App() {
                 className={`container-sub-tab ${containerSubTab === "overview" ? "container-sub-tab-active" : ""}`}
                 onClick={() => setContainerSubTab("overview")}
               >
-                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-                  <rect x="2" y="2" width="5" height="5" rx="1" />
-                  <rect x="9" y="2" width="5" height="5" rx="1" />
-                  <rect x="2" y="9" width="5" height="5" rx="1" />
-                  <rect x="9" y="9" width="5" height="5" rx="1" />
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <rect x="2.5" y="3" width="11" height="10" rx="2" />
+                  <line x1="2.5" y1="6" x2="13.5" y2="6" />
                 </svg>
                 Overview
               </button>
