@@ -5271,3 +5271,362 @@ body {
   border-radius: 2px;
   font-weight: 600;
 }
+
+/* ============================================
+   Container Logs Page
+   ============================================ */
+
+.logs-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--bg-secondary);
+}
+
+.logs-page-header {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 20px 28px;
+  background: var(--bg-white);
+  border-bottom: 1px solid var(--border-light);
+}
+
+.logs-back-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.logs-back-btn:hover {
+  background: var(--bg-tertiary);
+  border-color: var(--border-medium);
+  color: var(--text-primary);
+}
+
+.logs-page-title {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.logs-page-container-icon {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #0db7ed 0%, #0095c8 100%);
+  border-radius: 10px;
+  color: white;
+}
+
+.logs-page-title-text h1 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.logs-page-container-id {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 12px;
+  color: var(--text-faint);
+  background: var(--bg-secondary);
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.logs-page-content {
+  flex: 1;
+  padding: 20px 28px;
+  overflow: hidden;
+}
+
+.logs-page-content .container-logs-panel {
+  height: 100%;
+}
+
+.logs-page-error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  color: var(--text-faint);
+  font-size: 14px;
+}
+
+/* Container Logs Button in Container Grid */
+.container-node-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.container-logs-btn {
+  padding: 6px 8px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-light);
+  border-radius: 6px;
+  color: var(--text-faint);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.container-logs-btn:hover {
+  background: #0db7ed15;
+  border-color: #0db7ed;
+  color: #0db7ed;
+}
+
+.container-logs-btn svg {
+  display: block;
+}
+
+/* ============================================
+   Containers View with Sub-tabs
+   ============================================ */
+
+.containers-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+}
+
+.container-sub-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 12px 20px;
+  background: var(--bg-white);
+  border-bottom: 1px solid var(--border-light);
+}
+
+.container-sub-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.container-sub-tab:hover {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+.container-sub-tab-active {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+.container-sub-tab svg {
+  opacity: 0.7;
+}
+
+.container-sub-tab-active svg {
+  opacity: 1;
+}
+
+.containers-overview {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* ============================================
+   Logs Tab
+   ============================================ */
+
+.logs-tab {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  background: var(--bg-secondary);
+  overflow: hidden;
+}
+
+.logs-tab-header {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 16px 24px;
+  background: var(--bg-white);
+  border-bottom: 1px solid var(--border-light);
+}
+
+.logs-tab-selector {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.logs-tab-selector label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.logs-tab-selector select {
+  min-width: 280px;
+  padding: 10px 14px;
+  background: var(--bg-white);
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+
+.logs-tab-selector select:hover {
+  border-color: var(--border-medium);
+}
+
+.logs-tab-selector select:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.logs-tab-selector optgroup {
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.logs-tab-selector option {
+  font-weight: 400;
+  color: var(--text-primary);
+  padding: 8px;
+}
+
+.logs-tab-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.logs-tab-container-id {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 12px;
+  color: var(--text-faint);
+  background: var(--bg-secondary);
+  padding: 4px 10px;
+  border-radius: 4px;
+}
+
+.logs-tab-type {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+}
+
+.logs-tab-type-database {
+  background: #F0FDF4;
+  color: #166534;
+}
+
+.logs-tab-type-cache {
+  background: #FEF3C7;
+  color: #92400E;
+}
+
+.logs-tab-type-broker {
+  background: #EDE9FE;
+  color: #5B21B6;
+}
+
+.logs-tab-type-backend {
+  background: #DBEAFE;
+  color: #1E40AF;
+}
+
+.logs-tab-content {
+  flex: 1;
+  padding: 20px 24px;
+  overflow: hidden;
+}
+
+.logs-tab-content .container-logs-panel {
+  height: 100%;
+}
+
+.logs-tab-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  text-align: center;
+  color: var(--text-faint);
+}
+
+.logs-tab-placeholder-icon {
+  margin-bottom: 20px;
+  opacity: 0.3;
+}
+
+.logs-tab-placeholder h3 {
+  margin: 0 0 8px 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.logs-tab-placeholder p {
+  margin: 0;
+  font-size: 14px;
+  max-width: 300px;
+}
+
+.logs-tab-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  text-align: center;
+  color: var(--text-faint);
+}
+
+.logs-tab-empty-icon {
+  margin-bottom: 20px;
+  opacity: 0.3;
+}
+
+.logs-tab-empty p {
+  margin: 0 0 8px 0;
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.logs-tab-empty span {
+  font-size: 14px;
+}

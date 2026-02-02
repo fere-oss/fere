@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { GraphNode, GraphEdge, ExternalApi } from '../../types/electron';
 import { DatabaseViewer } from '../DatabaseViewer';
-import { ContainerLogsPanel } from '../ContainerLogsPanel';
 import { getHealthInfo, getServiceColor } from './constants';
 import { externalApiCache, EXTERNAL_API_CACHE_TTL_MS } from './externalApis';
 
@@ -187,16 +186,6 @@ export function NodeDetailContent({ node, edges, allNodes }: NodeDetailContentPr
           containerId={node.containerId}
           containerImage={node.containerImage}
         />
-      )}
-
-      {node.isDockerContainer && node.containerId && (
-        <div className="node-detail-section">
-          <h3 className="node-detail-section-title">Container Logs</h3>
-          <ContainerLogsPanel
-            containerId={node.containerId}
-            containerName={node.name}
-          />
-        </div>
       )}
 
       {node.isDockerContainer && node.containerHealth && node.containerHealth.status !== 'unknown' && (
