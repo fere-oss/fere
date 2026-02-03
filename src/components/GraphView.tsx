@@ -4,6 +4,7 @@ import { SERVICE_COLORS } from './graph/constants';
 import { externalApiCache, externalApiInFlight, EXTERNAL_API_CACHE_TTL_MS } from './graph/externalApis';
 import { computeHierarchicalLayout } from './graph/layout';
 import { groupContainersByProject, groupLayoutNodes } from './graph/grouping';
+import { routeEdges } from './graph/edgeRouting';
 import type { GraphViewProps, NodePosition, LayoutNode, RenderGroup } from './graph/types';
 import { ContextMenu } from './graph/ContextMenu';
 import { NodeDetailPanel } from './graph/NodeDetailPanel';
@@ -481,77 +482,9 @@ export function GraphView({
     return () => clearTimeout(timer);
   }, [localNodes, nodeLayerMap, zoom]);
 
-  // Edge routing with simple smooth bezier curves
+  // Edge routing with collision detection and smart waypoints
   const edgeRoutes = useMemo(() => {
-    if (nodePositions.size === 0) return [];
-
-    const routes: {
-      from: string;
-      to: string;
-      path: string;
-      confidence: number;
-    }[] = [];
-
-    const getEdgePoint = (from: NodePosition, to: NodePosition, pad = 10) => {
-      const dx = to.x - from.x;
-      const dy = to.y - from.y;
-      const absDx = Math.abs(dx);
-      const absDy = Math.abs(dy);
-      const halfW = from.width / 2 + pad;
-      const halfH = from.height / 2 + pad;
-
-      if (absDx < 0.001 && absDy < 0.001) {
-        return { x: from.x, y: from.y };
-      }
-
-      const tx = absDx > 0 ? halfW / absDx : Number.POSITIVE_INFINITY;
-      const ty = absDy > 0 ? halfH / absDy : Number.POSITIVE_INFINITY;
-      const t = Math.min(tx, ty);
-
-      return {
-        x: from.x + dx * t,
-        y: from.y + dy * t,
-      };
-    };
-
-    connections.forEach((conn) => {
-      const from = nodePositions.get(conn.from);
-      const to = nodePositions.get(conn.to);
-      if (!from || !to) return;
-
-      const start = getEdgePoint(from, to, 8);
-      const end = getEdgePoint(to, from, 6);
-
-      const dx = end.x - start.x;
-      const dy = end.y - start.y;
-      const absDx = Math.abs(dx);
-      const absDy = Math.abs(dy);
-
-      let path: string;
-
-      if (from.layer === to.layer) {
-        const arcY = Math.min(start.y, end.y) - Math.max(40, absDx * 0.12);
-        const midX = (start.x + end.x) / 2;
-        path = `M ${start.x} ${start.y} Q ${midX} ${arcY}, ${end.x} ${end.y}`;
-      } else {
-        const verticalDist = Math.max(absDy, 40);
-        const controlOffset = Math.min(verticalDist * 0.45, 140);
-        const c1x = start.x;
-        const c1y = start.y + (dy >= 0 ? controlOffset : -controlOffset);
-        const c2x = end.x;
-        const c2y = end.y + (dy >= 0 ? -controlOffset : controlOffset);
-        path = `M ${start.x} ${start.y} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${end.x} ${end.y}`;
-      }
-
-      routes.push({
-        from: conn.from,
-        to: conn.to,
-        path,
-        confidence: conn.confidence ?? 0.6,
-      });
-    });
-
-    return routes;
+    return routeEdges(connections, nodePositions);
   }, [nodePositions, connections]);
 
   if (localNodes.length === 0) {
