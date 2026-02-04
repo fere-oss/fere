@@ -216,6 +216,58 @@ function setupPermissionHandlers() {
 }
 
 // ============================================
+// Content Security Policy
+// ============================================
+
+/**
+ * Sets up Content Security Policy via session response headers.
+ * Uses different policies for development vs production.
+ */
+function setupCSP(isDev) {
+  const ses = session.defaultSession;
+
+  // Development CSP: Allow React HMR (WebSockets, eval for source maps)
+  const devCSP = [
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-eval'",  // unsafe-eval needed for React Fast Refresh
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "font-src 'self' https://fonts.gstatic.com",
+    "img-src 'self' data:",
+    "connect-src 'self' http://localhost:* https://localhost:* http://127.0.0.1:* https://127.0.0.1:* ws://localhost:* wss://localhost:*",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+  ].join("; ");
+
+  // Production CSP: Strict, no eval or WebSockets needed
+  const prodCSP = [
+    "default-src 'self'",
+    "script-src 'self'",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "font-src 'self' https://fonts.gstatic.com",
+    "img-src 'self' data:",
+    "connect-src 'self' http://localhost:* https://localhost:* http://127.0.0.1:* https://127.0.0.1:*",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+  ].join("; ");
+
+  const csp = isDev ? devCSP : prodCSP;
+
+  // Set CSP header on all responses
+  ses.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        "Content-Security-Policy": [csp],
+      },
+    });
+  });
+}
+
+// ============================================
 // Exports
 // ============================================
 
@@ -232,4 +284,5 @@ module.exports = {
   setupNavigationBlocking,
   setupWindowOpenHandler,
   setupPermissionHandlers,
+  setupCSP,
 };

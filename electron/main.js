@@ -11,6 +11,7 @@ const {
   setupNavigationBlocking,
   setupWindowOpenHandler,
   setupPermissionHandlers,
+  setupCSP,
   MAX_RESPONSE_SIZE,
 } = require("./security");
 
@@ -111,6 +112,9 @@ function createWindow() {
 app.whenReady().then(() => {
   // Security: Set up default-deny permission handlers
   setupPermissionHandlers();
+
+  // Security: Set up CSP (different for dev vs production)
+  setupCSP(isDev);
 
   if (process.platform === "darwin") {
     const icon = nativeImage.createFromPath(
