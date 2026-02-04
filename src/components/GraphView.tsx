@@ -1,103 +1,34 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
-import type { GraphNode } from '../types/electron';
-import type { MouseEvent as ReactMouseEvent } from 'react';
-import ReactFlow, { Background, Controls, Handle, MarkerType, Position, type ReactFlowInstance } from 'reactflow';
-import 'reactflow/dist/style.css';
+import type { GraphNode, GraphEdge } from '../types/electron';
 import { SERVICE_COLORS } from './graph/constants';
 import { externalApiCache, externalApiInFlight, EXTERNAL_API_CACHE_TTL_MS } from './graph/externalApis';
 import { computeHierarchicalLayout } from './graph/layout';
 import { groupContainersByProject, groupLayoutNodes } from './graph/grouping';
-import type { GraphViewProps, LayoutNode, RenderGroup } from './graph/types';
+import { routeEdges } from './graph/edgeRouting';
+import type { GraphViewProps, NodePosition, LayoutNode, RenderGroup } from './graph/types';
 import { ContextMenu } from './graph/ContextMenu';
 import { NodeDetailPanel } from './graph/NodeDetailPanel';
 import { ProjectContainer } from './graph/ContainerGroups';
-import { ServiceNode } from './graph/ServiceNodes';
-
-const NODE_WIDTH = 260;
-const NODE_HEIGHT = 180;
-const NODE_GAP = 20;
-const STANDALONE_NODE_GAP = 20;
-const GROUP_GAP = 24;
-const LAYER_GAP = 150;
-const STANDALONE_GROUP_GAP = 32;
-const STANDALONE_LABEL_OFFSET = 56;
-const LAYER_LABEL_OFFSET = 56;
-const STANDALONE_SECTION_OFFSET = 96;
-const GROUP_BOX_PADDING = 14;
-const GROUP_LABEL_OFFSET = 36;
-const DEFAULT_LAYER_LABELS = ['Interface', 'Services', 'Processing', 'Data'];
-const LABEL_WIDTH = 180;
-const LABEL_HEIGHT = 28;
-const MAX_GROUP_COLUMNS = 2;
-const MAX_STANDALONE_COLUMNS = 2;
-const MAX_SYSTEM_SERVICE_COLUMNS = 4;
-
-function TierLabelNode({ data }: { data: { text: string } }) {
-  return (
-    <div className="graph-tier-label">{data.text}</div>
-  );
-}
-
-function GroupLabelNode({ data }: { data: { text: string; color: string } }) {
-  return (
-    <div className="graph-group-label" style={{ ['--group-color' as string]: data.color }}>
-      {data.text}
-    </div>
-  );
-}
-
-function GroupBoxNode({ data }: { data: { width: number; height: number; color: string } }) {
-  return (
-    <div
-      className="graph-group-box"
-      style={{
-        width: data.width,
-        height: data.height,
-        ['--group-color' as string]: data.color,
-      }}
-    />
-  );
-}
-
-function FlowServiceNode({
-  data,
-}: {
-  data: {
-    node: GraphNode;
-    onNodeClick: (node: GraphNode) => void;
-    onNodeContextMenu: (e: ReactMouseEvent, node: GraphNode) => void;
-    animate: boolean;
-    animationIndex: number;
-  };
-}) {
-  return (
-    <div
-      className={`rf-node-wrapper${data.animate ? ' rf-node-animate' : ''}`}
-      style={{ animationDelay: `${data.animationIndex * 40}ms` }}
-    >
-      <Handle type="target" position={Position.Top} className="rf-handle rf-handle-target" />
-      <ServiceNode
-        node={data.node}
-        onClick={data.onNodeClick}
-        onContextMenu={data.onNodeContextMenu}
-        animationIndex={0}
-      />
-      <Handle type="source" position={Position.Bottom} className="rf-handle rf-handle-source" />
-    </div>
-  );
-}
+import { NodeGroupContainer } from './graph/ServiceNodes';
 
 export function GraphView({
   nodes,
   edges,
   isContainerView = false,
   onDatabaseClick,
+  onFreshnessClick,
   dataStatus,
 }: GraphViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<HTMLDivElement>(null);
+  const [displayNodes, setDisplayNodes] = useState<GraphNode[]>(nodes);
+  const [displayEdges, setDisplayEdges] = useState<GraphEdge[]>(edges);
+  const [nodePositions, setNodePositions] = useState<Map<string, NodePosition>>(new Map());
+  const [zoom, setZoom] = useState(0.6);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
-  const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null);
-  const [animateNodes, setAnimateNodes] = useState(true);
   const [contextMenu, setContextMenu] = useState<{
     node: GraphNode;
     x: number;
@@ -106,19 +37,7 @@ export function GraphView({
     height: number;
   } | null>(null);
 
-  const orderCacheRef = useRef<Map<number, string[]>>(new Map());
-  const groupOrderCacheRef = useRef<Map<number, string[]>>(new Map());
-  const [, setExternalApiVersion] = useState(0);
-  const didFitViewRef = useRef(false);
-  const didInitialAnimationRef = useRef(false);
-
-  useEffect(() => {
-    if (didInitialAnimationRef.current) return;
-    didInitialAnimationRef.current = true;
-    const timer = setTimeout(() => setAnimateNodes(false), 1200);
-    return () => clearTimeout(timer);
-  }, []);
-
+  // Handle node click - navigate to database page for database containers, otherwise show detail panel
   const handleNodeClick = useCallback((node: GraphNode) => {
     if (isContainerView && node.isDockerContainer && node.type === 'database' && onDatabaseClick) {
       onDatabaseClick(node);
@@ -127,40 +46,82 @@ export function GraphView({
     }
   }, [isContainerView, onDatabaseClick]);
 
-  const handleContextMenu = useCallback((e: ReactMouseEvent, node: GraphNode) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const container = containerRef.current;
-    if (!container) return;
-    const rect = container.getBoundingClientRect();
-    setContextMenu({
-      node,
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top,
-      width: rect.width,
-      height: rect.height,
-    });
-  }, []);
+  const orderCacheRef = useRef<Map<number, string[]>>(new Map());
+  const groupOrderCacheRef = useRef<Map<number, string[]>>(new Map());
+  const [, setExternalApiVersion] = useState(0);
 
-  const stableNodes = useMemo(() => {
-    return [...nodes].sort((a, b) => a.id.localeCompare(b.id));
+  // Create a stable key based on node IDs to trigger re-animation only on actual changes
+  const nodeSetKey = useMemo(() => {
+    return nodes.map(n => n.id).sort().join(',');
   }, [nodes]);
 
-  const stableEdges = useMemo(() => {
-    return [...edges].sort((a, b) => a.id.localeCompare(b.id));
+  const edgeSetKey = useMemo(() => {
+    return edges.map(e => `${e.source}-${e.target}`).sort().join(',');
   }, [edges]);
 
-  const localNodes = useMemo(() => stableNodes.filter(n => n.type !== 'external'), [stableNodes]);
+  // Keep refs to latest nodes/edges for use in effect without causing re-runs
+  const nodesRef = useRef(nodes);
+  const edgesRef = useRef(edges);
+  nodesRef.current = nodes;
+  edgesRef.current = edges;
+
+  // Track previous keys to detect actual changes
+  const prevNodeSetKeyRef = useRef<string | null>(null);
+  const prevEdgeSetKeyRef = useRef<string | null>(null);
+  const isInitialRenderRef = useRef(true);
+
+  useEffect(() => {
+    const nodesChanged = prevNodeSetKeyRef.current !== nodeSetKey;
+    const edgesChanged = prevEdgeSetKeyRef.current !== edgeSetKey;
+
+    // Skip if nothing changed
+    if (!nodesChanged && !edgesChanged) {
+      return;
+    }
+
+    // Update refs
+    prevNodeSetKeyRef.current = nodeSetKey;
+    prevEdgeSetKeyRef.current = edgeSetKey;
+
+    // On initial render or when content changes, update immediately
+    if (isInitialRenderRef.current) {
+      isInitialRenderRef.current = false;
+      setDisplayNodes(nodesRef.current);
+      setDisplayEdges(edgesRef.current);
+    } else {
+      // Small delay for tab switches to allow animation setup
+      const timer = setTimeout(() => {
+        setDisplayNodes(nodesRef.current);
+        setDisplayEdges(edgesRef.current);
+      }, 30);
+      return () => clearTimeout(timer);
+    }
+  }, [nodeSetKey, edgeSetKey]);
+
+  // Filter out external nodes
+  const localNodes = useMemo(() => displayNodes.filter(n => {
+    if (n.type === 'external') return false;
+    if (n.id.includes('external-')) return false;
+    if (/\d+\.\d+\.\d+\.\d+/.test(n.id)) return false;
+    return true;
+  }), [displayNodes]);
+
+  // Filter edges to only include connections between local nodes
   const localEdges = useMemo(() => {
     const localNodeIds = new Set(localNodes.map(n => n.id));
-    return stableEdges.filter(e => localNodeIds.has(e.source) && localNodeIds.has(e.target));
-  }, [localNodes, stableEdges]);
+    return displayEdges.filter(e => localNodeIds.has(e.source) && localNodeIds.has(e.target));
+  }, [localNodes, displayEdges]);
 
+  // Create a stable key for project paths to prevent unnecessary external API fetches
   const projectPathsKey = useMemo(() => {
     return Array.from(
       new Set(localNodes.map(node => node.projectPath).filter(Boolean))
     ).sort().join(',');
   }, [localNodes]);
+
+  // Keep ref to localNodes for use in effect
+  const localNodesRef = useRef(localNodes);
+  localNodesRef.current = localNodes;
 
   useEffect(() => {
     if (!window.electronAPI?.getExternalApis) return;
@@ -199,11 +160,13 @@ export function GraphView({
     };
   }, [projectPathsKey]);
 
+  // Compute hierarchical layout (returns connected and standalone nodes separately)
   const { connected: connectedLayout, standalone: standaloneLayout } = useMemo(() =>
     computeHierarchicalLayout(localNodes, localEdges),
     [localNodes, localEdges]
   );
 
+  // Stabilize connected node ordering to prevent jitter
   const stableConnectedLayout = useMemo(() => {
     const byLayer = new Map<number, LayoutNode[]>();
     connectedLayout.forEach(node => {
@@ -265,397 +228,81 @@ export function GraphView({
     }));
   }, [connectedLayout]);
 
+  // Get unique layers and sort them for connected topology
   const sortedLayers = useMemo(() => {
     const layers = new Set(stableConnectedLayout.map(ln => ln.layer));
     return Array.from(layers).sort((a, b) => a - b);
   }, [stableConnectedLayout]);
 
+  // Group nodes by layer for rendering (dynamic layers based on topology)
+  const layerGroups = useMemo(() => {
+    const groups: Map<number, RenderGroup[]> = new Map();
+    sortedLayers.forEach(layer => {
+      groups.set(layer, groupLayoutNodes(stableConnectedLayout, layer));
+    });
+    return groups;
+  }, [stableConnectedLayout, sortedLayers]);
+
+  // Group standalone nodes for rendering
   const standaloneGroups = useMemo(() => {
     if (standaloneLayout.length === 0) return [];
 
-    const systemNodes: GraphNode[] = [];
-    const singles: RenderGroup[] = [];
-
+    // Group by type for standalone services
+    const byType = new Map<string, GraphNode[]>();
     standaloneLayout.forEach(ln => {
-      if (ln.node.type === 'service') {
-        systemNodes.push(ln.node);
-      } else {
-        singles.push({
-          groupName: ln.node.name,
-          nodes: [ln.node],
-          isGroup: false,
-          groupType: ln.node.type,
-        });
-      }
+      const type = ln.node.type;
+      if (!byType.has(type)) byType.set(type, []);
+      byType.get(type)!.push(ln.node);
     });
 
     const result: RenderGroup[] = [];
-    if (systemNodes.length > 0) {
+    byType.forEach((nodes, type) => {
       result.push({
-        groupName: 'System Services',
-        nodes: systemNodes.sort((a, b) => a.name.localeCompare(b.name)),
-        isGroup: systemNodes.length > 1,
-        groupType: 'service',
+        groupName: SERVICE_COLORS[type]?.label || type,
+        nodes: nodes.sort((a, b) => a.name.localeCompare(b.name)),
+        isGroup: nodes.length > 1,
       });
-    }
+    });
 
-    return [...result, ...singles].sort((a, b) => a.groupName.localeCompare(b.groupName));
+    return result.sort((a, b) => a.groupName.localeCompare(b.groupName));
   }, [standaloneLayout]);
 
+  // Container projects for container view mode (grouped by project, then by type)
   const containerProjects = useMemo(() => {
     if (!isContainerView) return [];
     return groupContainersByProject(localNodes);
   }, [isContainerView, localNodes]);
 
-  const flowLayout = useMemo(() => {
-    const positions = new Map<string, { x: number; y: number }>();
-    const labelNodes: Array<{
-      id: string;
-      type: string;
-      position: { x: number; y: number };
-      data: { text: string; color?: string; offset?: boolean };
-      draggable: boolean;
-      selectable: boolean;
-    }> = [];
-    const boxNodes: Array<{
-      id: string;
-      type: string;
-      position: { x: number; y: number };
-      data: { width: number; height: number; color: string; offset?: boolean };
-      draggable: boolean;
-      selectable: boolean;
-    }> = [];
-    let minX = Infinity;
-    let minY = Infinity;
-    let maxX = -Infinity;
-    let maxY = -Infinity;
+  // Get layer label based on layer index and content
+  const getLayerLabel = useCallback((layer: number, nodes: GraphNode[]): string => {
+    // Analyze node types in this layer
+    const types = new Set(nodes.map(n => n.type));
 
-    const layerMetas = sortedLayers.map((layer) => {
-      const groups = groupLayoutNodes(stableConnectedLayout, layer);
-      const groupLayouts = groups.map((group) => {
-        if (!group.isGroup) {
-          return { group, width: NODE_WIDTH, height: NODE_HEIGHT, columns: 1 };
-        }
-        const desiredColumns = Math.ceil(Math.sqrt(group.nodes.length));
-        const columnCount = Math.min(
-          Math.max(1, desiredColumns),
-          Math.min(MAX_GROUP_COLUMNS, group.nodes.length)
-        );
-        const rowCount = Math.ceil(group.nodes.length / columnCount);
-        const width = columnCount * NODE_WIDTH + (columnCount - 1) * NODE_GAP;
-        const height = rowCount * NODE_HEIGHT + (rowCount - 1) * NODE_GAP;
-        return { group, width, height, columns: columnCount };
-      });
-      const maxHeight = Math.max(NODE_HEIGHT, ...groupLayouts.map(g => g.height));
-      return { layer, groups, groupLayouts, height: maxHeight };
-    });
-
-    let currentY = 0;
-    layerMetas.forEach((meta) => {
-      if (meta.groups.length === 0) return;
-      const groupWidths = meta.groupLayouts.map(layout => layout.width);
-      const totalWidth = groupWidths.reduce((sum, width) => sum + width, 0)
-        + GROUP_GAP * Math.max(0, groupWidths.length - 1);
-      let cursorX = -totalWidth / 2;
-      const rowY = currentY;
-
-      meta.groupLayouts.forEach(({ group, width, height, columns }) => {
-        const groupX = cursorX;
-        const groupY = rowY;
-        const groupType = group.groupType || group.nodes[0]?.type || 'service';
-        const groupColor = SERVICE_COLORS[groupType]?.color || 'rgba(110, 120, 150, 0.4)';
-
-        if (group.isGroup) {
-          boxNodes.push({
-            id: `layer-${meta.layer}-group-box-${group.groupName}`,
-            type: 'groupBox',
-            position: {
-              x: groupX - GROUP_BOX_PADDING,
-              y: groupY - GROUP_BOX_PADDING,
-            },
-            data: {
-              width: width + GROUP_BOX_PADDING * 2,
-              height: height + GROUP_BOX_PADDING * 2,
-              color: groupColor,
-            },
-            draggable: false,
-            selectable: false,
-          });
-          minX = Math.min(minX, groupX - GROUP_BOX_PADDING);
-          minY = Math.min(minY, groupY - GROUP_BOX_PADDING);
-          maxX = Math.max(maxX, groupX - GROUP_BOX_PADDING + width + GROUP_BOX_PADDING * 2);
-          maxY = Math.max(maxY, groupY - GROUP_BOX_PADDING + height + GROUP_BOX_PADDING * 2);
-
-          labelNodes.push({
-            id: `layer-${meta.layer}-group-label-${group.groupName}`,
-            type: 'groupLabel',
-            position: { x: groupX + width / 2, y: groupY - GROUP_LABEL_OFFSET },
-            data: { text: group.groupName || 'Group', color: groupColor },
-            draggable: false,
-            selectable: false,
-          });
-          minX = Math.min(minX, groupX + width / 2 - LABEL_WIDTH / 2);
-          minY = Math.min(minY, groupY - GROUP_LABEL_OFFSET);
-          maxX = Math.max(maxX, groupX + width / 2 + LABEL_WIDTH / 2);
-          maxY = Math.max(maxY, groupY - GROUP_LABEL_OFFSET + LABEL_HEIGHT);
-        }
-
-        group.nodes.forEach((node, index) => {
-          const row = Math.floor(index / columns);
-          const col = index % columns;
-          const nodesInRow = Math.min(columns, group.nodes.length - row * columns);
-          const rowWidth = nodesInRow * NODE_WIDTH + (nodesInRow - 1) * NODE_GAP;
-          const colOffset = (width - rowWidth) / 2;
-          positions.set(node.id, {
-            x: groupX + colOffset + col * (NODE_WIDTH + NODE_GAP),
-            y: groupY + row * (NODE_HEIGHT + NODE_GAP),
-          });
-          minX = Math.min(minX, groupX + colOffset + col * (NODE_WIDTH + NODE_GAP));
-          minY = Math.min(minY, groupY + row * (NODE_HEIGHT + NODE_GAP));
-          maxX = Math.max(maxX, groupX + colOffset + col * (NODE_WIDTH + NODE_GAP) + NODE_WIDTH);
-          maxY = Math.max(maxY, groupY + row * (NODE_HEIGHT + NODE_GAP) + NODE_HEIGHT);
-        });
-
-        cursorX += width + GROUP_GAP;
-      });
-
-      const labelText = DEFAULT_LAYER_LABELS[meta.layer] || `Tier ${meta.layer + 1}`;
-      labelNodes.push({
-        id: `tier-label-${meta.layer}`,
-        type: 'tierLabel',
-        position: { x: 0, y: rowY - LAYER_LABEL_OFFSET },
-        data: { text: labelText },
-        draggable: false,
-        selectable: false,
-      });
-      minX = Math.min(minX, -LABEL_WIDTH / 2);
-      minY = Math.min(minY, rowY - LAYER_LABEL_OFFSET);
-      maxX = Math.max(maxX, LABEL_WIDTH / 2);
-      maxY = Math.max(maxY, rowY - LAYER_LABEL_OFFSET + LABEL_HEIGHT);
-
-      currentY += meta.height + LAYER_GAP;
-    });
-
-    if (standaloneGroups.length > 0) {
-      const baseY = currentY + STANDALONE_SECTION_OFFSET;
-      let cursorX = 0;
-      const groupWidths: number[] = [];
-      const standaloneNodeIds = new Set<string>();
-
-      standaloneGroups.forEach((group) => {
-        const desiredColumns = Math.ceil(Math.sqrt(group.nodes.length));
-        const maxColumns = group.groupType === 'service'
-          ? MAX_SYSTEM_SERVICE_COLUMNS
-          : MAX_STANDALONE_COLUMNS;
-        const columnCount = Math.min(
-          Math.max(1, desiredColumns),
-          Math.min(maxColumns, group.nodes.length)
-        );
-        const rowCount = Math.ceil(group.nodes.length / columnCount);
-        const width = columnCount * NODE_WIDTH + (columnCount - 1) * STANDALONE_NODE_GAP;
-        const height = rowCount * NODE_HEIGHT + (rowCount - 1) * STANDALONE_NODE_GAP;
-        groupWidths.push(width);
-        const groupType = group.groupType || group.nodes[0]?.type || 'service';
-        const groupColor = SERVICE_COLORS[groupType]?.color || 'rgba(110, 120, 150, 0.4)';
-
-        if (group.isGroup) {
-          labelNodes.push({
-            id: `standalone-group-label-${group.groupName}`,
-            type: 'groupLabel',
-            position: { x: cursorX + width / 2, y: baseY - STANDALONE_LABEL_OFFSET },
-            data: { text: group.groupName || 'Standalone', color: groupColor, offset: true },
-            draggable: false,
-            selectable: false,
-          });
-
-          boxNodes.push({
-            id: `standalone-group-box-${group.groupName}`,
-            type: 'groupBox',
-            position: {
-              x: cursorX - GROUP_BOX_PADDING,
-              y: baseY - GROUP_BOX_PADDING,
-            },
-            data: {
-              width: width + GROUP_BOX_PADDING * 2,
-              height: height + GROUP_BOX_PADDING * 2,
-              color: groupColor,
-              offset: true,
-            },
-            draggable: false,
-            selectable: false,
-          });
-          minX = Math.min(minX, cursorX - GROUP_BOX_PADDING);
-          minY = Math.min(minY, baseY - GROUP_BOX_PADDING);
-          maxX = Math.max(maxX, cursorX - GROUP_BOX_PADDING + width + GROUP_BOX_PADDING * 2);
-          maxY = Math.max(maxY, baseY - GROUP_BOX_PADDING + height + GROUP_BOX_PADDING * 2);
-
-          minX = Math.min(minX, cursorX + width / 2 - LABEL_WIDTH / 2);
-          minY = Math.min(minY, baseY - STANDALONE_LABEL_OFFSET);
-          maxX = Math.max(maxX, cursorX + width / 2 + LABEL_WIDTH / 2);
-          maxY = Math.max(maxY, baseY - STANDALONE_LABEL_OFFSET + LABEL_HEIGHT);
-        }
-
-        group.nodes.forEach((node, index) => {
-          const row = Math.floor(index / columnCount);
-          const col = index % columnCount;
-          const nodesInRow = Math.min(columnCount, group.nodes.length - row * columnCount);
-          const rowWidth = nodesInRow * NODE_WIDTH + (nodesInRow - 1) * STANDALONE_NODE_GAP;
-          const colOffset = (width - rowWidth) / 2;
-          positions.set(node.id, {
-            x: cursorX + colOffset + col * (NODE_WIDTH + STANDALONE_NODE_GAP),
-            y: baseY + row * (NODE_HEIGHT + STANDALONE_NODE_GAP),
-          });
-          standaloneNodeIds.add(node.id);
-          minX = Math.min(minX, cursorX + colOffset + col * (NODE_WIDTH + STANDALONE_NODE_GAP));
-          minY = Math.min(minY, baseY + row * (NODE_HEIGHT + STANDALONE_NODE_GAP));
-          maxX = Math.max(maxX, cursorX + colOffset + col * (NODE_WIDTH + STANDALONE_NODE_GAP) + NODE_WIDTH);
-          maxY = Math.max(maxY, baseY + row * (NODE_HEIGHT + STANDALONE_NODE_GAP) + NODE_HEIGHT);
-        });
-
-        cursorX += width + STANDALONE_GROUP_GAP;
-      });
-
-      const totalWidth = groupWidths.reduce((sum, width) => sum + width, 0)
-        + STANDALONE_GROUP_GAP * Math.max(0, groupWidths.length - 1);
-      const offset = totalWidth / 2;
-
-      labelNodes.push({
-        id: 'standalone-label',
-        type: 'tierLabel',
-        position: { x: totalWidth / 2, y: baseY - STANDALONE_SECTION_OFFSET },
-        data: { text: 'Standalone Services', offset: true },
-        draggable: false,
-        selectable: false,
-      });
-      minX = Math.min(minX, totalWidth / 2 - LABEL_WIDTH / 2);
-      minY = Math.min(minY, baseY - STANDALONE_SECTION_OFFSET);
-      maxX = Math.max(maxX, totalWidth / 2 + LABEL_WIDTH / 2);
-      maxY = Math.max(maxY, baseY - STANDALONE_SECTION_OFFSET + LABEL_HEIGHT);
-
-      positions.forEach((value, key) => {
-        if (!standaloneNodeIds.has(key)) return;
-        positions.set(key, { x: value.x - offset, y: value.y });
-      });
-
-      labelNodes.forEach((label) => {
-        if (!label.data.offset) return;
-        label.position = { x: label.position.x - offset, y: label.position.y };
-      });
-
-      boxNodes.forEach((box) => {
-        if (!box.data.offset) return;
-        box.position = { x: box.position.x - offset, y: box.position.y };
-      });
-
+    if (layer === 0) {
+      if (types.has('frontend')) return 'FRONTEND';
+      return 'ENTRY POINTS';
     }
 
-    const nodePositions = localNodes.map((node) => ({
-      id: node.id,
-      type: 'service',
-      position: positions.get(node.id) || { x: 0, y: 0 },
-      data: {
-        node,
-        onNodeClick: handleNodeClick,
-        onNodeContextMenu: handleContextMenu,
-        animate: animateNodes,
-        animationIndex: stableConnectedLayout.findIndex(ln => ln.node.id === node.id),
-      },
-      draggable: false,
-      selectable: false,
-      style: { width: NODE_WIDTH },
-    }));
+    if (types.has('database') || types.has('cache')) {
+      if (types.size === 1 && types.has('database')) return 'DATABASE';
+      if (types.size === 1 && types.has('cache')) return 'CACHE';
+      return 'DATA LAYER';
+    }
 
-    minX = Infinity;
-    minY = Infinity;
-    maxX = -Infinity;
-    maxY = -Infinity;
+    if (types.has('backend') || types.has('webserver') || types.has('nodejs') || types.has('python')) {
+      return `TIER ${layer}`;
+    }
 
-    const updateBounds = (x: number, y: number, width: number, height: number) => {
-      minX = Math.min(minX, x);
-      minY = Math.min(minY, y);
-      maxX = Math.max(maxX, x + width);
-      maxY = Math.max(maxY, y + height);
-    };
+    if (types.has('broker') || types.has('realtime')) {
+      return 'MESSAGING';
+    }
 
-    nodePositions.forEach((node) => {
-      updateBounds(node.position.x, node.position.y, NODE_WIDTH, NODE_HEIGHT);
-    });
+    if (types.has('worker') || types.has('client')) {
+      return 'WORKERS';
+    }
 
-    labelNodes.forEach((label) => {
-      updateBounds(label.position.x - LABEL_WIDTH / 2, label.position.y, LABEL_WIDTH, LABEL_HEIGHT);
-    });
-
-    boxNodes.forEach((box) => {
-      updateBounds(box.position.x, box.position.y, box.data.width, box.data.height);
-    });
-
-    const boundsPad = 120;
-    const bounds: [[number, number], [number, number]] = [
-      [Number.isFinite(minX) ? minX - boundsPad : -800, Number.isFinite(minY) ? minY - boundsPad : -600],
-      [Number.isFinite(maxX) ? maxX + boundsPad : 800, Number.isFinite(maxY) ? maxY + boundsPad : 600],
-    ];
-
-    return {
-      nodes: [...boxNodes, ...nodePositions, ...labelNodes],
-      bounds,
-    };
-  }, [localNodes, sortedLayers, stableConnectedLayout, standaloneGroups, handleNodeClick, handleContextMenu, animateNodes]);
-
-  const flowEdges = useMemo(() => {
-    return localEdges.map((edge) => {
-      const confidence = edge.confidence ?? 0.6;
-      const opacity = Math.max(0.25, Math.min(1, 0.35 + confidence * 0.65));
-      return {
-        id: edge.id,
-        source: edge.source,
-        target: edge.target,
-        type: 'smoothstep' as const,
-        markerEnd: {
-          type: MarkerType.ArrowClosed,
-          width: 18,
-          height: 18,
-          color: 'var(--graph-edge)',
-        },
-        className: 'graph-edge',
-        style: {
-          opacity,
-          stroke: 'var(--graph-edge)',
-          strokeWidth: 1.6,
-          strokeLinecap: 'round' as const,
-          strokeLinejoin: 'round' as const,
-        },
-      };
-    });
-  }, [localEdges]);
-
-  const nodeTypes = useMemo(() => ({
-    service: FlowServiceNode,
-    tierLabel: TierLabelNode,
-    groupLabel: GroupLabelNode,
-    groupBox: GroupBoxNode,
-  }), []);
-  const defaultEdgeOptions = useMemo(() => ({
-    type: 'smoothstep' as const,
-    markerEnd: {
-      type: MarkerType.ArrowClosed,
-      width: 18,
-      height: 18,
-      color: 'var(--graph-edge)',
-    },
-    style: {
-      stroke: 'var(--graph-edge)',
-      strokeWidth: 1.7,
-      strokeLinecap: 'round' as const,
-      strokeLinejoin: 'round' as const,
-    },
-  }), []);
-
-  useEffect(() => {
-    if (!reactFlowInstance || didFitViewRef.current) return;
-    if (localNodes.length === 0) return;
-    reactFlowInstance.fitView({ padding: 0.24, duration: 0 });
-    didFitViewRef.current = true;
-  }, [reactFlowInstance, localNodes.length]);
+    return `TIER ${layer}`;
+  }, []);
 
   const formatAge = useCallback((ageMs?: number | null) => {
     if (ageMs === null || ageMs === undefined) return '—';
@@ -664,9 +311,181 @@ export function GraphView({
     return `${Math.round(ageMs / 60000)}m`;
   }, []);
 
+  // Force re-render every second to update the "time ago" display
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setTick(t => t + 1);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
   const lastUpdated = dataStatus?.collectedAt
     ? formatAge(Date.now() - dataStatus.collectedAt)
     : '—';
+
+  // Create connection list from edges
+  const connections = useMemo(() =>
+    localEdges.map(edge => ({
+      from: edge.source,
+      to: edge.target,
+      sourcePort: edge.sourcePort,
+      targetPort: edge.targetPort,
+      confidence: edge.confidence ?? 0.6,
+    })),
+    [localEdges]
+  );
+
+  const zoomStep = 0.05;
+  const clampZoom = useCallback((value: number) => Math.max(0.4, Math.min(2, value)), []);
+
+  // Zoom handlers
+  const handleZoomIn = () => setZoom(z => clampZoom(z + zoomStep));
+  const handleZoomOut = () => setZoom(z => clampZoom(z - zoomStep));
+  const handleZoomReset = () => {
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+  };
+
+  // Pan handlers with requestAnimationFrame for smooth movement
+  const rafRef = useRef<number | null>(null);
+  const panRef = useRef(pan);
+  panRef.current = pan;
+
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    if (selectedNode || contextMenu) return;
+    if (e.button !== 0) return;
+    setIsDragging(true);
+    setDragStart({ x: e.clientX - panRef.current.x, y: e.clientY - panRef.current.y });
+  }, [selectedNode, contextMenu]);
+
+  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    if (selectedNode || contextMenu) return;
+    if (!isDragging) return;
+
+    const newX = e.clientX - dragStart.x;
+    const newY = e.clientY - dragStart.y;
+
+    if (rafRef.current) {
+      cancelAnimationFrame(rafRef.current);
+    }
+
+    rafRef.current = requestAnimationFrame(() => {
+      setPan({ x: newX, y: newY });
+    });
+  }, [isDragging, dragStart, selectedNode, contextMenu]);
+
+  const handleMouseUp = useCallback(() => {
+    setIsDragging(false);
+    if (rafRef.current) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const handleWheel = (e: WheelEvent) => {
+      const target = e.target;
+      if (target instanceof HTMLElement) {
+        if (target.closest('.node-detail-panel') || target.closest('.context-menu')) {
+          return;
+        }
+      }
+      e.preventDefault();
+      const direction = e.deltaY > 0 ? -1 : 1;
+      setZoom(z => clampZoom(z + direction * zoomStep));
+    };
+
+    container.addEventListener('wheel', handleWheel, { passive: false });
+    return () => {
+      container.removeEventListener('wheel', handleWheel);
+    };
+  }, [clampZoom]);
+
+  // Context menu handler
+  const handleContextMenu = useCallback((e: React.MouseEvent, node: GraphNode) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const container = containerRef.current;
+    if (!container) return;
+    const rect = container.getBoundingClientRect();
+    setContextMenu({
+      node,
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top,
+      width: rect.width,
+      height: rect.height,
+    });
+  }, []);
+
+  // Close context menu on Escape key
+  useEffect(() => {
+    if (!contextMenu) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setContextMenu(null);
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [contextMenu]);
+
+  // Build layer mapping for nodes (both connected and standalone)
+  const nodeLayerMap = useMemo(() => {
+    const map = new Map<string, { layer: number; indexInLayer: number }>();
+    stableConnectedLayout.forEach(ln => {
+      map.set(ln.node.id, { layer: ln.layer, indexInLayer: ln.order });
+    });
+    // Standalone nodes get a special layer (-1)
+    standaloneLayout.forEach(ln => {
+      map.set(ln.node.id, { layer: -1, indexInLayer: ln.order });
+    });
+    return map;
+  }, [stableConnectedLayout, standaloneLayout]);
+
+  // Calculate node positions after render
+  useEffect(() => {
+    if (!canvasRef.current) return;
+
+    const updatePositions = () => {
+      const positions = new Map<string, NodePosition>();
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+
+      const canvasRect = canvas.getBoundingClientRect();
+
+      localNodes.forEach(node => {
+        const element = canvas.querySelector(`[data-node-id="${node.id}"]`);
+        if (element) {
+          const rect = element.getBoundingClientRect();
+          const layerInfo = nodeLayerMap.get(node.id) || { layer: 0, indexInLayer: 0 };
+          positions.set(node.id, {
+            x: (rect.left - canvasRect.left + rect.width / 2) / zoom,
+            y: (rect.top - canvasRect.top + rect.height / 2) / zoom,
+            width: rect.width / zoom,
+            height: rect.height / zoom,
+            layer: layerInfo.layer,
+            indexInLayer: layerInfo.indexInLayer,
+          });
+        }
+      });
+
+      setNodePositions(positions);
+    };
+
+    const timer = setTimeout(updatePositions, 150);
+    return () => clearTimeout(timer);
+  }, [localNodes, nodeLayerMap, zoom]);
+
+  // Edge routing with collision detection and smart waypoints
+  const edgeRoutes = useMemo(() => {
+    return routeEdges(connections, nodePositions);
+  }, [nodePositions, connections]);
 
   if (localNodes.length === 0) {
     return (
@@ -680,77 +499,185 @@ export function GraphView({
   }
 
   return (
-    <div className="graph-view" ref={containerRef}>
-      <div className="graph-legend">
-        <div className="graph-legend-title">Service Types</div>
-        {Array.from(new Set(localNodes.map(n => n.type)))
-          .filter(type => SERVICE_COLORS[type])
-          .map(type => (
-            <div key={type} className="graph-legend-item">
-              <div
-                className="graph-legend-dot"
-                style={{ backgroundColor: SERVICE_COLORS[type].color }}
-              />
-              <span>{SERVICE_COLORS[type].label}</span>
-            </div>
-          ))}
+    <div
+      className="graph-view"
+      ref={containerRef}
+      onMouseDown={handleMouseDown}
+      onMouseMove={handleMouseMove}
+      onMouseUp={handleMouseUp}
+      onMouseLeave={handleMouseUp}
+      style={{ cursor: selectedNode || contextMenu ? 'default' : isDragging ? 'grabbing' : 'grab' }}
+    >
+      {/* Legend - only show in service map view, not container view */}
+      {!isContainerView && (
+        <div className="graph-legend">
+          <div className="graph-legend-title">Service Types</div>
+          {Array.from(new Set(localNodes.map(n => n.type)))
+            .filter(type => SERVICE_COLORS[type])
+            .map(type => (
+              <div key={type} className="graph-legend-item">
+                <div
+                  className="graph-legend-dot"
+                  style={{ backgroundColor: SERVICE_COLORS[type].color }}
+                />
+                <span>{SERVICE_COLORS[type].label}</span>
+              </div>
+            ))}
+        </div>
+      )}
+
+      {/* Zoom Controls */}
+      <div className="graph-controls">
+        <button className="graph-control-btn" onClick={handleZoomIn} title="Zoom In">+</button>
+        <button className="graph-control-btn" onClick={handleZoomReset} title="Reset">⟲</button>
+        <button className="graph-control-btn" onClick={handleZoomOut} title="Zoom Out">−</button>
+        <span className="graph-zoom-level">{Math.round(zoom * 100)}%</span>
       </div>
 
+      {/* Data Freshness */}
       {dataStatus && (
-        <div className="graph-freshness">
+        <div
+          className={`graph-freshness ${onFreshnessClick ? 'graph-freshness-clickable' : ''}`}
+          onClick={onFreshnessClick}
+          title={onFreshnessClick ? 'Click to view container logs' : undefined}
+        >
           <span className="graph-freshness-title">Last updated</span>
           <span className="graph-freshness-value">{lastUpdated} ago</span>
           <span className="graph-freshness-meta">
             ps {formatAge(dataStatus.processesAgeMs)} · lsof {formatAge(dataStatus.portsAgeMs)} · tcp {formatAge(dataStatus.connectionsAgeMs)}
           </span>
+          {onFreshnessClick && (
+            <span className="graph-freshness-link">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                <polyline points="14 2 14 8 20 8" />
+                <line x1="16" y1="13" x2="8" y2="13" />
+                <line x1="16" y1="17" x2="8" y2="17" />
+              </svg>
+              View logs
+            </span>
+          )}
         </div>
       )}
 
-      {isContainerView ? (
-        <div className="container-projects-view">
-          {containerProjects.map((project, projectIdx) => (
-            <ProjectContainer
-              key={`project-${project.projectName}`}
-              project={project}
-              onNodeClick={handleNodeClick}
-              onContextMenu={handleContextMenu}
-              animationDelay={projectIdx * 150}
-            />
-          ))}
-        </div>
-      ) : (
-        <div className="graph-flow">
-          <ReactFlow
-            nodes={flowLayout.nodes}
-            edges={flowEdges}
-            nodeTypes={nodeTypes}
-            defaultEdgeOptions={defaultEdgeOptions}
-            nodesDraggable={false}
-            nodesConnectable={false}
-            elementsSelectable={false}
-            zoomOnScroll={false}
-            zoomOnPinch
-            zoomOnDoubleClick={false}
-            panOnScroll
-            minZoom={0.25}
-            maxZoom={1.8}
-            translateExtent={flowLayout.bounds}
-            onInit={setReactFlowInstance}
-            onPaneClick={() => {
-              setSelectedNode(null);
-              setContextMenu(null);
-            }}
-            onPaneContextMenu={(event) => {
-              event.preventDefault();
-              setContextMenu(null);
-            }}
-          >
-            <Background color="rgba(0,0,0,0.04)" gap={24} />
-            <Controls position="top-right" />
-          </ReactFlow>
-        </div>
-      )}
+      {/* Zoomable/Pannable Canvas */}
+      <div
+        className="graph-canvas"
+        ref={canvasRef}
+        style={{
+          transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+          transformOrigin: 'center center',
+        }}
+      >
+        {/* Connection lines SVG - only show in graph view, not container view */}
+        {!isContainerView && (
+          <svg className="graph-connections">
+            <defs>
+              <marker
+                id="arrowhead"
+                markerWidth="8"
+                markerHeight="8"
+                refX="8"
+                refY="4"
+                orient="auto"
+                markerUnits="userSpaceOnUse"
+                viewBox="0 0 8 8"
+              >
+                <path
+                  d="M 0 0 L 8 4 L 0 8 Z"
+                  fill="currentColor"
+                />
+              </marker>
+            </defs>
 
+            {edgeRoutes.map((route, i) => {
+              const opacity = Math.max(0.2, Math.min(1, 0.25 + route.confidence * 0.75));
+              return (
+              <path
+                key={`${route.from}-${route.to}-${i}`}
+                d={route.path}
+                stroke="currentColor"
+                strokeWidth="1.6"
+                fill="none"
+                markerEnd="url(#arrowhead)"
+                className="graph-edge"
+                style={{ opacity }}
+              />
+            )})}
+          </svg>
+        )}
+
+        {/* Container View: Project containers with type groups inside */}
+        {isContainerView ? (
+          <div className="container-projects-view">
+            {containerProjects.map((project, projectIdx) => (
+              <ProjectContainer
+                key={`project-${project.projectName}`}
+                project={project}
+                onNodeClick={handleNodeClick}
+                onContextMenu={handleContextMenu}
+                animationDelay={projectIdx * 150}
+              />
+            ))}
+          </div>
+        ) : (
+          /* Regular Service Map: Layered nodes based on topology */
+          <div className="graph-layers">
+            {sortedLayers.map((layer, layerIdx) => {
+              const groups = layerGroups.get(layer) || [];
+              const allNodes = groups.flatMap(g => g.nodes);
+              if (allNodes.length === 0) return null;
+
+              // Calculate base animation index for this layer
+              let nodeIndex = layerIdx * 2;
+
+              return (
+                <div key={`layer-${layer}`} className="graph-layer" style={{ animationDelay: `${layerIdx * 80}ms` }}>
+                  <div className="graph-layer-label">{getLayerLabel(layer, allNodes)}</div>
+                  <div className="graph-layer-nodes">
+                    {groups.map((group, index) => {
+                      const currentIndex = nodeIndex;
+                      nodeIndex += group.nodes.length;
+                      return (
+                        <NodeGroupContainer
+                          key={`layer${layer}-${group.groupName}-${index}`}
+                          group={group}
+                          onNodeClick={handleNodeClick}
+                          onContextMenu={handleContextMenu}
+                          baseIndex={currentIndex}
+                        />
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+
+            {/* Standalone Services Section */}
+            {standaloneGroups.length > 0 && (
+              <div className="graph-layer graph-layer-standalone" style={{ animationDelay: `${sortedLayers.length * 80 + 50}ms` }}>
+                <div className="graph-layer-label">STANDALONE SERVICES</div>
+                <div className="graph-layer-nodes">
+                  {standaloneGroups.map((group, index) => {
+                    const baseIndex = sortedLayers.length * 2 + index * 2;
+                    return (
+                      <NodeGroupContainer
+                        key={`standalone-${group.groupName}-${index}`}
+                        group={group}
+                        onNodeClick={handleNodeClick}
+                        onContextMenu={handleContextMenu}
+                        baseIndex={baseIndex}
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Context Menu */}
       {contextMenu && (
         <ContextMenu
           node={contextMenu.node}
@@ -762,6 +689,7 @@ export function GraphView({
         />
       )}
 
+      {/* Node Detail Panel */}
       {selectedNode && (
         <NodeDetailPanel
           node={selectedNode}
