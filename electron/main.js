@@ -1,5 +1,19 @@
 const { app, BrowserWindow, ipcMain, shell, nativeImage } = require("electron");
 const path = require("path");
+
+// Security: Enable sandbox for all renderers before app is ready
+app.enableSandbox();
+
+// Import security utilities
+const {
+  validateExternalUrl,
+  validateHttpRequestUrl,
+  setupNavigationBlocking,
+  setupWindowOpenHandler,
+  setupPermissionHandlers,
+  MAX_RESPONSE_SIZE,
+} = require("./security");
+
 // Import services
 const {
   getDevProcesses,
@@ -61,8 +75,13 @@ function createWindow() {
     trafficLightPosition: { x: 15, y: 15 },
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
+      // Security hardening
       contextIsolation: true,
       nodeIntegration: false,
+      sandbox: true,
+      webSecurity: true,
+      allowRunningInsecureContent: false,
+      safeDialogs: true,
     },
   });
 
@@ -74,12 +93,25 @@ function createWindow() {
     mainWindow.loadFile(path.join(__dirname, "../build/index.html"));
   }
 
+  // Security: Set up navigation blocking
+  // Allow only dev server in development, file:// protocol in production
+  const allowedOrigins = isDev
+    ? ["http://localhost:3001"]
+    : ["file://"];
+  setupNavigationBlocking(mainWindow.webContents, allowedOrigins);
+
+  // Security: Block new windows, open http/https in external browser
+  setupWindowOpenHandler(mainWindow.webContents);
+
   mainWindow.on("closed", () => {
     mainWindow = null;
   });
 }
 
 app.whenReady().then(() => {
+  // Security: Set up default-deny permission handlers
+  setupPermissionHandlers();
+
   if (process.platform === "darwin") {
     const icon = nativeImage.createFromPath(
       path.join(__dirname, "../assets/icon.png")
@@ -233,9 +265,16 @@ ipcMain.handle("kill-process", async (event, pid) => {
 // IPC Handlers - Quick Actions
 // ============================================
 
-// Open URL in default browser
+// Open URL in default browser (with validation)
 ipcMain.handle("open-url", async (event, url) => {
   try {
+    // Security: Validate URL protocol (only http/https allowed)
+    const validation = validateExternalUrl(url);
+    if (!validation.valid) {
+      console.warn("[Security] Blocked open-url request:", url, "-", validation.reason);
+      return { success: false, error: validation.reason };
+    }
+
     await shell.openExternal(url);
     return { success: true };
   } catch (error) {
@@ -245,17 +284,20 @@ ipcMain.handle("open-url", async (event, url) => {
 });
 
 // Execute HTTP request (for API testing)
+// Note: This app is designed to test local dev services, so localhost is allowed here.
+// For apps that should block SSRF entirely, set allowPrivate to false.
 ipcMain.handle("execute-http-request", async (event, options) => {
   try {
     const { method, url, headers, body } = options;
 
-    // Validate URL
-    if (!url || typeof url !== "string") {
-      return { success: false, error: "Invalid URL" };
+    // Security: Validate URL (allow localhost since this is a local dev tool)
+    const validation = validateHttpRequestUrl(url, true /* allowPrivate for local dev testing */);
+    if (!validation.valid) {
+      console.warn("[Security] Blocked HTTP request:", url, "-", validation.reason);
+      return { success: false, error: validation.reason };
     }
 
-    // Parse URL to determine http vs https
-    const parsedUrl = new URL(url);
+    const parsedUrl = validation.url;
     const isHttps = parsedUrl.protocol === "https:";
     const httpModule = isHttps ? require("https") : require("http");
 
@@ -272,14 +314,26 @@ ipcMain.handle("execute-http-request", async (event, options) => {
       };
 
       const req = httpModule.request(requestOptions, (res) => {
-        let responseBody = "";
+        const chunks = [];
+        let totalSize = 0;
 
         res.on("data", (chunk) => {
-          responseBody += chunk;
+          totalSize += chunk.length;
+          // Security: Cap response size to prevent memory abuse
+          if (totalSize > MAX_RESPONSE_SIZE) {
+            req.destroy();
+            resolve({
+              success: false,
+              error: `Response too large (exceeded ${MAX_RESPONSE_SIZE / 1024 / 1024}MB limit)`,
+            });
+            return;
+          }
+          chunks.push(chunk);
         });
 
         res.on("end", () => {
           const duration = Date.now() - startTime;
+          const responseBody = Buffer.concat(chunks).toString("utf8");
 
           // Try to parse as JSON for pretty display
           let parsedBody = responseBody;
@@ -303,7 +357,7 @@ ipcMain.handle("execute-http-request", async (event, options) => {
               body: parsedBody,
               isJson,
               duration,
-              size: Buffer.byteLength(responseBody, "utf8"),
+              size: totalSize,
             },
           });
         });

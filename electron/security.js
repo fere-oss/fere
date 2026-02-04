@@ -1,0 +1,235 @@
+/**
+ * Security utilities for Electron app hardening.
+ * Contains URL validation, SSRF protection, and security handlers.
+ */
+
+const { shell, session } = require("electron");
+
+// ============================================
+// URL Validation
+// ============================================
+
+// Allowed protocols for external URL opening
+const ALLOWED_EXTERNAL_PROTOCOLS = ["http:", "https:"];
+
+// Dangerous protocols that should never be allowed
+const DANGEROUS_PROTOCOLS = ["file:", "javascript:", "data:", "vbscript:", "about:"];
+
+/**
+ * Validates a URL for safe external opening.
+ * Returns { valid: true, url: URL } or { valid: false, reason: string }
+ */
+function validateExternalUrl(urlString) {
+  if (!urlString || typeof urlString !== "string") {
+    return { valid: false, reason: "URL must be a non-empty string" };
+  }
+
+  let parsed;
+  try {
+    parsed = new URL(urlString);
+  } catch (e) {
+    return { valid: false, reason: "Invalid URL format" };
+  }
+
+  const protocol = parsed.protocol.toLowerCase();
+
+  // Block dangerous protocols explicitly
+  if (DANGEROUS_PROTOCOLS.includes(protocol)) {
+    return { valid: false, reason: `Protocol '${protocol}' is not allowed` };
+  }
+
+  // Only allow http/https
+  if (!ALLOWED_EXTERNAL_PROTOCOLS.includes(protocol)) {
+    return { valid: false, reason: `Protocol '${protocol}' is not allowed for external URLs` };
+  }
+
+  return { valid: true, url: parsed };
+}
+
+// ============================================
+// SSRF Protection
+// ============================================
+
+// Private/reserved IP ranges (RFC 1918, RFC 5737, RFC 6598, loopback, link-local)
+const PRIVATE_IP_PATTERNS = [
+  /^127\./,                          // Loopback 127.0.0.0/8
+  /^10\./,                           // Private 10.0.0.0/8
+  /^172\.(1[6-9]|2[0-9]|3[0-1])\./,  // Private 172.16.0.0/12
+  /^192\.168\./,                     // Private 192.168.0.0/16
+  /^169\.254\./,                     // Link-local 169.254.0.0/16
+  /^0\./,                            // Current network 0.0.0.0/8
+  /^100\.(6[4-9]|[7-9][0-9]|1[0-2][0-7])\./,  // Carrier-grade NAT 100.64.0.0/10
+  /^192\.0\.0\./,                    // IETF Protocol Assignments 192.0.0.0/24
+  /^192\.0\.2\./,                    // TEST-NET-1 192.0.2.0/24
+  /^198\.51\.100\./,                 // TEST-NET-2 198.51.100.0/24
+  /^203\.0\.113\./,                  // TEST-NET-3 203.0.113.0/24
+  /^224\./,                          // Multicast 224.0.0.0/4
+  /^240\./,                          // Reserved 240.0.0.0/4
+];
+
+// Hostnames that resolve to localhost/private
+const BLOCKED_HOSTNAMES = [
+  "localhost",
+  "localhost.localdomain",
+  "local",
+  "ip6-localhost",
+  "ip6-loopback",
+];
+
+// Maximum response size (10MB)
+const MAX_RESPONSE_SIZE = 10 * 1024 * 1024;
+
+/**
+ * Checks if a hostname or IP is a private/internal address.
+ */
+function isPrivateHost(hostname) {
+  if (!hostname || typeof hostname !== "string") {
+    return true; // Treat invalid as blocked
+  }
+
+  const lower = hostname.toLowerCase();
+
+  // Check blocked hostnames
+  if (BLOCKED_HOSTNAMES.includes(lower)) {
+    return true;
+  }
+
+  // Check if it's an IPv6 loopback
+  if (lower === "::1" || lower === "[::1]") {
+    return true;
+  }
+
+  // Check private IP patterns
+  for (const pattern of PRIVATE_IP_PATTERNS) {
+    if (pattern.test(hostname)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Validates a URL for HTTP requests (SSRF protection).
+ * Returns { valid: true, url: URL } or { valid: false, reason: string }
+ */
+function validateHttpRequestUrl(urlString, allowPrivate = false) {
+  if (!urlString || typeof urlString !== "string") {
+    return { valid: false, reason: "URL must be a non-empty string" };
+  }
+
+  let parsed;
+  try {
+    parsed = new URL(urlString);
+  } catch (e) {
+    return { valid: false, reason: "Invalid URL format" };
+  }
+
+  const protocol = parsed.protocol.toLowerCase();
+
+  // Only http/https allowed
+  if (protocol !== "http:" && protocol !== "https:") {
+    return { valid: false, reason: `Protocol '${protocol}' is not allowed` };
+  }
+
+  // SSRF check: block private/internal addresses unless explicitly allowed
+  if (!allowPrivate && isPrivateHost(parsed.hostname)) {
+    return { valid: false, reason: "Requests to private/internal addresses are blocked" };
+  }
+
+  return { valid: true, url: parsed };
+}
+
+// ============================================
+// Navigation & Window Security
+// ============================================
+
+/**
+ * Sets up navigation blocking on a webContents.
+ * Prevents navigation to non-app origins.
+ */
+function setupNavigationBlocking(webContents, allowedOrigins) {
+  webContents.on("will-navigate", (event, navigationUrl) => {
+    let parsed;
+    try {
+      parsed = new URL(navigationUrl);
+    } catch (e) {
+      event.preventDefault();
+      console.warn("[Security] Blocked navigation to invalid URL:", navigationUrl);
+      return;
+    }
+
+    const origin = parsed.origin;
+    if (!allowedOrigins.includes(origin)) {
+      event.preventDefault();
+      console.warn("[Security] Blocked navigation to disallowed origin:", origin);
+    }
+  });
+}
+
+/**
+ * Sets up window open handler.
+ * Denies all new windows by default, opens http/https URLs in external browser.
+ */
+function setupWindowOpenHandler(webContents) {
+  webContents.setWindowOpenHandler(({ url }) => {
+    const validation = validateExternalUrl(url);
+    if (validation.valid) {
+      // Open in external browser instead of new Electron window
+      shell.openExternal(url).catch((err) => {
+        console.error("[Security] Failed to open external URL:", err);
+      });
+    } else {
+      console.warn("[Security] Blocked window open for:", url, "-", validation.reason);
+    }
+
+    // Always deny creating new Electron windows
+    return { action: "deny" };
+  });
+}
+
+// ============================================
+// Permission Handlers
+// ============================================
+
+/**
+ * Sets up default-deny permission handlers.
+ * Blocks all permission requests by default.
+ */
+function setupPermissionHandlers() {
+  const ses = session.defaultSession;
+
+  // Block all permission requests by default
+  ses.setPermissionRequestHandler((webContents, permission, callback) => {
+    console.warn("[Security] Denied permission request:", permission);
+    callback(false);
+  });
+
+  // Also handle permission checks (for APIs that check without requesting)
+  ses.setPermissionCheckHandler((webContents, permission) => {
+    // Allow clipboard-read and clipboard-write for app functionality
+    if (permission === "clipboard-read" || permission === "clipboard-sanitized-write") {
+      return true;
+    }
+    return false;
+  });
+}
+
+// ============================================
+// Exports
+// ============================================
+
+module.exports = {
+  // URL validation
+  validateExternalUrl,
+  validateHttpRequestUrl,
+  isPrivateHost,
+  ALLOWED_EXTERNAL_PROTOCOLS,
+  DANGEROUS_PROTOCOLS,
+  MAX_RESPONSE_SIZE,
+
+  // Security setup
+  setupNavigationBlocking,
+  setupWindowOpenHandler,
+  setupPermissionHandlers,
+};

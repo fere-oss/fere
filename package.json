@@ -36,7 +36,7 @@
     "electron:dev": "concurrently \"BROWSER=none PORT=3001 npm start\" \"wait-on http://localhost:3001 && electron .\"",
     "electron:build": "npm run build && electron-builder",
     "electron:build:mac": "npm run build && electron-builder --mac",
-    "test:node": "node --test electron/services/*.test.js"
+    "test:node": "node --test electron/services/*.test.js electron/security.test.js"
   },
   "build": {
     "appId": "com.fere.app",
