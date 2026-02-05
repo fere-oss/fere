@@ -87,6 +87,43 @@ function FlowServiceNode({
   );
 }
 
+const estimateNodeHeight = (node: GraphNode) => {
+  const routes = node.routes || [];
+  const externalApis = (node.projectPath && !node.isDockerContainer)
+    ? (externalApiCache.get(node.projectPath)?.apis || [])
+    : [];
+  const hasProjectLabel = !node.isDockerContainer && Boolean(node.projectPath);
+  const hasDockerImage = node.isDockerContainer && Boolean(node.containerImage);
+  const hasDockerNetworks = node.isDockerContainer && Boolean(node.containerNetworks?.length);
+
+  const baseHeight = 120;
+  const optionalLineHeight = 18;
+  const networksHeight = 18;
+  const sectionBase = 42;
+  const rowHeight = 18;
+  const rowGap = 6;
+
+  let height = baseHeight;
+  if (hasProjectLabel || hasDockerImage) {
+    height += optionalLineHeight;
+  }
+  if (hasDockerNetworks) {
+    height += networksHeight;
+  }
+
+  const routeRows = Math.min(3, routes.length);
+  if (routeRows > 0) {
+    height += sectionBase + routeRows * rowHeight + Math.max(0, routeRows - 1) * rowGap;
+  }
+
+  const apiRows = Math.min(3, externalApis.length);
+  if (apiRows > 0) {
+    height += sectionBase + apiRows * rowHeight + Math.max(0, apiRows - 1) * rowGap;
+  }
+
+  return Math.max(NODE_HEIGHT, height);
+};
+
 export function GraphView({
   nodes,
   edges,
@@ -108,7 +145,7 @@ export function GraphView({
 
   const orderCacheRef = useRef<Map<number, string[]>>(new Map());
   const groupOrderCacheRef = useRef<Map<number, string[]>>(new Map());
-  const [, setExternalApiVersion] = useState(0);
+  const [externalApiVersion, setExternalApiVersion] = useState(0);
   const didFitViewRef = useRef(false);
   const didInitialAnimationRef = useRef(false);
 
@@ -309,6 +346,7 @@ export function GraphView({
 
   const flowLayout = useMemo(() => {
     const positions = new Map<string, { x: number; y: number }>();
+    const nodeHeights = new Map<string, number>();
     const labelNodes: Array<{
       id: string;
       type: string;
@@ -316,6 +354,7 @@ export function GraphView({
       data: { text: string; color?: string; offset?: boolean };
       draggable: boolean;
       selectable: boolean;
+      style?: { width: number; height: number };
     }> = [];
     const boxNodes: Array<{
       id: string;
@@ -330,11 +369,21 @@ export function GraphView({
     let maxX = -Infinity;
     let maxY = -Infinity;
 
+    localNodes.forEach(node => {
+      nodeHeights.set(node.id, estimateNodeHeight(node));
+    });
+
+    const centeredLabelPosition = (centerX: number, topY: number) => ({
+      x: centerX - LABEL_WIDTH / 2,
+      y: topY,
+    });
+
     const layerMetas = sortedLayers.map((layer) => {
       const groups = groupLayoutNodes(stableConnectedLayout, layer);
       const groupLayouts = groups.map((group) => {
         if (!group.isGroup) {
-          return { group, width: NODE_WIDTH, height: NODE_HEIGHT, columns: 1 };
+          const height = nodeHeights.get(group.nodes[0]?.id) ?? NODE_HEIGHT;
+          return { group, width: NODE_WIDTH, height, columns: 1, rowHeights: [height] };
         }
         const desiredColumns = Math.ceil(Math.sqrt(group.nodes.length));
         const columnCount = Math.min(
@@ -343,8 +392,15 @@ export function GraphView({
         );
         const rowCount = Math.ceil(group.nodes.length / columnCount);
         const width = columnCount * NODE_WIDTH + (columnCount - 1) * NODE_GAP;
-        const height = rowCount * NODE_HEIGHT + (rowCount - 1) * NODE_GAP;
-        return { group, width, height, columns: columnCount };
+        const rowHeights = new Array(rowCount).fill(0);
+        group.nodes.forEach((node, index) => {
+          const row = Math.floor(index / columnCount);
+          const nodeHeight = nodeHeights.get(node.id) ?? NODE_HEIGHT;
+          rowHeights[row] = Math.max(rowHeights[row], nodeHeight);
+        });
+        const height = rowHeights.reduce((sum, rowHeight) => sum + rowHeight, 0)
+          + (rowCount - 1) * NODE_GAP;
+        return { group, width, height, columns: columnCount, rowHeights };
       });
       const maxHeight = Math.max(NODE_HEIGHT, ...groupLayouts.map(g => g.height));
       return { layer, groups, groupLayouts, height: maxHeight };
@@ -359,46 +415,45 @@ export function GraphView({
       let cursorX = -totalWidth / 2;
       const rowY = currentY;
 
-      meta.groupLayouts.forEach(({ group, width, height, columns }) => {
+      meta.groupLayouts.forEach(({ group, width, height, columns, rowHeights }) => {
         const groupX = cursorX;
         const groupY = rowY;
         const groupType = group.groupType || group.nodes[0]?.type || 'service';
         const groupColor = SERVICE_COLORS[groupType]?.color || 'rgba(110, 120, 150, 0.4)';
 
-        if (group.isGroup) {
-          boxNodes.push({
-            id: `layer-${meta.layer}-group-box-${group.groupName}`,
-            type: 'groupBox',
-            position: {
-              x: groupX - GROUP_BOX_PADDING,
-              y: groupY - GROUP_BOX_PADDING,
-            },
-            data: {
-              width: width + GROUP_BOX_PADDING * 2,
-              height: height + GROUP_BOX_PADDING * 2,
-              color: groupColor,
-            },
-            draggable: false,
-            selectable: false,
-          });
-          minX = Math.min(minX, groupX - GROUP_BOX_PADDING);
-          minY = Math.min(minY, groupY - GROUP_BOX_PADDING);
-          maxX = Math.max(maxX, groupX - GROUP_BOX_PADDING + width + GROUP_BOX_PADDING * 2);
-          maxY = Math.max(maxY, groupY - GROUP_BOX_PADDING + height + GROUP_BOX_PADDING * 2);
+        boxNodes.push({
+          id: `layer-${meta.layer}-group-box-${group.groupName}`,
+          type: 'groupBox',
+          position: {
+            x: groupX - GROUP_BOX_PADDING,
+            y: groupY - GROUP_BOX_PADDING,
+          },
+          data: {
+            width: width + GROUP_BOX_PADDING * 2,
+            height: height + GROUP_BOX_PADDING * 2,
+            color: groupColor,
+          },
+          draggable: false,
+          selectable: false,
+        });
+        minX = Math.min(minX, groupX - GROUP_BOX_PADDING);
+        minY = Math.min(minY, groupY - GROUP_BOX_PADDING);
+        maxX = Math.max(maxX, groupX - GROUP_BOX_PADDING + width + GROUP_BOX_PADDING * 2);
+        maxY = Math.max(maxY, groupY - GROUP_BOX_PADDING + height + GROUP_BOX_PADDING * 2);
 
-          labelNodes.push({
-            id: `layer-${meta.layer}-group-label-${group.groupName}`,
-            type: 'groupLabel',
-            position: { x: groupX + width / 2, y: groupY - GROUP_LABEL_OFFSET },
-            data: { text: group.groupName || 'Group', color: groupColor },
-            draggable: false,
-            selectable: false,
-          });
-          minX = Math.min(minX, groupX + width / 2 - LABEL_WIDTH / 2);
-          minY = Math.min(minY, groupY - GROUP_LABEL_OFFSET);
-          maxX = Math.max(maxX, groupX + width / 2 + LABEL_WIDTH / 2);
-          maxY = Math.max(maxY, groupY - GROUP_LABEL_OFFSET + LABEL_HEIGHT);
-        }
+        labelNodes.push({
+          id: `layer-${meta.layer}-group-label-${group.groupName}`,
+          type: 'groupLabel',
+          position: centeredLabelPosition(groupX + width / 2, groupY - GROUP_LABEL_OFFSET),
+          data: { text: group.groupName || 'Group', color: groupColor },
+          draggable: false,
+          selectable: false,
+          style: { width: LABEL_WIDTH, height: LABEL_HEIGHT },
+        });
+        minX = Math.min(minX, groupX + width / 2 - LABEL_WIDTH / 2);
+        minY = Math.min(minY, groupY - GROUP_LABEL_OFFSET);
+        maxX = Math.max(maxX, groupX + width / 2 + LABEL_WIDTH / 2);
+        maxY = Math.max(maxY, groupY - GROUP_LABEL_OFFSET + LABEL_HEIGHT);
 
         group.nodes.forEach((node, index) => {
           const row = Math.floor(index / columns);
@@ -406,14 +461,19 @@ export function GraphView({
           const nodesInRow = Math.min(columns, group.nodes.length - row * columns);
           const rowWidth = nodesInRow * NODE_WIDTH + (nodesInRow - 1) * NODE_GAP;
           const colOffset = (width - rowWidth) / 2;
+          const rowOffset = rowHeights
+            ? rowHeights.slice(0, row).reduce((sum, rowHeight) => sum + rowHeight, 0)
+              + row * NODE_GAP
+            : row * (NODE_HEIGHT + NODE_GAP);
+          const nodeHeight = nodeHeights.get(node.id) ?? NODE_HEIGHT;
           positions.set(node.id, {
             x: groupX + colOffset + col * (NODE_WIDTH + NODE_GAP),
-            y: groupY + row * (NODE_HEIGHT + NODE_GAP),
+            y: groupY + rowOffset,
           });
           minX = Math.min(minX, groupX + colOffset + col * (NODE_WIDTH + NODE_GAP));
-          minY = Math.min(minY, groupY + row * (NODE_HEIGHT + NODE_GAP));
+          minY = Math.min(minY, groupY + rowOffset);
           maxX = Math.max(maxX, groupX + colOffset + col * (NODE_WIDTH + NODE_GAP) + NODE_WIDTH);
-          maxY = Math.max(maxY, groupY + row * (NODE_HEIGHT + NODE_GAP) + NODE_HEIGHT);
+          maxY = Math.max(maxY, groupY + rowOffset + nodeHeight);
         });
 
         cursorX += width + GROUP_GAP;
@@ -423,10 +483,11 @@ export function GraphView({
       labelNodes.push({
         id: `tier-label-${meta.layer}`,
         type: 'tierLabel',
-        position: { x: 0, y: rowY - LAYER_LABEL_OFFSET },
+        position: centeredLabelPosition(0, rowY - LAYER_LABEL_OFFSET),
         data: { text: labelText },
         draggable: false,
         selectable: false,
+        style: { width: LABEL_WIDTH, height: LABEL_HEIGHT },
       });
       minX = Math.min(minX, -LABEL_WIDTH / 2);
       minY = Math.min(minY, rowY - LAYER_LABEL_OFFSET);
@@ -453,47 +514,53 @@ export function GraphView({
         );
         const rowCount = Math.ceil(group.nodes.length / columnCount);
         const width = columnCount * NODE_WIDTH + (columnCount - 1) * STANDALONE_NODE_GAP;
-        const height = rowCount * NODE_HEIGHT + (rowCount - 1) * STANDALONE_NODE_GAP;
+        const rowHeights = new Array(rowCount).fill(0);
+        group.nodes.forEach((node, index) => {
+          const row = Math.floor(index / columnCount);
+          const nodeHeight = nodeHeights.get(node.id) ?? NODE_HEIGHT;
+          rowHeights[row] = Math.max(rowHeights[row], nodeHeight);
+        });
+        const height = rowHeights.reduce((sum, rowHeight) => sum + rowHeight, 0)
+          + (rowCount - 1) * STANDALONE_NODE_GAP;
         groupWidths.push(width);
         const groupType = group.groupType || group.nodes[0]?.type || 'service';
         const groupColor = SERVICE_COLORS[groupType]?.color || 'rgba(110, 120, 150, 0.4)';
 
-        if (group.isGroup) {
-          labelNodes.push({
-            id: `standalone-group-label-${group.groupName}`,
-            type: 'groupLabel',
-            position: { x: cursorX + width / 2, y: baseY - STANDALONE_LABEL_OFFSET },
-            data: { text: group.groupName || 'Standalone', color: groupColor, offset: true },
-            draggable: false,
-            selectable: false,
-          });
+        labelNodes.push({
+          id: `standalone-group-label-${group.groupName}`,
+          type: 'groupLabel',
+          position: centeredLabelPosition(cursorX + width / 2, baseY - STANDALONE_LABEL_OFFSET),
+          data: { text: group.groupName || 'Standalone', color: groupColor, offset: true },
+          draggable: false,
+          selectable: false,
+          style: { width: LABEL_WIDTH, height: LABEL_HEIGHT },
+        });
 
-          boxNodes.push({
-            id: `standalone-group-box-${group.groupName}`,
-            type: 'groupBox',
-            position: {
-              x: cursorX - GROUP_BOX_PADDING,
-              y: baseY - GROUP_BOX_PADDING,
-            },
-            data: {
-              width: width + GROUP_BOX_PADDING * 2,
-              height: height + GROUP_BOX_PADDING * 2,
-              color: groupColor,
-              offset: true,
-            },
-            draggable: false,
-            selectable: false,
-          });
-          minX = Math.min(minX, cursorX - GROUP_BOX_PADDING);
-          minY = Math.min(minY, baseY - GROUP_BOX_PADDING);
-          maxX = Math.max(maxX, cursorX - GROUP_BOX_PADDING + width + GROUP_BOX_PADDING * 2);
-          maxY = Math.max(maxY, baseY - GROUP_BOX_PADDING + height + GROUP_BOX_PADDING * 2);
+        boxNodes.push({
+          id: `standalone-group-box-${group.groupName}`,
+          type: 'groupBox',
+          position: {
+            x: cursorX - GROUP_BOX_PADDING,
+            y: baseY - GROUP_BOX_PADDING,
+          },
+          data: {
+            width: width + GROUP_BOX_PADDING * 2,
+            height: height + GROUP_BOX_PADDING * 2,
+            color: groupColor,
+            offset: true,
+          },
+          draggable: false,
+          selectable: false,
+        });
+        minX = Math.min(minX, cursorX - GROUP_BOX_PADDING);
+        minY = Math.min(minY, baseY - GROUP_BOX_PADDING);
+        maxX = Math.max(maxX, cursorX - GROUP_BOX_PADDING + width + GROUP_BOX_PADDING * 2);
+        maxY = Math.max(maxY, baseY - GROUP_BOX_PADDING + height + GROUP_BOX_PADDING * 2);
 
-          minX = Math.min(minX, cursorX + width / 2 - LABEL_WIDTH / 2);
-          minY = Math.min(minY, baseY - STANDALONE_LABEL_OFFSET);
-          maxX = Math.max(maxX, cursorX + width / 2 + LABEL_WIDTH / 2);
-          maxY = Math.max(maxY, baseY - STANDALONE_LABEL_OFFSET + LABEL_HEIGHT);
-        }
+        minX = Math.min(minX, cursorX + width / 2 - LABEL_WIDTH / 2);
+        minY = Math.min(minY, baseY - STANDALONE_LABEL_OFFSET);
+        maxX = Math.max(maxX, cursorX + width / 2 + LABEL_WIDTH / 2);
+        maxY = Math.max(maxY, baseY - STANDALONE_LABEL_OFFSET + LABEL_HEIGHT);
 
         group.nodes.forEach((node, index) => {
           const row = Math.floor(index / columnCount);
@@ -501,15 +568,18 @@ export function GraphView({
           const nodesInRow = Math.min(columnCount, group.nodes.length - row * columnCount);
           const rowWidth = nodesInRow * NODE_WIDTH + (nodesInRow - 1) * STANDALONE_NODE_GAP;
           const colOffset = (width - rowWidth) / 2;
+          const rowOffset = rowHeights.slice(0, row).reduce((sum, rowHeight) => sum + rowHeight, 0)
+            + row * STANDALONE_NODE_GAP;
+          const nodeHeight = nodeHeights.get(node.id) ?? NODE_HEIGHT;
           positions.set(node.id, {
             x: cursorX + colOffset + col * (NODE_WIDTH + STANDALONE_NODE_GAP),
-            y: baseY + row * (NODE_HEIGHT + STANDALONE_NODE_GAP),
+            y: baseY + rowOffset,
           });
           standaloneNodeIds.add(node.id);
           minX = Math.min(minX, cursorX + colOffset + col * (NODE_WIDTH + STANDALONE_NODE_GAP));
-          minY = Math.min(minY, baseY + row * (NODE_HEIGHT + STANDALONE_NODE_GAP));
+          minY = Math.min(minY, baseY + rowOffset);
           maxX = Math.max(maxX, cursorX + colOffset + col * (NODE_WIDTH + STANDALONE_NODE_GAP) + NODE_WIDTH);
-          maxY = Math.max(maxY, baseY + row * (NODE_HEIGHT + STANDALONE_NODE_GAP) + NODE_HEIGHT);
+          maxY = Math.max(maxY, baseY + rowOffset + nodeHeight);
         });
 
         cursorX += width + STANDALONE_GROUP_GAP;
@@ -522,10 +592,11 @@ export function GraphView({
       labelNodes.push({
         id: 'standalone-label',
         type: 'tierLabel',
-        position: { x: totalWidth / 2, y: baseY - STANDALONE_SECTION_OFFSET },
+        position: centeredLabelPosition(totalWidth / 2, baseY - STANDALONE_SECTION_OFFSET),
         data: { text: 'Standalone Services', offset: true },
         draggable: false,
         selectable: false,
+        style: { width: LABEL_WIDTH, height: LABEL_HEIGHT },
       });
       minX = Math.min(minX, totalWidth / 2 - LABEL_WIDTH / 2);
       minY = Math.min(minY, baseY - STANDALONE_SECTION_OFFSET);
@@ -578,7 +649,8 @@ export function GraphView({
     };
 
     nodePositions.forEach((node) => {
-      updateBounds(node.position.x, node.position.y, NODE_WIDTH, NODE_HEIGHT);
+      const nodeHeight = nodeHeights.get(node.id) ?? NODE_HEIGHT;
+      updateBounds(node.position.x, node.position.y, NODE_WIDTH, nodeHeight);
     });
 
     labelNodes.forEach((label) => {
@@ -599,7 +671,7 @@ export function GraphView({
       nodes: [...boxNodes, ...nodePositions, ...labelNodes],
       bounds,
     };
-  }, [localNodes, sortedLayers, stableConnectedLayout, standaloneGroups, handleNodeClick, handleContextMenu, animateNodes]);
+  }, [localNodes, sortedLayers, stableConnectedLayout, standaloneGroups, handleNodeClick, handleContextMenu, animateNodes, externalApiVersion]);
 
   const flowEdges = useMemo(() => {
     return localEdges.map((edge) => {
