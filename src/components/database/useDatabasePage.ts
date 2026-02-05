@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import type { GraphNode, DatabaseTablesResult, TableDataResult, QueryResult, ColumnDefinition } from '../../types/electron';
 
 interface UseDatabasePageResult {
@@ -15,16 +15,19 @@ interface UseDatabasePageResult {
   activeTab: 'data' | 'query';
   showCreateModal: boolean;
   deletingRow: number | null;
+  deletingTable: boolean;
   showDeleteConfirm: { rowIndex: number; row: Record<string, unknown> } | null;
-  textareaRef: React.RefObject<HTMLTextAreaElement | null>;
+  showDeleteTableConfirm: boolean;
   setActiveTab: (tab: 'data' | 'query') => void;
   setShowCreateModal: (show: boolean) => void;
   setShowDeleteConfirm: (value: { rowIndex: number; row: Record<string, unknown> } | null) => void;
+  setShowDeleteTableConfirm: (value: boolean) => void;
   setQuery: (value: string) => void;
   loadTableData: (tableName: string) => Promise<void>;
   executeQuery: () => Promise<void>;
   handleKeyDown: (event: React.KeyboardEvent) => void;
   handleCreateTable: (tableName: string, columns: ColumnDefinition[]) => Promise<void>;
+  handleDeleteTable: () => Promise<void>;
   handleDeleteRow: (rowIndex: number, row: Record<string, unknown>) => Promise<void>;
   formatCellValue: (value: unknown) => string;
   getDbTypeLabel: () => string;
@@ -46,8 +49,8 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [deletingRow, setDeletingRow] = useState<number | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<{ rowIndex: number; row: Record<string, unknown> } | null>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-
+  const [deletingTable, setDeletingTable] = useState(false);
+  const [showDeleteTableConfirm, setShowDeleteTableConfirm] = useState(false);
   const containerId = node.containerId || '';
   const containerImage = node.containerImage || '';
 
@@ -170,6 +173,43 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
     await loadTableData(tableName);
   }, [containerId, containerImage, refreshTables, loadTableData]);
 
+  const handleDeleteTable = useCallback(async () => {
+    if (!selectedTable || !window.electronAPI?.executeDatabaseQuery) return;
+
+    const escapePostgres = (name: string) => `"${name.replace(/"/g, '""')}"`;
+    const escapeMySQL = (name: string) => `\`${name.replace(/`/g, '``')}\``;
+    const escapeMongo = (name: string) => name.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+
+    let dropQuery = '';
+    if (dbType === 'postgresql') {
+      dropQuery = `DROP TABLE IF EXISTS ${escapePostgres(selectedTable)} CASCADE;`;
+    } else if (dbType === 'mysql') {
+      dropQuery = `DROP TABLE IF EXISTS ${escapeMySQL(selectedTable)};`;
+    } else if (dbType === 'mongodb') {
+      dropQuery = `db.getCollection("${escapeMongo(selectedTable)}").drop()`;
+    } else {
+      alert('Unsupported database type for deleting tables.');
+      return;
+    }
+
+    setDeletingTable(true);
+    try {
+      const result = await window.electronAPI.executeDatabaseQuery(containerId, containerImage, dropQuery);
+      if (result.error) {
+        throw new Error(result.error);
+      }
+      setShowDeleteTableConfirm(false);
+      setSelectedTable(null);
+      setTableData(null);
+      await refreshTables();
+    } catch (error) {
+      console.error('Error deleting table:', error);
+      alert(`Failed to delete ${dbType === 'mongodb' ? 'collection' : 'table'}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setDeletingTable(false);
+    }
+  }, [selectedTable, dbType, containerId, containerImage, refreshTables]);
+
   const handleDeleteRow = useCallback(async (rowIndex: number, row: Record<string, unknown>) => {
     if (!selectedTable || !tableData) return;
 
@@ -252,15 +292,18 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
     showCreateModal,
     deletingRow,
     showDeleteConfirm,
-    textareaRef,
+    deletingTable,
+    showDeleteTableConfirm,
     setActiveTab,
     setShowCreateModal,
     setShowDeleteConfirm,
+    setShowDeleteTableConfirm,
     setQuery,
     loadTableData,
     executeQuery,
     handleKeyDown,
     handleCreateTable,
+    handleDeleteTable,
     handleDeleteRow,
     formatCellValue,
     getDbTypeLabel,

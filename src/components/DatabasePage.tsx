@@ -5,6 +5,7 @@ import { DatabaseErrorState } from './database/DatabaseErrorState';
 import { DatabaseDataLayout } from './database/DatabaseDataLayout';
 import { DatabaseQueryLayout } from './database/DatabaseQueryLayout';
 import { DeleteConfirmDialog } from './database/DeleteConfirmDialog';
+import { DeleteTableConfirmDialog } from './database/DeleteTableConfirmDialog';
 import { useDatabasePage } from './database/useDatabasePage';
 
 interface DatabasePageProps {
@@ -28,15 +29,18 @@ export function DatabasePage({ node, onBack }: DatabasePageProps) {
     showCreateModal,
     deletingRow,
     showDeleteConfirm,
-    textareaRef,
+    deletingTable,
+    showDeleteTableConfirm,
     setActiveTab,
     setShowCreateModal,
     setShowDeleteConfirm,
+    setShowDeleteTableConfirm,
     setQuery,
     loadTableData,
     executeQuery,
     handleKeyDown,
     handleCreateTable,
+    handleDeleteTable,
     handleDeleteRow,
     formatCellValue,
     getDbTypeLabel,
@@ -79,14 +83,17 @@ export function DatabasePage({ node, onBack }: DatabasePageProps) {
               tableData={tableData}
               loadingTable={loadingTable}
               deletingRow={deletingRow}
+              deletingTable={deletingTable}
               onSelectTable={loadTableData}
               onRefreshTable={() => selectedTable && loadTableData(selectedTable)}
               onCreateTable={() => setShowCreateModal(true)}
+              onDeleteTable={() => setShowDeleteTableConfirm(true)}
               onDeleteRowRequest={(rowIndex, row) => setShowDeleteConfirm({ rowIndex, row })}
               formatCellValue={formatCellValue}
             />
           ) : (
             <DatabaseQueryLayout
+              dbType={dbType}
               query={query}
               queryResult={queryResult}
               executingQuery={executingQuery}
@@ -95,7 +102,6 @@ export function DatabasePage({ node, onBack }: DatabasePageProps) {
               onKeyDown={handleKeyDown}
               getQueryPlaceholder={getQueryPlaceholder}
               formatCellValue={formatCellValue}
-              textareaRef={textareaRef}
             />
           )}
         </div>
@@ -111,6 +117,16 @@ export function DatabasePage({ node, onBack }: DatabasePageProps) {
           onCancel={() => setShowDeleteConfirm(null)}
           onConfirm={() => handleDeleteRow(showDeleteConfirm.rowIndex, showDeleteConfirm.row)}
           formatCellValue={formatCellValue}
+        />
+      )}
+
+      {showDeleteTableConfirm && selectedTable && (
+        <DeleteTableConfirmDialog
+          tableName={selectedTable}
+          dbType={dbType}
+          deletingTable={deletingTable}
+          onCancel={() => setShowDeleteTableConfirm(false)}
+          onConfirm={handleDeleteTable}
         />
       )}
 

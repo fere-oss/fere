@@ -7,9 +7,11 @@ interface DatabaseDataLayoutProps {
   tableData: TableDataResult | null;
   loadingTable: boolean;
   deletingRow: number | null;
+  deletingTable: boolean;
   onSelectTable: (table: string) => void;
   onRefreshTable: () => void;
   onCreateTable: () => void;
+  onDeleteTable: () => void;
   onDeleteRowRequest: (rowIndex: number, row: Record<string, unknown>) => void;
   formatCellValue: (value: unknown) => string;
 }
@@ -21,9 +23,11 @@ export function DatabaseDataLayout({
   tableData,
   loadingTable,
   deletingRow,
+  deletingTable,
   onSelectTable,
   onRefreshTable,
   onCreateTable,
+  onDeleteTable,
   onDeleteRowRequest,
   formatCellValue,
 }: DatabaseDataLayoutProps) {
@@ -37,16 +41,29 @@ export function DatabaseDataLayout({
             </span>
             <span className="db-sidebar-count">{tables.length}</span>
           </div>
-          <button
-            className="db-create-table-btn"
-            onClick={onCreateTable}
-            title={`Create new ${dbType === 'mongodb' ? 'collection' : 'table'}`}
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <line x1="12" y1="5" x2="12" y2="19" />
-              <line x1="5" y1="12" x2="19" y2="12" />
-            </svg>
-          </button>
+          <div className="db-sidebar-actions">
+            <button
+              className="db-create-table-btn"
+              onClick={onCreateTable}
+              title={`Create new ${dbType === 'mongodb' ? 'collection' : 'table'}`}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <line x1="12" y1="5" x2="12" y2="19" />
+                <line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+            </button>
+            <button
+              className="db-delete-table-btn"
+              onClick={onDeleteTable}
+              disabled={!selectedTable || deletingTable}
+              title={`Delete selected ${dbType === 'mongodb' ? 'collection' : 'table'}`}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+                <polyline points="3 6 5 6 21 6" />
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+              </svg>
+            </button>
+          </div>
         </div>
         <div className="db-sidebar-list">
           {tables.length > 0 ? (

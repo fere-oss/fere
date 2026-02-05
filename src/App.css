@@ -3868,11 +3868,12 @@ body {
 .db-page {
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  height: 100%;
+  min-height: 0;
   background: #fafafa;
   color: var(--text-secondary);
   /* Override parent padding to take full width */
-  margin: 0 -40px -40px -40px;
+  margin: 0 -40px 0 -40px;
   width: calc(100% + 80px);
 }
 
@@ -3935,9 +3936,9 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 24px 56px;
-  background: #ffffff;
-  border-bottom: 1px solid #e5e5e5;
+  padding: 16px 56px;
+  background: transparent;
+  border-bottom: none;
 }
 
 .db-header-left {
@@ -4116,7 +4117,7 @@ body {
   flex: 1;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow: auto;
 }
 
 /* Data layout (Browse Data tab) */
@@ -4124,8 +4125,9 @@ body {
   display: flex;
   flex: 1;
   overflow: hidden;
-  padding: 0 56px 56px 56px;
+  padding: 24px 56px 56px 56px;
   gap: 28px;
+  min-height: 0;
 }
 
 /* Sidebar */
@@ -4192,10 +4194,43 @@ body {
   transform: scale(1.05);
 }
 
+.db-sidebar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.db-delete-table-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: #ffffff;
+  border: 1px solid #e5e5e5;
+  border-radius: 6px;
+  color: #dc2626;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.db-delete-table-btn:hover:not(:disabled) {
+  background: #fef2f2;
+  border-color: #fca5a5;
+  transform: scale(1.05);
+}
+
+.db-delete-table-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 .db-sidebar-list {
   flex: 1;
   overflow-y: auto;
   padding: 14px;
+  display: flex;
+  flex-direction: column;
 }
 
 .db-table-item {
@@ -4252,6 +4287,8 @@ body {
   color: #a3a3a3;
   text-align: center;
   font-size: 13px;
+  flex: 1;
+  justify-content: center;
 }
 
 /* Main data area */
@@ -4499,9 +4536,10 @@ body {
   display: flex;
   flex-direction: column;
   flex: 1;
-  overflow: hidden;
-  padding: 0 56px 56px 56px;
+  overflow: visible;
+  padding: 24px 56px 56px 56px;
   gap: 28px;
+  min-height: 0;
 }
 
 .db-query-editor-section {
@@ -4510,8 +4548,11 @@ body {
   background: #ffffff;
   border: 1px solid #e5e5e5;
   border-radius: 12px;
-  overflow: hidden;
+  overflow: auto;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  flex: 0 0 auto;
+  min-height: 260px;
+  resize: vertical;
 }
 
 .db-query-editor-header {
@@ -4588,17 +4629,112 @@ body {
   box-shadow: none;
 }
 
-.db-query-textarea {
+.db-query-editor-container {
+  position: relative;
+  width: 100%;
+  flex: 1;
   min-height: 200px;
+}
+
+.db-query-highlight {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  margin: 0;
   padding: 20px 24px;
-  background: #fafafa;
-  border: none;
-  color: #171717;
   font-family: "JetBrains Mono", monospace;
   font-size: 13px;
   line-height: 1.7;
-  resize: vertical;
+  white-space: pre-wrap;
+  word-break: break-word;
+  pointer-events: none;
+  overflow: auto;
+}
+
+.db-query-textarea {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  padding: 20px 24px;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 13px;
+  line-height: 1.7;
+  color: transparent;
+  caret-color: #111111;
+  background: transparent;
+  border: none;
   outline: none;
+  resize: none;
+  white-space: pre-wrap;
+  word-break: break-word;
+  box-sizing: border-box;
+}
+
+.db-query-textarea::selection {
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.db-query-textarea::-moz-selection {
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.db-query-textarea::placeholder {
+  color: #a3a3a3;
+}
+
+.db-hl-keyword {
+  color: #15803d;
+  font-weight: 600;
+}
+
+.db-hl-string {
+  color: #b45309;
+}
+
+.db-hl-number {
+  color: #a16207;
+}
+
+.db-hl-comment {
+  color: #9ca3af;
+  font-style: italic;
+}
+
+.db-hl-identifier {
+  color: #4b5563;
+}
+
+.db-hl-operator {
+  color: #9ca3af;
+}
+
+.db-query-output {
+  margin: 0;
+  padding: 24px;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 13px;
+  line-height: 1.7;
+  color: #171717;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.db-out-number {
+  color: #a16207;
+  font-weight: 600;
+}
+
+.db-out-meta {
+  color: #6b7280;
+  font-style: italic;
+}
+
+.db-out-pipe {
+  color: #9ca3af;
 }
 
 .db-query-textarea::placeholder {
@@ -4607,7 +4743,7 @@ body {
 
 /* Query results */
 .db-query-results-section {
-  flex: 1;
+  flex: 0 0 auto;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -4615,6 +4751,8 @@ body {
   border: 1px solid #e5e5e5;
   border-radius: 12px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  min-height: 0;
+  min-height: 260px;
 }
 
 .db-query-results-header {
@@ -5126,6 +5264,13 @@ body {
 
 .db-delete-confirm-header svg {
   flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  padding: 6px;
+  border-radius: 8px;
+  background: #fef2f2;
+  border: 1px solid #fca5a5;
+  box-shadow: 0 1px 2px rgba(220, 38, 38, 0.15);
 }
 
 .db-delete-confirm-header h3 {
