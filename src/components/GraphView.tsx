@@ -21,7 +21,6 @@ import { groupContainersByProject, groupLayoutNodes } from "./graph/grouping";
 import type { GraphViewProps, LayoutNode, RenderGroup } from "./graph/types";
 import { ContextMenu } from "./graph/ContextMenu";
 import { NodeDetailPanel } from "./graph/NodeDetailPanel";
-import { ProjectContainer } from "./graph/ContainerGroups";
 import { ServiceNode } from "./graph/ServiceNodes";
 
 const NODE_WIDTH = 260;
@@ -42,6 +41,7 @@ const LABEL_HEIGHT = 28;
 const MAX_GROUP_COLUMNS = 2;
 const MAX_STANDALONE_COLUMNS = 2;
 const MAX_SYSTEM_SERVICE_COLUMNS = 3;
+const GROUP_COLOR = "rgba(140, 150, 170, 0.35)";
 
 function TierLabelNode({ data }: { data: { text: string } }) {
   return <div className="graph-tier-label">{data.text}</div>;
@@ -149,7 +149,7 @@ export function GraphView({
 
   const orderCacheRef = useRef<Map<number, string[]>>(new Map());
   const groupOrderCacheRef = useRef<Map<number, string[]>>(new Map());
-  const [externalApiVersion, setExternalApiVersion] = useState(0);
+  const [, setExternalApiVersion] = useState(0);
   const nodeHeightsRef = useRef<Map<string, number>>(new Map());
   const measuredIdsRef = useRef<Set<string>>(new Set());
   const layoutLockedRef = useRef(false);
@@ -216,6 +216,12 @@ export function GraphView({
       (e) => localNodeIds.has(e.source) && localNodeIds.has(e.target),
     );
   }, [localNodes, stableEdges]);
+  const containerNodes = useMemo(
+    () => localNodes.filter((node) => node.isDockerContainer),
+    [localNodes],
+  );
+  const layoutNodes = isContainerView ? containerNodes : localNodes;
+  const layoutEdges = isContainerView ? [] : localEdges;
 
   const projectPathsKey = useMemo(() => {
     return Array.from(
@@ -227,11 +233,11 @@ export function GraphView({
 
   const nodesKey = useMemo(
     () =>
-      localNodes
+      layoutNodes
         .map((node) => node.id)
         .sort()
         .join(","),
-    [localNodes],
+    [layoutNodes],
   );
 
   useEffect(() => {
@@ -254,7 +260,7 @@ export function GraphView({
         setLayoutVersion((version) => version + 1);
       }
     },
-    [localNodes.length],
+    [layoutNodes.length],
   );
 
   useEffect(() => {
@@ -299,8 +305,11 @@ export function GraphView({
   }, [projectPathsKey]);
 
   const { connected: connectedLayout, standalone: standaloneLayout } = useMemo(
-    () => computeHierarchicalLayout(localNodes, localEdges),
-    [localNodes, localEdges],
+    () =>
+      isContainerView
+        ? { connected: [], standalone: [] }
+        : computeHierarchicalLayout(localNodes, localEdges),
+    [isContainerView, localNodes, localEdges],
   );
 
   const stableConnectedLayout = useMemo(() => {
@@ -369,7 +378,18 @@ export function GraphView({
     return Array.from(layers).sort((a, b) => a - b);
   }, [stableConnectedLayout]);
 
+  const containerGroups = useMemo(() => {
+    if (!isContainerView) return [];
+    const projects = groupContainersByProject(containerNodes);
+    const groups = projects.flatMap((project) => project.typeGroups);
+    return groups.map((group) => ({
+      ...group,
+      isGroup: group.nodes.length > 1,
+    }));
+  }, [isContainerView, containerNodes]);
+
   const standaloneGroups = useMemo(() => {
+    if (isContainerView) return containerGroups;
     if (standaloneLayout.length === 0) return [];
 
     const systemNodes: GraphNode[] = [];
@@ -401,12 +421,7 @@ export function GraphView({
     return [...result, ...singles].sort((a, b) =>
       a.groupName.localeCompare(b.groupName),
     );
-  }, [standaloneLayout]);
-
-  const containerProjects = useMemo(() => {
-    if (!isContainerView) return [];
-    return groupContainersByProject(localNodes);
-  }, [isContainerView, localNodes]);
+  }, [containerGroups, isContainerView, standaloneLayout]);
 
   const flowLayout = useMemo(() => {
     const positions = new Map<string, { x: number; y: number }>();
@@ -437,171 +452,176 @@ export function GraphView({
       y: topY,
     });
 
-    const layerMetas = sortedLayers.map((layer) => {
-      const groups = groupLayoutNodes(stableConnectedLayout, layer);
-      const groupLayouts = groups.map((group) => {
-        if (!group.isGroup) {
-          const measured =
-            nodeHeightsRef.current.get(group.nodes[0]?.id ?? "") ??
-            NODE_MIN_HEIGHT;
-          return {
-            group,
-            width: NODE_WIDTH,
-            height: measured,
-            columns: 1,
-            rowCount: 1,
-            rowHeights: [measured],
-          };
-        }
-        const desiredColumns = Math.ceil(Math.sqrt(group.nodes.length));
-        const columnCount = Math.min(
-          Math.max(1, desiredColumns),
-          Math.min(MAX_GROUP_COLUMNS, group.nodes.length),
-        );
-        const rowCount = Math.ceil(group.nodes.length / columnCount);
-        const width = columnCount * NODE_WIDTH + (columnCount - 1) * NODE_GAP;
-        const rowHeights = new Array(rowCount).fill(NODE_MIN_HEIGHT);
-        group.nodes.forEach((node, index) => {
-          const row = Math.floor(index / columnCount);
-          const measured =
-            nodeHeightsRef.current.get(node.id) ?? NODE_MIN_HEIGHT;
-          rowHeights[row] = Math.max(rowHeights[row], measured);
-        });
-        const height =
-          rowHeights.reduce((sum, h) => sum + h, 0) + (rowCount - 1) * NODE_GAP;
-        return {
-          group,
-          width,
-          height,
-          columns: columnCount,
-          rowCount,
-          rowHeights,
-        };
-      });
-      const maxHeight = Math.max(
-        NODE_MIN_HEIGHT,
-        ...groupLayouts.map((g) => g.height),
-      );
-      return { layer, groups, groupLayouts, height: maxHeight };
-    });
-
     let currentY = 0;
-    layerMetas.forEach((meta) => {
-      if (meta.groups.length === 0) return;
-      const groupWidths = meta.groupLayouts.map((layout) => layout.width);
-      const totalWidth =
-        groupWidths.reduce((sum, width) => sum + width, 0) +
-        GROUP_GAP * Math.max(0, groupWidths.length - 1);
-      let cursorX = -totalWidth / 2;
-      const rowY = currentY;
-
-      meta.groupLayouts.forEach(
-        ({ group, width, height, columns, rowHeights }) => {
-          const groupX = cursorX;
-          const groupY = rowY;
-          const groupType =
-            group.groupType || group.nodes[0]?.type || "service";
-          const groupColor =
-            SERVICE_COLORS[groupType]?.color || "rgba(110, 120, 150, 0.4)";
-
-          if (group.isGroup) {
-            boxNodes.push({
-              id: `layer-${meta.layer}-group-box-${group.groupName}`,
-              type: "groupBox",
-              position: {
-                x: groupX - GROUP_BOX_PADDING,
-                y: groupY - GROUP_BOX_PADDING,
-              },
-              data: {
-                width: width + GROUP_BOX_PADDING * 2,
-                height: height + GROUP_BOX_PADDING * 2,
-                color: groupColor,
-              },
-              draggable: false,
-              selectable: false,
-            });
-            minX = Math.min(minX, groupX - GROUP_BOX_PADDING);
-            minY = Math.min(minY, groupY - GROUP_BOX_PADDING);
-            maxX = Math.max(
-              maxX,
-              groupX - GROUP_BOX_PADDING + width + GROUP_BOX_PADDING * 2,
-            );
-            maxY = Math.max(
-              maxY,
-              groupY - GROUP_BOX_PADDING + height + GROUP_BOX_PADDING * 2,
-            );
-
-            labelNodes.push({
-              id: `layer-${meta.layer}-group-label-${group.groupName}`,
-              type: "groupLabel",
-              position: centeredLabelPosition(
-                groupX + width / 2,
-                groupY - GROUP_LABEL_OFFSET,
-              ),
-              data: { text: group.groupName || "Group", color: groupColor },
-              draggable: false,
-              selectable: false,
-              style: { width: LABEL_WIDTH, height: LABEL_HEIGHT },
-            });
-            minX = Math.min(minX, groupX + width / 2 - LABEL_WIDTH / 2);
-            minY = Math.min(minY, groupY - GROUP_LABEL_OFFSET);
-            maxX = Math.max(maxX, groupX + width / 2 + LABEL_WIDTH / 2);
-            maxY = Math.max(maxY, groupY - GROUP_LABEL_OFFSET + LABEL_HEIGHT);
+    if (!isContainerView) {
+      const layerMetas = sortedLayers.map((layer) => {
+        const groups = groupLayoutNodes(stableConnectedLayout, layer);
+        const groupLayouts = groups.map((group) => {
+          if (!group.isGroup) {
+            const measured =
+              nodeHeightsRef.current.get(group.nodes[0]?.id ?? "") ??
+              NODE_MIN_HEIGHT;
+            return {
+              group,
+              width: NODE_WIDTH,
+              height: measured,
+              columns: 1,
+              rowCount: 1,
+              rowHeights: [measured],
+            };
           }
-
+          const desiredColumns = Math.ceil(Math.sqrt(group.nodes.length));
+          const columnCount = Math.min(
+            Math.max(1, desiredColumns),
+            Math.min(MAX_GROUP_COLUMNS, group.nodes.length),
+          );
+          const rowCount = Math.ceil(group.nodes.length / columnCount);
+          const width = columnCount * NODE_WIDTH + (columnCount - 1) * NODE_GAP;
+          const rowHeights = new Array(rowCount).fill(NODE_MIN_HEIGHT);
           group.nodes.forEach((node, index) => {
-            const row = Math.floor(index / columns);
-            const col = index % columns;
-            const nodesInRow = Math.min(
-              columns,
-              group.nodes.length - row * columns,
-            );
-            const rowWidth =
-              nodesInRow * NODE_WIDTH + (nodesInRow - 1) * NODE_GAP;
-            const colOffset = (width - rowWidth) / 2;
-            const rowOffset =
-              (rowHeights ?? []).slice(0, row).reduce((sum, h) => sum + h, 0) +
-              row * NODE_GAP;
-            positions.set(node.id, {
-              x: groupX + colOffset + col * (NODE_WIDTH + NODE_GAP),
-              y: groupY + rowOffset,
-            });
-            minX = Math.min(
-              minX,
-              groupX + colOffset + col * (NODE_WIDTH + NODE_GAP),
-            );
-            minY = Math.min(minY, groupY + rowOffset);
-            maxX = Math.max(
-              maxX,
-              groupX + colOffset + col * (NODE_WIDTH + NODE_GAP) + NODE_WIDTH,
-            );
+            const row = Math.floor(index / columnCount);
             const measured =
               nodeHeightsRef.current.get(node.id) ?? NODE_MIN_HEIGHT;
-            maxY = Math.max(maxY, groupY + rowOffset + measured);
+            rowHeights[row] = Math.max(rowHeights[row], measured);
           });
-
-          cursorX += width + GROUP_GAP;
-        },
-      );
-
-      const labelText =
-        DEFAULT_LAYER_LABELS[meta.layer] || `Tier ${meta.layer + 1}`;
-      labelNodes.push({
-        id: `tier-label-${meta.layer}`,
-        type: "tierLabel",
-        position: centeredLabelPosition(0, rowY - LAYER_LABEL_OFFSET),
-        data: { text: labelText },
-        draggable: false,
-        selectable: false,
-        style: { width: LABEL_WIDTH, height: LABEL_HEIGHT },
+          const height =
+            rowHeights.reduce((sum, h) => sum + h, 0) +
+            (rowCount - 1) * NODE_GAP;
+          return {
+            group,
+            width,
+            height,
+            columns: columnCount,
+            rowCount,
+            rowHeights,
+          };
+        });
+        const maxHeight = Math.max(
+          NODE_MIN_HEIGHT,
+          ...groupLayouts.map((g) => g.height),
+        );
+        return { layer, groups, groupLayouts, height: maxHeight };
       });
-      minX = Math.min(minX, -LABEL_WIDTH / 2);
-      minY = Math.min(minY, rowY - LAYER_LABEL_OFFSET);
-      maxX = Math.max(maxX, LABEL_WIDTH / 2);
-      maxY = Math.max(maxY, rowY - LAYER_LABEL_OFFSET + LABEL_HEIGHT);
 
-      currentY += meta.height + LAYER_GAP;
-    });
+      layerMetas.forEach((meta) => {
+        if (meta.groups.length === 0) return;
+        const groupWidths = meta.groupLayouts.map((layout) => layout.width);
+        const totalWidth =
+          groupWidths.reduce((sum, width) => sum + width, 0) +
+          GROUP_GAP * Math.max(0, groupWidths.length - 1);
+        let cursorX = -totalWidth / 2;
+        const rowY = currentY;
+
+        meta.groupLayouts.forEach(
+          ({ group, width, height, columns, rowHeights }) => {
+            const groupX = cursorX;
+            const groupY = rowY;
+            const groupColor = GROUP_COLOR;
+
+            if (group.isGroup) {
+              boxNodes.push({
+                id: `layer-${meta.layer}-group-box-${group.groupName}`,
+                type: "groupBox",
+                position: {
+                  x: groupX - GROUP_BOX_PADDING,
+                  y: groupY - GROUP_BOX_PADDING,
+                },
+                data: {
+                  width: width + GROUP_BOX_PADDING * 2,
+                  height: height + GROUP_BOX_PADDING * 2,
+                  color: groupColor,
+                },
+                draggable: false,
+                selectable: false,
+              });
+              minX = Math.min(minX, groupX - GROUP_BOX_PADDING);
+              minY = Math.min(minY, groupY - GROUP_BOX_PADDING);
+              maxX = Math.max(
+                maxX,
+                groupX - GROUP_BOX_PADDING + width + GROUP_BOX_PADDING * 2,
+              );
+              maxY = Math.max(
+                maxY,
+                groupY - GROUP_BOX_PADDING + height + GROUP_BOX_PADDING * 2,
+              );
+
+              labelNodes.push({
+                id: `layer-${meta.layer}-group-label-${group.groupName}`,
+                type: "groupLabel",
+                position: centeredLabelPosition(
+                  groupX + width / 2,
+                  groupY - GROUP_LABEL_OFFSET,
+                ),
+                data: { text: group.groupName || "Group", color: groupColor },
+                draggable: false,
+                selectable: false,
+                style: { width: LABEL_WIDTH, height: LABEL_HEIGHT },
+              });
+              minX = Math.min(minX, groupX + width / 2 - LABEL_WIDTH / 2);
+              minY = Math.min(minY, groupY - GROUP_LABEL_OFFSET);
+              maxX = Math.max(maxX, groupX + width / 2 + LABEL_WIDTH / 2);
+              maxY = Math.max(
+                maxY,
+                groupY - GROUP_LABEL_OFFSET + LABEL_HEIGHT,
+              );
+            }
+
+            group.nodes.forEach((node, index) => {
+              const row = Math.floor(index / columns);
+              const col = index % columns;
+              const nodesInRow = Math.min(
+                columns,
+                group.nodes.length - row * columns,
+              );
+              const rowWidth =
+                nodesInRow * NODE_WIDTH + (nodesInRow - 1) * NODE_GAP;
+              const colOffset = (width - rowWidth) / 2;
+              const rowOffset =
+                (rowHeights ?? [])
+                  .slice(0, row)
+                  .reduce((sum, h) => sum + h, 0) +
+                row * NODE_GAP;
+              positions.set(node.id, {
+                x: groupX + colOffset + col * (NODE_WIDTH + NODE_GAP),
+                y: groupY + rowOffset,
+              });
+              minX = Math.min(
+                minX,
+                groupX + colOffset + col * (NODE_WIDTH + NODE_GAP),
+              );
+              minY = Math.min(minY, groupY + rowOffset);
+              maxX = Math.max(
+                maxX,
+                groupX + colOffset + col * (NODE_WIDTH + NODE_GAP) + NODE_WIDTH,
+              );
+              const measured =
+                nodeHeightsRef.current.get(node.id) ?? NODE_MIN_HEIGHT;
+              maxY = Math.max(maxY, groupY + rowOffset + measured);
+            });
+
+            cursorX += width + GROUP_GAP;
+          },
+        );
+
+        const labelText =
+          DEFAULT_LAYER_LABELS[meta.layer] || `Tier ${meta.layer + 1}`;
+        labelNodes.push({
+          id: `tier-label-${meta.layer}`,
+          type: "tierLabel",
+          position: centeredLabelPosition(0, rowY - LAYER_LABEL_OFFSET),
+          data: { text: labelText },
+          draggable: false,
+          selectable: false,
+          style: { width: LABEL_WIDTH, height: LABEL_HEIGHT },
+        });
+        minX = Math.min(minX, -LABEL_WIDTH / 2);
+        minY = Math.min(minY, rowY - LAYER_LABEL_OFFSET);
+        maxX = Math.max(maxX, LABEL_WIDTH / 2);
+        maxY = Math.max(maxY, rowY - LAYER_LABEL_OFFSET + LABEL_HEIGHT);
+
+        currentY += meta.height + LAYER_GAP;
+      });
+    }
 
     if (standaloneGroups.length > 0) {
       const baseY = currentY + STANDALONE_SECTION_OFFSET;
@@ -628,121 +648,131 @@ export function GraphView({
         const height =
           rowHeights.reduce((sum, h) => sum + h, 0) +
           (rowCount - 1) * STANDALONE_NODE_GAP;
-        const groupType = group.groupType || group.nodes[0]?.type || "service";
-        const groupColor =
-          SERVICE_COLORS[groupType]?.color || "rgba(110, 120, 150, 0.4)";
+        const groupColor = GROUP_COLOR;
         return { group, columnCount, width, height, groupColor, rowHeights };
       });
 
-      const totalWidth =
-        meta.reduce((sum, item) => sum + item.width, 0) +
-        STANDALONE_GROUP_GAP * Math.max(0, meta.length - 1);
-      const offset = totalWidth / 2;
-      let cursorX = 0;
+      const maxGroupsPerRow = isContainerView ? 2 : meta.length;
+      let cursorY = baseY;
+      let startIndex = 0;
 
-      meta.forEach((item) => {
-        const groupX = cursorX;
+      while (startIndex < meta.length) {
+        const rowItems = meta.slice(startIndex, startIndex + maxGroupsPerRow);
+        const rowWidth =
+          rowItems.reduce((sum, item) => sum + item.width, 0) +
+          STANDALONE_GROUP_GAP * Math.max(0, rowItems.length - 1);
+        const rowOffset = rowWidth / 2;
+        let cursorX = 0;
 
-        if (item.group.isGroup) {
-          labelNodes.push({
-            id: `standalone-group-label-${item.group.groupName}`,
-            type: "groupLabel",
-            position: centeredLabelPosition(
-              groupX + item.width / 2,
-              baseY - STANDALONE_LABEL_OFFSET,
-            ),
-            data: {
-              text: item.group.groupName || "Standalone",
-              color: item.groupColor,
-              offset: true,
-            },
-            draggable: false,
-            selectable: false,
-            style: { width: LABEL_WIDTH, height: LABEL_HEIGHT },
+        rowItems.forEach((item) => {
+          const groupX = cursorX;
+
+          if (item.group.isGroup) {
+            labelNodes.push({
+              id: `standalone-group-label-${item.group.groupName}-${startIndex}`,
+              type: "groupLabel",
+              position: centeredLabelPosition(
+                groupX + item.width / 2,
+                cursorY - STANDALONE_LABEL_OFFSET,
+              ),
+              data: {
+                text: item.group.groupName || "Standalone",
+                color: item.groupColor,
+                offset: true,
+              },
+              draggable: false,
+              selectable: false,
+              style: { width: LABEL_WIDTH, height: LABEL_HEIGHT },
+            });
+
+            boxNodes.push({
+              id: `standalone-group-box-${item.group.groupName}-${startIndex}`,
+              type: "groupBox",
+              position: {
+                x: groupX - GROUP_BOX_PADDING,
+                y: cursorY - GROUP_BOX_PADDING,
+              },
+              data: {
+                width: item.width + GROUP_BOX_PADDING * 2,
+                height: item.height + GROUP_BOX_PADDING * 2,
+                color: item.groupColor,
+                offset: true,
+              },
+              draggable: false,
+              selectable: false,
+            });
+          }
+
+          item.group.nodes.forEach((node, nodeIndex) => {
+            const row = Math.floor(nodeIndex / item.columnCount);
+            const col = nodeIndex % item.columnCount;
+            const nodesInRow = Math.min(
+              item.columnCount,
+              item.group.nodes.length - row * item.columnCount,
+            );
+            const rowWidth =
+              nodesInRow * NODE_WIDTH + (nodesInRow - 1) * STANDALONE_NODE_GAP;
+            const colOffset = (item.width - rowWidth) / 2;
+            positions.set(node.id, {
+              x: groupX + colOffset + col * (NODE_WIDTH + STANDALONE_NODE_GAP),
+              y:
+                cursorY +
+                (item.rowHeights ?? [])
+                  .slice(0, row)
+                  .reduce((sum, h) => sum + h, 0) +
+                row * STANDALONE_NODE_GAP,
+            });
           });
 
-          boxNodes.push({
-            id: `standalone-group-box-${item.group.groupName}`,
-            type: "groupBox",
-            position: {
-              x: groupX - GROUP_BOX_PADDING,
-              y: baseY - GROUP_BOX_PADDING,
-            },
-            data: {
-              width: item.width + GROUP_BOX_PADDING * 2,
-              height: item.height + GROUP_BOX_PADDING * 2,
-              color: item.groupColor,
-              offset: true,
-            },
-            draggable: false,
-            selectable: false,
-          });
-        }
+          cursorX += item.width + STANDALONE_GROUP_GAP;
+        });
 
-        item.group.nodes.forEach((node, nodeIndex) => {
-          const row = Math.floor(nodeIndex / item.columnCount);
-          const col = nodeIndex % item.columnCount;
-          const nodesInRow = Math.min(
-            item.columnCount,
-            item.group.nodes.length - row * item.columnCount,
-          );
-          const rowWidth =
-            nodesInRow * NODE_WIDTH + (nodesInRow - 1) * STANDALONE_NODE_GAP;
-          const colOffset = (item.width - rowWidth) / 2;
-          positions.set(node.id, {
-            x: groupX + colOffset + col * (NODE_WIDTH + STANDALONE_NODE_GAP),
-            y:
-              baseY +
-              (item.rowHeights ?? [])
-                .slice(0, row)
-                .reduce((sum, h) => sum + h, 0) +
-              row * STANDALONE_NODE_GAP,
+        const shiftRow = (x: number) => x - rowOffset;
+        rowItems.forEach((item) => {
+          item.group.nodes.forEach((node) => {
+            const pos = positions.get(node.id);
+            if (!pos) return;
+            positions.set(node.id, { x: shiftRow(pos.x), y: pos.y });
           });
         });
 
-        cursorX += item.width + STANDALONE_GROUP_GAP;
-      });
-
-      labelNodes.push({
-        id: "standalone-label",
-        type: "tierLabel",
-        position: centeredLabelPosition(
-          totalWidth / 2,
-          baseY - STANDALONE_SECTION_OFFSET,
-        ),
-        data: { text: "Standalone Services", offset: true },
-        draggable: false,
-        selectable: false,
-        style: { width: LABEL_WIDTH, height: LABEL_HEIGHT },
-      });
-
-      const shiftStandalone = (x: number) => x - offset;
-      meta.forEach((item) => {
-        item.group.nodes.forEach((node) => {
-          const pos = positions.get(node.id);
-          if (!pos) return;
-          positions.set(node.id, { x: shiftStandalone(pos.x), y: pos.y });
+        labelNodes.forEach((label) => {
+          if (!label.data.offset) return;
+          if (!label.id.includes(`-${startIndex}`)) return;
+          label.position = {
+            x: shiftRow(label.position.x),
+            y: label.position.y,
+          };
         });
-      });
 
-      labelNodes.forEach((label) => {
-        if (!label.data.offset) return;
-        label.position = {
-          x: shiftStandalone(label.position.x),
-          y: label.position.y,
-        };
-      });
+        boxNodes.forEach((box) => {
+          if (!box.data.offset) return;
+          if (!box.id.includes(`-${startIndex}`)) return;
+          box.position = {
+            x: shiftRow(box.position.x),
+            y: box.position.y,
+          };
+        });
 
-      boxNodes.forEach((box) => {
-        if (!box.data.offset) return;
-        box.position = {
-          x: shiftStandalone(box.position.x),
-          y: box.position.y,
-        };
-      });
+        const rowHeight = Math.max(...rowItems.map((item) => item.height));
+        cursorY += rowHeight + STANDALONE_GROUP_GAP + STANDALONE_LABEL_OFFSET;
+        startIndex += maxGroupsPerRow;
+      }
+
+      if (!isContainerView) {
+        labelNodes.push({
+          id: "standalone-label",
+          type: "tierLabel",
+          position: centeredLabelPosition(0, baseY - STANDALONE_SECTION_OFFSET),
+          data: { text: "Standalone Services", offset: true },
+          draggable: false,
+          selectable: false,
+          style: { width: LABEL_WIDTH, height: LABEL_HEIGHT },
+        });
+      }
     }
 
-    const nodePositions = localNodes.map((node) => ({
+    const nodePositions = layoutNodes.map((node) => ({
       id: node.id,
       type: "service",
       position: positions.get(node.id) || { x: 0, y: 0 },
@@ -751,8 +781,9 @@ export function GraphView({
         onNodeClick: handleNodeClick,
         onNodeContextMenu: handleContextMenu,
         animate: animateNodes,
-        animationIndex: stableConnectedLayout.findIndex(
-          (ln) => ln.node.id === node.id,
+        animationIndex: Math.max(
+          0,
+          stableConnectedLayout.findIndex((ln) => ln.node.id === node.id),
         ),
         onMeasure: handleNodeMeasure,
       },
@@ -818,7 +849,7 @@ export function GraphView({
       bounds,
     };
   }, [
-    localNodes,
+    layoutNodes,
     sortedLayers,
     stableConnectedLayout,
     standaloneGroups,
@@ -827,10 +858,11 @@ export function GraphView({
     animateNodes,
     handleNodeMeasure,
     layoutVersion,
+    isContainerView,
   ]);
 
   const flowEdges = useMemo(() => {
-    return localEdges.map((edge) => {
+    return layoutEdges.map((edge) => {
       const confidence = edge.confidence ?? 0.6;
       const opacity = Math.max(0.25, Math.min(1, 0.35 + confidence * 0.65));
       return {
@@ -854,7 +886,7 @@ export function GraphView({
         },
       };
     });
-  }, [localEdges]);
+  }, [layoutEdges]);
 
   const nodeTypes = useMemo(
     () => ({
@@ -886,10 +918,10 @@ export function GraphView({
 
   useEffect(() => {
     if (!reactFlowInstance || didFitViewRef.current) return;
-    if (localNodes.length === 0) return;
+    if (layoutNodes.length === 0) return;
     reactFlowInstance.fitView({ padding: 0.24, duration: 0 });
     didFitViewRef.current = true;
-  }, [reactFlowInstance, localNodes.length]);
+  }, [reactFlowInstance, layoutNodes.length]);
 
   const formatAge = useCallback((ageMs?: number | null) => {
     if (ageMs === null || ageMs === undefined) return "—";
@@ -902,12 +934,18 @@ export function GraphView({
     ? formatAge(Date.now() - dataStatus.collectedAt)
     : "—";
 
-  if (localNodes.length === 0) {
+  if (layoutNodes.length === 0) {
+    const emptyTitle = isContainerView
+      ? "No containers running"
+      : "No services running";
+    const emptySubtitle = isContainerView
+      ? "Start Docker containers to see them here"
+      : "Start a dev server to see the connection graph";
     return (
       <div className="graph-view" ref={containerRef}>
         <div className="graph-empty">
-          <p>No services running</p>
-          <span>Start a dev server to see the connection graph</span>
+          <p>{emptyTitle}</p>
+          <span>{emptySubtitle}</span>
         </div>
       </div>
     );
@@ -917,7 +955,7 @@ export function GraphView({
     <div className="graph-view" ref={containerRef}>
       <div className="graph-legend">
         <div className="graph-legend-title">Service Types</div>
-        {Array.from(new Set(localNodes.map((n) => n.type)))
+        {Array.from(new Set(layoutNodes.map((n) => n.type)))
           .filter((type) => SERVICE_COLORS[type])
           .map((type) => (
             <div key={type} className="graph-legend-item">
@@ -942,50 +980,36 @@ export function GraphView({
         </div>
       )}
 
-      {isContainerView ? (
-        <div className="container-projects-view">
-          {containerProjects.map((project, projectIdx) => (
-            <ProjectContainer
-              key={`project-${project.projectName}`}
-              project={project}
-              onNodeClick={handleNodeClick}
-              onContextMenu={handleContextMenu}
-              animationDelay={projectIdx * 150}
-            />
-          ))}
-        </div>
-      ) : (
-        <div className="graph-flow">
-          <ReactFlow
-            nodes={flowLayout.nodes}
-            edges={flowEdges}
-            nodeTypes={nodeTypes}
-            defaultEdgeOptions={defaultEdgeOptions}
-            nodesDraggable={false}
-            nodesConnectable={false}
-            elementsSelectable={false}
-            zoomOnScroll={false}
-            zoomOnPinch
-            zoomOnDoubleClick={false}
-            panOnScroll
-            minZoom={0.25}
-            maxZoom={1.8}
-            translateExtent={flowLayout.bounds}
-            onInit={setReactFlowInstance}
-            onPaneClick={() => {
-              setSelectedNode(null);
-              setContextMenu(null);
-            }}
-            onPaneContextMenu={(event) => {
-              event.preventDefault();
-              setContextMenu(null);
-            }}
-          >
-            <Background color="rgba(0,0,0,0.04)" gap={24} />
-            <Controls position="top-right" />
-          </ReactFlow>
-        </div>
-      )}
+      <div className="graph-flow">
+        <ReactFlow
+          nodes={flowLayout.nodes}
+          edges={flowEdges}
+          nodeTypes={nodeTypes}
+          defaultEdgeOptions={defaultEdgeOptions}
+          nodesDraggable={false}
+          nodesConnectable={false}
+          elementsSelectable={false}
+          zoomOnScroll={false}
+          zoomOnPinch
+          zoomOnDoubleClick={false}
+          panOnScroll
+          minZoom={0.25}
+          maxZoom={1.8}
+          translateExtent={flowLayout.bounds}
+          onInit={setReactFlowInstance}
+          onPaneClick={() => {
+            setSelectedNode(null);
+            setContextMenu(null);
+          }}
+          onPaneContextMenu={(event) => {
+            event.preventDefault();
+            setContextMenu(null);
+          }}
+        >
+          <Background color="rgba(0,0,0,0.04)" gap={24} />
+          <Controls position="top-right" />
+        </ReactFlow>
+      </div>
 
       {contextMenu && (
         <ContextMenu
@@ -1001,8 +1025,8 @@ export function GraphView({
       {selectedNode && (
         <NodeDetailPanel
           node={selectedNode}
-          edges={localEdges}
-          allNodes={localNodes}
+          edges={layoutEdges}
+          allNodes={layoutNodes}
           onClose={() => setSelectedNode(null)}
         />
       )}
