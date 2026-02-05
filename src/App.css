@@ -578,6 +578,10 @@ body {
   shape-rendering: geometricPrecision;
 }
 
+.graph-flow .graph-edge {
+  animation: none;
+}
+
 .graph-flow .react-flow__edges {
   z-index: 1;
 }
@@ -1515,15 +1519,21 @@ body {
   background: var(--bg-white);
   border-radius: 12px;
   border: 1px solid var(--border-color);
-  padding: 20px 28px;
+  padding: 16px 20px;
   min-width: 220px;
   width: 100%;
+  min-height: 150px;
+  height: auto;
   box-sizing: border-box;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
   -webkit-app-region: no-drag;
   cursor: pointer;
   animation: nodeAppear 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
   -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 @keyframes nodeAppear {
@@ -1553,7 +1563,7 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  margin-bottom: 12px;
+  margin-bottom: 8px;
 }
 
 .service-node-status-row {
@@ -1595,7 +1605,7 @@ body {
   font-weight: 600;
   letter-spacing: -0.01em;
   color: var(--text-primary);
-  margin-bottom: 6px;
+  margin-bottom: 4px;
 }
 
 .service-node-project {
@@ -1604,7 +1614,7 @@ body {
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
 }
 
 .service-node-port {
