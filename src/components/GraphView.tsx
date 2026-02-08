@@ -3,7 +3,6 @@ import type { MouseEvent as ReactMouseEvent } from "react";
 import ReactFlow, {
   Background,
   Controls,
-  MarkerType,
   type ReactFlowInstance,
 } from "reactflow";
 import "reactflow/dist/style.css";
@@ -114,7 +113,6 @@ export function GraphView({
     connected.add(hoveredNodeId);
     layoutEdges.forEach((edge) => {
       if (edge.source === hoveredNodeId) connected.add(edge.target);
-      if (edge.target === hoveredNodeId) connected.add(edge.source);
     });
     return connected;
   }, [hoveredNodeId, layoutEdges]);
@@ -154,48 +152,28 @@ export function GraphView({
   const flowEdges = useMemo(() => {
     if (!hoveredNodeId) return [];
     return layoutEdges
-      .filter(
-        (edge) =>
-          edge.source === hoveredNodeId || edge.target === hoveredNodeId,
-      )
-      .map((edge) => {
-        const confidence = edge.confidence ?? 0.6;
-        const opacity = Math.max(0.25, Math.min(1, 0.35 + confidence * 0.65));
-        return {
-          id: edge.id,
-          source: edge.source,
-          target: edge.target,
-          type: "default" as const,
-          markerEnd: {
-            type: MarkerType.ArrowClosed,
-            width: 18,
-            height: 18,
-            color: "var(--graph-edge)",
-          },
-          className: "graph-edge",
-          style: {
-            opacity,
-            stroke: "var(--graph-edge)",
-            strokeWidth: 1.6,
-            strokeLinecap: "round" as const,
-            strokeLinejoin: "round" as const,
-          },
-        };
-      });
+      .filter((edge) => edge.source === hoveredNodeId)
+      .map((edge) => ({
+        id: edge.id,
+        source: edge.source,
+        target: edge.target,
+        type: "straight" as const,
+        className: "graph-edge",
+        style: {
+          stroke: "var(--graph-edge)",
+          strokeWidth: 3,
+          strokeLinecap: "round" as const,
+          strokeLinejoin: "round" as const,
+        },
+      }));
   }, [layoutEdges, hoveredNodeId]);
 
   const defaultEdgeOptions = useMemo(
     () => ({
-      type: "default" as const,
-      markerEnd: {
-        type: MarkerType.ArrowClosed,
-        width: 18,
-        height: 18,
-        color: "var(--graph-edge)",
-      },
+      type: "straight" as const,
       style: {
         stroke: "var(--graph-edge)",
-        strokeWidth: 1.7,
+        strokeWidth: 3,
         strokeLinecap: "round" as const,
         strokeLinejoin: "round" as const,
       },

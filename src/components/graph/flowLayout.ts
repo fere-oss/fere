@@ -35,6 +35,7 @@ type FlowNode<T> = {
   data: T;
   draggable: boolean;
   selectable: boolean;
+  className?: string;
   style?: { width: number; height?: number };
 };
 
@@ -478,26 +479,33 @@ export function buildFlowLayout({
     }
   }
 
-  const nodePositions: Array<FlowNode<FlowServiceNodeData>> = layoutNodes.map((node) => ({
-    id: node.id,
-    type: "service",
-    position: positions.get(node.id) || { x: 0, y: 0 },
-    data: {
-      node,
-      onNodeClick,
-      onNodeContextMenu,
-      animate: animateNodes,
-      animationIndex: Math.max(
-        0,
-        stableConnectedLayout.findIndex((ln) => ln.node.id === node.id),
-      ),
-      onMeasure,
-      dimmed: hoveredNodeId !== null && !connectedNodeIds.has(node.id),
-    },
-    draggable: false,
-    selectable: false,
-    style: { width: NODE_WIDTH },
-  }));
+  const nodePositions: Array<FlowNode<FlowServiceNodeData>> = layoutNodes.map((node) => {
+    const isConnected = connectedNodeIds.has(node.id);
+    const dimmed = hoveredNodeId !== null && !isConnected;
+    const highlighted = hoveredNodeId !== null && isConnected;
+    return {
+      id: node.id,
+      type: "service",
+      position: positions.get(node.id) || { x: 0, y: 0 },
+      data: {
+        node,
+        onNodeClick,
+        onNodeContextMenu,
+        animate: animateNodes,
+        animationIndex: Math.max(
+          0,
+          stableConnectedLayout.findIndex((ln) => ln.node.id === node.id),
+        ),
+        onMeasure,
+        dimmed,
+        highlighted,
+      },
+      className: dimmed ? "rf-flow-dimmed" : highlighted ? "rf-flow-highlighted" : undefined,
+      draggable: false,
+      selectable: false,
+      style: { width: NODE_WIDTH },
+    };
+  });
 
   minX = Infinity;
   minY = Infinity;

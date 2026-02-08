@@ -12,6 +12,7 @@ export type FlowServiceNodeData = {
   animationIndex: number;
   onMeasure: (id: string, height: number) => void;
   dimmed: boolean;
+  highlighted: boolean;
 };
 
 export function TierLabelNode({ data }: { data: { text: string } }) {
@@ -79,6 +80,7 @@ export function FlowServiceNode({ data }: { data: FlowServiceNodeData }) {
     "rf-node-wrapper",
     data.animate && "rf-node-animate",
     data.dimmed && "rf-node-dimmed",
+    data.highlighted && "rf-node-highlighted",
   ]
     .filter(Boolean)
     .join(" ");
@@ -91,7 +93,7 @@ export function FlowServiceNode({ data }: { data: FlowServiceNodeData }) {
     >
       <Handle
         type="target"
-        position={Position.Top}
+        position={Position.Left}
         className="rf-handle rf-handle-target"
       />
       <ServiceNode
@@ -102,7 +104,7 @@ export function FlowServiceNode({ data }: { data: FlowServiceNodeData }) {
       />
       <Handle
         type="source"
-        position={Position.Bottom}
+        position={Position.Right}
         className="rf-handle rf-handle-source"
       />
     </div>

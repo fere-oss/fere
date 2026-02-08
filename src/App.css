@@ -548,7 +548,7 @@ body {
   overflow: hidden;
   padding: 0;
   user-select: none;
-  --graph-edge: rgba(48, 62, 90, 0.58);
+  --graph-edge: #0078D4;
   -webkit-transform: translateZ(0);
   transform: translateZ(0);
   -webkit-backface-visibility: hidden;
@@ -571,10 +571,9 @@ body {
 .graph-flow .react-flow__edge-path,
 .graph-flow .react-flow__edge.graph-edge path {
   stroke: var(--graph-edge);
-  stroke-width: 1.6px;
+  stroke-width: 3px;
   stroke-linecap: round;
   stroke-linejoin: round;
-  vector-effect: non-scaling-stroke;
   shape-rendering: geometricPrecision;
 }
 
@@ -583,7 +582,8 @@ body {
 }
 
 .graph-flow .react-flow__edges {
-  z-index: 1;
+  z-index: 10;
+  pointer-events: none;
 }
 
 .graph-flow .react-flow__nodes {
@@ -606,6 +606,22 @@ body {
   background: transparent;
   border: none;
   box-shadow: none;
+  transition: opacity 0.2s ease, filter 0.2s ease, transform 0.2s ease;
+}
+
+.graph-flow .react-flow__node-service.rf-flow-dimmed {
+  opacity: 0.25;
+  filter: grayscale(40%);
+}
+
+.graph-flow .react-flow__node-service.rf-flow-highlighted {
+  z-index: 10 !important;
+  transform: scale(1.03);
+}
+
+.graph-flow .react-flow__node-service.rf-flow-highlighted .service-node {
+  border-color: var(--node-color, var(--blue));
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12), 0 0 0 2px color-mix(in srgb, var(--node-color, var(--blue)) 25%, transparent);
 }
 
 .graph-flow .react-flow__node-groupBox {
@@ -678,6 +694,16 @@ body {
   pointer-events: auto;
   will-change: transform, opacity;
   transition: opacity 0.2s ease, filter 0.2s ease;
+}
+
+.rf-node-wrapper.rf-node-highlighted {
+  z-index: 10;
+  transform: scale(1.03);
+}
+
+.rf-node-wrapper.rf-node-highlighted .service-node {
+  border-color: var(--node-color, var(--blue));
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12), 0 0 0 2px color-mix(in srgb, var(--node-color, var(--blue)) 25%, transparent);
 }
 
 .rf-node-wrapper.rf-node-dimmed {
