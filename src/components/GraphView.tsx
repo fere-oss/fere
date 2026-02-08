@@ -11,7 +11,7 @@ import { SERVICE_COLORS } from "./graph/constants";
 import { ContextMenu } from "./graph/ContextMenu";
 import { NodeDetailPanel } from "./graph/NodeDetailPanel";
 import { flowNodeTypes } from "./graph/flowNodes";
-import { buildFlowLayout } from "./graph/flowLayout";
+import { FLOW_LAYOUT, buildFlowLayout } from "./graph/flowLayout";
 import type { GraphViewProps } from "./graph/types";
 import { useExternalApis } from "./graph/useExternalApis";
 import { useGraphLayoutData } from "./graph/useGraphLayoutData";
@@ -152,22 +152,57 @@ export function GraphView({
   const flowEdges = useMemo(() => {
     if (!hoveredNodeId) return [];
     const posMap = new Map<string, { x: number; y: number }>();
+    const serviceCenters: Array<{ id: string; x: number; y: number }> = [];
     for (const node of flowLayout.nodes) {
       posMap.set(node.id, node.position);
+      if (node.type === "service") {
+        serviceCenters.push({
+          id: node.id,
+          x: node.position.x + FLOW_LAYOUT.NODE_WIDTH / 2,
+          y: node.position.y,
+        });
+      }
     }
+    const seen = new Set<string>();
     return layoutEdges
-      .filter((edge) => edge.source === hoveredNodeId)
+      .filter((edge) => {
+        if (edge.source !== hoveredNodeId) return false;
+        const key = `${edge.source}->${edge.target}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
       .map((edge) => {
         const srcPos = posMap.get(edge.source);
         const tgtPos = posMap.get(edge.target);
         let sourceHandle = "source-bottom";
         let targetHandle = "target-top";
+        let edgeType: "default" | "smoothstep" = "default";
         if (srcPos && tgtPos) {
           const dx = tgtPos.x - srcPos.x;
           const dy = tgtPos.y - srcPos.y;
           const sameLayer = Math.abs(dy) < 80;
           if (sameLayer) {
-            if (dx > 0) {
+            const srcCenterX = srcPos.x + FLOW_LAYOUT.NODE_WIDTH / 2;
+            const tgtCenterX = tgtPos.x + FLOW_LAYOUT.NODE_WIDTH / 2;
+            const minX = Math.min(srcCenterX, tgtCenterX);
+            const maxX = Math.max(srcCenterX, tgtCenterX);
+            const hasIntermediate = serviceCenters.some((node) => {
+              if (node.id === edge.source || node.id === edge.target) return false;
+              if (Math.abs(node.y - srcPos.y) > 60) return false;
+              return node.x > minX + 8 && node.x < maxX - 8;
+            });
+
+            if (hasIntermediate) {
+              edgeType = "smoothstep";
+              if (dx > 0) {
+                sourceHandle = "source-top";
+                targetHandle = "target-top";
+              } else {
+                sourceHandle = "source-bottom";
+                targetHandle = "target-bottom";
+              }
+            } else if (dx > 0) {
               sourceHandle = "source-right";
               targetHandle = "target-left";
             } else {
@@ -188,7 +223,7 @@ export function GraphView({
           target: edge.target,
           sourceHandle,
           targetHandle,
-          type: "default" as const,
+          type: edgeType,
           className: "graph-edge",
           style: {
             stroke: "var(--graph-edge)",
