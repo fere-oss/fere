@@ -151,26 +151,58 @@ export function GraphView({
 
   const flowEdges = useMemo(() => {
     if (!hoveredNodeId) return [];
+    const posMap = new Map<string, { x: number; y: number }>();
+    for (const node of flowLayout.nodes) {
+      posMap.set(node.id, node.position);
+    }
     return layoutEdges
       .filter((edge) => edge.source === hoveredNodeId)
-      .map((edge) => ({
-        id: edge.id,
-        source: edge.source,
-        target: edge.target,
-        type: "straight" as const,
-        className: "graph-edge",
-        style: {
-          stroke: "var(--graph-edge)",
-          strokeWidth: 3,
-          strokeLinecap: "round" as const,
-          strokeLinejoin: "round" as const,
-        },
-      }));
-  }, [layoutEdges, hoveredNodeId]);
+      .map((edge) => {
+        const srcPos = posMap.get(edge.source);
+        const tgtPos = posMap.get(edge.target);
+        let sourceHandle = "source-bottom";
+        let targetHandle = "target-top";
+        if (srcPos && tgtPos) {
+          const dx = tgtPos.x - srcPos.x;
+          const dy = tgtPos.y - srcPos.y;
+          const sameLayer = Math.abs(dy) < 80;
+          if (sameLayer) {
+            if (dx > 0) {
+              sourceHandle = "source-right";
+              targetHandle = "target-left";
+            } else {
+              sourceHandle = "source-left";
+              targetHandle = "target-right";
+            }
+          } else if (dy > 0) {
+            sourceHandle = "source-bottom";
+            targetHandle = "target-top";
+          } else {
+            sourceHandle = "source-top";
+            targetHandle = "target-bottom";
+          }
+        }
+        return {
+          id: edge.id,
+          source: edge.source,
+          target: edge.target,
+          sourceHandle,
+          targetHandle,
+          type: "default" as const,
+          className: "graph-edge",
+          style: {
+            stroke: "var(--graph-edge)",
+            strokeWidth: 3,
+            strokeLinecap: "round" as const,
+            strokeLinejoin: "round" as const,
+          },
+        };
+      });
+  }, [layoutEdges, hoveredNodeId, flowLayout.nodes]);
 
   const defaultEdgeOptions = useMemo(
     () => ({
-      type: "straight" as const,
+      type: "default" as const,
       style: {
         stroke: "var(--graph-edge)",
         strokeWidth: 3,

@@ -91,22 +91,20 @@ export function FlowServiceNode({ data }: { data: FlowServiceNodeData }) {
       className={wrapperClass}
       style={{ animationDelay: `${data.animationIndex * 40}ms` }}
     >
-      <Handle
-        type="target"
-        position={Position.Left}
-        className="rf-handle rf-handle-target"
-      />
+      <Handle type="target" id="target-top" position={Position.Top} className="rf-handle rf-handle-target" />
+      <Handle type="target" id="target-bottom" position={Position.Bottom} className="rf-handle rf-handle-target" />
+      <Handle type="target" id="target-left" position={Position.Left} className="rf-handle rf-handle-target" />
+      <Handle type="target" id="target-right" position={Position.Right} className="rf-handle rf-handle-target" />
       <ServiceNode
         node={data.node}
         onClick={data.onNodeClick}
         onContextMenu={data.onNodeContextMenu}
         animationIndex={0}
       />
-      <Handle
-        type="source"
-        position={Position.Right}
-        className="rf-handle rf-handle-source"
-      />
+      <Handle type="source" id="source-top" position={Position.Top} className="rf-handle rf-handle-source" />
+      <Handle type="source" id="source-bottom" position={Position.Bottom} className="rf-handle rf-handle-source" />
+      <Handle type="source" id="source-left" position={Position.Left} className="rf-handle rf-handle-source" />
+      <Handle type="source" id="source-right" position={Position.Right} className="rf-handle rf-handle-source" />
     </div>
   );
 }
