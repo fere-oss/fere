@@ -677,6 +677,13 @@ body {
 .rf-node-wrapper {
   pointer-events: auto;
   will-change: transform, opacity;
+  transition: opacity 0.2s ease, filter 0.2s ease;
+}
+
+.rf-node-wrapper.rf-node-dimmed {
+  opacity: 0.25;
+  filter: grayscale(40%);
+  pointer-events: auto;
 }
 
 .rf-node-wrapper.rf-node-animate {

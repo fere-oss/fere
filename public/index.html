@@ -11,7 +11,7 @@
     />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com"
+      content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com"
     />
     <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo192.png" />
     <!--
@@ -29,6 +29,16 @@
       Learn how to configure a non-root public URL by running `npm run build`.
     -->
     <title>Fere</title>
+    <script>
+      // Suppress benign ResizeObserver loop error before CRA's overlay registers
+      window.addEventListener('error', function(e) {
+        if (e.message && e.message.indexOf('ResizeObserver loop') !== -1) {
+          e.stopImmediatePropagation();
+          e.stopPropagation();
+          e.preventDefault();
+        }
+      });
+    </script>
   </head>
   <body>
     <noscript>You need to enable JavaScript to run this app.</noscript>

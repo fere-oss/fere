@@ -41,6 +41,7 @@ export function GraphView({
   const groupOrderCacheRef = useRef<Map<number, string[]>>(new Map());
   const didFitViewRef = useRef(false);
   const didInitialAnimationRef = useRef(false);
+  const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [, setExternalApiVersion] = useState(0);
   useEffect(() => {
     if (didInitialAnimationRef.current) return;
@@ -107,6 +108,17 @@ export function GraphView({
   useExternalApis(projectPathsKey, () =>
     setExternalApiVersion((version) => version + 1),
   );
+  const connectedNodeIds = useMemo(() => {
+    if (!hoveredNodeId) return new Set<string>();
+    const connected = new Set<string>();
+    connected.add(hoveredNodeId);
+    layoutEdges.forEach((edge) => {
+      if (edge.source === hoveredNodeId) connected.add(edge.target);
+      if (edge.target === hoveredNodeId) connected.add(edge.source);
+    });
+    return connected;
+  }, [hoveredNodeId, layoutEdges]);
+
   const flowLayout = useMemo(
     () =>
       buildFlowLayout({
@@ -120,6 +132,8 @@ export function GraphView({
         animateNodes,
         onMeasure: handleNodeMeasure,
         isContainerView,
+        hoveredNodeId,
+        connectedNodeIds,
       }),
     [
       layoutNodes,
@@ -132,39 +146,47 @@ export function GraphView({
       handleNodeMeasure,
       isContainerView,
       layoutVersion,
+      hoveredNodeId,
+      connectedNodeIds,
     ],
   );
 
   const flowEdges = useMemo(() => {
-    return layoutEdges.map((edge) => {
-      const confidence = edge.confidence ?? 0.6;
-      const opacity = Math.max(0.25, Math.min(1, 0.35 + confidence * 0.65));
-      return {
-        id: edge.id,
-        source: edge.source,
-        target: edge.target,
-        type: "smoothstep" as const,
-        markerEnd: {
-          type: MarkerType.ArrowClosed,
-          width: 18,
-          height: 18,
-          color: "var(--graph-edge)",
-        },
-        className: "graph-edge",
-        style: {
-          opacity,
-          stroke: "var(--graph-edge)",
-          strokeWidth: 1.6,
-          strokeLinecap: "round" as const,
-          strokeLinejoin: "round" as const,
-        },
-      };
-    });
-  }, [layoutEdges]);
+    if (!hoveredNodeId) return [];
+    return layoutEdges
+      .filter(
+        (edge) =>
+          edge.source === hoveredNodeId || edge.target === hoveredNodeId,
+      )
+      .map((edge) => {
+        const confidence = edge.confidence ?? 0.6;
+        const opacity = Math.max(0.25, Math.min(1, 0.35 + confidence * 0.65));
+        return {
+          id: edge.id,
+          source: edge.source,
+          target: edge.target,
+          type: "default" as const,
+          markerEnd: {
+            type: MarkerType.ArrowClosed,
+            width: 18,
+            height: 18,
+            color: "var(--graph-edge)",
+          },
+          className: "graph-edge",
+          style: {
+            opacity,
+            stroke: "var(--graph-edge)",
+            strokeWidth: 1.6,
+            strokeLinecap: "round" as const,
+            strokeLinejoin: "round" as const,
+          },
+        };
+      });
+  }, [layoutEdges, hoveredNodeId]);
 
   const defaultEdgeOptions = useMemo(
     () => ({
-      type: "smoothstep" as const,
+      type: "default" as const,
       markerEnd: {
         type: MarkerType.ArrowClosed,
         width: 18,
@@ -198,6 +220,19 @@ export function GraphView({
   const lastUpdated = dataStatus?.collectedAt
     ? formatAge(Date.now() - dataStatus.collectedAt)
     : "—";
+
+  const handleNodeMouseEnter = useCallback(
+    (_event: ReactMouseEvent, node: { id: string; type?: string }) => {
+      if (node.type === "service") {
+        setHoveredNodeId(node.id);
+      }
+    },
+    [],
+  );
+
+  const handleNodeMouseLeave = useCallback(() => {
+    setHoveredNodeId(null);
+  }, []);
 
   if (layoutNodes.length === 0) {
     const emptyTitle = isContainerView
@@ -262,6 +297,8 @@ export function GraphView({
           maxZoom={1.8}
           translateExtent={flowLayout.bounds}
           onInit={setReactFlowInstance}
+          onNodeMouseEnter={handleNodeMouseEnter}
+          onNodeMouseLeave={handleNodeMouseLeave}
           onPaneClick={() => {
             setSelectedNode(null);
             setContextMenu(null);

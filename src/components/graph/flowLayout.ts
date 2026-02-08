@@ -17,7 +17,6 @@ export const FLOW_LAYOUT = {
   STANDALONE_SECTION_OFFSET: 84,
   GROUP_BOX_PADDING: 10,
   GROUP_LABEL_OFFSET: 28,
-  DEFAULT_LAYER_LABELS: ["Interface", "Services", "Processing", "Data"],
   LABEL_WIDTH: 180,
   LABEL_HEIGHT: 28,
   MAX_GROUP_COLUMNS: 2,
@@ -120,6 +119,8 @@ type BuildLayoutInput = {
   animateNodes: boolean;
   onMeasure: (id: string, height: number) => void;
   isContainerView: boolean;
+  hoveredNodeId: string | null;
+  connectedNodeIds: Set<string>;
 };
 
 export function buildFlowLayout({
@@ -133,6 +134,8 @@ export function buildFlowLayout({
   animateNodes,
   onMeasure,
   isContainerView,
+  hoveredNodeId,
+  connectedNodeIds,
 }: BuildLayoutInput): FlowLayoutResult {
   const {
     NODE_WIDTH,
@@ -147,7 +150,6 @@ export function buildFlowLayout({
     STANDALONE_SECTION_OFFSET,
     GROUP_BOX_PADDING,
     GROUP_LABEL_OFFSET,
-    DEFAULT_LAYER_LABELS,
     LABEL_WIDTH,
     LABEL_HEIGHT,
     MAX_GROUP_COLUMNS,
@@ -309,8 +311,7 @@ export function buildFlowLayout({
         cursorX += width + GROUP_GAP;
       });
 
-      const labelText =
-        DEFAULT_LAYER_LABELS[meta.layer] || `Tier ${meta.layer + 1}`;
+      const labelText = `Layer ${meta.layer}`;
       labelNodes.push({
         id: `tier-label-${meta.layer}`,
         type: "tierLabel",
@@ -491,6 +492,7 @@ export function buildFlowLayout({
         stableConnectedLayout.findIndex((ln) => ln.node.id === node.id),
       ),
       onMeasure,
+      dimmed: hoveredNodeId !== null && !connectedNodeIds.has(node.id),
     },
     draggable: false,
     selectable: false,

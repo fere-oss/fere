@@ -11,6 +11,7 @@ export type FlowServiceNodeData = {
   animate: boolean;
   animationIndex: number;
   onMeasure: (id: string, height: number) => void;
+  dimmed: boolean;
 };
 
 export function TierLabelNode({ data }: { data: { text: string } }) {
@@ -51,23 +52,41 @@ export function GroupBoxNode({
 
 export function FlowServiceNode({ data }: { data: FlowServiceNodeData }) {
   const nodeRef = useRef<HTMLDivElement | null>(null);
+  const dataRef = useRef(data);
+  dataRef.current = data;
 
   useEffect(() => {
     if (!nodeRef.current) return;
     const element = nodeRef.current;
+    let rafId = 0;
     const measure = () => {
-      data.onMeasure(data.node.id, element.getBoundingClientRect().height);
+      cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => {
+        const d = dataRef.current;
+        d.onMeasure(d.node.id, element.getBoundingClientRect().height);
+      });
     };
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(element);
-    return () => observer.disconnect();
-  }, [data]);
+    return () => {
+      cancelAnimationFrame(rafId);
+      observer.disconnect();
+    };
+  }, []);
+
+  const wrapperClass = [
+    "rf-node-wrapper",
+    data.animate && "rf-node-animate",
+    data.dimmed && "rf-node-dimmed",
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   return (
     <div
       ref={nodeRef}
-      className={`rf-node-wrapper${data.animate ? " rf-node-animate" : ""}`}
+      className={wrapperClass}
       style={{ animationDelay: `${data.animationIndex * 40}ms` }}
     >
       <Handle
