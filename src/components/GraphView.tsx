@@ -6,13 +6,13 @@ import ReactFlow, {
   type ReactFlowInstance,
 } from "reactflow";
 import "reactflow/dist/style.css";
-import type { GraphNode } from "../types/electron";
+import type { GraphEdge, GraphNode } from "../types/electron";
 import { SERVICE_COLORS } from "./graph/constants";
 import { ContextMenu } from "./graph/ContextMenu";
 import { NodeDetailPanel } from "./graph/NodeDetailPanel";
 import { flowNodeTypes } from "./graph/flowNodes";
 import { buildFlowLayout } from "./graph/flowLayout";
-import type { GraphViewProps } from "./graph/types";
+import type { GraphViewProps, NodePosition } from "./graph/types";
 import { useExternalApis } from "./graph/useExternalApis";
 import { useGraphLayoutData } from "./graph/useGraphLayoutData";
 import { useNodeMeasurements } from "./graph/useNodeMeasurements";
