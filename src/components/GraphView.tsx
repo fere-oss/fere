@@ -388,7 +388,7 @@ export function GraphView({
           }}
         >
           <Background color="rgba(0,0,0,0.04)" gap={24} />
-          <Controls position="top-right" />
+          <Controls position="top-right" showInteractive={false} />
         </ReactFlow>
       </div>
 
