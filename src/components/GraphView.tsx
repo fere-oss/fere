@@ -12,7 +12,7 @@ import { ContextMenu } from "./graph/ContextMenu";
 import { NodeDetailPanel } from "./graph/NodeDetailPanel";
 import { flowNodeTypes } from "./graph/flowNodes";
 import { FLOW_LAYOUT, buildFlowLayout } from "./graph/flowLayout";
-import type { GraphViewProps } from "./graph/types";
+import type { GraphViewProps, NodePosition } from "./graph/types";
 import { useExternalApis } from "./graph/useExternalApis";
 import { useGraphLayoutData } from "./graph/useGraphLayoutData";
 import { useNodeMeasurements } from "./graph/useNodeMeasurements";

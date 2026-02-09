@@ -1,20 +1,6 @@
 /* Import Instrument Serif and JetBrains Mono fonts */
 @import url("https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500;600&display=swap");
 
-@font-face {
-  font-family: "ABC Diatype Mono";
-  src: url("https://db.onlinewebfonts.com/t/fbee28f49e99c472f1f569c6ddc24ebe.eot");
-  src:
-    url("https://db.onlinewebfonts.com/t/fbee28f49e99c472f1f569c6ddc24ebe.eot?#iefix") format("embedded-opentype"),
-    url("https://db.onlinewebfonts.com/t/fbee28f49e99c472f1f569c6ddc24ebe.woff2") format("woff2"),
-    url("https://db.onlinewebfonts.com/t/fbee28f49e99c472f1f569c6ddc24ebe.woff") format("woff"),
-    url("https://db.onlinewebfonts.com/t/fbee28f49e99c472f1f569c6ddc24ebe.ttf") format("truetype"),
-    url("https://db.onlinewebfonts.com/t/fbee28f49e99c472f1f569c6ddc24ebe.svg#ABC Diatype Mono") format("svg");
-  font-weight: 400;
-  font-style: normal;
-  font-display: swap;
-}
-
 /* Base styles */
 * {
   box-sizing: border-box;
@@ -39,7 +25,6 @@
 
 body {
   font-family:
-    "ABC Diatype Mono",
     "JetBrains Mono",
     monospace;
   background: var(--bg-primary);
@@ -553,6 +538,203 @@ body {
   transform: translateZ(0);
   -webkit-backface-visibility: hidden;
   backface-visibility: hidden;
+}
+
+.graph-flow {
+  position: absolute;
+  inset: 0;
+}
+
+.graph-flow .react-flow {
+  width: 100%;
+  height: 100%;
+  background:
+    radial-gradient(circle at 30% 20%, rgba(110, 120, 150, 0.08), transparent 55%),
+    radial-gradient(circle at 70% 80%, rgba(120, 160, 200, 0.06), transparent 60%);
+}
+
+.graph-flow .react-flow__edge-path,
+.graph-flow .react-flow__edge.graph-edge path {
+  stroke: var(--graph-edge);
+  stroke-width: 3px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  shape-rendering: geometricPrecision;
+}
+
+.graph-flow .graph-edge {
+  animation: none;
+}
+
+.graph-flow .react-flow__edges {
+  z-index: 10;
+  pointer-events: none;
+}
+
+.graph-flow .react-flow__nodes {
+  z-index: 2;
+}
+
+.graph-flow .react-flow__edge-marker {
+  fill: var(--graph-edge);
+  stroke: var(--graph-edge);
+}
+
+.graph-flow .react-flow__edge-marker path,
+.graph-flow .react-flow__marker path,
+.graph-flow .react-flow__arrowhead path {
+  fill: var(--graph-edge);
+  stroke: var(--graph-edge);
+}
+
+.graph-flow .react-flow__node-service {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  transition: opacity 0.2s ease, filter 0.2s ease, transform 0.2s ease;
+}
+
+.graph-flow .react-flow__node-service.rf-flow-dimmed {
+  opacity: 0.25;
+  filter: grayscale(40%);
+}
+
+.graph-flow .react-flow__node-service.rf-flow-highlighted {
+  z-index: 10 !important;
+  transform: scale(1.03);
+}
+
+.graph-flow .react-flow__node-service.rf-flow-highlighted .service-node {
+  border-color: var(--node-color, var(--blue));
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12), 0 0 0 2px color-mix(in srgb, var(--node-color, var(--blue)) 25%, transparent);
+}
+
+.graph-flow .react-flow__node-groupBox {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.graph-flow .react-flow__node-tierLabel,
+.graph-flow .react-flow__node-groupLabel {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  pointer-events: none;
+  z-index: 3;
+}
+
+.graph-tier-label,
+.graph-group-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 18px;
+  border-radius: 999px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--text-muted);
+  pointer-events: none;
+  white-space: nowrap;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+}
+
+.graph-group-label {
+  background: color-mix(in srgb, var(--group-color, #d6dce8) 18%, #ffffff);
+  color: var(--group-color, var(--text-faint));
+  border-color: color-mix(in srgb, var(--group-color, #d6dce8) 40%, #ffffff);
+}
+
+.graph-group-box {
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--group-color, #d6dce8) 10%, rgba(255, 255, 255, 0.7));
+  border: 1px solid color-mix(in srgb, var(--group-color, #d6dce8) 35%, rgba(202, 210, 224, 0.6));
+  box-shadow: 0 12px 30px rgba(18, 27, 44, 0.08);
+  backdrop-filter: blur(8px);
+}
+
+.rf-handle {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid var(--graph-edge);
+  background: var(--bg-white);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.graph-flow .service-node {
+  animation: none;
+}
+
+.rf-node-wrapper {
+  pointer-events: auto;
+  will-change: transform, opacity;
+  transition: opacity 0.2s ease, filter 0.2s ease;
+}
+
+.rf-node-wrapper.rf-node-highlighted {
+  z-index: 10;
+  transform: scale(1.03);
+}
+
+.rf-node-wrapper.rf-node-highlighted .service-node {
+  border-color: var(--node-color, var(--blue));
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12), 0 0 0 2px color-mix(in srgb, var(--node-color, var(--blue)) 25%, transparent);
+}
+
+.rf-node-wrapper.rf-node-dimmed {
+  opacity: 0.25;
+  filter: grayscale(40%);
+  pointer-events: auto;
+}
+
+.rf-node-wrapper.rf-node-animate {
+  animation: rfNodeAppear 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes rfNodeAppear {
+  0% {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.graph-flow .react-flow__controls {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  background: var(--bg-white);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  padding: 4px;
+}
+
+.graph-flow .react-flow__controls-button {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+}
+
+.graph-flow .react-flow__controls-button:hover {
+  background: var(--bg-primary);
+  color: var(--text-primary);
 }
 
 /* Zoom Controls */
@@ -3875,12 +4057,11 @@ body {
 .db-page {
   display: flex;
   flex-direction: column;
-  height: 100%;
-  min-height: 0;
+  height: 100vh;
   background: #fafafa;
   color: var(--text-secondary);
   /* Override parent padding to take full width */
-  margin: 0 -40px 0 -40px;
+  margin: 0 -40px -40px -40px;
   width: calc(100% + 80px);
 }
 
@@ -3943,9 +4124,9 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 16px 56px;
-  background: transparent;
-  border-bottom: none;
+  padding: 24px 56px;
+  background: #ffffff;
+  border-bottom: 1px solid #e5e5e5;
 }
 
 .db-header-left {
@@ -4124,7 +4305,7 @@ body {
   flex: 1;
   display: flex;
   flex-direction: column;
-  overflow: auto;
+  overflow: hidden;
 }
 
 /* Data layout (Browse Data tab) */
@@ -4132,9 +4313,8 @@ body {
   display: flex;
   flex: 1;
   overflow: hidden;
-  padding: 24px 56px 56px 56px;
+  padding: 0 56px 56px 56px;
   gap: 28px;
-  min-height: 0;
 }
 
 /* Sidebar */
@@ -4201,43 +4381,10 @@ body {
   transform: scale(1.05);
 }
 
-.db-sidebar-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.db-delete-table-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  background: #ffffff;
-  border: 1px solid #e5e5e5;
-  border-radius: 6px;
-  color: #dc2626;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.db-delete-table-btn:hover:not(:disabled) {
-  background: #fef2f2;
-  border-color: #fca5a5;
-  transform: scale(1.05);
-}
-
-.db-delete-table-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
 .db-sidebar-list {
   flex: 1;
   overflow-y: auto;
   padding: 14px;
-  display: flex;
-  flex-direction: column;
 }
 
 .db-table-item {
@@ -4294,8 +4441,6 @@ body {
   color: #a3a3a3;
   text-align: center;
   font-size: 13px;
-  flex: 1;
-  justify-content: center;
 }
 
 /* Main data area */
@@ -4543,10 +4688,9 @@ body {
   display: flex;
   flex-direction: column;
   flex: 1;
-  overflow: visible;
-  padding: 24px 56px 56px 56px;
+  overflow: hidden;
+  padding: 0 56px 56px 56px;
   gap: 28px;
-  min-height: 0;
 }
 
 .db-query-editor-section {
@@ -4555,11 +4699,8 @@ body {
   background: #ffffff;
   border: 1px solid #e5e5e5;
   border-radius: 12px;
-  overflow: auto;
+  overflow: hidden;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-  flex: 0 0 auto;
-  min-height: 260px;
-  resize: vertical;
 }
 
 .db-query-editor-header {
@@ -4636,112 +4777,17 @@ body {
   box-shadow: none;
 }
 
-.db-query-editor-container {
-  position: relative;
-  width: 100%;
-  flex: 1;
-  min-height: 200px;
-}
-
-.db-query-highlight {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  margin: 0;
-  padding: 20px 24px;
-  font-family: "JetBrains Mono", monospace;
-  font-size: 13px;
-  line-height: 1.7;
-  white-space: pre-wrap;
-  word-break: break-word;
-  pointer-events: none;
-  overflow: auto;
-}
-
 .db-query-textarea {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
+  min-height: 200px;
   padding: 20px 24px;
-  font-family: "JetBrains Mono", monospace;
-  font-size: 13px;
-  line-height: 1.7;
-  color: transparent;
-  caret-color: #111111;
-  background: transparent;
+  background: #fafafa;
   border: none;
-  outline: none;
-  resize: none;
-  white-space: pre-wrap;
-  word-break: break-word;
-  box-sizing: border-box;
-}
-
-.db-query-textarea::selection {
-  background: rgba(0, 0, 0, 0.12);
-}
-
-.db-query-textarea::-moz-selection {
-  background: rgba(0, 0, 0, 0.12);
-}
-
-.db-query-textarea::placeholder {
-  color: #a3a3a3;
-}
-
-.db-hl-keyword {
-  color: #15803d;
-  font-weight: 600;
-}
-
-.db-hl-string {
-  color: #b45309;
-}
-
-.db-hl-number {
-  color: #a16207;
-}
-
-.db-hl-comment {
-  color: #9ca3af;
-  font-style: italic;
-}
-
-.db-hl-identifier {
-  color: #4b5563;
-}
-
-.db-hl-operator {
-  color: #9ca3af;
-}
-
-.db-query-output {
-  margin: 0;
-  padding: 24px;
+  color: #171717;
   font-family: "JetBrains Mono", monospace;
   font-size: 13px;
   line-height: 1.7;
-  color: #171717;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-.db-out-number {
-  color: #a16207;
-  font-weight: 600;
-}
-
-.db-out-meta {
-  color: #6b7280;
-  font-style: italic;
-}
-
-.db-out-pipe {
-  color: #9ca3af;
+  resize: vertical;
+  outline: none;
 }
 
 .db-query-textarea::placeholder {
@@ -4750,7 +4796,7 @@ body {
 
 /* Query results */
 .db-query-results-section {
-  flex: 0 0 auto;
+  flex: 1;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -4758,8 +4804,6 @@ body {
   border: 1px solid #e5e5e5;
   border-radius: 12px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-  min-height: 0;
-  min-height: 260px;
 }
 
 .db-query-results-header {
@@ -5271,13 +5315,6 @@ body {
 
 .db-delete-confirm-header svg {
   flex-shrink: 0;
-  width: 26px;
-  height: 26px;
-  padding: 6px;
-  border-radius: 8px;
-  background: #fef2f2;
-  border: 1px solid #fca5a5;
-  box-shadow: 0 1px 2px rgba(220, 38, 38, 0.15);
 }
 
 .db-delete-confirm-header h3 {
@@ -6075,7 +6112,7 @@ body {
 }
 
 .container-name-code {
-  font-family: "ABC Diatype Mono", "JetBrains Mono", "Fira Code", monospace;
+  font-family: "JetBrains Mono", "Fira Code", monospace;
   font-size: 12px;
   background: var(--bg-muted);
   padding: 2px 5px;

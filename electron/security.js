@@ -229,9 +229,9 @@ function setupCSP(isDev) {
   // Development CSP: Allow React HMR (WebSockets, eval for source maps)
   const devCSP = [
     "default-src 'self'",
-    "script-src 'self' 'unsafe-eval'",  // unsafe-eval needed for React Fast Refresh
+    "script-src 'self' 'unsafe-eval' 'unsafe-inline'",  // unsafe-eval + unsafe-inline needed for React dev server
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-    "font-src 'self' https://fonts.gstatic.com",
+    "font-src 'self' https://fonts.gstatic.com data:",
     "img-src 'self' data:",
     "connect-src 'self' http://localhost:* https://localhost:* http://127.0.0.1:* https://127.0.0.1:* ws://localhost:* wss://localhost:*",
     "object-src 'none'",
@@ -245,7 +245,7 @@ function setupCSP(isDev) {
     "default-src 'self'",
     "script-src 'self'",
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-    "font-src 'self' https://fonts.gstatic.com",
+    "font-src 'self' https://fonts.gstatic.com data:",
     "img-src 'self' data:",
     "connect-src 'self' http://localhost:* https://localhost:* http://127.0.0.1:* https://127.0.0.1:*",
     "object-src 'none'",

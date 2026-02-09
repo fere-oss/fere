@@ -1,9 +1,6 @@
 const { app, BrowserWindow, ipcMain, shell, nativeImage } = require("electron");
 const path = require("path");
 
-// Security: Enable sandbox for all renderers before app is ready
-app.enableSandbox();
-
 // Import security utilities
 const {
   validateExternalUrl,
