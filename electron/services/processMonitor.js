@@ -164,6 +164,15 @@ async function getProcessByPid(pid) {
 async function killProcess(pid, signal = 'TERM') {
   try {
     await execAsync(`kill -${signal} ${pid}`);
+    // Give the process a brief moment to exit
+    await new Promise(resolve => setTimeout(resolve, 300));
+    try {
+      await execAsync(`kill -0 ${pid}`);
+      // Still alive, escalate to SIGKILL
+      await execAsync(`kill -KILL ${pid}`);
+    } catch (error) {
+      // kill -0 failed, process is gone
+    }
     return { success: true };
   } catch (error) {
     return { success: false, error: error.message };

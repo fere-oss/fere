@@ -158,10 +158,16 @@ export function ServiceNode({
   const mainPort = node.ports[0]?.port;
   const routes = node.routes || [];
   const visibleRoutes = routes.slice(0, 3);
+  const apiEntry = node.projectPath
+    ? externalApiCache.get(node.projectPath)
+    : null;
   const externalApis = (node.projectPath && !node.isDockerContainer)
-    ? (externalApiCache.get(node.projectPath)?.apis || [])
+    ? (apiEntry?.apis || [])
     : [];
   const visibleApis = externalApis.slice(0, 3);
+  const shouldShowApis = Boolean(node.projectPath && !node.isDockerContainer);
+  const apiCount = externalApis.length;
+  const isApiLoading = shouldShowApis && !apiEntry;
   const projectLabel = node.projectPath ? node.projectPath.split('/').pop() : null;
 
   const handleClick = (e: React.MouseEvent) => {
@@ -270,22 +276,34 @@ export function ServiceNode({
         </div>
       )}
 
-      {externalApis.length > 0 && (
-        <div className="service-node-apis">
+      {shouldShowApis && (
+        <div
+          className={`service-node-apis${apiCount === 0 ? " is-empty" : ""}`}
+        >
           <div className="service-node-apis-header">
             <span className="service-node-apis-title">External APIs</span>
-            <span className="service-node-apis-count">{externalApis.length}</span>
+            <span className="service-node-apis-count">
+              {isApiLoading ? "…" : apiCount}
+            </span>
           </div>
           <div className="service-node-apis-list">
-            {visibleApis.map(api => (
-              <div key={api.name} className="service-api">
-                {api.name}
+            {apiCount === 0 ? (
+              <div className="service-api-placeholder">
+                {isApiLoading ? "Loading APIs…" : "No external APIs detected"}
               </div>
-            ))}
-            {externalApis.length > visibleApis.length && (
-              <div className="service-api-more">
-                +{externalApis.length - visibleApis.length} more
-              </div>
+            ) : (
+              <>
+                {visibleApis.map((api) => (
+                  <div key={api.name} className="service-api">
+                    {api.name}
+                  </div>
+                ))}
+                {apiCount > visibleApis.length && (
+                  <div className="service-api-more">
+                    +{apiCount - visibleApis.length} more
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>

@@ -6,7 +6,7 @@ import type { FlowServiceNodeData } from "./flowNodes";
 
 export const FLOW_LAYOUT = {
   NODE_WIDTH: 260,
-  NODE_MIN_HEIGHT: 150,
+  NODE_MIN_HEIGHT: 190,
   NODE_GAP: 16,
   STANDALONE_NODE_GAP: 16,
   GROUP_GAP: 20,

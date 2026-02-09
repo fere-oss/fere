@@ -115,13 +115,13 @@ export function ContextMenu({ node, x, y, width, height, onClose }: ContextMenuP
         )}
         {!isExternal && (
           <div
-            className="context-menu-item"
+            className="context-menu-item context-menu-item-danger"
             onClick={handleAction('restart')}
           >
             <span className="context-menu-icon" aria-hidden="true">
               <svg viewBox="0 0 20 20" width="14" height="14">
-                <path d="M4 10a6 6 0 1 0 2-4.5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-                <path d="M5 4v3h3" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+                <circle cx="10" cy="10" r="6.5" fill="none" stroke="currentColor" strokeWidth="1.4" />
+                <path d="M7.2 7.2l5.6 5.6M12.8 7.2l-5.6 5.6" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
               </svg>
             </span>
             <span>Kill Process</span>
