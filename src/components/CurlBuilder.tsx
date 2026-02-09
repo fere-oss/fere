@@ -1281,8 +1281,8 @@ export function CurlBuilder({ nodes, initialServiceId }: CurlBuilderProps) {
         </div>
       </div>
 
-      {/* Empty State */}
-      {httpNodes.length === 0 && (
+      {/* Empty State - only show on curl tab */}
+      {httpNodes.length === 0 && outputTab === "curl" && (
         <div className="curl-empty-state">
           <p>No services with HTTP ports found</p>
           <span>Start a local development server to see it here</span>
