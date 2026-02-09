@@ -16,6 +16,7 @@ import type { GraphViewProps, NodePosition } from "./graph/types";
 import { useExternalApis } from "./graph/useExternalApis";
 import { useGraphLayoutData } from "./graph/useGraphLayoutData";
 import { useNodeMeasurements } from "./graph/useNodeMeasurements";
+import { HoverContext } from "./graph/hoverContext";
 
 export function GraphView({
   nodes,
@@ -126,6 +127,11 @@ export function GraphView({
     return connected;
   }, [hoveredNodeId, layoutEdges]);
 
+  const hoverValue = useMemo(
+    () => ({ hoveredNodeId, connectedNodeIds }),
+    [hoveredNodeId, connectedNodeIds],
+  );
+
   const flowLayout = useMemo(
     () =>
       buildFlowLayout({
@@ -139,8 +145,6 @@ export function GraphView({
         animateNodes,
         onMeasure: handleNodeMeasure,
         isContainerView,
-        hoveredNodeId,
-        connectedNodeIds,
       }),
     [
       layoutNodes,
@@ -153,8 +157,6 @@ export function GraphView({
       handleNodeMeasure,
       isContainerView,
       layoutVersion,
-      hoveredNodeId,
-      connectedNodeIds,
     ],
   );
 
@@ -260,7 +262,7 @@ export function GraphView({
   useEffect(() => {
     if (!reactFlowInstance || didFitViewRef.current) return;
     if (layoutNodes.length === 0) return;
-    reactFlowInstance.fitView({ padding: 0.24, duration: 0 });
+    reactFlowInstance.fitView({ padding: 0.32, duration: 0 });
     didFitViewRef.current = true;
   }, [reactFlowInstance, layoutNodes.length]);
 
@@ -360,36 +362,38 @@ export function GraphView({
       )}
 
       <div className="graph-flow">
-        <ReactFlow
-          nodes={flowLayout.nodes}
-          edges={flowEdges}
-          nodeTypes={flowNodeTypes}
-          defaultEdgeOptions={defaultEdgeOptions}
-          nodesDraggable={false}
-          nodesConnectable={false}
-          elementsSelectable={false}
-          zoomOnScroll={false}
-          zoomOnPinch
-          zoomOnDoubleClick={false}
-          panOnScroll
-          minZoom={0.25}
-          maxZoom={1.8}
-          translateExtent={flowLayout.bounds}
-          onInit={setReactFlowInstance}
-          onNodeMouseEnter={handleNodeMouseEnter}
-          onNodeMouseLeave={handleNodeMouseLeave}
-          onPaneClick={() => {
-            setSelectedNode(null);
-            setContextMenu(null);
-          }}
-          onPaneContextMenu={(event) => {
-            event.preventDefault();
-            setContextMenu(null);
-          }}
-        >
-          <Background color="rgba(0,0,0,0.04)" gap={24} />
-          <Controls position="top-right" showInteractive={false} />
-        </ReactFlow>
+        <HoverContext.Provider value={hoverValue}>
+          <ReactFlow
+            nodes={flowLayout.nodes}
+            edges={flowEdges}
+            nodeTypes={flowNodeTypes}
+            defaultEdgeOptions={defaultEdgeOptions}
+            nodesDraggable={false}
+            nodesConnectable={false}
+            elementsSelectable={false}
+            zoomOnScroll={false}
+            zoomOnPinch
+            zoomOnDoubleClick={false}
+            panOnScroll
+            minZoom={0.25}
+            maxZoom={1.8}
+            translateExtent={flowLayout.bounds}
+            onInit={setReactFlowInstance}
+            onNodeMouseEnter={handleNodeMouseEnter}
+            onNodeMouseLeave={handleNodeMouseLeave}
+            onPaneClick={() => {
+              setSelectedNode(null);
+              setContextMenu(null);
+            }}
+            onPaneContextMenu={(event) => {
+              event.preventDefault();
+              setContextMenu(null);
+            }}
+          >
+            <Background color="rgba(0,0,0,0.04)" gap={24} />
+            <Controls position="top-right" showInteractive={false} />
+          </ReactFlow>
+        </HoverContext.Provider>
       </div>
 
       {/* Context Menu */}

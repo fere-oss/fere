@@ -3,6 +3,7 @@ import type { GraphNode } from "../../types/electron";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import { Handle, Position } from "reactflow";
 import { ServiceNode } from "./ServiceNodes";
+import { useHoverState } from "./hoverContext";
 
 export type FlowServiceNodeData = {
   node: GraphNode;
@@ -11,8 +12,6 @@ export type FlowServiceNodeData = {
   animate: boolean;
   animationIndex: number;
   onMeasure: (id: string, height: number) => void;
-  dimmed: boolean;
-  highlighted: boolean;
 };
 
 export function TierLabelNode({ data }: { data: { text: string } }) {
@@ -56,6 +55,10 @@ export function FlowServiceNode({ data }: { data: FlowServiceNodeData }) {
   const dataRef = useRef(data);
   dataRef.current = data;
 
+  const { hoveredNodeId, connectedNodeIds } = useHoverState();
+  const dimmed = hoveredNodeId !== null && !connectedNodeIds.has(data.node.id);
+  const highlighted = hoveredNodeId !== null && connectedNodeIds.has(data.node.id);
+
   useEffect(() => {
     if (!nodeRef.current) return;
     const element = nodeRef.current;
@@ -79,8 +82,8 @@ export function FlowServiceNode({ data }: { data: FlowServiceNodeData }) {
   const wrapperClass = [
     "rf-node-wrapper",
     data.animate && "rf-node-animate",
-    data.dimmed && "rf-node-dimmed",
-    data.highlighted && "rf-node-highlighted",
+    dimmed && "rf-node-dimmed",
+    highlighted && "rf-node-highlighted",
   ]
     .filter(Boolean)
     .join(" ");

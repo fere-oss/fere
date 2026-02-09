@@ -595,8 +595,8 @@ body {
 }
 
 .graph-flow .react-flow__node-service.rf-flow-dimmed {
-  opacity: 0.25;
-  filter: grayscale(40%);
+  opacity: 1;
+  filter: none;
 }
 
 .graph-flow .react-flow__node-service.rf-flow-highlighted {
@@ -692,9 +692,10 @@ body {
 }
 
 .rf-node-wrapper.rf-node-dimmed {
-  opacity: 0.25;
-  filter: grayscale(40%);
+  opacity: 0.35;
+  filter: grayscale(30%);
   pointer-events: auto;
+  transition: opacity 0.2s ease, filter 0.2s ease;
 }
 
 .rf-node-wrapper.rf-node-animate {
@@ -755,8 +756,8 @@ body {
 
 .graph-freshness {
   position: absolute;
-  bottom: 16px;
-  right: 16px;
+  bottom: 24px;
+  right: 24px;
   z-index: 20;
   display: flex;
   flex-direction: column;
