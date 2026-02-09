@@ -1,8 +1,16 @@
-import { useEffect, useRef } from "react";
+import { createContext, useContext, useEffect, useRef } from "react";
 import type { GraphNode } from "../../types/electron";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import { Handle, Position } from "reactflow";
 import { ServiceNode } from "./ServiceNodes";
+
+export type HoverState = {
+  hoveredNodeId: string | null;
+  connectedNodeIds: Set<string>;
+};
+
+const defaultHoverState: HoverState = { hoveredNodeId: null, connectedNodeIds: new Set() };
+export const HoverContext = createContext<HoverState>(defaultHoverState);
 
 export type FlowServiceNodeData = {
   node: GraphNode;
@@ -11,8 +19,6 @@ export type FlowServiceNodeData = {
   animate: boolean;
   animationIndex: number;
   onMeasure: (id: string, height: number) => void;
-  dimmed: boolean;
-  highlighted: boolean;
 };
 
 export function TierLabelNode({ data }: { data: { text: string } }) {
@@ -55,6 +61,7 @@ export function FlowServiceNode({ data }: { data: FlowServiceNodeData }) {
   const nodeRef = useRef<HTMLDivElement | null>(null);
   const dataRef = useRef(data);
   dataRef.current = data;
+  const { hoveredNodeId, connectedNodeIds } = useContext(HoverContext);
 
   useEffect(() => {
     if (!nodeRef.current) return;
@@ -76,11 +83,15 @@ export function FlowServiceNode({ data }: { data: FlowServiceNodeData }) {
     };
   }, []);
 
+  const isConnected = connectedNodeIds.has(data.node.id);
+  const dimmed = hoveredNodeId !== null && !isConnected;
+  const highlighted = hoveredNodeId !== null && isConnected;
+
   const wrapperClass = [
     "rf-node-wrapper",
     data.animate && "rf-node-animate",
-    data.dimmed && "rf-node-dimmed",
-    data.highlighted && "rf-node-highlighted",
+    dimmed && "rf-node-dimmed",
+    highlighted && "rf-node-highlighted",
   ]
     .filter(Boolean)
     .join(" ");

@@ -120,8 +120,6 @@ type BuildLayoutInput = {
   animateNodes: boolean;
   onMeasure: (id: string, height: number) => void;
   isContainerView: boolean;
-  hoveredNodeId: string | null;
-  connectedNodeIds: Set<string>;
 };
 
 export function buildFlowLayout({
@@ -135,8 +133,6 @@ export function buildFlowLayout({
   animateNodes,
   onMeasure,
   isContainerView,
-  hoveredNodeId,
-  connectedNodeIds,
 }: BuildLayoutInput): FlowLayoutResult {
   const {
     NODE_WIDTH,
@@ -480,9 +476,6 @@ export function buildFlowLayout({
   }
 
   const nodePositions: Array<FlowNode<FlowServiceNodeData>> = layoutNodes.map((node) => {
-    const isConnected = connectedNodeIds.has(node.id);
-    const dimmed = hoveredNodeId !== null && !isConnected;
-    const highlighted = hoveredNodeId !== null && isConnected;
     return {
       id: node.id,
       type: "service",
@@ -497,10 +490,10 @@ export function buildFlowLayout({
           stableConnectedLayout.findIndex((ln) => ln.node.id === node.id),
         ),
         onMeasure,
-        dimmed,
-        highlighted,
+        dimmed: false,
+        highlighted: false,
       },
-      className: dimmed ? "rf-flow-dimmed" : highlighted ? "rf-flow-highlighted" : undefined,
+      className: undefined,
       draggable: false,
       selectable: false,
       style: { width: NODE_WIDTH },

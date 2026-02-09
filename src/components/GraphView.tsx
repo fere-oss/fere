@@ -10,7 +10,8 @@ import type { GraphNode } from "../types/electron";
 import { SERVICE_COLORS } from "./graph/constants";
 import { ContextMenu } from "./graph/ContextMenu";
 import { NodeDetailPanel } from "./graph/NodeDetailPanel";
-import { flowNodeTypes } from "./graph/flowNodes";
+import { flowNodeTypes, HoverContext } from "./graph/flowNodes";
+import { flowEdgeTypes } from "./graph/ArrowEdge";
 import { FLOW_LAYOUT, buildFlowLayout } from "./graph/flowLayout";
 import type { GraphViewProps } from "./graph/types";
 import { useExternalApis } from "./graph/useExternalApis";
@@ -130,8 +131,6 @@ export function GraphView({
         animateNodes,
         onMeasure: handleNodeMeasure,
         isContainerView,
-        hoveredNodeId,
-        connectedNodeIds,
       }),
     [
       layoutNodes,
@@ -144,9 +143,12 @@ export function GraphView({
       handleNodeMeasure,
       isContainerView,
       layoutVersion,
-      hoveredNodeId,
-      connectedNodeIds,
     ],
+  );
+
+  const hoverState = useMemo(
+    () => ({ hoveredNodeId, connectedNodeIds }),
+    [hoveredNodeId, connectedNodeIds],
   );
 
   const flowEdges = useMemo(() => {
@@ -177,7 +179,7 @@ export function GraphView({
         const tgtPos = posMap.get(edge.target);
         let sourceHandle = "source-bottom";
         let targetHandle = "target-top";
-        let edgeType: "default" | "smoothstep" = "default";
+        let edgeType: "arrowBezier" | "arrowStep" = "arrowBezier";
         if (srcPos && tgtPos) {
           const dx = tgtPos.x - srcPos.x;
           const dy = tgtPos.y - srcPos.y;
@@ -194,7 +196,7 @@ export function GraphView({
             });
 
             if (hasIntermediate) {
-              edgeType = "smoothstep";
+              edgeType = "arrowStep";
               if (dx > 0) {
                 sourceHandle = "source-top";
                 targetHandle = "target-top";
@@ -224,26 +226,13 @@ export function GraphView({
           sourceHandle,
           targetHandle,
           type: edgeType,
-          className: "graph-edge",
-          style: {
-            stroke: "var(--graph-edge)",
-            strokeWidth: 3,
-            strokeLinecap: "round" as const,
-            strokeLinejoin: "round" as const,
-          },
         };
       });
   }, [layoutEdges, hoveredNodeId, flowLayout.nodes]);
 
   const defaultEdgeOptions = useMemo(
     () => ({
-      type: "default" as const,
-      style: {
-        stroke: "var(--graph-edge)",
-        strokeWidth: 3,
-        strokeLinecap: "round" as const,
-        strokeLinejoin: "round" as const,
-      },
+      type: "arrowBezier" as const,
     }),
     [],
   );
@@ -266,17 +255,25 @@ export function GraphView({
     ? formatAge(Date.now() - dataStatus.collectedAt)
     : "—";
 
+  const hoverTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const pendingHover = useRef<string | null>(null);
   const handleNodeMouseEnter = useCallback(
     (_event: ReactMouseEvent, node: { id: string; type?: string }) => {
+      clearTimeout(hoverTimer.current);
       if (node.type === "service") {
-        setHoveredNodeId(node.id);
+        pendingHover.current = node.id;
+        hoverTimer.current = setTimeout(() => {
+          setHoveredNodeId(pendingHover.current);
+        }, 50);
       }
     },
     [],
   );
 
   const handleNodeMouseLeave = useCallback(() => {
-    setHoveredNodeId(null);
+    clearTimeout(hoverTimer.current);
+    pendingHover.current = null;
+    hoverTimer.current = setTimeout(() => setHoveredNodeId(null), 80);
   }, []);
 
   if (layoutNodes.length === 0) {
@@ -326,36 +323,39 @@ export function GraphView({
       )}
 
       <div className="graph-flow">
-        <ReactFlow
-          nodes={flowLayout.nodes}
-          edges={flowEdges}
-          nodeTypes={flowNodeTypes}
-          defaultEdgeOptions={defaultEdgeOptions}
-          nodesDraggable={false}
-          nodesConnectable={false}
-          elementsSelectable={false}
-          zoomOnScroll={false}
-          zoomOnPinch
-          zoomOnDoubleClick={false}
-          panOnScroll
-          minZoom={0.25}
-          maxZoom={1.8}
-          translateExtent={flowLayout.bounds}
-          onInit={setReactFlowInstance}
-          onNodeMouseEnter={handleNodeMouseEnter}
-          onNodeMouseLeave={handleNodeMouseLeave}
-          onPaneClick={() => {
-            setSelectedNode(null);
-            setContextMenu(null);
-          }}
-          onPaneContextMenu={(event) => {
-            event.preventDefault();
-            setContextMenu(null);
-          }}
-        >
-          <Background color="rgba(0,0,0,0.04)" gap={24} />
-          <Controls position="top-right" />
-        </ReactFlow>
+        <HoverContext.Provider value={hoverState}>
+          <ReactFlow
+            nodes={flowLayout.nodes}
+            edges={flowEdges}
+            nodeTypes={flowNodeTypes}
+            edgeTypes={flowEdgeTypes}
+            defaultEdgeOptions={defaultEdgeOptions}
+            nodesDraggable={false}
+            nodesConnectable={false}
+            elementsSelectable={false}
+            zoomOnScroll={false}
+            zoomOnPinch
+            zoomOnDoubleClick={false}
+            panOnScroll
+            minZoom={0.25}
+            maxZoom={1.8}
+            translateExtent={flowLayout.bounds}
+            onInit={setReactFlowInstance}
+            onNodeMouseEnter={handleNodeMouseEnter}
+            onNodeMouseLeave={handleNodeMouseLeave}
+            onPaneClick={() => {
+              setSelectedNode(null);
+              setContextMenu(null);
+            }}
+            onPaneContextMenu={(event) => {
+              event.preventDefault();
+              setContextMenu(null);
+            }}
+          >
+            <Background color="rgba(0,0,0,0.04)" gap={24} />
+            <Controls position="top-right" />
+          </ReactFlow>
+        </HoverContext.Provider>
       </div>
 
       {contextMenu && (

@@ -548,7 +548,7 @@ body {
   overflow: hidden;
   padding: 0;
   user-select: none;
-  --graph-edge: #0078D4;
+  --graph-edge: #3B82F6;
   -webkit-transform: translateZ(0);
   transform: translateZ(0);
   -webkit-backface-visibility: hidden;
@@ -606,22 +606,7 @@ body {
   background: transparent;
   border: none;
   box-shadow: none;
-  transition: opacity 0.2s ease, filter 0.2s ease, transform 0.2s ease;
-}
-
-.graph-flow .react-flow__node-service.rf-flow-dimmed {
-  opacity: 0.25;
-  filter: grayscale(40%);
-}
-
-.graph-flow .react-flow__node-service.rf-flow-highlighted {
-  z-index: 10 !important;
-  transform: scale(1.03);
-}
-
-.graph-flow .react-flow__node-service.rf-flow-highlighted .service-node {
-  border-color: var(--node-color, var(--blue));
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12), 0 0 0 2px color-mix(in srgb, var(--node-color, var(--blue)) 25%, transparent);
+  transition: opacity 0.2s ease, filter 0.2s ease;
 }
 
 .graph-flow .react-flow__node-groupBox {
