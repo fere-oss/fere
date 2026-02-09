@@ -7,15 +7,15 @@ import type { FlowServiceNodeData } from "./flowNodes";
 export const FLOW_LAYOUT = {
   NODE_WIDTH: 260,
   NODE_MIN_HEIGHT: 190,
-  NODE_GAP: 16,
-  STANDALONE_NODE_GAP: 16,
-  GROUP_GAP: 20,
+  NODE_GAP: 28,
+  STANDALONE_NODE_GAP: 24,
+  GROUP_GAP: 32,
   LAYER_GAP: 140,
   STANDALONE_GROUP_GAP: 24,
   STANDALONE_LABEL_OFFSET: 48,
   LAYER_LABEL_OFFSET: 52,
   STANDALONE_SECTION_OFFSET: 84,
-  GROUP_BOX_PADDING: 10,
+  GROUP_BOX_PADDING: 24,
   GROUP_LABEL_OFFSET: 28,
   LABEL_WIDTH: 180,
   LABEL_HEIGHT: 28,
@@ -26,7 +26,12 @@ export const FLOW_LAYOUT = {
 } as const;
 
 type LabelNodeData = { text: string; color?: string; offset?: boolean };
-type BoxNodeData = { width: number; height: number; color: string; offset?: boolean };
+type BoxNodeData = {
+  width: number;
+  height: number;
+  color: string;
+  offset?: boolean;
+};
 
 type FlowNode<T> = {
   id: string;
@@ -199,8 +204,7 @@ export function buildFlowLayout({
           rowHeights[row] = Math.max(rowHeights[row], measured);
         });
         const height =
-          rowHeights.reduce((sum, h) => sum + h, 0) +
-          (rowCount - 1) * NODE_GAP;
+          rowHeights.reduce((sum, h) => sum + h, 0) + (rowCount - 1) * NODE_GAP;
         return {
           group,
           width,
@@ -226,87 +230,89 @@ export function buildFlowLayout({
       let cursorX = -totalWidth / 2;
       const rowY = currentY;
 
-      meta.groupLayouts.forEach(({ group, width, height, columns, rowHeights }) => {
-        const groupX = cursorX;
-        const groupY = rowY;
+      meta.groupLayouts.forEach(
+        ({ group, width, height, columns, rowHeights }) => {
+          const groupX = cursorX;
+          const groupY = rowY;
 
-        if (group.isGroup) {
-          boxNodes.push({
-            id: `layer-${meta.layer}-group-box-${group.groupName}`,
-            type: "groupBox",
-            position: {
-              x: groupX - GROUP_BOX_PADDING,
-              y: groupY - GROUP_BOX_PADDING,
-            },
-            data: {
-              width: width + GROUP_BOX_PADDING * 2,
-              height: height + GROUP_BOX_PADDING * 2,
-              color: GROUP_COLOR,
-            },
-            draggable: false,
-            selectable: false,
+          if (group.isGroup) {
+            boxNodes.push({
+              id: `layer-${meta.layer}-group-box-${group.groupName}`,
+              type: "groupBox",
+              position: {
+                x: groupX - GROUP_BOX_PADDING,
+                y: groupY - GROUP_BOX_PADDING,
+              },
+              data: {
+                width: width + GROUP_BOX_PADDING * 2,
+                height: height + GROUP_BOX_PADDING * 2,
+                color: GROUP_COLOR,
+              },
+              draggable: false,
+              selectable: false,
+            });
+            minX = Math.min(minX, groupX - GROUP_BOX_PADDING);
+            minY = Math.min(minY, groupY - GROUP_BOX_PADDING);
+            maxX = Math.max(
+              maxX,
+              groupX - GROUP_BOX_PADDING + width + GROUP_BOX_PADDING * 2,
+            );
+            maxY = Math.max(
+              maxY,
+              groupY - GROUP_BOX_PADDING + height + GROUP_BOX_PADDING * 2,
+            );
+
+            labelNodes.push({
+              id: `layer-${meta.layer}-group-label-${group.groupName}`,
+              type: "groupLabel",
+              position: centeredLabelPosition(
+                groupX + width / 2,
+                groupY - GROUP_LABEL_OFFSET,
+              ),
+              data: { text: group.groupName || "Group", color: GROUP_COLOR },
+              draggable: false,
+              selectable: false,
+              style: { width: LABEL_WIDTH, height: LABEL_HEIGHT },
+            });
+            minX = Math.min(minX, groupX + width / 2 - LABEL_WIDTH / 2);
+            minY = Math.min(minY, groupY - GROUP_LABEL_OFFSET);
+            maxX = Math.max(maxX, groupX + width / 2 + LABEL_WIDTH / 2);
+            maxY = Math.max(maxY, groupY - GROUP_LABEL_OFFSET + LABEL_HEIGHT);
+          }
+
+          group.nodes.forEach((node, index) => {
+            const row = Math.floor(index / columns);
+            const col = index % columns;
+            const nodesInRow = Math.min(
+              columns,
+              group.nodes.length - row * columns,
+            );
+            const rowWidth =
+              nodesInRow * NODE_WIDTH + (nodesInRow - 1) * NODE_GAP;
+            const colOffset = (width - rowWidth) / 2;
+            const rowOffset =
+              (rowHeights ?? []).slice(0, row).reduce((sum, h) => sum + h, 0) +
+              row * NODE_GAP;
+            positions.set(node.id, {
+              x: groupX + colOffset + col * (NODE_WIDTH + NODE_GAP),
+              y: groupY + rowOffset,
+            });
+            minX = Math.min(
+              minX,
+              groupX + colOffset + col * (NODE_WIDTH + NODE_GAP),
+            );
+            minY = Math.min(minY, groupY + rowOffset);
+            maxX = Math.max(
+              maxX,
+              groupX + colOffset + col * (NODE_WIDTH + NODE_GAP) + NODE_WIDTH,
+            );
+            const measured = nodeHeights.get(node.id) ?? NODE_MIN_HEIGHT;
+            maxY = Math.max(maxY, groupY + rowOffset + measured);
           });
-          minX = Math.min(minX, groupX - GROUP_BOX_PADDING);
-          minY = Math.min(minY, groupY - GROUP_BOX_PADDING);
-          maxX = Math.max(
-            maxX,
-            groupX - GROUP_BOX_PADDING + width + GROUP_BOX_PADDING * 2,
-          );
-          maxY = Math.max(
-            maxY,
-            groupY - GROUP_BOX_PADDING + height + GROUP_BOX_PADDING * 2,
-          );
 
-          labelNodes.push({
-            id: `layer-${meta.layer}-group-label-${group.groupName}`,
-            type: "groupLabel",
-            position: centeredLabelPosition(
-              groupX + width / 2,
-              groupY - GROUP_LABEL_OFFSET,
-            ),
-            data: { text: group.groupName || "Group", color: GROUP_COLOR },
-            draggable: false,
-            selectable: false,
-            style: { width: LABEL_WIDTH, height: LABEL_HEIGHT },
-          });
-          minX = Math.min(minX, groupX + width / 2 - LABEL_WIDTH / 2);
-          minY = Math.min(minY, groupY - GROUP_LABEL_OFFSET);
-          maxX = Math.max(maxX, groupX + width / 2 + LABEL_WIDTH / 2);
-          maxY = Math.max(maxY, groupY - GROUP_LABEL_OFFSET + LABEL_HEIGHT);
-        }
-
-        group.nodes.forEach((node, index) => {
-          const row = Math.floor(index / columns);
-          const col = index % columns;
-          const nodesInRow = Math.min(
-            columns,
-            group.nodes.length - row * columns,
-          );
-          const rowWidth =
-            nodesInRow * NODE_WIDTH + (nodesInRow - 1) * NODE_GAP;
-          const colOffset = (width - rowWidth) / 2;
-          const rowOffset =
-            (rowHeights ?? []).slice(0, row).reduce((sum, h) => sum + h, 0) +
-            row * NODE_GAP;
-          positions.set(node.id, {
-            x: groupX + colOffset + col * (NODE_WIDTH + NODE_GAP),
-            y: groupY + rowOffset,
-          });
-          minX = Math.min(
-            minX,
-            groupX + colOffset + col * (NODE_WIDTH + NODE_GAP),
-          );
-          minY = Math.min(minY, groupY + rowOffset);
-          maxX = Math.max(
-            maxX,
-            groupX + colOffset + col * (NODE_WIDTH + NODE_GAP) + NODE_WIDTH,
-          );
-          const measured = nodeHeights.get(node.id) ?? NODE_MIN_HEIGHT;
-          maxY = Math.max(maxY, groupY + rowOffset + measured);
-        });
-
-        cursorX += width + GROUP_GAP;
-      });
+          cursorX += width + GROUP_GAP;
+        },
+      );
 
       const labelText = `Layer ${meta.layer}`;
       labelNodes.push({
@@ -413,8 +419,7 @@ export function buildFlowLayout({
             item.group.nodes.length - row * item.columnCount,
           );
           const rowWidth =
-            nodesInRow * NODE_WIDTH +
-            (nodesInRow - 1) * STANDALONE_NODE_GAP;
+            nodesInRow * NODE_WIDTH + (nodesInRow - 1) * STANDALONE_NODE_GAP;
           const colOffset = (item.width - rowWidth) / 2;
           positions.set(node.id, {
             x: groupX + colOffset + col * (NODE_WIDTH + STANDALONE_NODE_GAP),
@@ -475,28 +480,30 @@ export function buildFlowLayout({
     }
   }
 
-  const nodePositions: Array<FlowNode<FlowServiceNodeData>> = layoutNodes.map((node) => {
-    return {
-      id: node.id,
-      type: "service",
-      position: positions.get(node.id) || { x: 0, y: 0 },
-      data: {
-        node,
-        onNodeClick,
-        onNodeContextMenu,
-        animate: animateNodes,
-        animationIndex: Math.max(
-          0,
-          stableConnectedLayout.findIndex((ln) => ln.node.id === node.id),
-        ),
-        onMeasure,
-      },
-      className: undefined,
-      draggable: false,
-      selectable: false,
-      style: { width: NODE_WIDTH },
-    };
-  });
+  const nodePositions: Array<FlowNode<FlowServiceNodeData>> = layoutNodes.map(
+    (node) => {
+      return {
+        id: node.id,
+        type: "service",
+        position: positions.get(node.id) || { x: 0, y: 0 },
+        data: {
+          node,
+          onNodeClick,
+          onNodeContextMenu,
+          animate: animateNodes,
+          animationIndex: Math.max(
+            0,
+            stableConnectedLayout.findIndex((ln) => ln.node.id === node.id),
+          ),
+          onMeasure,
+        },
+        className: undefined,
+        draggable: false,
+        selectable: false,
+        style: { width: NODE_WIDTH },
+      };
+    },
+  );
 
   minX = Infinity;
   minY = Infinity;
