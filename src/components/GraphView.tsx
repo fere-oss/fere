@@ -51,7 +51,7 @@ export function GraphView({
   const didFitViewRef = useRef(false);
   const didInitialAnimationRef = useRef(false);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
-  const [, setExternalApiVersion] = useState(0);
+  const [externalApiVersion, setExternalApiVersion] = useState(0);
   useEffect(() => {
     if (didInitialAnimationRef.current) return;
     didInitialAnimationRef.current = true;
@@ -157,6 +157,7 @@ export function GraphView({
       handleNodeMeasure,
       isContainerView,
       layoutVersion,
+      externalApiVersion,
     ],
   );
 

@@ -16,7 +16,6 @@ export function useNodeMeasurements(nodesKey: string, nodeCount: number) {
 
   const handleNodeMeasure = useCallback(
     (id: string, height: number) => {
-      if (layoutLockedRef.current) return;
       const rounded = Math.round(height);
       const current = nodeHeightsRef.current.get(id);
       if (current === rounded) return;
@@ -25,7 +24,12 @@ export function useNodeMeasurements(nodesKey: string, nodeCount: number) {
         Math.max(rounded, FLOW_LAYOUT.NODE_MIN_HEIGHT),
       );
       measuredIdsRef.current.add(id);
-      if (measuredIdsRef.current.size >= nodeCount) {
+      if (layoutLockedRef.current) {
+        // React 19 auto-batches all state updates, so rapid calls
+        // from multiple ResizeObserver callbacks are merged into one re-render
+        setLayoutVersion((version) => version + 1);
+      } else if (measuredIdsRef.current.size >= nodeCount) {
+        // Initial batch complete
         layoutLockedRef.current = true;
         setLayoutVersion((version) => version + 1);
       }
