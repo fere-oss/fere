@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const net = require('net');
 
 const CODE_EXTENSIONS = ['.py', '.js', '.ts', '.jsx', '.tsx', '.mjs', '.cjs', '.go', '.rb', '.php', '.java', '.kt'];
 const EXTRA_FILES = [
@@ -25,6 +26,12 @@ const SKIP_DIRS = [
   '.npm',
   '.yarn',
   '.pnpm-store',
+  'test',
+  'tests',
+  '__tests__',
+  '__mocks__',
+  'coverage',
+  'docs',
 ];
 
 const MAX_FILES = 2500;
@@ -36,6 +43,10 @@ const BLOCKED_HOSTS = new Set([
   'w3.org',
   'github.com',
   'bit.ly',
+  'example.com',
+  'api.example.com',
+  'fonts.googleapis.com',
+  'fonts.gstatic.com',
 ]);
 
 const URL_REGEX = /\bhttps?:\/\/[^\s"'`<>]+/gi;
@@ -58,6 +69,64 @@ function isLocalHost(host) {
   if (normalized.startsWith('127.')) return true;
   if (normalized.endsWith('.local')) return true;
   return false;
+}
+
+function isPrivateIp(host) {
+  const ipVersion = net.isIP(host);
+  if (!ipVersion) return false;
+
+  if (ipVersion === 4) {
+    const parts = host.split('.').map(Number);
+    if (parts.length !== 4 || parts.some(Number.isNaN)) return false;
+
+    // RFC1918 + common local-only ranges
+    if (parts[0] === 10) return true;
+    if (parts[0] === 127) return true;
+    if (parts[0] === 169 && parts[1] === 254) return true;
+    if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true;
+    if (parts[0] === 192 && parts[1] === 168) return true;
+    if (parts[0] === 100 && parts[1] >= 64 && parts[1] <= 127) return true;
+    return false;
+  }
+
+  const normalized = host.toLowerCase();
+  if (normalized === '::1') return true;
+  if (normalized.startsWith('fe80:')) return true;
+  if (normalized.startsWith('fc') || normalized.startsWith('fd')) return true;
+  return false;
+}
+
+function isReservedTestHost(host) {
+  const normalized = normalizeHost(host);
+  if (!normalized) return false;
+
+  if (normalized === 'example.com' || normalized.endsWith('.example.com')) return true;
+  if (normalized === 'example.org' || normalized.endsWith('.example.org')) return true;
+  if (normalized === 'example.net' || normalized.endsWith('.example.net')) return true;
+  if (normalized.endsWith('.example')) return true;
+  if (normalized.endsWith('.test')) return true;
+  if (normalized.endsWith('.invalid')) return true;
+  return false;
+}
+
+function isIgnoredHost(host) {
+  const normalized = normalizeHost(host);
+  if (!normalized) return true;
+  if (isLocalHost(normalized)) return true;
+  if (isPrivateIp(normalized)) return true;
+  if (isReservedTestHost(normalized)) return true;
+  return BLOCKED_HOSTS.has(normalized);
+}
+
+function shouldSkipFile(filePath) {
+  const fileName = path.basename(filePath).toLowerCase();
+  return (
+    fileName.includes('.test.') ||
+    fileName.includes('.spec.') ||
+    fileName.includes('.mock.') ||
+    fileName.includes('-mock.') ||
+    fileName.endsWith('.d.ts')
+  );
 }
 
 function findApiFiles(dir, files = []) {
@@ -187,9 +256,7 @@ function recordProviderMatch(map, provider, matchType, host) {
   }
   const entry = map.get(provider.name);
   entry.matchedOn.add(matchType);
-  if (host) {
-    entry.hosts.add(normalizeHost(host));
-  }
+  if (host) entry.hosts.add(normalizeHost(host));
 }
 
 function extractHosts(content) {
@@ -202,7 +269,7 @@ function extractHosts(content) {
     try {
       const url = new URL(cleaned);
       const host = normalizeHost(url.hostname);
-      if (host && !isLocalHost(host) && !BLOCKED_HOSTS.has(host)) {
+      if (host && !isIgnoredHost(host)) {
         hosts.add(host);
       }
     } catch (error) {
@@ -248,6 +315,7 @@ async function scanExternalApis(projectPath) {
 
     for (const filePath of files) {
       if (ignoredFiles.has(filePath)) continue;
+      if (shouldSkipFile(filePath)) continue;
       try {
         const stats = fs.statSync(filePath);
         if (stats.size > MAX_FILE_BYTES) continue;
@@ -259,13 +327,6 @@ async function scanExternalApis(projectPath) {
         }
 
         for (const provider of providers) {
-          const hasDomain = provider.domains.some(domain =>
-            sanitizedContent.toLowerCase().includes(domain)
-          );
-          if (hasDomain) {
-            recordProviderMatch(providerMatches, provider, 'domain');
-          }
-
           if (provider.sdkPatterns.some(pattern => pattern.test(sanitizedContent))) {
             recordProviderMatch(providerMatches, provider, 'sdk');
           }
