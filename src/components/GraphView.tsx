@@ -42,7 +42,7 @@ export function GraphView({
   const didFitViewRef = useRef(false);
   const didInitialAnimationRef = useRef(false);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
-  const [, setExternalApiVersion] = useState(0);
+  const [externalApiVersion, setExternalApiVersion] = useState(0);
   useEffect(() => {
     if (didInitialAnimationRef.current) return;
     didInitialAnimationRef.current = true;
@@ -103,11 +103,12 @@ export function GraphView({
         .join(","),
     [layoutNodes],
   );
+  const bumpExternalApiVersion = useCallback(() => {
+    setExternalApiVersion((version) => version + 1);
+  }, []);
+  const externalApisLoaded = useExternalApis(projectPathsKey, bumpExternalApiVersion);
   const { nodeHeightsRef, layoutVersion, handleNodeMeasure } =
-    useNodeMeasurements(nodesKey, layoutNodes.length);
-  useExternalApis(projectPathsKey, () =>
-    setExternalApiVersion((version) => version + 1),
-  );
+    useNodeMeasurements(nodesKey, layoutNodes.length, externalApisLoaded);
   const connectedNodeIds = useMemo(() => {
     if (!hoveredNodeId) return new Set<string>();
     const connected = new Set<string>();
@@ -143,6 +144,7 @@ export function GraphView({
       handleNodeMeasure,
       isContainerView,
       layoutVersion,
+      externalApiVersion,
     ],
   );
 

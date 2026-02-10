@@ -5,54 +5,45 @@ import {
   type EdgeProps,
 } from "reactflow";
 
-const EDGE_COLOR = "#3B82F6";
-const STROKE_WIDTH = 2.5;
-const ARROW_SPACING = 64;
-const ARROW_SIZE = 10;
+const EDGE_COLOR = "#56B4F9";
+const STROKE_WIDTH = 4;
+const ARROW_SIZE = 16;
 
 type ArrowPoint = { x: number; y: number; angle: number };
 
-function computeArrows(path: SVGPathElement): ArrowPoint[] {
+function computeMidArrow(path: SVGPathElement): ArrowPoint | null {
   const length = path.getTotalLength();
-  if (length < ARROW_SPACING) return [];
-  const points: ArrowPoint[] = [];
-  const start = ARROW_SPACING * 0.7;
-  for (let d = start; d < length - ARROW_SPACING * 0.4; d += ARROW_SPACING) {
-    const p1 = path.getPointAtLength(d - 1);
-    const p2 = path.getPointAtLength(d + 1);
-    const angle = Math.atan2(p2.y - p1.y, p2.x - p1.x) * (180 / Math.PI);
-    const p = path.getPointAtLength(d);
-    points.push({ x: p.x, y: p.y, angle });
-  }
-  return points;
+  if (length < 20) return null;
+  const mid = length / 2;
+  const p = path.getPointAtLength(mid);
+  const p1 = path.getPointAtLength(mid - 1);
+  const p2 = path.getPointAtLength(mid + 1);
+  const angle = Math.atan2(p2.y - p1.y, p2.x - p1.x) * (180 / Math.PI);
+  return { x: p.x, y: p.y, angle };
 }
 
-function ArrowChevrons({
+function MidArrow({
   pathRef,
   pathData,
 }: {
   pathRef: React.RefObject<SVGPathElement | null>;
   pathData: string;
 }) {
-  const [arrows, setArrows] = useState<ArrowPoint[]>([]);
+  const [arrow, setArrow] = useState<ArrowPoint | null>(null);
 
   useEffect(() => {
     if (!pathRef.current) return;
-    setArrows(computeArrows(pathRef.current));
+    setArrow(computeMidArrow(pathRef.current));
   }, [pathData, pathRef]);
 
+  if (!arrow) return null;
+
   return (
-    <>
-      {arrows.map((arrow, i) => (
-        <polygon
-          key={i}
-          points={`${-ARROW_SIZE},${-ARROW_SIZE * 0.75} ${ARROW_SIZE * 0.6},0 ${-ARROW_SIZE},${ARROW_SIZE * 0.75}`}
-          transform={`translate(${arrow.x},${arrow.y}) rotate(${arrow.angle})`}
-          fill={EDGE_COLOR}
-          opacity={0.85}
-        />
-      ))}
-    </>
+    <polygon
+      points={`${-ARROW_SIZE},${-ARROW_SIZE * 0.7} ${ARROW_SIZE * 0.7},0 ${-ARROW_SIZE},${ARROW_SIZE * 0.7}`}
+      transform={`translate(${arrow.x},${arrow.y}) rotate(${arrow.angle})`}
+      fill={EDGE_COLOR}
+    />
   );
 }
 
@@ -88,7 +79,7 @@ export function ArrowBezierEdge({
         strokeLinejoin="round"
         className="react-flow__edge-path"
       />
-      <ArrowChevrons pathRef={pathRef} pathData={edgePath} />
+      <MidArrow pathRef={pathRef} pathData={edgePath} />
     </g>
   );
 }
@@ -126,7 +117,7 @@ export function ArrowStepEdge({
         strokeLinejoin="round"
         className="react-flow__edge-path"
       />
-      <ArrowChevrons pathRef={pathRef} pathData={edgePath} />
+      <MidArrow pathRef={pathRef} pathData={edgePath} />
     </g>
   );
 }
