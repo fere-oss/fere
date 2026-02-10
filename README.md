@@ -1,62 +1,84 @@
-# fere
+# Fere
 
-fere is a native-feeling macOS Electron app that visualizes your local development environment in real time. It discovers dev processes, maps listening ports, and infers service connections to help you answer "what is running where" at a glance.
+fere helps you to visualize your development environment in real time.
 
-## Current features
-- Live service map with CPU/memory, ports, and real-time connections
-- Health status tracking (active/idle/down) per service
-- Listening ports with process/user metadata
-- Connection graph model (nodes + edges) in the main process
-- API route discovery per service (framework-aware: FastAPI, Flask, Express, Next.js, Koa, Hono)
-- External API usage detection from code/env (configurable providers list)
-- Project mapping from process command/CWD to repo root
-- Project tabs + System tab grouping for multi-repo setups
-- Quick actions: open service URL, open terminal at project path, kill dev processes
-- Real-time connection arrows with port labels
-- API Tester tab with curl builder, in-app request execution, and history
-- Docker containers view (running containers only)
-- Container logs streaming (single container + multi-container)
-- Database tools for containerized DBs (table list, data preview, query, create table)
+## Highlights
+- Live service graph with CPU/memory, ports, and real-time connections
+- Health tracking per service (`active`, `idle`, `down`)
+- API route discovery (FastAPI, Flask, Express, Next.js, Koa, Hono)
+- External API usage detection from code and environment files
+- Project-aware grouping (multi-repo tabs + system view)
+- API Tester with cURL builder, request execution, and history
+- Docker visibility for running containers and network links
+- Container log streaming (single and multi-container)
+- Database tools for containerized DBs (tables, preview, query, create table)
 
 ## Requirements
-- macOS with `lsof` and `ps` available (default)
-- Node.js and npm
+- macOS
+- Node.js + npm
+- System tools available on macOS: `lsof`, `ps`
+- Optional: Docker Desktop (for container and DB features)
 
-## Development
+## Quick Start
 ```bash
 npm install
 npm run electron:dev
 ```
 
-## Tests
+## Scripts
+```bash
+npm run start            # React dev server only
+npm run electron:dev     # React + Electron app (recommended)
+npm run build            # Renderer production build
+npm run electron:build   # Build desktop app
+npm run electron:build:mac
+npm run test:node        # Node/Electron service tests
+```
+
+## Testing
 ```bash
 npm run test:node
 ```
+
+Integration test utilities:
 ```bash
 cd test
 sh start-all.sh
 ```
 
-## Build (macOS)
 ```bash
-npm run electron:build:mac
+cd test
+cd docker-test
+sh start.sh
 ```
 
-## Notes
-- Process discovery uses `ps` and `lsof`; output formats can vary across OS versions.
-- The renderer is sandboxed; all system calls occur in the Electron main process.
+## Project Structure
+```text
+src/                    React UI (graph, API tester, DB views)
+electron/               Main process, IPC handlers, monitoring services
+config/                 API provider detection config
+docs/                   Architecture notes
+```
 
-## External API detection
-- Provider list lives in `config/api-providers.json`.
-- Optional per-user overrides in `~/.fere/api-providers.json` (same schema, overrides by name).
-- Detection scans code + env files for SDK imports, domains, and env var names.
+## Security Model
+- Renderer runs sandboxed with `contextIsolation` enabled
+- System access is restricted to Electron main process IPC handlers
+- URL validation and request safeguards are enforced in `electron/security.js`
+- Response size caps are applied for in-app HTTP testing
 
 ## API Tester
-- Switch to the API Tester tab to build curl requests against detected services.
-- Select a service + route, edit headers/body, and run requests from the app.
-- Request history is stored locally for quick recall.
+- Build from discovered service routes or edit raw cURL directly
+- Execute requests in-app and inspect status, headers, body, and timing
+- Save and replay request history locally
 
-## Containers
-- Container view shows running Docker containers, ports, and connections.
-- Logs tab supports streaming logs from one or many containers.
-- Database view supports browsing tables, previewing data, and running queries for DB containers.
+## External API Detection
+- Base provider catalog: `config/api-providers.json`
+- Optional per-user overrides: `~/.fere/api-providers.json`
+- Detection scans source and env files for SDK imports, hosts, and env var patterns
+
+## Notes
+- Process/port parsing relies on OS command output and may vary slightly by macOS version
+- Fere is optimized for local development environments rather than production observability
+
+## Architecture
+For deeper internals, see `docs/architecture.md`.
