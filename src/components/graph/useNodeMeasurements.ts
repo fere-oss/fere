@@ -22,6 +22,17 @@ export function useNodeMeasurements(nodesKey: string, nodeCount: number, allowLo
     }
   }, [allowLock]);
 
+  // Unlock on window resize so nodes can be re-measured at new sizes.
+  useEffect(() => {
+    const onResize = () => {
+      if (layoutLockedRef.current) {
+        layoutLockedRef.current = false;
+      }
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
   const handleNodeMeasure = useCallback(
     (id: string, height: number) => {
       if (layoutLockedRef.current) return;

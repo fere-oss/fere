@@ -2,12 +2,22 @@ import { useEffect, useRef, useState } from "react";
 import {
   getBezierPath,
   getSmoothStepPath,
+  Position,
   type EdgeProps,
 } from "reactflow";
 
 const EDGE_COLOR = "#56B4F9";
 const STROKE_WIDTH = 4;
 const ARROW_SIZE = 16;
+
+export type ArrowEdgeData = {
+  sx: number;
+  sy: number;
+  tx: number;
+  ty: number;
+  sourcePos: Position;
+  targetPos: Position;
+};
 
 type ArrowPoint = { x: number; y: number; angle: number };
 
@@ -49,21 +59,17 @@ function MidArrow({
 
 export function ArrowBezierEdge({
   id,
-  sourceX,
-  sourceY,
-  targetX,
-  targetY,
-  sourcePosition,
-  targetPosition,
-}: EdgeProps) {
+  data,
+}: EdgeProps<ArrowEdgeData>) {
   const pathRef = useRef<SVGPathElement>(null);
+  if (!data) return null;
   const [edgePath] = getBezierPath({
-    sourceX,
-    sourceY,
-    sourcePosition,
-    targetX,
-    targetY,
-    targetPosition,
+    sourceX: data.sx,
+    sourceY: data.sy,
+    sourcePosition: data.sourcePos,
+    targetX: data.tx,
+    targetY: data.ty,
+    targetPosition: data.targetPos,
   });
 
   return (
@@ -86,21 +92,17 @@ export function ArrowBezierEdge({
 
 export function ArrowStepEdge({
   id,
-  sourceX,
-  sourceY,
-  targetX,
-  targetY,
-  sourcePosition,
-  targetPosition,
-}: EdgeProps) {
+  data,
+}: EdgeProps<ArrowEdgeData>) {
   const pathRef = useRef<SVGPathElement>(null);
+  if (!data) return null;
   const [edgePath] = getSmoothStepPath({
-    sourceX,
-    sourceY,
-    sourcePosition,
-    targetX,
-    targetY,
-    targetPosition,
+    sourceX: data.sx,
+    sourceY: data.sy,
+    sourcePosition: data.sourcePos,
+    targetX: data.tx,
+    targetY: data.ty,
+    targetPosition: data.targetPos,
     borderRadius: 16,
   });
 
