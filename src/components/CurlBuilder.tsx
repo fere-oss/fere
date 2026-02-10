@@ -277,6 +277,111 @@ function highlightCurl(curlStr: string): React.ReactNode {
   return <>{elements}</>;
 }
 
+function tokenizeShellArgs(input: string): string[] | null {
+  const tokens: string[] = [];
+  let current = "";
+  let quote: "'" | '"' | null = null;
+
+  for (let i = 0; i < input.length; i += 1) {
+    const char = input[i];
+
+    if (quote === "'") {
+      if (char === "'") {
+        quote = null;
+      } else {
+        current += char;
+      }
+      continue;
+    }
+
+    if (quote === '"') {
+      if (char === '"') {
+        quote = null;
+      } else if (char === "\\" && i + 1 < input.length) {
+        i += 1;
+        current += input[i];
+      } else {
+        current += char;
+      }
+      continue;
+    }
+
+    if (char === "'" || char === '"') {
+      quote = char;
+      continue;
+    }
+
+    if (char === "\\") {
+      if (i + 1 >= input.length) {
+        current += char;
+      } else {
+        i += 1;
+        current += input[i];
+      }
+      continue;
+    }
+
+    if (/\s/.test(char)) {
+      if (current) {
+        tokens.push(current);
+        current = "";
+      }
+      continue;
+    }
+
+    current += char;
+  }
+
+  if (quote) {
+    return null;
+  }
+
+  if (current) {
+    tokens.push(current);
+  }
+
+  return tokens;
+}
+
+function parseHeaderToken(value: string): { key: string; val: string } | null {
+  const colonIndex = value.indexOf(":");
+  if (colonIndex <= 0) {
+    return null;
+  }
+
+  const key = value.slice(0, colonIndex).trim();
+  const val = value.slice(colonIndex + 1).trim();
+
+  if (!key) {
+    return null;
+  }
+
+  return { key, val };
+}
+
+const DATA_FLAGS = [
+  "-d",
+  "--data",
+  "--data-ascii",
+  "--data-binary",
+  "--data-raw",
+  "--data-urlencode",
+];
+
+const NO_VALUE_FLAGS = new Set([
+  "-i",
+  "--include",
+  "-s",
+  "--silent",
+  "-S",
+  "--show-error",
+  "-k",
+  "--insecure",
+  "-L",
+  "--location",
+  "--compressed",
+]);
+
 // Parse a curl command string into its components
 function parseCurlCommand(curlStr: string): {
   method: string;
@@ -288,66 +393,117 @@ function parseCurlCommand(curlStr: string): {
     return null;
   }
 
-  // Normalize the curl command - remove line continuations and extra whitespace
-  let remaining = curlStr
-    .replace(/\\\n\s*/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+  // Normalize newlines and shell line continuations before tokenizing.
+  const normalized = curlStr.replace(/\r\n/g, "\n").replace(/\\\n[ \t]*/g, " ");
+  const tokens = tokenizeShellArgs(normalized);
+  if (!tokens || tokens[0] !== "curl") {
+    return null;
+  }
 
   let method = "GET";
   let url = "";
   const headers: Record<string, string> = {};
   let body: string | undefined;
 
-  // Remove 'curl' from the beginning
-  remaining = remaining.replace(/^curl\s*/, "");
+  for (let i = 1; i < tokens.length; i += 1) {
+    const token = tokens[i];
 
-  // Extract method from -X flag
-  const methodMatch = remaining.match(/^(.*?)-X\s+(\w+)(.*)$/);
-  if (methodMatch) {
-    method = methodMatch[2].toUpperCase();
-    remaining = (methodMatch[1] + methodMatch[3]).trim();
-  }
-
-  // Extract URL - it's typically in single quotes
-  const urlMatch = remaining.match(/^(.*?)'(https?:\/\/[^']+)'(.*)$/);
-  if (urlMatch) {
-    url = urlMatch[2];
-    remaining = (urlMatch[1] + urlMatch[3]).trim();
-  } else {
-    // Try without quotes - URL is a non-whitespace sequence starting with http
-    const urlMatchNoQuotes = remaining.match(/^(.*?)(https?:\/\/\S+)(.*)$/);
-    if (urlMatchNoQuotes) {
-      url = urlMatchNoQuotes[2];
-      remaining = (urlMatchNoQuotes[1] + urlMatchNoQuotes[3]).trim();
+    if (token === "-X" || token === "--request") {
+      const next = tokens[i + 1];
+      if (!next) {
+        return null;
+      }
+      method = next.toUpperCase();
+      i += 1;
+      continue;
     }
-  }
 
-  // Extract all headers from -H flags
-  let headerMatch;
-  while (
-    (headerMatch = remaining.match(/^(.*?)-H\s+'([^:]+):\s*([^']*)'(.*)$/)) !==
-    null
-  ) {
-    headers[headerMatch[2]] = headerMatch[3];
-    remaining = (headerMatch[1] + headerMatch[4]).trim();
-  }
+    if (token.startsWith("--request=")) {
+      method = token.slice("--request=".length).toUpperCase();
+      continue;
+    }
 
-  // Extract body from -d flag
-  const bodyMatch = remaining.match(/^(.*?)-d\s+'((?:[^'\\]|\\.)*)'(.*)$/);
-  if (bodyMatch) {
-    // Unescape single quotes in the body
-    body = bodyMatch[2].replace(/'\\''/g, "'");
-    remaining = (bodyMatch[1] + bodyMatch[3]).trim();
-  }
+    if (token.startsWith("-X") && token.length > 2) {
+      method = token.slice(2).toUpperCase();
+      continue;
+    }
 
-  // If there's any remaining non-whitespace content, the curl is invalid
-  if (remaining.trim()) {
+    if (token === "-H" || token === "--header") {
+      const next = tokens[i + 1];
+      if (!next) {
+        return null;
+      }
+      const parsedHeader = parseHeaderToken(next);
+      if (!parsedHeader) {
+        return null;
+      }
+      headers[parsedHeader.key] = parsedHeader.val;
+      i += 1;
+      continue;
+    }
+
+    if (token.startsWith("--header=")) {
+      const parsedHeader = parseHeaderToken(token.slice("--header=".length));
+      if (!parsedHeader) {
+        return null;
+      }
+      headers[parsedHeader.key] = parsedHeader.val;
+      continue;
+    }
+
+    if (token.startsWith("-H") && token.length > 2) {
+      const parsedHeader = parseHeaderToken(token.slice(2));
+      if (!parsedHeader) {
+        return null;
+      }
+      headers[parsedHeader.key] = parsedHeader.val;
+      continue;
+    }
+
+    if (DATA_FLAGS.includes(token)) {
+      const next = tokens[i + 1];
+      if (!next) {
+        return null;
+      }
+      body = body ? `${body}&${next}` : next;
+      i += 1;
+      continue;
+    }
+
+    const inlineDataFlag = DATA_FLAGS.find(
+      (flag) => token.startsWith(flag) && token.length > flag.length,
+    );
+    if (inlineDataFlag) {
+      const nextBody = token.slice(inlineDataFlag.length);
+      body = body ? `${body}&${nextBody}` : nextBody;
+      continue;
+    }
+
+    if (token === "-I" || token === "--head") {
+      method = "HEAD";
+      continue;
+    }
+
+    if (NO_VALUE_FLAGS.has(token)) {
+      continue;
+    }
+
+    if (!url && /^https?:\/\//i.test(token)) {
+      url = token;
+      continue;
+    }
+
+    // Fail fast on unknown/unsupported tokens to avoid malformed requests.
     return null;
   }
 
   if (!url) {
     return null;
+  }
+
+  // curl sends POST by default when data is present and no explicit method was set.
+  if (body && method === "GET") {
+    method = "POST";
   }
 
   return { method, url, headers, body };
