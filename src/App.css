@@ -2789,6 +2789,35 @@ body {
   display: flex;
 }
 
+.db-launch-empty {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 40px 24px;
+  text-align: center;
+  color: #a3a3a3;
+}
+
+.db-launch-empty svg {
+  color: #c5c5c5;
+}
+
+.db-launch-empty p {
+  font-size: 14px;
+  line-height: 1.2;
+  color: #5a5a5a;
+}
+
+.db-launch-empty span {
+  font-size: 12px;
+  line-height: 1.4;
+  color: #9f9f9f;
+}
+
 /* ============================================
    Curl Builder Styles
    ============================================ */
@@ -4556,11 +4585,12 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 56px;
-  height: 56px;
-  background: #fee2e2;
+  width: 54px;
+  height: 54px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
   border-radius: 16px;
-  color: #dc2626;
+  color: #b91c1c;
 }
 
 .db-error-title {
@@ -5820,10 +5850,23 @@ body {
   align-items: center;
   gap: 12px;
   padding: 24px 28px 16px 28px;
-  color: #dc2626;
+  color: #b91c1c;
 }
 
 .db-delete-confirm-header svg {
+  flex-shrink: 0;
+}
+
+.db-delete-warning-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #b91c1c;
   flex-shrink: 0;
 }
 

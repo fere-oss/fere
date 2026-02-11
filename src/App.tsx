@@ -582,7 +582,12 @@ function App() {
           </div>
         ) : viewMode === "database" ? (
           <div className="api-tester-container">
-            <div className="sidebar-empty">
+            <div className="db-launch-empty">
+              <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4">
+                <ellipse cx="12" cy="5" rx="8" ry="3" />
+                <path d="M4 5v12c0 1.7 3.6 3 8 3s8-1.3 8-3V5" />
+                <path d="M4 11c0 1.7 3.6 3 8 3s8-1.3 8-3" />
+              </svg>
               <p>No running database container found</p>
               <span>Start a MongoDB/PostgreSQL/MySQL container or open one from Containers view.</span>
             </div>
