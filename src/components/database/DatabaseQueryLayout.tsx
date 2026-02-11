@@ -251,10 +251,27 @@ const SQL_FUNCTIONS = new Set([
   'json_agg', 'jsonb_agg', 'row_to_json',
 ]);
 
+const MONGO_KEYWORDS = new Set([
+  'show', 'use', 'help', 'it', 'exit',
+  'true', 'false', 'null', 'undefined', 'new',
+  'db', 'rs', 'sh',
+]);
+
+const MONGO_FUNCTIONS = new Set([
+  'find', 'findone', 'aggregate', 'countdocuments', 'estimateddocumentcount',
+  'insertone', 'insertmany', 'updateone', 'updatemany', 'replaceone',
+  'deleteone', 'deletemany', 'distinct',
+  'sort', 'limit', 'skip', 'project',
+  'createindex', 'dropindex', 'getindexes',
+  'createcollection', 'drop', 'stats',
+  'objectid', 'isodate', 'numberint', 'numberlong', 'numberdecimal',
+  'bindata', 'uuid', 'date',
+]);
+
 function highlightQuery(query: string, dbType: string): React.ReactNode {
   if (!query) return null;
 
-  const tokenRegex = /(--[^\n]*|\/\*[\s\S]*?\*\/|'(?:''|[^'])*'|"(?:\\"|[^"])*"|`(?:\\`|[^`])*`|\b\d+(?:\.\d+)?\b|\b[A-Za-z_][\w$]*\b|[()*,.;=<>!+\-\/]+|\s+|.)/g;
+  const tokenRegex = /(--[^\n]*|\/\*[\s\S]*?\*\/|'(?:''|[^'])*'|"(?:\\"|[^"])*"|`(?:\\`|[^`])*`|\b\d+(?:\.\d+)?\b|\$[A-Za-z_][\w$]*\b|\b[A-Za-z_][\w$]*\b|[()*,.;=<>!+\-\/]+|\s+|.)/g;
   const tokens = query.match(tokenRegex) || [];
 
   return tokens.map((token, index) => {
@@ -270,9 +287,21 @@ function highlightQuery(query: string, dbType: string): React.ReactNode {
     if (/^\d/.test(token)) {
       return <span key={index} className="db-hl-number">{token}</span>;
     }
-    if (/^[A-Za-z_]/.test(token)) {
-      const isKeyword = dbType !== 'mongodb' && SQL_KEYWORDS.has(token.toLowerCase());
-      const isFunction = dbType !== 'mongodb' && SQL_FUNCTIONS.has(token.toLowerCase());
+    if (/^[A-Za-z_$]/.test(token)) {
+      if (dbType === 'mongodb') {
+        const lower = token.toLowerCase();
+        const isMongoOperator = token.startsWith('$');
+        const isKeyword = isMongoOperator || MONGO_KEYWORDS.has(lower);
+        const isFunction = MONGO_FUNCTIONS.has(lower);
+        return (
+          <span key={index} className={isKeyword ? 'db-hl-keyword' : isFunction ? 'db-hl-function' : 'db-hl-identifier'}>
+            {token}
+          </span>
+        );
+      }
+
+      const isKeyword = SQL_KEYWORDS.has(token.toLowerCase());
+      const isFunction = SQL_FUNCTIONS.has(token.toLowerCase());
       return (
         <span key={index} className={isKeyword ? 'db-hl-keyword' : isFunction ? 'db-hl-function' : 'db-hl-identifier'}>
           {token}
