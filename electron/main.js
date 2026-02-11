@@ -49,6 +49,7 @@ const {
   getDockerContainers,
   getDockerNetworks,
   getDockerSnapshot,
+  stopContainer,
 } = require("./services/dockerMonitor");
 const {
   startLogStream,
@@ -314,6 +315,18 @@ ipcMain.handle("kill-process", async (event, pid) => {
     return await killProcess(pid);
   } catch (error) {
     console.error("Error killing process:", error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle("stop-container", async (event, containerId) => {
+  try {
+    if (!containerId || typeof containerId !== "string") {
+      return { success: false, error: "Invalid container ID" };
+    }
+    return await stopContainer(containerId);
+  } catch (error) {
+    console.error("Error stopping container:", error);
     return { success: false, error: error.message };
   }
 });

@@ -327,6 +327,8 @@ export interface EnvironmentSummary {
 export interface KillResult {
   success: boolean;
   error?: string;
+  pid?: number;
+  command?: string;
 }
 
 // HTTP Request options for API testing
@@ -448,6 +450,7 @@ export interface ElectronAPI {
 
   // Process control
   killProcess: (pid: number) => Promise<KillResult>;
+  stopContainer: (containerId: string) => Promise<KillResult>;
 
   // Quick actions
   openUrl: (url: string) => Promise<{ success: boolean; error?: string }>;

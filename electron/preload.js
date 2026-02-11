@@ -31,6 +31,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Process control
   killProcess: (pid) => ipcRenderer.invoke('kill-process', pid),
+  stopContainer: (containerId) => ipcRenderer.invoke('stop-container', containerId),
 
   // Quick actions
   openUrl: (url) => ipcRenderer.invoke('open-url', url),

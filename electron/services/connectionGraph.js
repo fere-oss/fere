@@ -852,11 +852,19 @@ function inferProjectPathFromCommand(command = '') {
  * Add Docker containers as graph nodes and create edges for container networking
  */
 function addDockerContainerNodes(nodes, edges, dockerSnapshot, nodesByPid, portToPid) {
-  const { containers, containerConnections } = dockerSnapshot;
+  const runningContainers = (dockerSnapshot.containers || []).filter(
+    (container) => container.state === 'running',
+  );
+  const runningContainerIds = new Set(runningContainers.map((container) => container.id));
+  const containerConnections = (dockerSnapshot.containerConnections || []).filter(
+    (conn) =>
+      runningContainerIds.has(conn.sourceContainerId) &&
+      runningContainerIds.has(conn.targetContainerId),
+  );
   const containerNodesById = new Map();
 
   // Create nodes for each Docker container
-  for (const container of containers) {
+  for (const container of runningContainers) {
     const nodeId = `docker-${container.id}`;
 
     // Check if we should merge with an existing node (e.g., if container has a mapped port
