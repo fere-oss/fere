@@ -18,7 +18,6 @@ import type { GraphViewProps, NodePosition } from "./graph/types";
 import { useExternalApis } from "./graph/useExternalApis";
 import { useGraphLayoutData } from "./graph/useGraphLayoutData";
 import { useNodeMeasurements } from "./graph/useNodeMeasurements";
-import { HoverContext } from "./graph/hoverContext";
 
 export function GraphView({
   nodes,
