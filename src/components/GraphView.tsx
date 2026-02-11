@@ -3,6 +3,7 @@ import type { MouseEvent as ReactMouseEvent } from "react";
 import ReactFlow, {
   Background,
   Controls,
+  Position,
   type ReactFlowInstance,
 } from "reactflow";
 import "reactflow/dist/style.css";
@@ -10,7 +11,8 @@ import type { GraphEdge, GraphNode } from "../types/electron";
 import { SERVICE_COLORS } from "./graph/constants";
 import { ContextMenu } from "./graph/ContextMenu";
 import { NodeDetailPanel } from "./graph/NodeDetailPanel";
-import { flowNodeTypes } from "./graph/flowNodes";
+import { flowNodeTypes, HoverContext } from "./graph/flowNodes";
+import { flowEdgeTypes, type ArrowEdgeData } from "./graph/ArrowEdge";
 import { FLOW_LAYOUT, buildFlowLayout } from "./graph/flowLayout";
 import type { GraphViewProps, NodePosition } from "./graph/types";
 import { useExternalApis } from "./graph/useExternalApis";
@@ -112,11 +114,12 @@ export function GraphView({
         .join(","),
     [layoutNodes],
   );
+  const bumpExternalApiVersion = useCallback(() => {
+    setExternalApiVersion((version) => version + 1);
+  }, []);
+  const externalApisLoaded = useExternalApis(projectPathsKey, bumpExternalApiVersion);
   const { nodeHeightsRef, layoutVersion, handleNodeMeasure } =
-    useNodeMeasurements(nodesKey, layoutNodes.length);
-  useExternalApis(projectPathsKey, () =>
-    setExternalApiVersion((version) => version + 1),
-  );
+    useNodeMeasurements(nodesKey, layoutNodes.length, externalApisLoaded);
   const connectedNodeIds = useMemo(() => {
     if (!hoveredNodeId) return new Set<string>();
     const connected = new Set<string>();
@@ -161,20 +164,47 @@ export function GraphView({
     ],
   );
 
+  const hoverState = useMemo(
+    () => ({ hoveredNodeId, connectedNodeIds }),
+    [hoveredNodeId, connectedNodeIds],
+  );
+
   const flowEdges = useMemo(() => {
     if (!hoveredNodeId) return [];
+    const W = FLOW_LAYOUT.NODE_WIDTH;
     const posMap = new Map<string, { x: number; y: number }>();
+    const heightMap = new Map<string, number>();
     const serviceCenters: Array<{ id: string; x: number; y: number }> = [];
     for (const node of flowLayout.nodes) {
       posMap.set(node.id, node.position);
       if (node.type === "service") {
+        const h = nodeHeightsRef.current.get(node.id) ?? FLOW_LAYOUT.NODE_MIN_HEIGHT;
+        heightMap.set(node.id, h);
         serviceCenters.push({
           id: node.id,
-          x: node.position.x + FLOW_LAYOUT.NODE_WIDTH / 2,
+          x: node.position.x + W / 2,
           y: node.position.y,
         });
       }
     }
+
+    function endpoint(
+      pos: { x: number; y: number },
+      h: number,
+      side: "top" | "bottom" | "left" | "right",
+    ): { x: number; y: number; pos: Position } {
+      switch (side) {
+        case "top":
+          return { x: pos.x + W / 2, y: pos.y, pos: Position.Top };
+        case "bottom":
+          return { x: pos.x + W / 2, y: pos.y + h, pos: Position.Bottom };
+        case "left":
+          return { x: pos.x, y: pos.y + h / 2, pos: Position.Left };
+        case "right":
+          return { x: pos.x + W, y: pos.y + h / 2, pos: Position.Right };
+      }
+    }
+
     const seen = new Set<string>();
     return layoutEdges
       .filter((edge) => {
@@ -187,16 +217,18 @@ export function GraphView({
       .map((edge) => {
         const srcPos = posMap.get(edge.source);
         const tgtPos = posMap.get(edge.target);
-        let sourceHandle = "source-bottom";
-        let targetHandle = "target-top";
-        let edgeType: "default" | "smoothstep" = "default";
+        const srcH = heightMap.get(edge.source) ?? FLOW_LAYOUT.NODE_MIN_HEIGHT;
+        const tgtH = heightMap.get(edge.target) ?? FLOW_LAYOUT.NODE_MIN_HEIGHT;
+        let srcSide: "top" | "bottom" | "left" | "right" = "bottom";
+        let tgtSide: "top" | "bottom" | "left" | "right" = "top";
+        let edgeType: "arrowBezier" | "arrowStep" = "arrowBezier";
         if (srcPos && tgtPos) {
           const dx = tgtPos.x - srcPos.x;
           const dy = tgtPos.y - srcPos.y;
           const sameLayer = Math.abs(dy) < 80;
           if (sameLayer) {
-            const srcCenterX = srcPos.x + FLOW_LAYOUT.NODE_WIDTH / 2;
-            const tgtCenterX = tgtPos.x + FLOW_LAYOUT.NODE_WIDTH / 2;
+            const srcCenterX = srcPos.x + W / 2;
+            const tgtCenterX = tgtPos.x + W / 2;
             const minX = Math.min(srcCenterX, tgtCenterX);
             const maxX = Math.max(srcCenterX, tgtCenterX);
             const hasIntermediate = serviceCenters.some((node) => {
@@ -206,56 +238,56 @@ export function GraphView({
             });
 
             if (hasIntermediate) {
-              edgeType = "smoothstep";
+              edgeType = "arrowStep";
               if (dx > 0) {
-                sourceHandle = "source-top";
-                targetHandle = "target-top";
+                srcSide = "top";
+                tgtSide = "top";
               } else {
-                sourceHandle = "source-bottom";
-                targetHandle = "target-bottom";
+                srcSide = "bottom";
+                tgtSide = "bottom";
               }
             } else if (dx > 0) {
-              sourceHandle = "source-right";
-              targetHandle = "target-left";
+              srcSide = "right";
+              tgtSide = "left";
             } else {
-              sourceHandle = "source-left";
-              targetHandle = "target-right";
+              srcSide = "left";
+              tgtSide = "right";
             }
           } else if (dy > 0) {
-            sourceHandle = "source-bottom";
-            targetHandle = "target-top";
+            srcSide = "bottom";
+            tgtSide = "top";
           } else {
-            sourceHandle = "source-top";
-            targetHandle = "target-bottom";
+            srcSide = "top";
+            tgtSide = "bottom";
           }
         }
+        const src = srcPos
+          ? endpoint(srcPos, srcH, srcSide)
+          : { x: 0, y: 0, pos: Position.Bottom };
+        const tgt = tgtPos
+          ? endpoint(tgtPos, tgtH, tgtSide)
+          : { x: 0, y: 0, pos: Position.Top };
+        const data: ArrowEdgeData = {
+          sx: src.x,
+          sy: src.y,
+          tx: tgt.x,
+          ty: tgt.y,
+          sourcePos: src.pos,
+          targetPos: tgt.pos,
+        };
         return {
           id: edge.id,
           source: edge.source,
           target: edge.target,
-          sourceHandle,
-          targetHandle,
           type: edgeType,
-          className: "graph-edge",
-          style: {
-            stroke: "var(--graph-edge)",
-            strokeWidth: 3,
-            strokeLinecap: "round" as const,
-            strokeLinejoin: "round" as const,
-          },
+          data,
         };
       });
-  }, [layoutEdges, hoveredNodeId, flowLayout.nodes]);
+  }, [layoutEdges, hoveredNodeId, flowLayout.nodes, nodeHeightsRef]);
 
   const defaultEdgeOptions = useMemo(
     () => ({
-      type: "default" as const,
-      style: {
-        stroke: "var(--graph-edge)",
-        strokeWidth: 3,
-        strokeLinecap: "round" as const,
-        strokeLinejoin: "round" as const,
-      },
+      type: "arrowBezier" as const,
     }),
     [],
   );
@@ -287,17 +319,25 @@ export function GraphView({
     ? formatAge(Date.now() - dataStatus.collectedAt)
     : "—";
 
+  const hoverTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const pendingHover = useRef<string | null>(null);
   const handleNodeMouseEnter = useCallback(
     (_event: ReactMouseEvent, node: { id: string; type?: string }) => {
+      clearTimeout(hoverTimer.current);
       if (node.type === "service") {
-        setHoveredNodeId(node.id);
+        pendingHover.current = node.id;
+        hoverTimer.current = setTimeout(() => {
+          setHoveredNodeId(pendingHover.current);
+        }, 50);
       }
     },
     [],
   );
 
   const handleNodeMouseLeave = useCallback(() => {
-    setHoveredNodeId(null);
+    clearTimeout(hoverTimer.current);
+    pendingHover.current = null;
+    hoverTimer.current = setTimeout(() => setHoveredNodeId(null), 80);
   }, []);
 
   if (layoutNodes.length === 0) {
@@ -363,11 +403,12 @@ export function GraphView({
       )}
 
       <div className="graph-flow">
-        <HoverContext.Provider value={hoverValue}>
+        <HoverContext.Provider value={hoverState}>
           <ReactFlow
             nodes={flowLayout.nodes}
             edges={flowEdges}
             nodeTypes={flowNodeTypes}
+            edgeTypes={flowEdgeTypes}
             defaultEdgeOptions={defaultEdgeOptions}
             nodesDraggable={false}
             nodesConnectable={false}
@@ -392,7 +433,7 @@ export function GraphView({
             }}
           >
             <Background color="rgba(0,0,0,0.04)" gap={24} />
-            <Controls position="top-right" showInteractive={false} />
+            <Controls position="top-right" />
           </ReactFlow>
         </HoverContext.Provider>
       </div>

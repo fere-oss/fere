@@ -480,30 +480,30 @@ export function buildFlowLayout({
     }
   }
 
-  const nodePositions: Array<FlowNode<FlowServiceNodeData>> = layoutNodes.map(
-    (node) => {
-      return {
-        id: node.id,
-        type: "service",
-        position: positions.get(node.id) || { x: 0, y: 0 },
-        data: {
-          node,
-          onNodeClick,
-          onNodeContextMenu,
-          animate: animateNodes,
-          animationIndex: Math.max(
-            0,
-            stableConnectedLayout.findIndex((ln) => ln.node.id === node.id),
-          ),
-          onMeasure,
-        },
-        className: undefined,
-        draggable: false,
-        selectable: false,
-        style: { width: NODE_WIDTH },
-      };
-    },
-  );
+  const nodePositions: Array<FlowNode<FlowServiceNodeData>> = layoutNodes.map((node) => {
+    return {
+      id: node.id,
+      type: "service",
+      position: positions.get(node.id) || { x: 0, y: 0 },
+      data: {
+        node,
+        onNodeClick,
+        onNodeContextMenu,
+        animate: animateNodes,
+        animationIndex: Math.max(
+          0,
+          stableConnectedLayout.findIndex((ln) => ln.node.id === node.id),
+        ),
+        onMeasure,
+        dimmed: false,
+        highlighted: false,
+      },
+      className: undefined,
+      draggable: false,
+      selectable: false,
+      style: { width: NODE_WIDTH },
+    };
+  });
 
   minX = Infinity;
   minY = Infinity;

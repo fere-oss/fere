@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { FLOW_LAYOUT } from "./flowLayout";
 
-export function useNodeMeasurements(nodesKey: string, nodeCount: number) {
+export function useNodeMeasurements(nodesKey: string, nodeCount: number, allowLock: boolean) {
   const nodeHeightsRef = useRef<Map<string, number>>(new Map());
   const measuredIdsRef = useRef<Set<string>>(new Set());
   const layoutLockedRef = useRef(false);
@@ -14,6 +14,25 @@ export function useNodeMeasurements(nodesKey: string, nodeCount: number) {
     setLayoutVersion((version) => version + 1);
   }, [nodesKey]);
 
+  // Unlock measurements while external data is still loading so
+  // nodes can be re-measured once their content grows.
+  useEffect(() => {
+    if (!allowLock && layoutLockedRef.current) {
+      layoutLockedRef.current = false;
+    }
+  }, [allowLock]);
+
+  // Unlock on window resize so nodes can be re-measured at new sizes.
+  useEffect(() => {
+    const onResize = () => {
+      if (layoutLockedRef.current) {
+        layoutLockedRef.current = false;
+      }
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
   const handleNodeMeasure = useCallback(
     (id: string, height: number) => {
       const rounded = Math.round(height);
@@ -24,17 +43,14 @@ export function useNodeMeasurements(nodesKey: string, nodeCount: number) {
         Math.max(rounded, FLOW_LAYOUT.NODE_MIN_HEIGHT),
       );
       measuredIdsRef.current.add(id);
-      if (layoutLockedRef.current) {
-        // React 19 auto-batches all state updates, so rapid calls
-        // from multiple ResizeObserver callbacks are merged into one re-render
+      if (measuredIdsRef.current.size >= nodeCount) {
         setLayoutVersion((version) => version + 1);
-      } else if (measuredIdsRef.current.size >= nodeCount) {
-        // Initial batch complete
-        layoutLockedRef.current = true;
-        setLayoutVersion((version) => version + 1);
+        if (allowLock) {
+          layoutLockedRef.current = true;
+        }
       }
     },
-    [nodeCount],
+    [nodeCount, allowLock],
   );
 
   return { nodeHeightsRef, layoutVersion, handleNodeMeasure };
