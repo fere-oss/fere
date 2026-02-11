@@ -185,6 +185,7 @@ export function buildFlowLayout({
             group,
             width: NODE_WIDTH,
             height: measured,
+            occupiedWidth: NODE_WIDTH,
             columns: 1,
             rowCount: 1,
             rowHeights: [measured],
@@ -209,6 +210,7 @@ export function buildFlowLayout({
           group,
           width,
           height,
+          occupiedWidth: Math.max(width + GROUP_BOX_PADDING * 2, LABEL_WIDTH),
           columns: columnCount,
           rowCount,
           rowHeights,
@@ -223,7 +225,9 @@ export function buildFlowLayout({
 
     layerMetas.forEach((meta) => {
       if (meta.groups.length === 0) return;
-      const groupWidths = meta.groupLayouts.map((layout) => layout.width);
+      const groupWidths = meta.groupLayouts.map(
+        (layout) => layout.occupiedWidth,
+      );
       const totalWidth =
         groupWidths.reduce((sum, width) => sum + width, 0) +
         GROUP_GAP * Math.max(0, groupWidths.length - 1);
@@ -231,8 +235,9 @@ export function buildFlowLayout({
       const rowY = currentY;
 
       meta.groupLayouts.forEach(
-        ({ group, width, height, columns, rowHeights }) => {
-          const groupX = cursorX;
+        ({ group, width, height, occupiedWidth, columns, rowHeights }) => {
+          const groupCenterX = cursorX + occupiedWidth / 2;
+          const groupX = group.isGroup ? groupCenterX - width / 2 : cursorX;
           const groupY = rowY;
 
           if (group.isGroup) {
@@ -310,7 +315,7 @@ export function buildFlowLayout({
             maxY = Math.max(maxY, groupY + rowOffset + measured);
           });
 
-          cursorX += width + GROUP_GAP;
+          cursorX += occupiedWidth + GROUP_GAP;
         },
       );
 
@@ -357,7 +362,16 @@ export function buildFlowLayout({
       const height =
         rowHeights.reduce((sum, h) => sum + h, 0) +
         (rowCount - 1) * STANDALONE_NODE_GAP;
-      return { group, columnCount, width, height, rowHeights };
+      return {
+        group,
+        columnCount,
+        width,
+        height,
+        occupiedWidth: group.isGroup
+          ? Math.max(width + GROUP_BOX_PADDING * 2, LABEL_WIDTH)
+          : width,
+        rowHeights,
+      };
     });
 
     const maxGroupsPerRow = isContainerView ? 2 : meta.length;
@@ -367,7 +381,7 @@ export function buildFlowLayout({
     while (startIndex < meta.length) {
       const rowItems = meta.slice(startIndex, startIndex + maxGroupsPerRow);
       const rowWidth =
-        rowItems.reduce((sum, item) => sum + item.width, 0) +
+        rowItems.reduce((sum, item) => sum + item.occupiedWidth, 0) +
         STANDALONE_GROUP_GAP * Math.max(0, rowItems.length - 1);
       const rowOffset = rowWidth / 2;
       let cursorX = 0;
@@ -375,7 +389,8 @@ export function buildFlowLayout({
       const currentCursorY = cursorY;
 
       rowItems.forEach((item) => {
-        const groupX = cursorX;
+        const groupCenterX = cursorX + item.occupiedWidth / 2;
+        const groupX = item.group.isGroup ? groupCenterX - item.width / 2 : cursorX;
 
         if (item.group.isGroup) {
           labelNodes.push({
@@ -434,7 +449,7 @@ export function buildFlowLayout({
           });
         });
 
-        cursorX += item.width + STANDALONE_GROUP_GAP;
+        cursorX += item.occupiedWidth + STANDALONE_GROUP_GAP;
       });
 
       const shiftRow = (x: number) => x - rowOffset;
