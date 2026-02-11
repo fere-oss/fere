@@ -378,6 +378,45 @@ export interface HistoryResult {
   error?: string;
 }
 
+// Snapshot delta types (event-driven pipeline)
+export interface SnapshotDelta {
+  type: 'full' | 'delta';
+  seq: number;
+  timestamp: number;
+  // For type 'full': same shape as SystemSnapshot
+  processes?: Process[] | {
+    added: Process[];
+    removed: number[];
+    modified: (Partial<Process> & { pid: number })[];
+  };
+  ports?: Port[] | {
+    added: Port[];
+    removed: string[];
+  };
+  connections?: Connection[] | {
+    added: Connection[];
+    removed: string[];
+  };
+  graph?: ConnectionGraph | {
+    nodes?: {
+      added: GraphNode[];
+      removed: string[];
+      modified: (Partial<GraphNode> & { id: string })[];
+    };
+    edges?: {
+      added: GraphEdge[];
+      removed: string[];
+    };
+  };
+  docker?: DockerSnapshot | null;
+  meta?: {
+    collectedAt: number;
+    processesAgeMs: number | null;
+    portsAgeMs: number | null;
+    connectionsAgeMs: number | null;
+  };
+}
+
 // Electron API interface
 export interface ElectronAPI {
   // Process monitoring
@@ -427,6 +466,11 @@ export interface ElectronAPI {
   onContainerLogData: (callback: (data: ContainerLogData) => void) => () => void;
   onContainerLogError: (callback: (data: ContainerLogError) => void) => () => void;
   onContainerLogClose: (callback: (data: ContainerLogClose) => void) => () => void;
+
+  // Snapshot push channel (event-driven pipeline)
+  startSnapshotStream: () => Promise<{ success: boolean; error?: string }>;
+  stopSnapshotStream: () => Promise<{ success: boolean }>;
+  onSnapshotDelta: (callback: (delta: SnapshotDelta) => void) => () => void;
 
   // Platform info
   platform: string;

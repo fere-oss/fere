@@ -64,6 +64,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('container-log-close', listener);
   },
 
+  // Snapshot push channel (event-driven pipeline)
+  startSnapshotStream: () => ipcRenderer.invoke('start-snapshot-stream'),
+  stopSnapshotStream: () => ipcRenderer.invoke('stop-snapshot-stream'),
+  onSnapshotDelta: (callback) => {
+    const listener = (event, data) => callback(data);
+    ipcRenderer.on('snapshot-delta', listener);
+    return () => ipcRenderer.removeListener('snapshot-delta', listener);
+  },
+
   // Platform info
   platform: process.platform,
 });

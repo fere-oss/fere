@@ -2,7 +2,7 @@ const { exec } = require('child_process');
 const { promisify } = require('util');
 
 const execAsync = promisify(exec);
-const CACHE_TTL_MS = 1000;
+const CACHE_TTL_MS = 5000;
 const processCache = { timestamp: 0, data: [], promise: null };
 
 // Dev-related process patterns to filter for
@@ -179,6 +179,25 @@ async function killProcess(pid, signal = 'TERM') {
   }
 }
 
+/**
+ * Lightweight PID enumeration (much cheaper than ps aux)
+ */
+async function getProcessPids() {
+  try {
+    const { stdout } = await execAsync('ps -eo pid');
+    const pids = new Set();
+    const lines = stdout.trim().split('\n');
+    for (let i = 1; i < lines.length; i++) {
+      const pid = parseInt(lines[i].trim(), 10);
+      if (!isNaN(pid)) pids.add(pid);
+    }
+    return pids;
+  } catch (error) {
+    console.error('Error enumerating PIDs:', error);
+    return new Set();
+  }
+}
+
 module.exports = {
   getAllProcesses,
   getDevProcesses,
@@ -188,4 +207,5 @@ module.exports = {
   filterDevProcesses,
   isDevProcess,
   getProcessCacheInfo,
+  getProcessPids,
 };

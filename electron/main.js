@@ -28,6 +28,7 @@ const {
   getEnvironmentSummary,
 } = require("./services/connectionGraph");
 const { getSystemSnapshot } = require("./services/systemSnapshot");
+const { SnapshotScheduler } = require("./services/snapshotScheduler");
 const { scanExternalApis } = require("./services/externalApiScanner");
 const {
   loadHistory,
@@ -59,6 +60,8 @@ process.title = "Fere";
 
 // Keep a global reference of the window object
 let mainWindow;
+let snapshotScheduler = null;
+let snapshotHandler = null;
 
 const isDev = process.env.NODE_ENV === "development" || !app.isPackaged;
 
@@ -102,6 +105,12 @@ function createWindow() {
   setupWindowOpenHandler(mainWindow.webContents);
 
   mainWindow.on("closed", () => {
+    if (snapshotScheduler) {
+      snapshotScheduler.stop();
+      snapshotScheduler.removeAllListeners();
+      snapshotScheduler = null;
+      snapshotHandler = null;
+    }
     mainWindow = null;
   });
 }
@@ -203,6 +212,50 @@ ipcMain.handle("get-system-snapshot", async () => {
       graph: { nodes: [], edges: [] },
     };
   }
+});
+
+// Start push-based snapshot stream (event-driven pipeline)
+ipcMain.handle("start-snapshot-stream", async (event) => {
+  try {
+    // Clean up any existing scheduler
+    if (snapshotScheduler) {
+      if (snapshotHandler) {
+        snapshotScheduler.removeListener("snapshot", snapshotHandler);
+      }
+      snapshotScheduler.stop();
+    }
+
+    snapshotScheduler = new SnapshotScheduler();
+
+    snapshotHandler = (delta) => {
+      if (event.sender.isDestroyed()) {
+        snapshotScheduler.removeListener("snapshot", snapshotHandler);
+        return;
+      }
+      event.sender.send("snapshot-delta", delta);
+    };
+
+    snapshotScheduler.on("snapshot", snapshotHandler);
+    snapshotScheduler.start();
+
+    return { success: true };
+  } catch (error) {
+    console.error("Error starting snapshot stream:", error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Stop push-based snapshot stream
+ipcMain.handle("stop-snapshot-stream", async () => {
+  if (snapshotScheduler) {
+    if (snapshotHandler) {
+      snapshotScheduler.removeListener("snapshot", snapshotHandler);
+      snapshotHandler = null;
+    }
+    snapshotScheduler.stop();
+    snapshotScheduler = null;
+  }
+  return { success: true };
 });
 
 // Get environment summary

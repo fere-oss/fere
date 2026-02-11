@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useRef } from "react";
+import { createContext, useEffect, useRef } from "react";
 import type { GraphNode } from "../../types/electron";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import { Handle, Position } from "reactflow";
@@ -62,11 +62,7 @@ export function FlowServiceNode({ data }: { data: FlowServiceNodeData }) {
   const nodeRef = useRef<HTMLDivElement | null>(null);
   const dataRef = useRef(data);
   dataRef.current = data;
-  const { hoveredNodeId, connectedNodeIds } = useContext(HoverContext);
-
   const { hoveredNodeId, connectedNodeIds } = useHoverState();
-  const dimmed = hoveredNodeId !== null && !connectedNodeIds.has(data.node.id);
-  const highlighted = hoveredNodeId !== null && connectedNodeIds.has(data.node.id);
 
   useEffect(() => {
     if (!nodeRef.current) return;

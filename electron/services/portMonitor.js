@@ -115,7 +115,7 @@ function parseConnections(lsofOutput) {
   return connections;
 }
 
-const CACHE_TTL_MS = 1000;
+const CACHE_TTL_MS = 5000;
 const listeningCache = { timestamp: 0, data: [], promise: null };
 const connectionsCache = { timestamp: 0, data: [], promise: null };
 
@@ -212,6 +212,30 @@ function getPortDescription(port) {
   return COMMON_DEV_PORTS[port] || null;
 }
 
+/**
+ * Lightweight port enumeration (cheaper than full lsof parse)
+ */
+async function getListeningPortNumbers() {
+  try {
+    const { stdout } = await execAsync('netstat -an -p tcp 2>/dev/null');
+    const ports = new Set();
+    for (const line of stdout.trim().split('\n')) {
+      if (!line.includes('LISTEN')) continue;
+      const match = line.match(/\.(\d+)\s+\*\.\*\s+LISTEN/);
+      if (match) {
+        ports.add(parseInt(match[1], 10));
+      }
+    }
+    return ports;
+  } catch (error) {
+    // Fallback: extract from cached listening ports if available
+    if (listeningCache.data.length) {
+      return new Set(listeningCache.data.map(p => p.port));
+    }
+    return new Set();
+  }
+}
+
 module.exports = {
   getListeningPorts,
   getEstablishedConnections,
@@ -224,4 +248,5 @@ module.exports = {
     listeningTimestamp: listeningCache.timestamp || 0,
     connectionsTimestamp: connectionsCache.timestamp || 0,
   }),
+  getListeningPortNumbers,
 };
