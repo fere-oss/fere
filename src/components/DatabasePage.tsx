@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { GraphNode, ColumnDefinition } from '../types/electron';
 import { CreateTableModal } from './CreateTableModal';
 import { DatabaseHeader } from './database/DatabaseHeader';
@@ -14,6 +15,7 @@ interface DatabasePageProps {
 }
 
 export function DatabasePage({ node, onBack }: DatabasePageProps) {
+  const [showMongoUri, setShowMongoUri] = useState(false);
   const {
     tables,
     dbType,
@@ -31,11 +33,17 @@ export function DatabasePage({ node, onBack }: DatabasePageProps) {
     showDeleteConfirm,
     deletingTable,
     showDeleteTableConfirm,
+    mongoUriInput,
+    remoteMongoMode,
+    remoteMongoConnecting,
     setActiveTab,
     setShowCreateModal,
     setShowDeleteConfirm,
     setShowDeleteTableConfirm,
+    setMongoUriInput,
     setQuery,
+    connectMongoUriMode,
+    disconnectMongoUriMode,
     loadTableData,
     executeQuery,
     handleKeyDown,
@@ -70,6 +78,43 @@ export function DatabasePage({ node, onBack }: DatabasePageProps) {
         onBack={onBack}
         onTabChange={setActiveTab}
       />
+
+      {(dbType === 'mongodb' || node.containerImage?.toLowerCase().includes('mongo')) && (
+        <div className="db-uri-connect-bar">
+          <div className="db-uri-connect-label">
+            <span>Mongo URI</span>
+            {remoteMongoMode && <span className="db-uri-connect-badge">connected</span>}
+          </div>
+          <input
+            className="db-uri-connect-input"
+            type={showMongoUri ? 'text' : 'password'}
+            placeholder="mongodb+srv://user:password@cluster.mongodb.net/dbname"
+            value={mongoUriInput}
+            onChange={(e) => setMongoUriInput(e.target.value)}
+          />
+          <button
+            type="button"
+            className="db-uri-visibility-btn"
+            onClick={() => setShowMongoUri((prev) => !prev)}
+            title={showMongoUri ? 'Hide URI' : 'Show URI'}
+          >
+            {showMongoUri ? 'Hide' : 'Show'}
+          </button>
+          {remoteMongoMode ? (
+            <button className="db-uri-connect-btn secondary" onClick={disconnectMongoUriMode}>
+              Disconnect
+            </button>
+          ) : (
+            <button
+              className="db-uri-connect-btn"
+              onClick={connectMongoUriMode}
+              disabled={remoteMongoConnecting || !mongoUriInput.trim()}
+            >
+              {remoteMongoConnecting ? 'Connecting...' : 'Connect URI'}
+            </button>
+          )}
+        </div>
+      )}
 
       {error ? (
         <DatabaseErrorState error={error} onRetry={() => window.location.reload()} />

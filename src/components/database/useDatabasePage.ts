@@ -18,11 +18,17 @@ interface UseDatabasePageResult {
   deletingTable: boolean;
   showDeleteConfirm: { rowIndex: number; row: Record<string, unknown> } | null;
   showDeleteTableConfirm: boolean;
+  mongoUriInput: string;
+  remoteMongoMode: boolean;
+  remoteMongoConnecting: boolean;
   setActiveTab: (tab: 'data' | 'query') => void;
   setShowCreateModal: (show: boolean) => void;
   setShowDeleteConfirm: (value: { rowIndex: number; row: Record<string, unknown> } | null) => void;
   setShowDeleteTableConfirm: (value: boolean) => void;
+  setMongoUriInput: (value: string) => void;
   setQuery: (value: string) => void;
+  connectMongoUriMode: () => Promise<void>;
+  disconnectMongoUriMode: () => void;
   loadTableData: (tableName: string) => Promise<void>;
   executeQuery: () => Promise<void>;
   handleKeyDown: (event: React.KeyboardEvent) => void;
@@ -51,21 +57,37 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<{ rowIndex: number; row: Record<string, unknown> } | null>(null);
   const [deletingTable, setDeletingTable] = useState(false);
   const [showDeleteTableConfirm, setShowDeleteTableConfirm] = useState(false);
+  const [mongoUriInput, setMongoUriInput] = useState('');
+  const [remoteMongoMode, setRemoteMongoMode] = useState(false);
+  const [remoteMongoUri, setRemoteMongoUri] = useState<string | null>(null);
+  const [remoteMongoConnecting, setRemoteMongoConnecting] = useState(false);
   const containerId = node.containerId || '';
   const containerImage = node.containerImage || '';
 
   useEffect(() => {
+    let isCancelled = false;
+
     const loadTables = async () => {
+      if (remoteMongoMode) {
+        return;
+      }
+
       if (!window.electronAPI?.getDatabaseTables || !containerId || !containerImage) {
-        setError('Database queries not available');
-        setLoading(false);
+        if (!isCancelled) {
+          setError('Database queries not available');
+          setLoading(false);
+        }
         return;
       }
 
       try {
-        setLoading(true);
-        setError(null);
+        if (!isCancelled) {
+          setLoading(true);
+          setError(null);
+        }
         const result: DatabaseTablesResult = await window.electronAPI.getDatabaseTables(containerId, containerImage);
+
+        if (isCancelled) return;
 
         if (result.error) {
           setError(result.error);
@@ -79,14 +101,21 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
           }
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load tables');
+        if (!isCancelled) {
+          setError(err instanceof Error ? err.message : 'Failed to load tables');
+        }
       } finally {
-        setLoading(false);
+        if (!isCancelled) {
+          setLoading(false);
+        }
       }
     };
 
     loadTables();
-  }, [containerId, containerImage]);
+    return () => {
+      isCancelled = true;
+    };
+  }, [containerId, containerImage, remoteMongoMode]);
 
   const loadTableData = useCallback(async (tableName: string) => {
     if (!window.electronAPI?.getTableData) return;
@@ -96,7 +125,9 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
       setSelectedTable(tableName);
       setTableData(null);
 
-      const result = await window.electronAPI.getTableData(containerId, containerImage, tableName, 100);
+      const result = remoteMongoMode && remoteMongoUri && window.electronAPI.getMongoUriCollectionData
+        ? await window.electronAPI.getMongoUriCollectionData(remoteMongoUri, tableName, 100)
+        : await window.electronAPI.getTableData(containerId, containerImage, tableName, 100);
       setTableData(result);
     } catch (err) {
       setTableData({
@@ -107,14 +138,23 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
     } finally {
       setLoadingTable(false);
     }
-  }, [containerId, containerImage]);
+  }, [containerId, containerImage, remoteMongoMode, remoteMongoUri]);
 
   const refreshTables = useCallback(async () => {
-    if (!window.electronAPI?.getDatabaseTables || !containerId || !containerImage) {
-      return;
-    }
-
     try {
+      if (remoteMongoMode && remoteMongoUri && window.electronAPI?.connectMongoUri) {
+        const result: DatabaseTablesResult = await window.electronAPI.connectMongoUri(remoteMongoUri);
+        if (!result.error) {
+          setTables(result.tables);
+          setDbType('mongodb');
+        }
+        return;
+      }
+
+      if (!window.electronAPI?.getDatabaseTables || !containerId || !containerImage) {
+        return;
+      }
+
       const result: DatabaseTablesResult = await window.electronAPI.getDatabaseTables(containerId, containerImage);
       if (!result.error) {
         setTables(result.tables);
@@ -123,7 +163,47 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
     } catch (err) {
       console.error('Error refreshing tables:', err);
     }
-  }, [containerId, containerImage]);
+  }, [containerId, containerImage, remoteMongoMode, remoteMongoUri]);
+
+  const connectMongoUriMode = useCallback(async () => {
+    if (!window.electronAPI?.connectMongoUri || !mongoUriInput.trim()) {
+      setError('Enter a MongoDB URI to connect');
+      return;
+    }
+
+    try {
+      setRemoteMongoConnecting(true);
+      setError(null);
+      const result = await window.electronAPI.connectMongoUri(mongoUriInput.trim());
+      if (result.error) {
+        setError(result.error);
+        return;
+      }
+
+      setRemoteMongoUri(mongoUriInput.trim());
+      setRemoteMongoMode(true);
+      setDbType('mongodb');
+      setTables(result.tables || []);
+      setSelectedTable(null);
+      setTableData(null);
+      setQuery('db.getCollectionNames()');
+      setLoading(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to connect MongoDB URI');
+    } finally {
+      setRemoteMongoConnecting(false);
+    }
+  }, [mongoUriInput]);
+
+  const disconnectMongoUriMode = useCallback(() => {
+    setRemoteMongoMode(false);
+    setRemoteMongoUri(null);
+    setMongoUriInput('');
+    setSelectedTable(null);
+    setTableData(null);
+    setQueryResult(null);
+    setError(null);
+  }, []);
 
   const normalizeExecutableQuery = useCallback((rawQuery: string) => {
     let nextQuery = rawQuery.trim();
@@ -150,7 +230,9 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
       setExecutingQuery(true);
       setQueryResult(null);
 
-      const result = await window.electronAPI.executeDatabaseQuery(containerId, containerImage, executableQuery);
+      const result = remoteMongoMode && remoteMongoUri && window.electronAPI.executeMongoUriQuery
+        ? await window.electronAPI.executeMongoUriQuery(remoteMongoUri, executableQuery)
+        : await window.electronAPI.executeDatabaseQuery(containerId, containerImage, executableQuery);
       setQueryResult(result);
 
       if (!result.error) {
@@ -166,7 +248,7 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
     } finally {
       setExecutingQuery(false);
     }
-  }, [containerId, containerImage, query, refreshTables, selectedTable, loadTableData, normalizeExecutableQuery]);
+  }, [containerId, containerImage, query, refreshTables, selectedTable, loadTableData, normalizeExecutableQuery, remoteMongoMode, remoteMongoUri]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
@@ -176,6 +258,20 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
   }, [executeQuery]);
 
   const handleCreateTable = useCallback(async (tableName: string, columns: ColumnDefinition[]) => {
+    if (remoteMongoMode && remoteMongoUri && dbType === 'mongodb') {
+      if (!window.electronAPI?.executeMongoUriQuery) {
+        throw new Error('Remote MongoDB query API not available');
+      }
+
+      const safeName = tableName.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+      const result = await window.electronAPI.executeMongoUriQuery(remoteMongoUri, `db.createCollection("${safeName}")`);
+      if (result.error) throw new Error(result.error);
+      await refreshTables();
+      setActiveTab('data');
+      await loadTableData(tableName);
+      return;
+    }
+
     if (!window.electronAPI?.createDatabaseTable) {
       throw new Error('Create table API not available. Please restart the Electron app.');
     }
@@ -189,7 +285,7 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
     await refreshTables();
     setActiveTab('data');
     await loadTableData(tableName);
-  }, [containerId, containerImage, refreshTables, loadTableData]);
+  }, [containerId, containerImage, refreshTables, loadTableData, remoteMongoMode, remoteMongoUri, dbType]);
 
   const handleDeleteTable = useCallback(async () => {
     if (!selectedTable || !window.electronAPI?.executeDatabaseQuery) return;
@@ -212,7 +308,9 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
 
     setDeletingTable(true);
     try {
-      const result = await window.electronAPI.executeDatabaseQuery(containerId, containerImage, dropQuery);
+      const result = remoteMongoMode && remoteMongoUri && window.electronAPI.executeMongoUriQuery
+        ? await window.electronAPI.executeMongoUriQuery(remoteMongoUri, dropQuery)
+        : await window.electronAPI.executeDatabaseQuery(containerId, containerImage, dropQuery);
       if (result.error) {
         throw new Error(result.error);
       }
@@ -226,7 +324,7 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
     } finally {
       setDeletingTable(false);
     }
-  }, [selectedTable, dbType, containerId, containerImage, refreshTables]);
+  }, [selectedTable, dbType, containerId, containerImage, refreshTables, remoteMongoMode, remoteMongoUri]);
 
   const handleDeleteRow = useCallback(async (rowIndex: number, row: Record<string, unknown>) => {
     if (!selectedTable || !tableData) return;
@@ -312,11 +410,17 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
     showDeleteConfirm,
     deletingTable,
     showDeleteTableConfirm,
+    mongoUriInput,
+    remoteMongoMode,
+    remoteMongoConnecting,
     setActiveTab,
     setShowCreateModal,
     setShowDeleteConfirm,
     setShowDeleteTableConfirm,
+    setMongoUriInput,
     setQuery,
+    connectMongoUriMode,
+    disconnectMongoUriMode,
     loadTableData,
     executeQuery,
     handleKeyDown,

@@ -442,6 +442,9 @@ export interface ElectronAPI {
   getTableData: (containerId: string, containerImage: string, tableName: string, limit?: number) => Promise<TableDataResult>;
   executeDatabaseQuery: (containerId: string, containerImage: string, query: string) => Promise<QueryResult>;
   createDatabaseTable: (containerId: string, containerImage: string, tableName: string, columns: ColumnDefinition[]) => Promise<CreateTableResult>;
+  connectMongoUri: (uri: string) => Promise<DatabaseTablesResult>;
+  getMongoUriCollectionData: (uri: string, collectionName: string, limit?: number) => Promise<TableDataResult>;
+  executeMongoUriQuery: (uri: string, command: string) => Promise<QueryResult>;
 
   // Process control
   killProcess: (pid: number) => Promise<KillResult>;

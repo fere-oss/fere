@@ -52,6 +52,104 @@ async function execDockerWithInput(containerId, commandArgs, input, timeout = 30
   });
 }
 
+async function execMongoUriEval(uri, command, timeout = 30000) {
+  return new Promise((resolve, reject) => {
+    const child = spawn('docker', ['run', '--rm', 'mongo:7', 'mongosh', uri, '--quiet', '--eval', command], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+
+    let stdout = '';
+    let stderr = '';
+    let timedOut = false;
+
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill('SIGTERM');
+    }, timeout);
+
+    child.stdout.on('data', (chunk) => {
+      stdout += chunk.toString();
+    });
+
+    child.stderr.on('data', (chunk) => {
+      stderr += chunk.toString();
+    });
+
+    child.on('error', (error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
+
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      if (timedOut) {
+        reject(new Error('Remote MongoDB command timed out'));
+        return;
+      }
+      if (code !== 0) {
+        reject(new Error(stderr || stdout || `Command exited with code ${code}`));
+        return;
+      }
+      resolve({ stdout, stderr });
+    });
+
+  });
+}
+
+function extractJsonCandidate(output, fallback = '[]') {
+  const lines = String(output || '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  // Prefer full JSON lines and ignore shell banners/noise.
+  for (let i = lines.length - 1; i >= 0; i -= 1) {
+    const line = lines[i];
+    if ((line.startsWith('[') && line.endsWith(']')) || (line.startsWith('{') && line.endsWith('}'))) {
+      return line;
+    }
+  }
+
+  return fallback;
+}
+
+function parseMongoCollectionLines(stdout) {
+  return String(stdout || '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => {
+      if (!line) return false;
+      const lower = line.toLowerCase();
+      if (lower.startsWith('atlas ')) return false;
+      if (lower.startsWith('connecting')) return false;
+      if (lower.startsWith('using mongodb')) return false;
+      if (lower.startsWith('for mongosh info')) return false;
+      if (line.startsWith('Current Mongosh Log ID')) return false;
+      if (line.startsWith('To help improve')) return false;
+      return true;
+    });
+}
+
+function extractMongoDbNameFromUri(uri) {
+  try {
+    const parsed = new URL(uri);
+    const dbPath = (parsed.pathname || '/').replace(/^\//, '').trim();
+    return dbPath || null;
+  } catch {
+    const match = String(uri || '').match(/mongodb(?:\+srv)?:\/\/[^/]+\/([^?]+)/i);
+    return match?.[1]?.trim() || null;
+  }
+}
+
+function detectMongoShellError(output) {
+  const text = String(output || '').toLowerCase();
+  if (text.includes('authentication failed')) return 'MongoDB authentication failed';
+  if (text.includes('not authorized')) return 'MongoDB user is not authorized for this database';
+  if (text.includes('mongoservererror')) return 'MongoDB server returned an error';
+  if (text.includes('bad auth')) return 'MongoDB authentication failed';
+  return null;
+}
+
 /**
  * Detect database type from container image name
  */
@@ -450,6 +548,146 @@ async function executeMongoCommand(containerId, command) {
   throw new Error('Could not execute MongoDB command');
 }
 
+function normalizeMongoRows(rows) {
+  return rows.map(row => {
+    const clean = {};
+    for (const [key, value] of Object.entries(row)) {
+      if (value && typeof value === 'object' && value.$oid) {
+        clean[key] = value.$oid;
+      } else if (value && typeof value === 'object' && value.$date) {
+        clean[key] = new Date(value.$date).toISOString();
+      } else {
+        clean[key] = value;
+      }
+    }
+    return clean;
+  });
+}
+
+async function connectMongoUri(uri) {
+  if (!uri || typeof uri !== 'string') {
+    return { error: 'MongoDB URI is required', tables: [], dbType: 'mongodb' };
+  }
+
+  try {
+    const dbFromUri = extractMongoDbNameFromUri(uri.trim());
+    const cmd = `
+(() => {
+  const preferredDb = ${JSON.stringify(dbFromUri || '')};
+  if (preferredDb) {
+    try {
+      const preferred = db.getMongo().getDB(preferredDb).getCollectionNames();
+      print(JSON.stringify(preferred.map((c) => preferredDb + '.' + c)));
+      return;
+    } catch (_) {
+      // Continue to broader discovery
+    }
+  }
+  try {
+    const systemDbs = new Set(['admin', 'local', 'config']);
+    const dbNames = db.getMongo().getDBNames().filter((name) => !systemDbs.has(name));
+    const qualified = [];
+    dbNames.forEach((dbName) => {
+      const cols = db.getMongo().getDB(dbName).getCollectionNames();
+      cols.forEach((col) => qualified.push(dbName + '.' + col));
+    });
+    if (qualified.length > 0) {
+      print(JSON.stringify(qualified));
+      return;
+    }
+  } catch (_) {
+    // Fall back to current DB only
+  }
+  print(JSON.stringify(db.getCollectionNames()));
+})();
+`;
+    const { stdout, stderr } = await execMongoUriEval(uri.trim(), cmd, 30000);
+    const shellOutput = `${stdout || ''}\n${stderr || ''}`.trim();
+    const shellError = detectMongoShellError(shellOutput);
+    if (shellError) {
+      return { error: shellError, tables: [], dbType: 'mongodb' };
+    }
+    let collections = [];
+
+    try {
+      const jsonPayload = extractJsonCandidate(stdout, '[]');
+      const parsed = JSON.parse(jsonPayload);
+      if (Array.isArray(parsed)) {
+        collections = parsed
+          .map((name) => String(name).trim())
+          .filter(Boolean);
+      }
+    } catch {
+      collections = parseMongoCollectionLines(stdout);
+    }
+
+    return { tables: collections, dbType: 'mongodb' };
+  } catch (error) {
+    return { error: error.message || 'Could not connect to MongoDB URI', tables: [], dbType: 'mongodb' };
+  }
+}
+
+async function getMongoUriCollectionData(uri, collectionName, limit = 100) {
+  if (!uri || !collectionName) {
+    return { error: 'MongoDB URI and collection are required', columns: [], rows: [], dbType: 'mongodb' };
+  }
+
+  const safeLimit = Number.isFinite(limit) ? Math.max(1, Math.min(1000, Number(limit))) : 100;
+  let dbName = '';
+  let bareCollectionName = collectionName;
+  const dotIndex = collectionName.indexOf('.');
+  if (dotIndex > 0) {
+    dbName = collectionName.slice(0, dotIndex);
+    bareCollectionName = collectionName.slice(dotIndex + 1);
+  }
+
+  const safeDbName = dbName.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+  const safeCollectionName = bareCollectionName.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+  const cmd = dbName
+    ? `print(JSON.stringify(db.getMongo().getDB("${safeDbName}").getCollection("${safeCollectionName}").find().limit(${safeLimit}).toArray()))`
+    : `print(JSON.stringify(db.getCollection("${safeCollectionName}").find().limit(${safeLimit}).toArray()))`;
+
+  try {
+    const { stdout } = await execMongoUriEval(uri.trim(), cmd, 30000);
+    const jsonPayload = extractJsonCandidate(stdout, '[]');
+    const rows = JSON.parse(jsonPayload);
+    const cleanRows = Array.isArray(rows) ? normalizeMongoRows(rows) : [];
+    const columnSet = new Set();
+    cleanRows.slice(0, 20).forEach((row) => {
+      Object.keys(row || {}).forEach((key) => columnSet.add(key));
+    });
+    const columns = Array.from(columnSet);
+    return { columns, rows: cleanRows, dbType: 'mongodb', tableName: collectionName };
+  } catch (error) {
+    return { error: error.message || 'Could not query MongoDB URI collection', columns: [], rows: [], dbType: 'mongodb' };
+  }
+}
+
+async function executeMongoUriQuery(uri, command) {
+  if (!uri || !command || !command.trim()) {
+    return { error: 'MongoDB URI and command are required', dbType: 'mongodb' };
+  }
+
+  try {
+    const { stdout, stderr } = await execMongoUriEval(uri.trim(), command, 30000);
+    const output = (stdout || stderr).trim();
+
+    try {
+      const parsed = JSON.parse(output);
+      if (Array.isArray(parsed)) {
+        const cleanRows = normalizeMongoRows(parsed);
+        const columns = cleanRows.length > 0 ? Object.keys(cleanRows[0]) : [];
+        return { columns, rows: cleanRows, rowCount: cleanRows.length, dbType: 'mongodb' };
+      }
+      return { output: JSON.stringify(parsed, null, 2), dbType: 'mongodb' };
+    } catch {
+      return { output, dbType: 'mongodb' };
+    }
+  } catch (error) {
+    return { error: error.message || 'Failed to execute MongoDB URI query', dbType: 'mongodb' };
+  }
+}
+
 /**
  * Create a new table in the database
  * @param {string} containerId - Docker container ID
@@ -595,4 +833,7 @@ module.exports = {
   getTableData,
   executeQuery,
   createTable,
+  connectMongoUri,
+  getMongoUriCollectionData,
+  executeMongoUriQuery,
 };

@@ -40,6 +40,9 @@ const {
   getTableData,
   executeQuery,
   createTable,
+  connectMongoUri,
+  getMongoUriCollectionData,
+  executeMongoUriQuery,
 } = require("./services/databaseQuery");
 const {
   isDockerAvailable,
@@ -618,6 +621,36 @@ ipcMain.handle("create-database-table", async (_, containerId, containerImage, t
   } catch (error) {
     console.error("Error creating database table:", error);
     return { error: error.message, success: false };
+  }
+});
+
+// Connect directly to remote MongoDB via URI
+ipcMain.handle("connect-mongo-uri", async (_, uri) => {
+  try {
+    return await connectMongoUri(uri);
+  } catch (error) {
+    console.error("Error connecting Mongo URI:", error);
+    return { error: error.message, tables: [], dbType: "mongodb" };
+  }
+});
+
+// Get collection data from remote MongoDB URI
+ipcMain.handle("get-mongo-uri-collection-data", async (_, uri, collectionName, limit) => {
+  try {
+    return await getMongoUriCollectionData(uri, collectionName, limit || 100);
+  } catch (error) {
+    console.error("Error loading Mongo URI collection data:", error);
+    return { error: error.message, columns: [], rows: [], dbType: "mongodb" };
+  }
+});
+
+// Execute Mongo command against remote URI
+ipcMain.handle("execute-mongo-uri-query", async (_, uri, command) => {
+  try {
+    return await executeMongoUriQuery(uri, command);
+  } catch (error) {
+    console.error("Error executing Mongo URI query:", error);
+    return { error: error.message, dbType: "mongodb" };
   }
 });
 

@@ -164,6 +164,20 @@ function App() {
     setViewMode("containers");
   }, []);
 
+  // Open database view directly from top tabs (prefer MongoDB if available)
+  const handleOpenDatabaseView = useCallback(() => {
+    const dbNodes = graph.nodes.filter(
+      (node) => node.isDockerContainer && node.type === "database" && node.containerState === "running"
+    );
+    const preferredNode =
+      dbNodes.find((node) => (node.containerImage || "").toLowerCase().includes("mongo")) ||
+      dbNodes[0] ||
+      null;
+
+    setDatabaseNode(preferredNode);
+    setViewMode("database");
+  }, [graph.nodes]);
+
   // Handle freshness click from main graph - navigate to container logs
   const handleFreshnessClick = useCallback(() => {
     setViewMode("containers");
@@ -404,6 +418,28 @@ function App() {
           </span>
           Requests
         </button>
+        <button
+          className={`view-mode-tab ${viewMode === "database" ? "view-mode-tab-active" : ""}`}
+          onClick={handleOpenDatabaseView}
+        >
+          <span className="view-mode-icon">
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <ellipse cx="12" cy="5" rx="7" ry="3" />
+              <path d="M5 5v7c0 1.7 3.1 3 7 3s7-1.3 7-3V5" />
+              <path d="M5 12v7c0 1.7 3.1 3 7 3s7-1.3 7-3v-7" />
+            </svg>
+          </span>
+          Database
+        </button>
       </div>
 
       {/* Project Tabs - only show for graph view */}
@@ -543,6 +579,13 @@ function App() {
           /* Database Management Page */
           <div className="api-tester-container">
             <DatabasePage node={databaseNode} onBack={handleDatabaseBack} />
+          </div>
+        ) : viewMode === "database" ? (
+          <div className="api-tester-container">
+            <div className="sidebar-empty">
+              <p>No running database container found</p>
+              <span>Start a MongoDB/PostgreSQL/MySQL container or open one from Containers view.</span>
+            </div>
           </div>
         ) : (
           /* API Tester View */
