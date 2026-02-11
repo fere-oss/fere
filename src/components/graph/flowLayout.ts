@@ -371,17 +371,19 @@ export function buildFlowLayout({
         STANDALONE_GROUP_GAP * Math.max(0, rowItems.length - 1);
       const rowOffset = rowWidth / 2;
       let cursorX = 0;
+      const currentStartIndex = startIndex;
+      const currentCursorY = cursorY;
 
       rowItems.forEach((item) => {
         const groupX = cursorX;
 
         if (item.group.isGroup) {
           labelNodes.push({
-            id: `standalone-group-label-${item.group.groupName}-${startIndex}`,
+            id: `standalone-group-label-${item.group.groupName}-${currentStartIndex}`,
             type: "groupLabel",
             position: centeredLabelPosition(
               groupX + item.width / 2,
-              cursorY - STANDALONE_LABEL_OFFSET,
+              currentCursorY - STANDALONE_LABEL_OFFSET,
             ),
             data: {
               text: item.group.groupName || "Standalone",
@@ -394,11 +396,11 @@ export function buildFlowLayout({
           });
 
           boxNodes.push({
-            id: `standalone-group-box-${item.group.groupName}-${startIndex}`,
+            id: `standalone-group-box-${item.group.groupName}-${currentStartIndex}`,
             type: "groupBox",
             position: {
               x: groupX - GROUP_BOX_PADDING,
-              y: cursorY - GROUP_BOX_PADDING,
+              y: currentCursorY - GROUP_BOX_PADDING,
             },
             data: {
               width: item.width + GROUP_BOX_PADDING * 2,
@@ -424,7 +426,7 @@ export function buildFlowLayout({
           positions.set(node.id, {
             x: groupX + colOffset + col * (NODE_WIDTH + STANDALONE_NODE_GAP),
             y:
-              cursorY +
+              currentCursorY +
               (item.rowHeights ?? [])
                 .slice(0, row)
                 .reduce((sum, h) => sum + h, 0) +
@@ -446,7 +448,7 @@ export function buildFlowLayout({
 
       labelNodes.forEach((label) => {
         if (!label.data.offset) return;
-        if (!label.id.includes(`-${startIndex}`)) return;
+        if (!label.id.includes(`-${currentStartIndex}`)) return;
         label.position = {
           x: shiftRow(label.position.x),
           y: label.position.y,
@@ -455,7 +457,7 @@ export function buildFlowLayout({
 
       boxNodes.forEach((box) => {
         if (!box.data.offset) return;
-        if (!box.id.includes(`-${startIndex}`)) return;
+        if (!box.id.includes(`-${currentStartIndex}`)) return;
         box.position = {
           x: shiftRow(box.position.x),
           y: box.position.y,

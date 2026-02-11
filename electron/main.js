@@ -304,13 +304,23 @@ ipcMain.handle("execute-http-request", async (event, options) => {
 
     return new Promise((resolve) => {
       const startTime = Date.now();
+      const normalizedMethod = (method || "GET").toUpperCase();
+      const requestHeaders = { ...(headers || {}) };
+      const shouldSendBody =
+        typeof body === "string" &&
+        body.length > 0 &&
+        !["GET", "HEAD"].includes(normalizedMethod);
+
+      if (shouldSendBody && !Object.keys(requestHeaders).some((k) => k.toLowerCase() === "content-length")) {
+        requestHeaders["Content-Length"] = Buffer.byteLength(body, "utf8").toString();
+      }
 
       const requestOptions = {
-        method: method || "GET",
+        method: normalizedMethod,
         hostname: parsedUrl.hostname,
         port: parsedUrl.port || (isHttps ? 443 : 80),
         path: parsedUrl.pathname + parsedUrl.search,
-        headers: headers || {},
+        headers: requestHeaders,
         timeout: 30000, // 30 second timeout
       };
 
@@ -379,8 +389,8 @@ ipcMain.handle("execute-http-request", async (event, options) => {
         });
       });
 
-      // Send body for POST/PUT/PATCH
-      if (body && ["POST", "PUT", "PATCH"].includes(method)) {
+      // Send body for all methods that can carry one.
+      if (shouldSendBody) {
         req.write(body);
       }
 
