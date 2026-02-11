@@ -363,10 +363,16 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
   }, [containerId, containerImage, query, refreshTables, selectedTable, loadTableData, normalizeExecutableQuery, remoteMongoMode, remoteMongoUri]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-      e.preventDefault();
-      executeQuery();
-    }
+    const isRunShortcut = (e.metaKey || e.ctrlKey)
+      && !e.shiftKey
+      && !e.altKey
+      && (e.key === 'Enter' || e.code === 'Enter' || e.code === 'NumpadEnter' || e.keyCode === 13);
+
+    if (!isRunShortcut) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+    void executeQuery();
   }, [executeQuery]);
 
   const handleCreateTable = useCallback(async (tableName: string, columns: ColumnDefinition[]) => {
