@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import type { GraphNode, DatabaseTablesResult, TableDataResult, QueryResult, ColumnDefinition } from '../../types/electron';
 
 interface UseDatabasePageResult {
@@ -21,12 +21,22 @@ interface UseDatabasePageResult {
   mongoUriInput: string;
   remoteMongoMode: boolean;
   remoteMongoConnecting: boolean;
+  mongoUriStatus: 'idle' | 'testing' | 'ok' | 'error';
+  mongoUriStatusMessage: string | null;
+  recentMongoUris: string[];
+  remoteDbOptions: string[];
+  remoteCollectionOptions: string[];
+  selectedRemoteDb: string;
+  selectedRemoteCollection: string;
   setActiveTab: (tab: 'data' | 'query') => void;
   setShowCreateModal: (show: boolean) => void;
   setShowDeleteConfirm: (value: { rowIndex: number; row: Record<string, unknown> } | null) => void;
   setShowDeleteTableConfirm: (value: boolean) => void;
   setMongoUriInput: (value: string) => void;
+  setSelectedRemoteDb: (value: string) => void;
+  setSelectedRemoteCollection: (value: string) => void;
   setQuery: (value: string) => void;
+  testMongoUriConnection: () => Promise<void>;
   connectMongoUriMode: () => Promise<void>;
   disconnectMongoUriMode: () => void;
   loadTableData: (tableName: string) => Promise<void>;
@@ -41,6 +51,7 @@ interface UseDatabasePageResult {
 }
 
 export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
+  const RECENT_MONGO_URIS_KEY = 'fere.recentMongoUris';
   const [tables, setTables] = useState<string[]>([]);
   const [dbType, setDbType] = useState<string>('database');
   const [selectedTable, setSelectedTable] = useState<string | null>(null);
@@ -61,8 +72,60 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
   const [remoteMongoMode, setRemoteMongoMode] = useState(false);
   const [remoteMongoUri, setRemoteMongoUri] = useState<string | null>(null);
   const [remoteMongoConnecting, setRemoteMongoConnecting] = useState(false);
+  const [mongoUriStatus, setMongoUriStatus] = useState<'idle' | 'testing' | 'ok' | 'error'>('idle');
+  const [mongoUriStatusMessage, setMongoUriStatusMessage] = useState<string | null>(null);
+  const [recentMongoUris, setRecentMongoUris] = useState<string[]>([]);
+  const [selectedRemoteDb, setSelectedRemoteDb] = useState('');
+  const [selectedRemoteCollection, setSelectedRemoteCollection] = useState('');
   const containerId = node.containerId || '';
   const containerImage = node.containerImage || '';
+
+  const maskMongoUri = useCallback((uri: string) => {
+    const trimmed = uri.trim();
+    return trimmed.replace(/(mongodb(?:\+srv)?:\/\/[^:\/?#]+:)([^@]+)(@)/i, '$1<password>$3');
+  }, []);
+
+  const parseRemoteTable = useCallback((qualified: string) => {
+    const idx = qualified.indexOf('.');
+    if (idx <= 0) {
+      return { db: '', collection: qualified };
+    }
+    return {
+      db: qualified.slice(0, idx),
+      collection: qualified.slice(idx + 1),
+    };
+  }, []);
+
+  const qualifyRemoteCollection = useCallback((dbName: string, collectionName: string) => {
+    if (!collectionName) return '';
+    return dbName ? `${dbName}.${collectionName}` : collectionName;
+  }, []);
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(RECENT_MONGO_URIS_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        setRecentMongoUris(parsed.filter((entry) => typeof entry === 'string').slice(0, 6));
+      }
+    } catch {
+      // Ignore localStorage parse issues
+    }
+  }, []);
+
+  const saveRecentMongoUri = useCallback((uri: string) => {
+    const masked = maskMongoUri(uri);
+    setRecentMongoUris((prev) => {
+      const next = [masked, ...prev.filter((entry) => entry !== masked)].slice(0, 6);
+      try {
+        window.localStorage.setItem(RECENT_MONGO_URIS_KEY, JSON.stringify(next));
+      } catch {
+        // Ignore localStorage write failures
+      }
+      return next;
+    });
+  }, [maskMongoUri]);
 
   useEffect(() => {
     let isCancelled = false;
@@ -165,6 +228,42 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
     }
   }, [containerId, containerImage, remoteMongoMode, remoteMongoUri]);
 
+  const applyRemoteTableDefaults = useCallback((remoteTables: string[]) => {
+    if (remoteTables.length === 0) {
+      setSelectedRemoteDb('');
+      setSelectedRemoteCollection('');
+      return;
+    }
+    const first = parseRemoteTable(remoteTables[0]);
+    setSelectedRemoteDb(first.db);
+    setSelectedRemoteCollection(first.collection);
+  }, [parseRemoteTable]);
+
+  const testMongoUriConnection = useCallback(async () => {
+    if (!window.electronAPI?.connectMongoUri || !mongoUriInput.trim()) {
+      setMongoUriStatus('error');
+      setMongoUriStatusMessage('Enter a MongoDB URI to test');
+      return;
+    }
+
+    try {
+      setMongoUriStatus('testing');
+      setMongoUriStatusMessage('Testing connection...');
+      const result = await window.electronAPI.connectMongoUri(mongoUriInput.trim());
+      if (result.error) {
+        setMongoUriStatus('error');
+        setMongoUriStatusMessage(result.error);
+        return;
+      }
+      setMongoUriStatus('ok');
+      setMongoUriStatusMessage(`Connected (${result.tables?.length || 0} collections found)`);
+      saveRecentMongoUri(mongoUriInput.trim());
+    } catch (err) {
+      setMongoUriStatus('error');
+      setMongoUriStatusMessage(err instanceof Error ? err.message : 'Connection test failed');
+    }
+  }, [mongoUriInput, saveRecentMongoUri]);
+
   const connectMongoUriMode = useCallback(async () => {
     if (!window.electronAPI?.connectMongoUri || !mongoUriInput.trim()) {
       setError('Enter a MongoDB URI to connect');
@@ -173,10 +272,14 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
 
     try {
       setRemoteMongoConnecting(true);
+      setMongoUriStatus('testing');
+      setMongoUriStatusMessage('Connecting...');
       setError(null);
       const result = await window.electronAPI.connectMongoUri(mongoUriInput.trim());
       if (result.error) {
         setError(result.error);
+        setMongoUriStatus('error');
+        setMongoUriStatusMessage(result.error);
         return;
       }
 
@@ -184,25 +287,34 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
       setRemoteMongoMode(true);
       setDbType('mongodb');
       setTables(result.tables || []);
+      applyRemoteTableDefaults(result.tables || []);
       setSelectedTable(null);
       setTableData(null);
       setQuery('db.getCollectionNames()');
       setLoading(false);
+      setMongoUriStatus('ok');
+      setMongoUriStatusMessage('Connected');
+      saveRecentMongoUri(mongoUriInput.trim());
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to connect MongoDB URI');
+      setMongoUriStatus('error');
+      setMongoUriStatusMessage(err instanceof Error ? err.message : 'Failed to connect MongoDB URI');
     } finally {
       setRemoteMongoConnecting(false);
     }
-  }, [mongoUriInput]);
+  }, [mongoUriInput, applyRemoteTableDefaults, saveRecentMongoUri]);
 
   const disconnectMongoUriMode = useCallback(() => {
     setRemoteMongoMode(false);
     setRemoteMongoUri(null);
-    setMongoUriInput('');
     setSelectedTable(null);
     setTableData(null);
     setQueryResult(null);
     setError(null);
+    setSelectedRemoteDb('');
+    setSelectedRemoteCollection('');
+    setMongoUriStatus('idle');
+    setMongoUriStatusMessage(null);
   }, []);
 
   const normalizeExecutableQuery = useCallback((rawQuery: string) => {
@@ -393,6 +505,51 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
     }
   };
 
+  const remoteDbOptions = useMemo(() => {
+    if (!remoteMongoMode) return [];
+    const dbSet = new Set<string>();
+    tables.forEach((qualified) => {
+      const { db } = parseRemoteTable(qualified);
+      dbSet.add(db);
+    });
+    return Array.from(dbSet);
+  }, [tables, remoteMongoMode, parseRemoteTable]);
+
+  const remoteCollectionOptions = useMemo(() => {
+    if (!remoteMongoMode) return [];
+    return tables
+      .map((qualified) => parseRemoteTable(qualified))
+      .filter(({ db }) => db === selectedRemoteDb)
+      .map(({ collection }) => collection);
+  }, [tables, remoteMongoMode, parseRemoteTable, selectedRemoteDb]);
+
+  const setMongoUriInputWithReset = useCallback((value: string) => {
+    setMongoUriInput(value);
+    setMongoUriStatus('idle');
+    setMongoUriStatusMessage(null);
+  }, []);
+
+  const setSelectedRemoteDbWithSelection = useCallback((dbName: string) => {
+    setSelectedRemoteDb(dbName);
+    const firstMatch = tables
+      .map((qualified) => parseRemoteTable(qualified))
+      .find((entry) => entry.db === dbName);
+    const collection = firstMatch?.collection || '';
+    setSelectedRemoteCollection(collection);
+    const qualified = qualifyRemoteCollection(dbName, collection);
+    if (qualified) {
+      loadTableData(qualified);
+    }
+  }, [tables, parseRemoteTable, qualifyRemoteCollection, loadTableData]);
+
+  const setSelectedRemoteCollectionWithLoad = useCallback((collectionName: string) => {
+    setSelectedRemoteCollection(collectionName);
+    const qualified = qualifyRemoteCollection(selectedRemoteDb, collectionName);
+    if (qualified) {
+      loadTableData(qualified);
+    }
+  }, [selectedRemoteDb, qualifyRemoteCollection, loadTableData]);
+
   return {
     tables,
     dbType,
@@ -413,12 +570,22 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
     mongoUriInput,
     remoteMongoMode,
     remoteMongoConnecting,
+    mongoUriStatus,
+    mongoUriStatusMessage,
+    recentMongoUris,
+    remoteDbOptions,
+    remoteCollectionOptions,
+    selectedRemoteDb,
+    selectedRemoteCollection,
     setActiveTab,
     setShowCreateModal,
     setShowDeleteConfirm,
     setShowDeleteTableConfirm,
-    setMongoUriInput,
+    setMongoUriInput: setMongoUriInputWithReset,
+    setSelectedRemoteDb: setSelectedRemoteDbWithSelection,
+    setSelectedRemoteCollection: setSelectedRemoteCollectionWithLoad,
     setQuery,
+    testMongoUriConnection,
     connectMongoUriMode,
     disconnectMongoUriMode,
     loadTableData,

@@ -4413,11 +4413,132 @@ body {
   background: #ffffff;
   border: 1px solid #d4d4d4;
   color: #525252;
+  font-weight: 500;
 }
 
 .db-uri-connect-btn.secondary:hover {
   background: #fafafa;
   color: #171717;
+}
+
+.db-uri-status {
+  font-size: 12px;
+  color: #737373;
+  white-space: nowrap;
+}
+
+.db-uri-status-testing {
+  color: #a16207;
+}
+
+.db-uri-status-ok {
+  color: #15803d;
+}
+
+.db-uri-status-error {
+  color: #b91c1c;
+}
+
+.db-uri-picker-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  padding: 10px 56px 0 56px;
+}
+
+.db-uri-picker {
+  position: relative;
+  display: inline-flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 180px;
+}
+
+.db-uri-picker-label {
+  display: inline-flex;
+  align-items: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: #525252;
+}
+
+.db-uri-picker-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid #d4d4d4;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #171717;
+  font-size: 12px;
+  font-family: "JetBrains Mono", monospace;
+  font-weight: 500;
+  outline: none;
+  transition: all 0.15s ease;
+  cursor: pointer;
+  min-width: 180px;
+}
+
+.db-uri-picker-trigger:hover:not(:disabled) {
+  border-color: #a3a3a3;
+  background-color: #fafafa;
+}
+
+.db-uri-picker-trigger:focus {
+  border-color: #171717;
+  background-color: #ffffff;
+}
+
+.db-uri-picker-trigger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.db-uri-picker-trigger-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.db-uri-picker-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  min-width: 100%;
+  background: #ffffff;
+  border: 1px solid #d4d4d4;
+  border-radius: 10px;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.12);
+  padding: 6px;
+  z-index: 30;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.db-uri-picker-option {
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  background: #ffffff;
+  color: #171717;
+  font-family: "JetBrains Mono", monospace;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.db-uri-picker-option:hover {
+  background: #f5f5f5;
+}
+
+.db-uri-picker-option.selected {
+  background: #171717;
+  color: #ffffff;
 }
 
 /* Error state */

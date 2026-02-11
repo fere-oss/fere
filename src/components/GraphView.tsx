@@ -19,6 +19,9 @@ import { useExternalApis } from "./graph/useExternalApis";
 import { useGraphLayoutData } from "./graph/useGraphLayoutData";
 import { useNodeMeasurements } from "./graph/useNodeMeasurements";
 
+const NODE_TYPES = flowNodeTypes;
+const EDGE_TYPES = flowEdgeTypes;
+
 export function GraphView({
   nodes,
   edges,
@@ -406,8 +409,8 @@ export function GraphView({
           <ReactFlow
             nodes={flowLayout.nodes}
             edges={flowEdges}
-            nodeTypes={flowNodeTypes}
-            edgeTypes={flowEdgeTypes}
+            nodeTypes={NODE_TYPES}
+            edgeTypes={EDGE_TYPES}
             proOptions={{ hideAttribution: true }}
             defaultEdgeOptions={defaultEdgeOptions}
             nodesDraggable={false}
