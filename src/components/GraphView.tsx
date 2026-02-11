@@ -408,6 +408,7 @@ export function GraphView({
             edges={flowEdges}
             nodeTypes={flowNodeTypes}
             edgeTypes={flowEdgeTypes}
+            proOptions={{ hideAttribution: true }}
             defaultEdgeOptions={defaultEdgeOptions}
             nodesDraggable={false}
             nodesConnectable={false}
