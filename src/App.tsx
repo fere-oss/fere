@@ -541,7 +541,9 @@ function App() {
           </div>
         ) : viewMode === "database" && databaseNode ? (
           /* Database Management Page */
-          <DatabasePage node={databaseNode} onBack={handleDatabaseBack} />
+          <div className="api-tester-container">
+            <DatabasePage node={databaseNode} onBack={handleDatabaseBack} />
+          </div>
         ) : (
           /* API Tester View */
           <div className="api-tester-container">

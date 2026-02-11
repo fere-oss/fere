@@ -408,7 +408,6 @@ export function ContainerLogsTab({ containers, initialSelectedId }: ContainerLog
                   const color = containerColorMap.get(container.containerId) || '#6B7280';
                   const imageLabel = getImageLabel(container);
                   const portLabel = getPortLabel(container);
-                  const metaItems = [imageLabel, portLabel].filter(Boolean);
 
                   return (
                     <button
@@ -428,12 +427,8 @@ export function ContainerLogsTab({ containers, initialSelectedId }: ContainerLog
                           <span className={`container-status-pill status-${status}`}>{status}</span>
                         </span>
                         <span className="container-row-meta">
-                          {metaItems.map((item, idx) => (
-                            <span key={`${container.containerId}-meta-${idx}`} className="container-meta">
-                              {item}
-                              {idx < metaItems.length - 1 && <span className="container-meta-sep">·</span>}
-                            </span>
-                          ))}
+                          <span className="container-meta container-meta-image">{imageLabel}</span>
+                          <span className="container-meta container-meta-port">{portLabel}</span>
                         </span>
                       </span>
                     </button>
@@ -558,8 +553,11 @@ export function ContainerLogsTab({ containers, initialSelectedId }: ContainerLog
               </div>
             ) : filteredLogs.length === 0 ? (
               <div className="unified-logs-waiting">
-                <div className="unified-logs-spinner" />
-                <span>Waiting for logs...</span>
+                <div className="unified-logs-spinner" aria-hidden="true">
+                  <span />
+                  <span />
+                  <span />
+                </div>
               </div>
             ) : (
               filteredLogs.map((log) => {

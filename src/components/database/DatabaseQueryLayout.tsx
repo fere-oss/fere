@@ -1,3 +1,4 @@
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { QueryResult } from '../../types/electron';
 
 interface DatabaseQueryLayoutProps {
@@ -23,6 +24,67 @@ export function DatabaseQueryLayout({
   getQueryPlaceholder,
   formatCellValue,
 }: DatabaseQueryLayoutProps) {
+  const tabCounterRef = useRef(2);
+  const highlightRef = useRef<HTMLPreElement>(null);
+  const [queryTabs, setQueryTabs] = useState([{ id: 'query-tab-1', title: 'Query 1', content: query }]);
+  const [activeTabId, setActiveTabId] = useState('query-tab-1');
+
+  const activeTab = useMemo(
+    () => queryTabs.find((tab) => tab.id === activeTabId) ?? queryTabs[0],
+    [queryTabs, activeTabId],
+  );
+
+  useEffect(() => {
+    setQueryTabs((prev) =>
+      prev.map((tab) => (tab.id === activeTab.id ? { ...tab, content: query } : tab)),
+    );
+  }, [query, activeTab.id]);
+
+  const handleChangeQuery = (value: string) => {
+    setQueryTabs((prev) =>
+      prev.map((tab) => (tab.id === activeTab.id ? { ...tab, content: value } : tab)),
+    );
+    onChangeQuery(value);
+  };
+
+  const handleAddTab = () => {
+    const nextId = `query-tab-${tabCounterRef.current++}`;
+    const nextTitle = `Query ${queryTabs.length + 1}`;
+    const nextTabs = [...queryTabs, { id: nextId, title: nextTitle, content: '' }];
+    setQueryTabs(nextTabs);
+    setActiveTabId(nextId);
+    onChangeQuery('');
+  };
+
+  const handleSwitchTab = (tabId: string) => {
+    const nextTab = queryTabs.find((tab) => tab.id === tabId);
+    if (!nextTab) return;
+    setActiveTabId(tabId);
+    onChangeQuery(nextTab.content);
+  };
+
+  const handleCloseTab = (tabId: string) => {
+    if (queryTabs.length === 1) return;
+    const closingIdx = queryTabs.findIndex((tab) => tab.id === tabId);
+    if (closingIdx === -1) return;
+    const nextTabs = queryTabs.filter((tab) => tab.id !== tabId);
+    setQueryTabs(nextTabs);
+
+    if (activeTabId !== tabId) return;
+    const fallbackIdx = Math.max(0, closingIdx - 1);
+    const fallbackTab = nextTabs[fallbackIdx];
+    if (fallbackTab) {
+      setActiveTabId(fallbackTab.id);
+      onChangeQuery(fallbackTab.content);
+    }
+  };
+
+  const handleEditorScroll = (event: React.UIEvent<HTMLTextAreaElement>) => {
+    if (!highlightRef.current) return;
+    highlightRef.current.scrollTop = event.currentTarget.scrollTop;
+    highlightRef.current.scrollLeft = event.currentTarget.scrollLeft;
+  };
+
   return (
     <div className="db-query-layout">
       <div className="db-query-editor-section">
@@ -55,15 +117,49 @@ export function DatabaseQueryLayout({
             </button>
           </div>
         </div>
+        <div className="db-query-tabs" role="tablist" aria-label="Query tabs">
+          {queryTabs.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              aria-selected={tab.id === activeTab.id}
+              className={`db-query-tab ${tab.id === activeTab.id ? 'active' : ''}`}
+              onClick={() => handleSwitchTab(tab.id)}
+            >
+              <span className="db-query-tab-title">{tab.title}</span>
+              {queryTabs.length > 1 && (
+                <span
+                  className="db-query-tab-close"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleCloseTab(tab.id);
+                  }}
+                >
+                  ×
+                </span>
+              )}
+            </button>
+          ))}
+          <button
+            type="button"
+            className="db-query-tab-add"
+            onClick={handleAddTab}
+            title="New query tab"
+          >
+            +
+          </button>
+        </div>
         <div className="db-query-editor-container">
-          <pre className="db-query-highlight">
-            {highlightQuery(query, dbType)}
+          <pre ref={highlightRef} className="db-query-highlight" aria-hidden="true">
+            {highlightQuery(activeTab.content, dbType)}
           </pre>
           <textarea
             className="db-query-textarea"
-            value={query}
-            onChange={(e) => onChangeQuery(e.target.value)}
+            value={activeTab.content}
+            onChange={(e) => handleChangeQuery(e.target.value)}
             onKeyDown={onKeyDown}
+            onScroll={handleEditorScroll}
             placeholder={getQueryPlaceholder()}
             spellCheck={false}
           />
@@ -148,6 +244,13 @@ const SQL_KEYWORDS = new Set([
   'returning', 'cascade', 'if', 'exists', 'database', 'schema', 'view', 'truncate',
 ]);
 
+const SQL_FUNCTIONS = new Set([
+  'coalesce', 'nullif', 'count', 'sum', 'avg', 'min', 'max',
+  'round', 'date_trunc', 'now', 'upper', 'lower', 'concat',
+  'substring', 'length', 'trim', 'extract', 'to_char', 'to_date',
+  'json_agg', 'jsonb_agg', 'row_to_json',
+]);
+
 function highlightQuery(query: string, dbType: string): React.ReactNode {
   if (!query) return null;
 
@@ -169,8 +272,9 @@ function highlightQuery(query: string, dbType: string): React.ReactNode {
     }
     if (/^[A-Za-z_]/.test(token)) {
       const isKeyword = dbType !== 'mongodb' && SQL_KEYWORDS.has(token.toLowerCase());
+      const isFunction = dbType !== 'mongodb' && SQL_FUNCTIONS.has(token.toLowerCase());
       return (
-        <span key={index} className={isKeyword ? 'db-hl-keyword' : 'db-hl-identifier'}>
+        <span key={index} className={isKeyword ? 'db-hl-keyword' : isFunction ? 'db-hl-function' : 'db-hl-identifier'}>
           {token}
         </span>
       );

@@ -125,14 +125,32 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
     }
   }, [containerId, containerImage]);
 
+  const normalizeExecutableQuery = useCallback((rawQuery: string) => {
+    let nextQuery = rawQuery.trim();
+
+    // Users sometimes paste escaped newlines (\n) as text. PostgreSQL/MySQL
+    // treat those as invalid slash/meta commands when sent literally.
+    if (dbType === 'postgresql' || dbType === 'mysql') {
+      nextQuery = nextQuery
+        .replace(/\\r\\n/g, '\n')
+        .replace(/\\n/g, '\n')
+        .replace(/\\t/g, '\t');
+    }
+
+    return nextQuery;
+  }, [dbType]);
+
   const executeQuery = useCallback(async () => {
-    if (!window.electronAPI?.executeDatabaseQuery || !query.trim()) return;
+    if (!window.electronAPI?.executeDatabaseQuery) return;
+
+    const executableQuery = normalizeExecutableQuery(query);
+    if (!executableQuery) return;
 
     try {
       setExecutingQuery(true);
       setQueryResult(null);
 
-      const result = await window.electronAPI.executeDatabaseQuery(containerId, containerImage, query);
+      const result = await window.electronAPI.executeDatabaseQuery(containerId, containerImage, executableQuery);
       setQueryResult(result);
 
       if (!result.error) {
@@ -148,7 +166,7 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
     } finally {
       setExecutingQuery(false);
     }
-  }, [containerId, containerImage, query, refreshTables, selectedTable, loadTableData]);
+  }, [containerId, containerImage, query, refreshTables, selectedTable, loadTableData, normalizeExecutableQuery]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
