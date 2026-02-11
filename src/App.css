@@ -548,7 +548,7 @@ body {
   overflow: hidden;
   padding: 0;
   user-select: none;
-  --graph-edge: #3B82F6;
+  --graph-edge: #52525b;
   -webkit-transform: translateZ(0);
   transform: translateZ(0);
   -webkit-backface-visibility: hidden;
@@ -568,7 +568,6 @@ body {
     radial-gradient(circle at 70% 80%, rgba(120, 160, 200, 0.06), transparent 60%);
 }
 
-.graph-flow .react-flow__edge-path,
 .graph-flow .react-flow__edge.graph-edge path {
   stroke: var(--graph-edge);
   stroke-width: 3px;
@@ -579,6 +578,15 @@ body {
 
 .graph-flow .graph-edge {
   animation: none;
+}
+
+.rf-edge-flow {
+  animation: edgeFlow 0.8s linear infinite;
+}
+
+@keyframes edgeFlow {
+  from { stroke-dashoffset: 0; }
+  to { stroke-dashoffset: -12; }
 }
 
 .graph-flow .react-flow__edges {
