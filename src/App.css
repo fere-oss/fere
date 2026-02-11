@@ -24,9 +24,7 @@
 }
 
 body {
-  font-family:
-    "JetBrains Mono",
-    monospace;
+  font-family: "JetBrains Mono", monospace;
   background: var(--bg-primary);
   color: var(--text-primary);
   overflow: hidden;
@@ -412,7 +410,7 @@ body {
 
 .service-action-test {
   background: #e8f4fd;
-  color: #0078D4;
+  color: #0078d4;
 }
 
 .service-action-test:hover {
@@ -512,7 +510,7 @@ body {
 
 .port-chip-clickable:hover {
   background: #e0e0e0;
-  color: #0078D4;
+  color: #0078d4;
 }
 
 .ports-empty {
@@ -549,8 +547,16 @@ body {
   width: 100%;
   height: 100%;
   background:
-    radial-gradient(circle at 30% 20%, rgba(110, 120, 150, 0.08), transparent 55%),
-    radial-gradient(circle at 70% 80%, rgba(120, 160, 200, 0.06), transparent 60%);
+    radial-gradient(
+      circle at 30% 20%,
+      rgba(110, 120, 150, 0.08),
+      transparent 55%
+    ),
+    radial-gradient(
+      circle at 70% 80%,
+      rgba(120, 160, 200, 0.06),
+      transparent 60%
+    );
 }
 
 .graph-flow .react-flow__edge.graph-edge path {
@@ -570,8 +576,12 @@ body {
 }
 
 @keyframes edgeFlow {
-  from { stroke-dashoffset: 0; }
-  to { stroke-dashoffset: -12; }
+  from {
+    stroke-dashoffset: 0;
+  }
+  to {
+    stroke-dashoffset: -12;
+  }
 }
 
 .graph-flow .react-flow__edges {
@@ -599,7 +609,9 @@ body {
   background: transparent;
   border: none;
   box-shadow: none;
-  transition: opacity 0.2s ease, filter 0.2s ease;
+  transition:
+    opacity 0.2s ease,
+    filter 0.2s ease;
 }
 
 .graph-flow .react-flow__node-groupBox {
@@ -649,8 +661,17 @@ body {
 
 .graph-group-box {
   border-radius: 18px;
-  background: color-mix(in srgb, var(--group-color, #d6dce8) 10%, rgba(255, 255, 255, 0.7));
-  border: 1px solid color-mix(in srgb, var(--group-color, #d6dce8) 35%, rgba(202, 210, 224, 0.6));
+  background: color-mix(
+    in srgb,
+    var(--group-color, #d6dce8) 10%,
+    rgba(255, 255, 255, 0.7)
+  );
+  border: 1px solid
+    color-mix(
+      in srgb,
+      var(--group-color, #d6dce8) 35%,
+      rgba(202, 210, 224, 0.6)
+    );
   box-shadow: 0 12px 30px rgba(18, 27, 44, 0.08);
   backdrop-filter: blur(8px);
 }
@@ -672,7 +693,9 @@ body {
 .rf-node-wrapper {
   pointer-events: auto;
   will-change: transform, opacity;
-  transition: opacity 0.2s ease, filter 0.2s ease;
+  transition:
+    opacity 0.2s ease,
+    filter 0.2s ease;
 }
 
 .rf-node-wrapper.rf-node-highlighted {
@@ -682,14 +705,19 @@ body {
 
 .rf-node-wrapper.rf-node-highlighted .service-node {
   border-color: var(--node-color, var(--blue));
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12), 0 0 0 2px color-mix(in srgb, var(--node-color, var(--blue)) 25%, transparent);
+  box-shadow:
+    0 4px 20px rgba(0, 0, 0, 0.12),
+    0 0 0 2px
+      color-mix(in srgb, var(--node-color, var(--blue)) 25%, transparent);
 }
 
 .rf-node-wrapper.rf-node-dimmed {
   opacity: 0.35;
   filter: grayscale(30%);
   pointer-events: auto;
-  transition: opacity 0.2s ease, filter 0.2s ease;
+  transition:
+    opacity 0.2s ease,
+    filter 0.2s ease;
 }
 
 .rf-node-wrapper.rf-node-animate {
@@ -999,7 +1027,11 @@ body {
   gap: 12px;
   padding: 20px;
   padding-top: 28px;
-  background: linear-gradient(135deg, rgba(0, 0, 0, 0.02) 0%, rgba(0, 0, 0, 0.04) 100%);
+  background: linear-gradient(
+    135deg,
+    rgba(0, 0, 0, 0.02) 0%,
+    rgba(0, 0, 0, 0.04) 100%
+  );
   border: 1px solid rgba(0, 0, 0, 0.08);
   border-radius: 20px;
   position: relative;
@@ -1079,7 +1111,11 @@ body {
   flex-direction: column;
   gap: 16px;
   padding: 24px 20px 20px;
-  background: linear-gradient(135deg, rgba(0, 0, 0, 0.02) 0%, rgba(0, 0, 0, 0.04) 100%);
+  background: linear-gradient(
+    135deg,
+    rgba(0, 0, 0, 0.02) 0%,
+    rgba(0, 0, 0, 0.04) 100%
+  );
   border: 1px solid rgba(0, 0, 0, 0.08);
   border-radius: 20px;
   position: relative;
@@ -1133,7 +1169,9 @@ body {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
   cursor: pointer;
   animation: containerCardAppear 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
 }
 
 @keyframes containerCardAppear {
@@ -1149,7 +1187,9 @@ body {
 
 .container-card:hover {
   border-color: var(--border-hover);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(0, 0, 0, 0.04);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.12),
+    0 0 0 1px rgba(0, 0, 0, 0.04);
   transform: translateY(-2px);
 }
 
@@ -1242,7 +1282,7 @@ body {
   align-items: center;
   gap: 6px;
   font-size: 11px;
-  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+  font-family: "SF Mono", Monaco, "Cascadia Code", monospace;
   color: var(--text-tertiary);
   margin-bottom: 12px;
   opacity: 0.7;
@@ -1262,13 +1302,13 @@ body {
 .container-card-port-host {
   font-size: 13px;
   color: var(--text-tertiary);
-  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+  font-family: "SF Mono", Monaco, "Cascadia Code", monospace;
 }
 
 .container-card-port-number {
   font-size: 14px;
   font-weight: 600;
-  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+  font-family: "SF Mono", Monaco, "Cascadia Code", monospace;
   color: #5a9cf7;
 }
 
@@ -1495,13 +1535,13 @@ body {
 .compact-port-host {
   font-size: 11px;
   color: var(--text-tertiary);
-  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+  font-family: "SF Mono", Monaco, "Cascadia Code", monospace;
 }
 
 .compact-port-number {
   font-size: 12px;
   font-weight: 600;
-  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+  font-family: "SF Mono", Monaco, "Cascadia Code", monospace;
   color: #5a9cf7;
 }
 
@@ -1563,7 +1603,9 @@ body {
 .service-node:hover {
   border-color: var(--border-hover);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
 }
 
 .service-node:active {
@@ -1857,7 +1899,10 @@ body {
   color: var(--text-secondary);
   opacity: 0.9 !important;
   stroke-width: 2.5 !important;
-  transition: opacity 0.2s ease, stroke-width 0.2s ease, color 0.2s ease;
+  transition:
+    opacity 0.2s ease,
+    stroke-width 0.2s ease,
+    color 0.2s ease;
 }
 
 .graph-edge-label {
@@ -2332,24 +2377,24 @@ body {
 }
 
 .docker-state-running {
-  color: #22C55E;
+  color: #22c55e;
 }
 
 .docker-state-paused {
-  color: #EAB308;
+  color: #eab308;
 }
 
 .docker-state-restarting {
-  color: #F97316;
+  color: #f97316;
 }
 
 .docker-state-exited,
 .docker-state-dead {
-  color: #EF4444;
+  color: #ef4444;
 }
 
 .docker-state-created {
-  color: #6B7280;
+  color: #6b7280;
 }
 
 /* Docker health in detail panel */
@@ -2372,34 +2417,34 @@ body {
 .docker-health-healthy,
 .docker-health-running {
   background: rgba(34, 197, 94, 0.15);
-  color: #22C55E;
+  color: #22c55e;
 }
 
 .docker-health-starting {
   background: rgba(234, 179, 8, 0.15);
-  color: #EAB308;
+  color: #eab308;
 }
 
 .docker-health-unhealthy {
   background: rgba(239, 68, 68, 0.15);
-  color: #EF4444;
+  color: #ef4444;
 }
 
 .docker-health-paused,
 .docker-health-restarting {
   background: rgba(249, 115, 22, 0.15);
-  color: #F97316;
+  color: #f97316;
 }
 
 .docker-health-exited,
 .docker-health-dead {
   background: rgba(107, 114, 128, 0.15);
-  color: #6B7280;
+  color: #6b7280;
 }
 
 .docker-health-failing {
   font-size: 12px;
-  color: #EF4444;
+  color: #ef4444;
 }
 
 .docker-health-checks {
@@ -2526,17 +2571,17 @@ body {
 
 .docker-mount-type-volume {
   background: rgba(34, 197, 94, 0.15);
-  color: #22C55E;
+  color: #22c55e;
 }
 
 .docker-mount-type-tmpfs {
   background: rgba(234, 179, 8, 0.15);
-  color: #EAB308;
+  color: #eab308;
 }
 
 .docker-mount-readonly {
   font-size: 10px;
-  color: #F97316;
+  color: #f97316;
   font-weight: 500;
 }
 
@@ -2638,7 +2683,11 @@ body {
   cursor: pointer;
   color: var(--text-primary);
   font-size: 13px;
-  font-family: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family:
+    "Inter",
+    -apple-system,
+    BlinkMacSystemFont,
+    sans-serif;
   transition: background 0.15s;
 }
 
@@ -3507,7 +3556,9 @@ body {
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* Output Tabs */
@@ -4115,7 +4166,9 @@ body {
 }
 
 @keyframes dbSpin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .db-loading-text {
@@ -4255,7 +4308,9 @@ body {
 .db-header-tab.active {
   background: #ffffff;
   color: #171717;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06);
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.1),
+    0 1px 2px rgba(0, 0, 0, 0.06);
 }
 
 .db-header-tab svg {
@@ -4928,14 +4983,20 @@ body {
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 .modal-content {
   background: #ffffff;
   border-radius: 16px;
-  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  box-shadow:
+    0 20px 25px -5px rgba(0, 0, 0, 0.1),
+    0 10px 10px -5px rgba(0, 0, 0, 0.04);
   max-width: 600px;
   width: 90%;
   max-height: 85vh;
@@ -5479,7 +5540,9 @@ body {
   border: 1px solid #262626;
   border-radius: 8px;
   overflow: hidden;
-  font-family: "JetBrains Mono", "SF Mono", Monaco, "Cascadia Code", "Roboto Mono", Consolas, "Courier New", monospace;
+  font-family:
+    "JetBrains Mono", "SF Mono", Monaco, "Cascadia Code", "Roboto Mono",
+    Consolas, "Courier New", monospace;
 }
 
 /* Toolbar */
@@ -6396,14 +6459,20 @@ body {
   margin: 0 0 8px 0;
   font-size: 16px;
   font-weight: 600;
-  font-family: system-ui, -apple-system, sans-serif;
+  font-family:
+    system-ui,
+    -apple-system,
+    sans-serif;
   color: #b6bcc7;
 }
 
 .unified-logs-placeholder p {
   margin: 0;
   font-size: 13px;
-  font-family: system-ui, -apple-system, sans-serif;
+  font-family:
+    system-ui,
+    -apple-system,
+    sans-serif;
   max-width: 300px;
 }
 
@@ -6414,7 +6483,10 @@ body {
   gap: 12px;
   height: 100%;
   color: #9ca3af;
-  font-family: system-ui, -apple-system, sans-serif;
+  font-family:
+    system-ui,
+    -apple-system,
+    sans-serif;
   font-size: 14px;
 }
 
@@ -6429,7 +6501,9 @@ body {
 }
 
 @keyframes dots-rotate {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* Log Line */

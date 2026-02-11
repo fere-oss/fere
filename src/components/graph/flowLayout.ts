@@ -14,10 +14,10 @@ export const FLOW_LAYOUT = {
   STANDALONE_GROUP_GAP: 24,
   STANDALONE_LABEL_OFFSET: 48,
   LAYER_LABEL_OFFSET: 52,
-  STANDALONE_SECTION_OFFSET: 84,
+  STANDALONE_SECTION_OFFSET: 112,
   GROUP_BOX_PADDING: 24,
   GROUP_LABEL_OFFSET: 28,
-  LABEL_WIDTH: 180,
+  LABEL_WIDTH: 240,
   LABEL_HEIGHT: 28,
   MAX_GROUP_COLUMNS: 2,
   MAX_STANDALONE_COLUMNS: 2,
@@ -390,7 +390,9 @@ export function buildFlowLayout({
 
       rowItems.forEach((item) => {
         const groupCenterX = cursorX + item.occupiedWidth / 2;
-        const groupX = item.group.isGroup ? groupCenterX - item.width / 2 : cursorX;
+        const groupX = item.group.isGroup
+          ? groupCenterX - item.width / 2
+          : cursorX;
 
         if (item.group.isGroup) {
           labelNodes.push({
@@ -497,30 +499,32 @@ export function buildFlowLayout({
     }
   }
 
-  const nodePositions: Array<FlowNode<FlowServiceNodeData>> = layoutNodes.map((node) => {
-    return {
-      id: node.id,
-      type: "service",
-      position: positions.get(node.id) || { x: 0, y: 0 },
-      data: {
-        node,
-        onNodeClick,
-        onNodeContextMenu,
-        animate: animateNodes,
-        animationIndex: Math.max(
-          0,
-          stableConnectedLayout.findIndex((ln) => ln.node.id === node.id),
-        ),
-        onMeasure,
-        dimmed: false,
-        highlighted: false,
-      },
-      className: undefined,
-      draggable: false,
-      selectable: false,
-      style: { width: NODE_WIDTH },
-    };
-  });
+  const nodePositions: Array<FlowNode<FlowServiceNodeData>> = layoutNodes.map(
+    (node) => {
+      return {
+        id: node.id,
+        type: "service",
+        position: positions.get(node.id) || { x: 0, y: 0 },
+        data: {
+          node,
+          onNodeClick,
+          onNodeContextMenu,
+          animate: animateNodes,
+          animationIndex: Math.max(
+            0,
+            stableConnectedLayout.findIndex((ln) => ln.node.id === node.id),
+          ),
+          onMeasure,
+          dimmed: false,
+          highlighted: false,
+        },
+        className: undefined,
+        draggable: false,
+        selectable: false,
+        style: { width: NODE_WIDTH },
+      };
+    },
+  );
 
   minX = Infinity;
   minY = Infinity;
