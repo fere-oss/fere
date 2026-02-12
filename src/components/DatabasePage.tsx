@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { GraphNode, ColumnDefinition } from '../types/electron';
 import { CreateTableModal } from './CreateTableModal';
 import { DatabaseHeader } from './database/DatabaseHeader';
@@ -75,6 +75,8 @@ function UriPicker({ label, value, options, onChange }: UriPickerProps) {
 
 export function DatabasePage({ node, onBack }: DatabasePageProps) {
   const [showMongoUri, setShowMongoUri] = useState(false);
+  const [showUriSuggestions, setShowUriSuggestions] = useState(false);
+  const uriInputRef = useRef<HTMLDivElement | null>(null);
   const {
     tables,
     dbType,
@@ -124,6 +126,25 @@ export function DatabasePage({ node, onBack }: DatabasePageProps) {
     getQueryPlaceholder,
   } = useDatabasePage(node);
 
+  const filteredRecentUris = useMemo(() => {
+    const query = mongoUriInput.trim().toLowerCase();
+    if (!query) return recentMongoUris.slice(0, 6);
+    return recentMongoUris
+      .filter((entry) => entry.toLowerCase().includes(query))
+      .slice(0, 6);
+  }, [mongoUriInput, recentMongoUris]);
+
+  useEffect(() => {
+    const onDocumentClick = (event: MouseEvent) => {
+      if (!uriInputRef.current) return;
+      if (!uriInputRef.current.contains(event.target as Node)) {
+        setShowUriSuggestions(false);
+      }
+    };
+    document.addEventListener('mousedown', onDocumentClick);
+    return () => document.removeEventListener('mousedown', onDocumentClick);
+  }, []);
+
   if (loading) {
     return (
       <div className="db-page">
@@ -154,19 +175,41 @@ export function DatabasePage({ node, onBack }: DatabasePageProps) {
             <span>Mongo URI</span>
             {remoteMongoMode && <span className="db-uri-connect-badge">connected</span>}
           </div>
-          <input
-            className="db-uri-connect-input"
-            type={showMongoUri ? 'text' : 'password'}
-            placeholder="mongodb+srv://user:password@cluster.mongodb.net/dbname"
-            value={mongoUriInput}
-            list="db-uri-recent-list"
-            onChange={(e) => setMongoUriInput(e.target.value)}
-          />
-          <datalist id="db-uri-recent-list">
-            {recentMongoUris.map((entry) => (
-              <option key={entry} value={entry} />
-            ))}
-          </datalist>
+          <div className="db-uri-connect-input-wrap" ref={uriInputRef}>
+            <input
+              className="db-uri-connect-input"
+              type={showMongoUri ? 'text' : 'password'}
+              placeholder="mongodb+srv://user:password@cluster.mongodb.net/dbname"
+              value={mongoUriInput}
+              onFocus={() => setShowUriSuggestions(filteredRecentUris.length > 0)}
+              onChange={(e) => {
+                setMongoUriInput(e.target.value);
+                setShowUriSuggestions(true);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                  setShowUriSuggestions(false);
+                }
+              }}
+            />
+            {showUriSuggestions && filteredRecentUris.length > 0 && (
+              <div className="db-uri-suggest-menu">
+                {filteredRecentUris.map((entry) => (
+                  <button
+                    key={entry}
+                    type="button"
+                    className={`db-uri-suggest-option ${entry === mongoUriInput ? 'selected' : ''}`}
+                    onClick={() => {
+                      setMongoUriInput(entry);
+                      setShowUriSuggestions(false);
+                    }}
+                  >
+                    {entry}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           <button
             type="button"
             className="db-uri-visibility-btn"

@@ -135,6 +135,19 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
         return;
       }
 
+      const image = (containerImage || '').toLowerCase();
+      const isRemoteMongoLauncher = !containerId && image.includes('mongo');
+      if (isRemoteMongoLauncher) {
+        if (!isCancelled) {
+          setTables([]);
+          setDbType('mongodb');
+          setQuery('db.getCollectionNames()');
+          setError(null);
+          setLoading(false);
+        }
+        return;
+      }
+
       if (!window.electronAPI?.getDatabaseTables || !containerId || !containerImage) {
         if (!isCancelled) {
           setError('Database queries not available');
