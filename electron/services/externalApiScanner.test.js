@@ -4,7 +4,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
-const { scanExternalApis } = require('./externalApiScanner');
+const { scanExternalApis, shouldSkipExternalApiProjectPath } = require('./externalApiScanner');
 
 function makeTempProject() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'fere-external-apis-'));
@@ -62,4 +62,11 @@ test('scanExternalApis filters test/private/placeholder hosts and keeps real pro
   } finally {
     fs.rmSync(projectDir, { recursive: true, force: true });
   }
+});
+
+test('shouldSkipExternalApiProjectPath ignores system package-manager roots', () => {
+  assert.equal(shouldSkipExternalApiProjectPath('/opt/homebrew'), true);
+  assert.equal(shouldSkipExternalApiProjectPath('/opt/homebrew/Cellar/postgresql@15/15.4'), true);
+  assert.equal(shouldSkipExternalApiProjectPath('/usr/local/Cellar/node/22.0.0'), true);
+  assert.equal(shouldSkipExternalApiProjectPath('/Users/test/my-app'), false);
 });

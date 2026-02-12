@@ -1,7 +1,7 @@
 import type { GraphNode } from '../../types/electron';
 import type { RenderGroup } from './types';
 import { getHealthInfo, getServiceColor, getTypeBadge } from './constants';
-import { externalApiCache } from './externalApis';
+import { externalApiCache, supportsExternalApiScan } from './externalApis';
 
 export function CompactServiceNode({
   node,
@@ -158,14 +158,12 @@ export function ServiceNode({
   const mainPort = node.ports[0]?.port;
   const routes = node.routes || [];
   const visibleRoutes = routes.slice(0, 3);
-  const apiEntry = node.projectPath
+  const shouldShowApis = supportsExternalApiScan(node);
+  const apiEntry = (shouldShowApis && node.projectPath)
     ? externalApiCache.get(node.projectPath)
     : null;
-  const externalApis = (node.projectPath && !node.isDockerContainer)
-    ? (apiEntry?.apis || [])
-    : [];
+  const externalApis = shouldShowApis ? (apiEntry?.apis || []) : [];
   const visibleApis = externalApis.slice(0, 3);
-  const shouldShowApis = Boolean(node.projectPath && !node.isDockerContainer);
   const apiCount = externalApis.length;
   const isApiLoading = shouldShowApis && !apiEntry;
   const projectLabel = node.projectPath ? node.projectPath.split('/').pop() : null;

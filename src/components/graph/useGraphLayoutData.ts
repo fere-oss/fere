@@ -3,6 +3,7 @@ import type { GraphNode, GraphEdge } from "../../types/electron";
 import { computeHierarchicalLayout } from "./layout";
 import { groupContainersByProject } from "./grouping";
 import { buildStableConnectedLayout } from "./flowLayout";
+import { supportsExternalApiScan } from "./externalApis";
 import type { LayoutNode, RenderGroup } from "./types";
 
 export function useGraphLayoutData({
@@ -51,7 +52,12 @@ export function useGraphLayoutData({
 
   const projectPathsKey = useMemo(() => {
     return Array.from(
-      new Set(localNodes.map((node) => node.projectPath).filter(Boolean)),
+      new Set(
+        localNodes
+          .filter((node) => supportsExternalApiScan(node))
+          .map((node) => node.projectPath)
+          .filter(Boolean),
+      ),
     )
       .sort()
       .join(",");

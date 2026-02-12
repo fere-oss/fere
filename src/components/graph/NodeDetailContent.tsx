@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import type { GraphNode, GraphEdge, ExternalApi } from '../../types/electron';
 import { DatabaseViewer } from '../DatabaseViewer';
 import { getHealthInfo, getServiceColor } from './constants';
-import { externalApiCache, EXTERNAL_API_CACHE_TTL_MS } from './externalApis';
+import { externalApiCache, EXTERNAL_API_CACHE_TTL_MS, supportsExternalApiScan } from './externalApis';
 
 interface NodeDetailContentProps {
   node: GraphNode;
@@ -30,12 +30,13 @@ export function NodeDetailContent({ node, edges, allNodes }: NodeDetailContentPr
   const incomingEdges = edges.filter(e => e.target === node.id);
   const outgoingEdges = edges.filter(e => e.source === node.id);
   const getNodeName = (id: string) => allNodes.find(n => n.id === id)?.name || id;
+  const shouldShowExternalApis = supportsExternalApiScan(node);
 
   useEffect(() => {
     let active = true;
     const projectPath = node.projectPath;
 
-    if (!projectPath || node.isDockerContainer) {
+    if (!projectPath || !shouldShowExternalApis) {
       setExternalApis([]);
       setExternalApiLoading(false);
       setExternalApiError(null);
@@ -78,7 +79,7 @@ export function NodeDetailContent({ node, edges, allNodes }: NodeDetailContentPr
     return () => {
       active = false;
     };
-  }, [node.projectPath, node.isDockerContainer]);
+  }, [node.projectPath, shouldShowExternalApis]);
 
   return (
     <div className="node-detail-content">
@@ -371,7 +372,7 @@ export function NodeDetailContent({ node, edges, allNodes }: NodeDetailContentPr
         </div>
       )}
 
-      {(externalApiLoading || externalApiError || externalApis.length > 0) && (
+      {shouldShowExternalApis && (externalApiLoading || externalApiError || externalApis.length > 0) && (
         <div className="node-detail-section">
           <div className="node-detail-section-title-row">
             <h3 className="node-detail-section-title">
@@ -386,7 +387,11 @@ export function NodeDetailContent({ node, edges, allNodes }: NodeDetailContentPr
               {externalApis.map(api => (
                 <div key={api.name} className="node-detail-api">
                   <span className="node-detail-api-name">{api.name}</span>
-                  {api.hosts && api.hosts.length > 0 && (
+                  {api.hosts && api.hosts.length > 0 && !(
+                    api.kind === 'host' &&
+                    api.hosts.length === 1 &&
+                    api.hosts[0].toLowerCase() === api.name.toLowerCase()
+                  ) && (
                     <span className="node-detail-api-hosts">
                       {api.hosts.slice(0, 3).join(', ')}
                       {api.hosts.length > 3 && ` +${api.hosts.length - 3}`}

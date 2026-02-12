@@ -38,6 +38,13 @@ const MAX_FILES = 2500;
 const API_CACHE_TTL_MS = 60000;
 const apiCache = new Map();
 const MAX_FILE_BYTES = 1024 * 1024; // 1MB
+const SYSTEM_PROJECT_ROOTS = [
+  '/opt/homebrew',
+  '/usr/local/homebrew',
+  '/usr/local/cellar',
+  '/opt/local',
+  '/nix/store',
+].map(p => path.resolve(p).toLowerCase());
 const BLOCKED_HOSTS = new Set([
   'www.w3.org',
   'w3.org',
@@ -126,6 +133,14 @@ function shouldSkipFile(filePath) {
     fileName.includes('.mock.') ||
     fileName.includes('-mock.') ||
     fileName.endsWith('.d.ts')
+  );
+}
+
+function shouldSkipExternalApiProjectPath(projectPath) {
+  if (!projectPath || typeof projectPath !== 'string') return true;
+  const resolved = path.resolve(projectPath).toLowerCase();
+  return SYSTEM_PROJECT_ROOTS.some(root =>
+    resolved === root || resolved.startsWith(`${root}${path.sep}`)
   );
 }
 
@@ -290,7 +305,7 @@ function stripComments(content) {
 }
 
 async function scanExternalApis(projectPath) {
-  if (!projectPath || !fs.existsSync(projectPath)) {
+  if (!projectPath || !fs.existsSync(projectPath) || shouldSkipExternalApiProjectPath(projectPath)) {
     return [];
   }
 
@@ -375,4 +390,5 @@ async function scanExternalApis(projectPath) {
 
 module.exports = {
   scanExternalApis,
+  shouldSkipExternalApiProjectPath,
 };
