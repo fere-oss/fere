@@ -326,7 +326,9 @@ async function scanExternalApis(projectPath) {
     const hostMatches = new Set();
     const ignoredFiles = new Set([PROVIDER_FILE_PATH, USER_PROVIDER_FILE_PATH]);
 
-    const files = findApiFiles(projectPath).concat(findEnvFiles(projectPath));
+    const envFiles = findEnvFiles(projectPath);
+    const envFileSet = new Set(envFiles);
+    const files = findApiFiles(projectPath).concat(envFiles);
 
     for (const filePath of files) {
       if (ignoredFiles.has(filePath)) continue;
@@ -341,11 +343,12 @@ async function scanExternalApis(projectPath) {
           hostMatches.add(host);
         }
 
+        const isEnvFile = envFileSet.has(filePath);
         for (const provider of providers) {
-          if (provider.sdkPatterns.some(pattern => pattern.test(sanitizedContent))) {
+          // Avoid SDK-name false positives from env var names like ALGOLIA_API_KEY.
+          if (!isEnvFile && provider.sdkPatterns.some(pattern => pattern.test(sanitizedContent))) {
             recordProviderMatch(providerMatches, provider, 'sdk');
           }
-
           if (provider.envPatterns.some(pattern => pattern.test(sanitizedContent))) {
             recordProviderMatch(providerMatches, provider, 'env');
           }
@@ -373,12 +376,26 @@ async function scanExternalApis(projectPath) {
       }
     }
 
-    const apis = Array.from(providerMatches.values()).map(entry => ({
-      name: entry.name,
-      kind: entry.kind,
-      matchedOn: Array.from(entry.matchedOn),
-      hosts: Array.from(entry.hosts),
-    })).sort((a, b) => a.name.localeCompare(b.name));
+    const apis = Array.from(providerMatches.values())
+      .map(entry => ({
+        name: entry.name,
+        kind: entry.kind,
+        matchedOn: Array.from(entry.matchedOn),
+        hosts: Array.from(entry.hosts),
+      }))
+      .filter(entry => {
+        // Env-only matches are very noisy (template/local env files often contain
+        // many provider keys that are not actually used by this project).
+        if (entry.kind !== 'provider') return true;
+        const onlyEnv = entry.matchedOn.length === 1 && entry.matchedOn[0] === 'env';
+        const onlySdk = entry.matchedOn.length === 1 && entry.matchedOn[0] === 'sdk';
+        const hasEnvAndSdk = entry.matchedOn.includes('env') && entry.matchedOn.includes('sdk');
+        const hasHostEvidence = Array.isArray(entry.hosts) && entry.hosts.length > 0;
+        if (hasHostEvidence) return true;
+        if (hasEnvAndSdk) return true;
+        return !onlyEnv && !onlySdk;
+      })
+      .sort((a, b) => a.name.localeCompare(b.name));
 
     apiCache.set(projectPath, { timestamp: Date.now(), apis, promise: null });
     return apis;

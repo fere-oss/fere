@@ -3,6 +3,7 @@ import type { GraphNode, GraphEdge, ExternalApi } from '../../types/electron';
 import { DatabaseViewer } from '../DatabaseViewer';
 import { getHealthInfo, getServiceColor } from './constants';
 import { externalApiCache, EXTERNAL_API_CACHE_TTL_MS, supportsExternalApiScan } from './externalApis';
+import { BrandIcon } from './brandIcons';
 
 interface NodeDetailContentProps {
   node: GraphNode;
@@ -386,7 +387,10 @@ export function NodeDetailContent({ node, edges, allNodes }: NodeDetailContentPr
             <div className="node-detail-apis">
               {externalApis.map(api => (
                 <div key={api.name} className="node-detail-api">
-                  <span className="node-detail-api-name">{api.name}</span>
+                  <span className="node-detail-api-name">
+                    <BrandIcon value={api.name} size={13} />
+                    <span>{api.name}</span>
+                  </span>
                   {api.hosts && api.hosts.length > 0 && !(
                     api.kind === 'host' &&
                     api.hosts.length === 1 &&

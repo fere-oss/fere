@@ -2,6 +2,7 @@ import type { GraphNode } from '../../types/electron';
 import type { RenderGroup } from './types';
 import { getHealthInfo, getServiceColor, getTypeBadge } from './constants';
 import { externalApiCache, supportsExternalApiScan } from './externalApis';
+import { BrandIcon, inferServiceBrand } from './brandIcons';
 
 export function CompactServiceNode({
   node,
@@ -167,6 +168,7 @@ export function ServiceNode({
   const apiCount = externalApis.length;
   const isApiLoading = shouldShowApis && !apiEntry;
   const projectLabel = node.projectPath ? node.projectPath.split('/').pop() : null;
+  const serviceBrand = inferServiceBrand(node);
 
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -223,7 +225,10 @@ export function ServiceNode({
         </span>
       </div>
 
-      <h3 className="service-node-name">{node.name}</h3>
+      <h3 className="service-node-name">
+        {serviceBrand && <BrandIcon value={serviceBrand} className="service-node-brand-icon" size={15} />}
+        <span>{node.name}</span>
+      </h3>
       {node.isDockerContainer && node.containerImage && (
         <div className="service-node-docker-image" title={node.containerImage}>
           {node.containerImage.split('/').pop()?.split(':')[0] || node.containerImage}
@@ -293,7 +298,8 @@ export function ServiceNode({
               <>
                 {visibleApis.map((api) => (
                   <div key={api.name} className="service-api">
-                    {api.name}
+                    <BrandIcon value={api.name} size={12} />
+                    <span>{api.name}</span>
                   </div>
                 ))}
                 {apiCount > visibleApis.length && (

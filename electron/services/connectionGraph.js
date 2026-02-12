@@ -42,7 +42,27 @@ const perfLog = (label, duration) => {
 
 // Persistent cache for process CWD (survives across polls)
 const CWD_CACHE_TTL_MS = 60000; // 60 seconds
+const CWD_NULL_CACHE_TTL_MS = 10000; // Retry missing CWDs sooner
 const persistentCwdCache = new Map();
+
+function parseBatchedLsofCwdOutput(output = '') {
+  const cwdByPid = new Map();
+  let currentPid = null;
+
+  for (const line of output.split('\n')) {
+    if (line.startsWith('p')) {
+      currentPid = parseInt(line.slice(1), 10);
+      continue;
+    }
+    if (line.startsWith('n') && currentPid !== null) {
+      const cwd = line.slice(1).trim();
+      cwdByPid.set(currentPid, cwd);
+      currentPid = null;
+    }
+  }
+
+  return cwdByPid;
+}
 
 // ============================================
 // CWD Lookup (I/O-bound, main thread only)
@@ -62,7 +82,8 @@ async function batchGetProcessCwds(pids) {
   // Check persistent cache first
   for (const pid of pids) {
     const entry = persistentCwdCache.get(pid);
-    if (entry && now - entry.timestamp < CWD_CACHE_TTL_MS) {
+    const ttl = entry?.cwd ? CWD_CACHE_TTL_MS : CWD_NULL_CACHE_TTL_MS;
+    if (entry && now - entry.timestamp < ttl) {
       result.set(pid, entry.cwd);
     } else {
       uncached.push(pid);
@@ -71,38 +92,26 @@ async function batchGetProcessCwds(pids) {
 
   if (uncached.length > 0) {
     const startCwd = Date.now();
+    let parsed = new Map();
     try {
       // Single batched lsof call for all uncached PIDs
       const pidArgs = uncached.map(p => `-p ${p}`).join(' ');
       const { stdout } = await execAsync(`lsof -a -d cwd -Fn ${pidArgs} 2>/dev/null`);
-
-      // Parse lsof output: lines alternate between 'p<pid>' and 'n<path>'
-      let currentPid = null;
-      for (const line of stdout.split('\n')) {
-        if (line.startsWith('p')) {
-          currentPid = parseInt(line.slice(1), 10);
-        } else if (line.startsWith('n') && currentPid !== null) {
-          const cwd = line.slice(1).trim();
-          result.set(currentPid, cwd);
-          persistentCwdCache.set(currentPid, { cwd, timestamp: now });
-          currentPid = null;
-        }
-      }
-
-      // Mark PIDs not found in output as null
-      for (const pid of uncached) {
-        if (!result.has(pid)) {
-          result.set(pid, null);
-          persistentCwdCache.set(pid, { cwd: null, timestamp: now });
-        }
-      }
+      parsed = parseBatchedLsofCwdOutput(stdout);
     } catch (error) {
-      // lsof returns exit code 1 when no results, or pids may be gone
-      for (const pid of uncached) {
-        if (!result.has(pid)) {
-          result.set(pid, null);
-          persistentCwdCache.set(pid, { cwd: null, timestamp: now });
-        }
+      // lsof often exits non-zero even when stdout includes partial results.
+      parsed = parseBatchedLsofCwdOutput(error?.stdout || '');
+    }
+
+    for (const [pid, cwd] of parsed.entries()) {
+      result.set(pid, cwd);
+      persistentCwdCache.set(pid, { cwd, timestamp: now });
+    }
+
+    for (const pid of uncached) {
+      if (!result.has(pid)) {
+        result.set(pid, null);
+        persistentCwdCache.set(pid, { cwd: null, timestamp: now });
       }
     }
     perfLog(`Batched CWD lookups (${uncached.length} uncached of ${pids.length} total)`, Date.now() - startCwd);
@@ -118,7 +127,8 @@ async function getProcessCwd(pid, cache) {
   if (cache.has(pid)) return cache.get(pid);
 
   const persistentEntry = persistentCwdCache.get(pid);
-  if (persistentEntry && Date.now() - persistentEntry.timestamp < CWD_CACHE_TTL_MS) {
+  const ttl = persistentEntry?.cwd ? CWD_CACHE_TTL_MS : CWD_NULL_CACHE_TTL_MS;
+  if (persistentEntry && Date.now() - persistentEntry.timestamp < ttl) {
     cache.set(pid, persistentEntry.cwd);
     return persistentEntry.cwd;
   }
@@ -131,9 +141,11 @@ async function getProcessCwd(pid, cache) {
     persistentCwdCache.set(pid, { cwd, timestamp: Date.now() });
     return cwd;
   } catch (error) {
-    cache.set(pid, null);
-    persistentCwdCache.set(pid, { cwd: null, timestamp: Date.now() });
-    return null;
+    const line = (error?.stdout || '').split('\n').find(entry => entry.startsWith('n'));
+    const cwd = line ? line.slice(1).trim() : null;
+    cache.set(pid, cwd);
+    persistentCwdCache.set(pid, { cwd, timestamp: Date.now() });
+    return cwd;
   }
 }
 

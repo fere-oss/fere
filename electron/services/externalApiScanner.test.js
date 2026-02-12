@@ -70,3 +70,43 @@ test('shouldSkipExternalApiProjectPath ignores system package-manager roots', ()
   assert.equal(shouldSkipExternalApiProjectPath('/usr/local/Cellar/node/22.0.0'), true);
   assert.equal(shouldSkipExternalApiProjectPath('/Users/test/my-app'), false);
 });
+
+test('scanExternalApis drops env-only provider matches to reduce false positives', async () => {
+  const projectDir = makeTempProject();
+
+  try {
+    writeFile(
+      path.join(projectDir, '.env'),
+      [
+        'ALGOLIA_API_KEY=demo-key',
+      ].join('\n')
+    );
+
+    const apis = await scanExternalApis(projectDir);
+    const names = apis.map(api => api.name.toLowerCase());
+    assert.ok(!names.includes('algolia'), 'env-only provider should be filtered out');
+  } finally {
+    fs.rmSync(projectDir, { recursive: true, force: true });
+  }
+});
+
+test('scanExternalApis drops sdk-only provider mentions without env/domain evidence', async () => {
+  const projectDir = makeTempProject();
+
+  try {
+    writeFile(
+      path.join(projectDir, 'src', 'labels.ts'),
+      [
+        "export const labels = ['Algolia', 'Cloudflare', 'Deepgram'];",
+      ].join('\n')
+    );
+
+    const apis = await scanExternalApis(projectDir);
+    const names = apis.map(api => api.name.toLowerCase());
+    assert.ok(!names.includes('algolia'), 'sdk-only mention should be filtered out');
+    assert.ok(!names.includes('cloudflare'), 'sdk-only mention should be filtered out');
+    assert.ok(!names.includes('deepgram'), 'sdk-only mention should be filtered out');
+  } finally {
+    fs.rmSync(projectDir, { recursive: true, force: true });
+  }
+});

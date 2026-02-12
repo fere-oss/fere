@@ -1729,11 +1729,18 @@ body {
 }
 
 .service-node-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-size: 16px;
   font-weight: 600;
   letter-spacing: -0.01em;
   color: var(--text-primary);
   margin-bottom: 4px;
+}
+
+.service-node-brand-icon {
+  flex-shrink: 0;
 }
 
 .service-node-project {
@@ -1896,6 +1903,9 @@ body {
 }
 
 .service-api {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-family: "JetBrains Mono", monospace;
   font-size: 11px;
   color: var(--text-secondary);
@@ -2336,9 +2346,32 @@ body {
 }
 
 .node-detail-api-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   font-size: 13px;
   font-weight: 600;
   color: var(--text-secondary);
+}
+
+.brand-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.brand-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.brand-icon-fallback {
+  border: 1px solid var(--border-color);
+  border-radius: 50%;
+  font-family: "JetBrains Mono", monospace;
+  line-height: 1;
 }
 
 .node-detail-api-hosts {
