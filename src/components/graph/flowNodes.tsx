@@ -1,9 +1,8 @@
 import { createContext, memo, useEffect, useRef } from "react";
 import type { GraphNode } from "../../types/electron";
 import type { MouseEvent as ReactMouseEvent } from "react";
-import { Handle, Position, useStore } from "reactflow";
+import { Handle, Position } from "reactflow";
 import { ServiceNode } from "./ServiceNodes";
-import { MinimalServiceNode } from "./MinimalServiceNode";
 import { useHoverState } from "./hoverContext";
 
 export type HoverState = {
@@ -13,10 +12,6 @@ export type HoverState = {
 
 const defaultHoverState: HoverState = { hoveredNodeId: null, connectedNodeIds: new Set() };
 export const HoverContext = createContext<HoverState>(defaultHoverState);
-
-/** Zoom threshold below which nodes render in minimal (dot + label) mode.
- * Set to ~0 so graph defaults to the full card UI. */
-export const LOD_ZOOM_THRESHOLD = 0.001;
 
 export type FlowServiceNodeData = {
   node: GraphNode;
@@ -68,8 +63,6 @@ const FlowServiceNodeInner = memo(function FlowServiceNodeInner({ data }: { data
   const dataRef = useRef(data);
   dataRef.current = data;
   const { hoveredNodeId, connectedNodeIds } = useHoverState();
-  const zoom = useStore((s) => s.transform[2]);
-  const isMinimal = zoom < LOD_ZOOM_THRESHOLD;
 
   useEffect(() => {
     if (!nodeRef.current) return;
@@ -79,7 +72,9 @@ const FlowServiceNodeInner = memo(function FlowServiceNodeInner({ data }: { data
       cancelAnimationFrame(rafId);
       rafId = requestAnimationFrame(() => {
         const d = dataRef.current;
-        d.onMeasure(d.node.id, element.getBoundingClientRect().height);
+        // Use unscaled layout height so zoom level doesn't change measured node size.
+        const height = element.offsetHeight || element.getBoundingClientRect().height;
+        d.onMeasure(d.node.id, height);
       });
     };
     measure();
@@ -114,20 +109,12 @@ const FlowServiceNodeInner = memo(function FlowServiceNodeInner({ data }: { data
       <Handle type="target" id="target-bottom" position={Position.Bottom} className="rf-handle rf-handle-target" />
       <Handle type="target" id="target-left" position={Position.Left} className="rf-handle rf-handle-target" />
       <Handle type="target" id="target-right" position={Position.Right} className="rf-handle rf-handle-target" />
-      {isMinimal ? (
-        <MinimalServiceNode
-          node={data.node}
-          onClick={data.onNodeClick}
-          onContextMenu={data.onNodeContextMenu}
-        />
-      ) : (
-        <ServiceNode
-          node={data.node}
-          onClick={data.onNodeClick}
-          onContextMenu={data.onNodeContextMenu}
-          animationIndex={0}
-        />
-      )}
+      <ServiceNode
+        node={data.node}
+        onClick={data.onNodeClick}
+        onContextMenu={data.onNodeContextMenu}
+        animationIndex={0}
+      />
       <Handle type="source" id="source-top" position={Position.Top} className="rf-handle rf-handle-source" />
       <Handle type="source" id="source-bottom" position={Position.Bottom} className="rf-handle rf-handle-source" />
       <Handle type="source" id="source-left" position={Position.Left} className="rf-handle rf-handle-source" />
