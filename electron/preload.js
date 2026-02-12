@@ -28,6 +28,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   connectMongoUri: (uri) => ipcRenderer.invoke('connect-mongo-uri', uri),
   getMongoUriCollectionData: (uri, collectionName, limit) => ipcRenderer.invoke('get-mongo-uri-collection-data', uri, collectionName, limit),
   executeMongoUriQuery: (uri, command) => ipcRenderer.invoke('execute-mongo-uri-query', uri, command),
+  connectPostgresUri: (uri) => ipcRenderer.invoke('connect-postgres-uri', uri),
+  getPostgresUriTableData: (uri, tableName, limit) => ipcRenderer.invoke('get-postgres-uri-table-data', uri, tableName, limit),
+  executePostgresUriQuery: (uri, query) => ipcRenderer.invoke('execute-postgres-uri-query', uri, query),
 
   // Process control
   killProcess: (pid) => ipcRenderer.invoke('kill-process', pid),

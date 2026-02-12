@@ -45,6 +45,9 @@ const {
   connectMongoUri,
   getMongoUriCollectionData,
   executeMongoUriQuery,
+  connectPostgresUri,
+  getPostgresUriTableData,
+  executePostgresUriQuery,
 } = require("./services/databaseQuery");
 const {
   isDockerAvailable,
@@ -684,6 +687,36 @@ ipcMain.handle("execute-mongo-uri-query", async (_, uri, command) => {
   } catch (error) {
     console.error("Error executing Mongo URI query:", error);
     return { error: error.message, dbType: "mongodb" };
+  }
+});
+
+// Connect directly to remote PostgreSQL via URI
+ipcMain.handle("connect-postgres-uri", async (_, uri) => {
+  try {
+    return await connectPostgresUri(uri);
+  } catch (error) {
+    console.error("Error connecting PostgreSQL URI:", error);
+    return { error: error.message, tables: [], dbType: "postgresql" };
+  }
+});
+
+// Get table data from remote PostgreSQL URI
+ipcMain.handle("get-postgres-uri-table-data", async (_, uri, tableName, limit) => {
+  try {
+    return await getPostgresUriTableData(uri, tableName, limit || 100);
+  } catch (error) {
+    console.error("Error loading PostgreSQL URI table data:", error);
+    return { error: error.message, columns: [], rows: [], dbType: "postgresql" };
+  }
+});
+
+// Execute PostgreSQL query against remote URI
+ipcMain.handle("execute-postgres-uri-query", async (_, uri, query) => {
+  try {
+    return await executePostgresUriQuery(uri, query);
+  } catch (error) {
+    console.error("Error executing PostgreSQL URI query:", error);
+    return { error: error.message, dbType: "postgresql" };
   }
 });
 

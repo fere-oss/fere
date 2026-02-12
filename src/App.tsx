@@ -39,7 +39,7 @@ const BACKEND_FRAMEWORK_ORDER = [
 const REMOTE_MONGO_LAUNCHER_NODE: GraphNode = {
   id: "__remote_mongo_launcher__",
   pid: 0,
-  name: "Remote MongoDB",
+  name: "Remote Database",
   command: "remote-mongo",
   type: "database",
   cpu: 0,

@@ -96,6 +96,7 @@ export function DatabasePage({ node, onBack }: DatabasePageProps) {
     showDeleteTableConfirm,
     mongoUriInput,
     remoteMongoMode,
+    remoteUriDbType,
     remoteMongoConnecting,
     mongoUriStatus,
     mongoUriStatusMessage,
@@ -169,17 +170,24 @@ export function DatabasePage({ node, onBack }: DatabasePageProps) {
         onTabChange={setActiveTab}
       />
 
-      {(dbType === 'mongodb' || node.containerImage?.toLowerCase().includes('mongo')) && (
+      {(dbType === 'mongodb'
+        || dbType === 'postgresql'
+        || node.containerImage?.toLowerCase().includes('mongo')
+        || node.containerImage?.toLowerCase().includes('postgres')) && (
         <div className="db-uri-connect-bar">
           <div className="db-uri-connect-label">
-            <span>Mongo URI</span>
-            {remoteMongoMode && <span className="db-uri-connect-badge">connected</span>}
+            <span>Database URI</span>
+            {remoteMongoMode && (
+              <span className="db-uri-connect-badge">
+                {remoteUriDbType === 'postgresql' ? 'postgres connected' : 'mongo connected'}
+              </span>
+            )}
           </div>
           <div className="db-uri-connect-input-wrap" ref={uriInputRef}>
             <input
               className="db-uri-connect-input"
               type={showMongoUri ? 'text' : 'password'}
-              placeholder="mongodb+srv://user:password@cluster.mongodb.net/dbname"
+              placeholder="mongodb+srv://... or postgresql://..."
               value={mongoUriInput}
               onFocus={() => setShowUriSuggestions(filteredRecentUris.length > 0)}
               onChange={(e) => {
@@ -244,7 +252,7 @@ export function DatabasePage({ node, onBack }: DatabasePageProps) {
         </div>
       )}
 
-      {remoteMongoMode && remoteDbOptions.length > 0 && (
+      {remoteMongoMode && remoteUriDbType === 'mongodb' && remoteDbOptions.length > 0 && (
         <div className="db-uri-picker-row">
           <UriPicker
             label="Database"

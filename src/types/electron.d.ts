@@ -447,6 +447,9 @@ export interface ElectronAPI {
   connectMongoUri: (uri: string) => Promise<DatabaseTablesResult>;
   getMongoUriCollectionData: (uri: string, collectionName: string, limit?: number) => Promise<TableDataResult>;
   executeMongoUriQuery: (uri: string, command: string) => Promise<QueryResult>;
+  connectPostgresUri: (uri: string) => Promise<DatabaseTablesResult>;
+  getPostgresUriTableData: (uri: string, tableName: string, limit?: number) => Promise<TableDataResult>;
+  executePostgresUriQuery: (uri: string, query: string) => Promise<QueryResult>;
 
   // Process control
   killProcess: (pid: number) => Promise<KillResult>;

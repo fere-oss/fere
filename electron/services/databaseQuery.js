@@ -1,5 +1,11 @@
 const { exec, spawn } = require('child_process');
 const util = require('util');
+let PgClient = null;
+try {
+  ({ Client: PgClient } = require('pg'));
+} catch {
+  PgClient = null;
+}
 
 const execAsync = util.promisify(exec);
 
@@ -148,6 +154,37 @@ function detectMongoShellError(output) {
   if (text.includes('mongoservererror')) return 'MongoDB server returned an error';
   if (text.includes('bad auth')) return 'MongoDB authentication failed';
   return null;
+}
+
+function isPostgresUri(uri) {
+  const value = String(uri || '').trim().toLowerCase();
+  return value.startsWith('postgresql://') || value.startsWith('postgres://');
+}
+
+function sanitizePostgresIdentifier(name) {
+  const value = String(name || '').trim();
+  if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(value)) {
+    throw new Error(`Invalid PostgreSQL identifier: ${name}`);
+  }
+  return value;
+}
+
+async function withPostgresUriClient(uri, callback) {
+  if (!PgClient) {
+    throw new Error('PostgreSQL driver is not installed');
+  }
+  const client = new PgClient({
+    connectionString: uri,
+    statement_timeout: 30000,
+    query_timeout: 30000,
+    ssl: { rejectUnauthorized: false },
+  });
+  await client.connect();
+  try {
+    return await callback(client);
+  } finally {
+    await client.end();
+  }
 }
 
 /**
@@ -688,6 +725,95 @@ async function executeMongoUriQuery(uri, command) {
   }
 }
 
+async function connectPostgresUri(uri) {
+  if (!uri || typeof uri !== 'string') {
+    return { error: 'PostgreSQL URI is required', tables: [], dbType: 'postgresql' };
+  }
+
+  if (!isPostgresUri(uri)) {
+    return { error: 'Invalid PostgreSQL URI', tables: [], dbType: 'postgresql' };
+  }
+
+  try {
+    const tables = await withPostgresUriClient(uri.trim(), async (client) => {
+      const result = await client.query(
+        `SELECT table_name
+         FROM information_schema.tables
+         WHERE table_schema = 'public'
+           AND table_type = 'BASE TABLE'
+         ORDER BY table_name`
+      );
+      return result.rows.map((row) => String(row.table_name).trim()).filter(Boolean);
+    });
+
+    return { tables, dbType: 'postgresql' };
+  } catch (error) {
+    return { error: error.message || 'Could not connect to PostgreSQL URI', tables: [], dbType: 'postgresql' };
+  }
+}
+
+async function getPostgresUriTableData(uri, tableName, limit = 100) {
+  if (!uri || !tableName) {
+    return { error: 'PostgreSQL URI and table name are required', columns: [], rows: [], dbType: 'postgresql' };
+  }
+
+  const safeLimit = Number.isFinite(limit) ? Math.max(1, Math.min(1000, Number(limit))) : 100;
+
+  try {
+    const safeTableName = sanitizePostgresIdentifier(tableName);
+    const result = await withPostgresUriClient(uri.trim(), async (client) => {
+      const columnsResult = await client.query(
+        `SELECT column_name
+         FROM information_schema.columns
+         WHERE table_schema = 'public'
+           AND table_name = $1
+         ORDER BY ordinal_position`,
+        [safeTableName]
+      );
+      const dataResult = await client.query(`SELECT * FROM "${safeTableName}" LIMIT ${safeLimit}`);
+      return {
+        columns: columnsResult.rows.map((row) => row.column_name),
+        rows: dataResult.rows || [],
+      };
+    });
+
+    return { ...result, tableName: safeTableName, dbType: 'postgresql' };
+  } catch (error) {
+    return { error: error.message || 'Could not query PostgreSQL URI table', columns: [], rows: [], dbType: 'postgresql' };
+  }
+}
+
+async function executePostgresUriQuery(uri, query) {
+  if (!uri || !query || !query.trim()) {
+    return { error: 'PostgreSQL URI and query are required', dbType: 'postgresql' };
+  }
+
+  try {
+    const trimmed = query.trim();
+    const result = await withPostgresUriClient(uri.trim(), async (client) => client.query(trimmed));
+
+    if (Array.isArray(result.rows) && result.rows.length > 0) {
+      const columns = Object.keys(result.rows[0]);
+      return {
+        columns,
+        rows: result.rows,
+        rowCount: result.rowCount ?? result.rows.length,
+        dbType: 'postgresql',
+      };
+    }
+
+    return {
+      output: typeof result.rowCount === 'number' ? `${result.command || 'QUERY'} ${result.rowCount}` : (result.command || 'Query executed'),
+      rowCount: result.rowCount ?? 0,
+      columns: [],
+      rows: [],
+      dbType: 'postgresql',
+    };
+  } catch (error) {
+    return { error: error.message || 'Failed to execute PostgreSQL URI query', dbType: 'postgresql' };
+  }
+}
+
 /**
  * Create a new table in the database
  * @param {string} containerId - Docker container ID
@@ -836,4 +962,7 @@ module.exports = {
   connectMongoUri,
   getMongoUriCollectionData,
   executeMongoUriQuery,
+  connectPostgresUri,
+  getPostgresUriTableData,
+  executePostgresUriQuery,
 };

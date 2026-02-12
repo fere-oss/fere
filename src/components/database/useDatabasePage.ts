@@ -20,6 +20,7 @@ interface UseDatabasePageResult {
   showDeleteTableConfirm: boolean;
   mongoUriInput: string;
   remoteMongoMode: boolean;
+  remoteUriDbType: 'mongodb' | 'postgresql' | null;
   remoteMongoConnecting: boolean;
   mongoUriStatus: 'idle' | 'testing' | 'ok' | 'error';
   mongoUriStatusMessage: string | null;
@@ -71,6 +72,7 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
   const [mongoUriInput, setMongoUriInput] = useState('');
   const [remoteMongoMode, setRemoteMongoMode] = useState(false);
   const [remoteMongoUri, setRemoteMongoUri] = useState<string | null>(null);
+  const [remoteUriDbType, setRemoteUriDbType] = useState<'mongodb' | 'postgresql' | null>(null);
   const [remoteMongoConnecting, setRemoteMongoConnecting] = useState(false);
   const [mongoUriStatus, setMongoUriStatus] = useState<'idle' | 'testing' | 'ok' | 'error'>('idle');
   const [mongoUriStatusMessage, setMongoUriStatusMessage] = useState<string | null>(null);
@@ -80,9 +82,22 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
   const containerId = node.containerId || '';
   const containerImage = node.containerImage || '';
 
+  const detectUriDbType = useCallback((uri: string): 'mongodb' | 'postgresql' | null => {
+    const lower = uri.trim().toLowerCase();
+    if (lower.startsWith('mongodb://') || lower.startsWith('mongodb+srv://')) return 'mongodb';
+    if (lower.startsWith('postgresql://') || lower.startsWith('postgres://')) return 'postgresql';
+    return null;
+  }, []);
+
   const maskMongoUri = useCallback((uri: string) => {
     const trimmed = uri.trim();
-    return trimmed.replace(/(mongodb(?:\+srv)?:\/\/[^:\/?#]+:)([^@]+)(@)/i, '$1<password>$3');
+    if (trimmed.toLowerCase().startsWith('mongodb')) {
+      return trimmed.replace(/(mongodb(?:\+srv)?:\/\/[^:\/?#]+:)([^@]+)(@)/i, '$1<password>$3');
+    }
+    if (trimmed.toLowerCase().startsWith('postgres')) {
+      return trimmed.replace(/(postgres(?:ql)?:\/\/[^:\/?#]+:)([^@]+)(@)/i, '$1<password>$3');
+    }
+    return trimmed;
   }, []);
 
   const parseRemoteTable = useCallback((qualified: string) => {
@@ -127,13 +142,22 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
     });
   }, [maskMongoUri]);
 
+  const applyRemoteTableDefaults = useCallback((remoteTables: string[]) => {
+    if (remoteTables.length === 0) {
+      setSelectedRemoteDb('');
+      setSelectedRemoteCollection('');
+      return;
+    }
+    const first = parseRemoteTable(remoteTables[0]);
+    setSelectedRemoteDb(first.db);
+    setSelectedRemoteCollection(first.collection);
+  }, [parseRemoteTable]);
+
   useEffect(() => {
     let isCancelled = false;
 
     const loadTables = async () => {
-      if (remoteMongoMode) {
-        return;
-      }
+      if (remoteMongoMode) return;
 
       const image = (containerImage || '').toLowerCase();
       const isRemoteMongoLauncher = !containerId && image.includes('mongo');
@@ -162,7 +186,6 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
           setError(null);
         }
         const result: DatabaseTablesResult = await window.electronAPI.getDatabaseTables(containerId, containerImage);
-
         if (isCancelled) return;
 
         if (result.error) {
@@ -201,9 +224,14 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
       setSelectedTable(tableName);
       setTableData(null);
 
-      const result = remoteMongoMode && remoteMongoUri && window.electronAPI.getMongoUriCollectionData
-        ? await window.electronAPI.getMongoUriCollectionData(remoteMongoUri, tableName, 100)
+      const result = remoteMongoMode && remoteMongoUri
+        ? (remoteUriDbType === 'mongodb' && window.electronAPI.getMongoUriCollectionData
+            ? await window.electronAPI.getMongoUriCollectionData(remoteMongoUri, tableName, 100)
+            : remoteUriDbType === 'postgresql' && window.electronAPI.getPostgresUriTableData
+              ? await window.electronAPI.getPostgresUriTableData(remoteMongoUri, tableName, 100)
+              : { error: 'Remote database mode is not available for this URI type', columns: [], rows: [] })
         : await window.electronAPI.getTableData(containerId, containerImage, tableName, 100);
+
       setTableData(result);
     } catch (err) {
       setTableData({
@@ -214,15 +242,21 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
     } finally {
       setLoadingTable(false);
     }
-  }, [containerId, containerImage, remoteMongoMode, remoteMongoUri]);
+  }, [containerId, containerImage, remoteMongoMode, remoteMongoUri, remoteUriDbType]);
 
   const refreshTables = useCallback(async () => {
     try {
-      if (remoteMongoMode && remoteMongoUri && window.electronAPI?.connectMongoUri) {
-        const result: DatabaseTablesResult = await window.electronAPI.connectMongoUri(remoteMongoUri);
-        if (!result.error) {
+      if (remoteMongoMode && remoteMongoUri) {
+        let result: DatabaseTablesResult | null = null;
+        if (remoteUriDbType === 'mongodb' && window.electronAPI?.connectMongoUri) {
+          result = await window.electronAPI.connectMongoUri(remoteMongoUri);
+        } else if (remoteUriDbType === 'postgresql' && window.electronAPI?.connectPostgresUri) {
+          result = await window.electronAPI.connectPostgresUri(remoteMongoUri);
+        }
+
+        if (result && !result.error) {
           setTables(result.tables);
-          setDbType('mongodb');
+          setDbType(result.dbType || remoteUriDbType || 'database');
         }
         return;
       }
@@ -239,47 +273,48 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
     } catch (err) {
       console.error('Error refreshing tables:', err);
     }
-  }, [containerId, containerImage, remoteMongoMode, remoteMongoUri]);
-
-  const applyRemoteTableDefaults = useCallback((remoteTables: string[]) => {
-    if (remoteTables.length === 0) {
-      setSelectedRemoteDb('');
-      setSelectedRemoteCollection('');
-      return;
-    }
-    const first = parseRemoteTable(remoteTables[0]);
-    setSelectedRemoteDb(first.db);
-    setSelectedRemoteCollection(first.collection);
-  }, [parseRemoteTable]);
+  }, [containerId, containerImage, remoteMongoMode, remoteMongoUri, remoteUriDbType]);
 
   const testMongoUriConnection = useCallback(async () => {
-    if (!window.electronAPI?.connectMongoUri || !mongoUriInput.trim()) {
+    if (!mongoUriInput.trim()) {
       setMongoUriStatus('error');
-      setMongoUriStatusMessage('Enter a MongoDB URI to test');
+      setMongoUriStatusMessage('Enter a database URI to test');
       return;
     }
 
     try {
       setMongoUriStatus('testing');
       setMongoUriStatusMessage('Testing connection...');
-      const result = await window.electronAPI.connectMongoUri(mongoUriInput.trim());
+
+      const uriType = detectUriDbType(mongoUriInput);
+      if (!uriType) {
+        setMongoUriStatus('error');
+        setMongoUriStatusMessage('Unsupported URI. Use mongodb:// or postgresql://');
+        return;
+      }
+
+      const result = uriType === 'mongodb'
+        ? await window.electronAPI.connectMongoUri(mongoUriInput.trim())
+        : await window.electronAPI.connectPostgresUri(mongoUriInput.trim());
+
       if (result.error) {
         setMongoUriStatus('error');
         setMongoUriStatusMessage(result.error);
         return;
       }
+
       setMongoUriStatus('ok');
-      setMongoUriStatusMessage(`Connected (${result.tables?.length || 0} collections found)`);
+      setMongoUriStatusMessage(`Connected (${result.tables?.length || 0} ${uriType === 'mongodb' ? 'collections' : 'tables'} found)`);
       saveRecentMongoUri(mongoUriInput.trim());
     } catch (err) {
       setMongoUriStatus('error');
       setMongoUriStatusMessage(err instanceof Error ? err.message : 'Connection test failed');
     }
-  }, [mongoUriInput, saveRecentMongoUri]);
+  }, [detectUriDbType, mongoUriInput, saveRecentMongoUri]);
 
   const connectMongoUriMode = useCallback(async () => {
-    if (!window.electronAPI?.connectMongoUri || !mongoUriInput.trim()) {
-      setError('Enter a MongoDB URI to connect');
+    if (!mongoUriInput.trim()) {
+      setError('Enter a database URI to connect');
       return;
     }
 
@@ -288,7 +323,20 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
       setMongoUriStatus('testing');
       setMongoUriStatusMessage('Connecting...');
       setError(null);
-      const result = await window.electronAPI.connectMongoUri(mongoUriInput.trim());
+
+      const uriType = detectUriDbType(mongoUriInput);
+      if (!uriType) {
+        const msg = 'Unsupported URI. Use mongodb:// or postgresql://';
+        setError(msg);
+        setMongoUriStatus('error');
+        setMongoUriStatusMessage(msg);
+        return;
+      }
+
+      const result = uriType === 'mongodb'
+        ? await window.electronAPI.connectMongoUri(mongoUriInput.trim())
+        : await window.electronAPI.connectPostgresUri(mongoUriInput.trim());
+
       if (result.error) {
         setError(result.error);
         setMongoUriStatus('error');
@@ -298,28 +346,38 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
 
       setRemoteMongoUri(mongoUriInput.trim());
       setRemoteMongoMode(true);
-      setDbType('mongodb');
+      setRemoteUriDbType(uriType);
+      setDbType(result.dbType || uriType);
       setTables(result.tables || []);
-      applyRemoteTableDefaults(result.tables || []);
+
+      if (uriType === 'mongodb') {
+        applyRemoteTableDefaults(result.tables || []);
+      } else {
+        setSelectedRemoteDb('');
+        setSelectedRemoteCollection('');
+      }
+
       setSelectedTable(null);
       setTableData(null);
-      setQuery('db.getCollectionNames()');
+      setQuery(uriType === 'mongodb' ? 'db.getCollectionNames()' : 'SELECT * FROM ');
       setLoading(false);
       setMongoUriStatus('ok');
       setMongoUriStatusMessage('Connected');
       saveRecentMongoUri(mongoUriInput.trim());
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to connect MongoDB URI');
+      const msg = err instanceof Error ? err.message : 'Failed to connect database URI';
+      setError(msg);
       setMongoUriStatus('error');
-      setMongoUriStatusMessage(err instanceof Error ? err.message : 'Failed to connect MongoDB URI');
+      setMongoUriStatusMessage(msg);
     } finally {
       setRemoteMongoConnecting(false);
     }
-  }, [mongoUriInput, applyRemoteTableDefaults, saveRecentMongoUri]);
+  }, [detectUriDbType, mongoUriInput, applyRemoteTableDefaults, saveRecentMongoUri]);
 
   const disconnectMongoUriMode = useCallback(() => {
     setRemoteMongoMode(false);
     setRemoteMongoUri(null);
+    setRemoteUriDbType(null);
     setSelectedTable(null);
     setTableData(null);
     setQueryResult(null);
@@ -333,8 +391,6 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
   const normalizeExecutableQuery = useCallback((rawQuery: string) => {
     let nextQuery = rawQuery.trim();
 
-    // Users sometimes paste escaped newlines (\n) as text. PostgreSQL/MySQL
-    // treat those as invalid slash/meta commands when sent literally.
     if (dbType === 'postgresql' || dbType === 'mysql') {
       nextQuery = nextQuery
         .replace(/\\r\\n/g, '\n')
@@ -355,9 +411,14 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
       setExecutingQuery(true);
       setQueryResult(null);
 
-      const result = remoteMongoMode && remoteMongoUri && window.electronAPI.executeMongoUriQuery
-        ? await window.electronAPI.executeMongoUriQuery(remoteMongoUri, executableQuery)
+      const result = remoteMongoMode && remoteMongoUri
+        ? (remoteUriDbType === 'mongodb' && window.electronAPI.executeMongoUriQuery
+            ? await window.electronAPI.executeMongoUriQuery(remoteMongoUri, executableQuery)
+            : remoteUriDbType === 'postgresql' && window.electronAPI.executePostgresUriQuery
+              ? await window.electronAPI.executePostgresUriQuery(remoteMongoUri, executableQuery)
+              : { error: 'Remote database mode is not available for this URI type' })
         : await window.electronAPI.executeDatabaseQuery(containerId, containerImage, executableQuery);
+
       setQueryResult(result);
 
       if (!result.error) {
@@ -373,7 +434,7 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
     } finally {
       setExecutingQuery(false);
     }
-  }, [containerId, containerImage, query, refreshTables, selectedTable, loadTableData, normalizeExecutableQuery, remoteMongoMode, remoteMongoUri]);
+  }, [containerId, containerImage, query, refreshTables, selectedTable, loadTableData, normalizeExecutableQuery, remoteMongoMode, remoteMongoUri, remoteUriDbType]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     const isRunShortcut = (e.metaKey || e.ctrlKey)
@@ -401,6 +462,10 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
       setActiveTab('data');
       await loadTableData(tableName);
       return;
+    }
+
+    if (remoteMongoMode && remoteMongoUri && dbType === 'postgresql') {
+      throw new Error('Create table is not available yet for remote PostgreSQL URI mode');
     }
 
     if (!window.electronAPI?.createDatabaseTable) {
@@ -439,9 +504,14 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
 
     setDeletingTable(true);
     try {
-      const result = remoteMongoMode && remoteMongoUri && window.electronAPI.executeMongoUriQuery
-        ? await window.electronAPI.executeMongoUriQuery(remoteMongoUri, dropQuery)
+      const result = remoteMongoMode && remoteMongoUri
+        ? (remoteUriDbType === 'mongodb' && window.electronAPI.executeMongoUriQuery
+            ? await window.electronAPI.executeMongoUriQuery(remoteMongoUri, dropQuery)
+            : remoteUriDbType === 'postgresql' && window.electronAPI.executePostgresUriQuery
+              ? await window.electronAPI.executePostgresUriQuery(remoteMongoUri, dropQuery)
+              : { error: 'Remote database mode is not available for this URI type' })
         : await window.electronAPI.executeDatabaseQuery(containerId, containerImage, dropQuery);
+
       if (result.error) {
         throw new Error(result.error);
       }
@@ -449,13 +519,13 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
       setSelectedTable(null);
       setTableData(null);
       await refreshTables();
-    } catch (error) {
-      console.error('Error deleting table:', error);
-      alert(`Failed to delete ${dbType === 'mongodb' ? 'collection' : 'table'}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } catch (deleteError) {
+      console.error('Error deleting table:', deleteError);
+      alert(`Failed to delete ${dbType === 'mongodb' ? 'collection' : 'table'}: ${deleteError instanceof Error ? deleteError.message : 'Unknown error'}`);
     } finally {
       setDeletingTable(false);
     }
-  }, [selectedTable, dbType, containerId, containerImage, refreshTables, remoteMongoMode, remoteMongoUri]);
+  }, [selectedTable, dbType, containerId, containerImage, refreshTables, remoteMongoMode, remoteMongoUri, remoteUriDbType]);
 
   const handleDeleteRow = useCallback(async (rowIndex: number, row: Record<string, unknown>) => {
     if (!selectedTable || !tableData) return;
@@ -480,7 +550,9 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
 
       const deleteQuery = `DELETE FROM ${selectedTable} WHERE ${whereClauses.join(' AND ')};`;
 
-      const result = await window.electronAPI.executeDatabaseQuery(containerId, containerImage, deleteQuery);
+      const result = remoteMongoMode && remoteMongoUri && remoteUriDbType === 'postgresql' && window.electronAPI.executePostgresUriQuery
+        ? await window.electronAPI.executePostgresUriQuery(remoteMongoUri, deleteQuery)
+        : await window.electronAPI.executeDatabaseQuery(containerId, containerImage, deleteQuery);
 
       if (result.error) {
         throw new Error(result.error);
@@ -488,13 +560,13 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
 
       await loadTableData(selectedTable);
       setShowDeleteConfirm(null);
-    } catch (error) {
-      console.error('Error deleting row:', error);
-      alert(`Failed to delete row: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } catch (deleteError) {
+      console.error('Error deleting row:', deleteError);
+      alert(`Failed to delete row: ${deleteError instanceof Error ? deleteError.message : 'Unknown error'}`);
     } finally {
       setDeletingRow(null);
     }
-  }, [selectedTable, tableData, containerId, containerImage, loadTableData]);
+  }, [selectedTable, tableData, containerId, containerImage, loadTableData, remoteMongoMode, remoteMongoUri, remoteUriDbType]);
 
   const formatCellValue = (value: unknown): string => {
     if (value === null || value === undefined) return 'NULL';
@@ -525,22 +597,22 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
   };
 
   const remoteDbOptions = useMemo(() => {
-    if (!remoteMongoMode) return [];
+    if (!remoteMongoMode || remoteUriDbType !== 'mongodb') return [];
     const dbSet = new Set<string>();
     tables.forEach((qualified) => {
       const { db } = parseRemoteTable(qualified);
       dbSet.add(db);
     });
     return Array.from(dbSet);
-  }, [tables, remoteMongoMode, parseRemoteTable]);
+  }, [tables, remoteMongoMode, parseRemoteTable, remoteUriDbType]);
 
   const remoteCollectionOptions = useMemo(() => {
-    if (!remoteMongoMode) return [];
+    if (!remoteMongoMode || remoteUriDbType !== 'mongodb') return [];
     return tables
       .map((qualified) => parseRemoteTable(qualified))
       .filter(({ db }) => db === selectedRemoteDb)
       .map(({ collection }) => collection);
-  }, [tables, remoteMongoMode, parseRemoteTable, selectedRemoteDb]);
+  }, [tables, remoteMongoMode, parseRemoteTable, selectedRemoteDb, remoteUriDbType]);
 
   const setMongoUriInputWithReset = useCallback((value: string) => {
     setMongoUriInput(value);
@@ -588,6 +660,7 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
     showDeleteTableConfirm,
     mongoUriInput,
     remoteMongoMode,
+    remoteUriDbType,
     remoteMongoConnecting,
     mongoUriStatus,
     mongoUriStatusMessage,
