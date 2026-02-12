@@ -5,6 +5,7 @@ import ReactFlow, {
   Controls,
   Position,
   type ReactFlowInstance,
+  type Viewport,
 } from "reactflow";
 import "reactflow/dist/style.css";
 import type { GraphEdge, GraphNode } from "../types/electron";
@@ -52,6 +53,12 @@ export function GraphView({
   const orderCacheRef = useRef<Map<number, string[]>>(new Map());
   const groupOrderCacheRef = useRef<Map<number, string[]>>(new Map());
   const didFitViewRef = useRef(false);
+
+  // Viewport tracking for node culling (virtualization)
+  const viewportRef = useRef<Viewport>({ x: 0, y: 0, zoom: 0.6 });
+  const [viewportVersion, setViewportVersion] = useState(0);
+  const viewportDebounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const containerSizeRef = useRef({ width: 1200, height: 800 });
   const didInitialAnimationRef = useRef(false);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [externalApiVersion, setExternalApiVersion] = useState(0);
@@ -170,6 +177,35 @@ export function GraphView({
     [hoveredNodeId, connectedNodeIds],
   );
 
+  // Node virtualization — hide nodes far outside the viewport.
+  // Uses a large world-space buffer (2000px) so nodes don't pop in during
+  // normal panning. Only culls truly distant nodes in large graphs.
+  const culledFlowNodes = useMemo(() => {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const _v = viewportVersion; // subscribe to debounced viewport changes
+    const { x: panX, y: panY, zoom: z } = viewportRef.current;
+    const { width: cw, height: ch } = containerSizeRef.current;
+    const buffer = 2000;
+    const worldXMin = -panX / z - buffer;
+    const worldYMin = -panY / z - buffer;
+    const worldXMax = (cw - panX) / z + buffer;
+    const worldYMax = (ch - panY) / z + buffer;
+
+    return flowLayout.nodes.map((node) => {
+      if (node.type !== "service") return node; // always show labels/boxes
+      const { x, y } = node.position;
+      const w = FLOW_LAYOUT.NODE_WIDTH;
+      const h =
+        nodeHeightsRef.current.get(node.id) ?? FLOW_LAYOUT.NODE_MIN_HEIGHT;
+      const visible =
+        x + w >= worldXMin &&
+        x <= worldXMax &&
+        y + h >= worldYMin &&
+        y <= worldYMax;
+      return visible ? node : { ...node, hidden: true };
+    });
+  }, [flowLayout.nodes, viewportVersion, nodeHeightsRef]);
+
   const flowEdges = useMemo(() => {
     if (!hoveredNodeId) return [];
     const W = FLOW_LAYOUT.NODE_WIDTH;
@@ -206,16 +242,44 @@ export function GraphView({
       }
     }
 
+    // Deduplicate edges
     const seen = new Set<string>();
-    return layoutEdges
-      .filter((edge) => {
-        if (edge.source !== hoveredNodeId) return false;
-        const key = `${edge.source}->${edge.target}`;
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      })
-      .map((edge) => {
+    const dedupedEdges = layoutEdges.filter((edge) => {
+      if (edge.source !== hoveredNodeId) return false;
+      const key = `${edge.source}->${edge.target}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
+    // Edge bundling — group edges whose targets share the same layout group.
+    // When 3+ edges target the same group, bundle into a single edge to reduce clutter.
+    const BUNDLE_THRESHOLD = 3;
+    const layoutLookup = new Map(
+      stableConnectedLayout.map((ln) => [ln.node.id, ln]),
+    );
+    const edgesByGroup = new Map<string, GraphEdge[]>();
+    dedupedEdges.forEach((edge) => {
+      const tgt = layoutLookup.get(edge.target);
+      const groupKey = tgt
+        ? `layer-${tgt.layer}-${tgt.groupId}`
+        : edge.target;
+      if (!edgesByGroup.has(groupKey)) edgesByGroup.set(groupKey, []);
+      edgesByGroup.get(groupKey)!.push(edge);
+    });
+
+    const bundled: Array<GraphEdge & { _bundleCount?: number }> = [];
+    edgesByGroup.forEach((groupEdges) => {
+      if (groupEdges.length < BUNDLE_THRESHOLD) {
+        bundled.push(...groupEdges);
+      } else {
+        // Pick the middle target as the bundle representative
+        const rep = groupEdges[Math.floor(groupEdges.length / 2)];
+        bundled.push({ ...rep, id: `bundle-${rep.id}`, _bundleCount: groupEdges.length });
+      }
+    });
+
+    return bundled.map((edge) => {
         const srcPos = posMap.get(edge.source);
         const tgtPos = posMap.get(edge.target);
         const srcH = heightMap.get(edge.source) ?? FLOW_LAYOUT.NODE_MIN_HEIGHT;
@@ -275,6 +339,7 @@ export function GraphView({
           ty: tgt.y,
           sourcePos: src.pos,
           targetPos: tgt.pos,
+          bundleCount: (edge as typeof edge & { _bundleCount?: number })._bundleCount,
         };
         return {
           id: edge.id,
@@ -284,7 +349,7 @@ export function GraphView({
           data,
         };
       });
-  }, [layoutEdges, hoveredNodeId, flowLayout.nodes, nodeHeightsRef]);
+  }, [layoutEdges, hoveredNodeId, flowLayout.nodes, nodeHeightsRef, stableConnectedLayout]);
 
   const defaultEdgeOptions = useMemo(
     () => ({
@@ -341,6 +406,29 @@ export function GraphView({
     hoverTimer.current = setTimeout(() => setHoveredNodeId(null), 80);
   }, []);
 
+  // Viewport change handler — debounced to avoid thrashing during pan/zoom
+  const handleMove = useCallback((_event: unknown, vp: Viewport) => {
+    viewportRef.current = vp;
+    clearTimeout(viewportDebounceRef.current);
+    viewportDebounceRef.current = setTimeout(() => {
+      setViewportVersion((v) => v + 1);
+    }, 150);
+  }, []);
+
+  // Measure container for viewport culling bounds
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([entry]) => {
+      containerSizeRef.current = {
+        width: entry.contentRect.width,
+        height: entry.contentRect.height,
+      };
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   if (layoutNodes.length === 0) {
     const emptyTitle = isContainerView
       ? "No containers running"
@@ -391,7 +479,7 @@ export function GraphView({
       <div className="graph-flow">
         <HoverContext.Provider value={hoverState}>
           <ReactFlow
-            nodes={flowLayout.nodes}
+            nodes={culledFlowNodes}
             edges={flowEdges}
             nodeTypes={NODE_TYPES}
             edgeTypes={EDGE_TYPES}
@@ -408,6 +496,7 @@ export function GraphView({
             maxZoom={1.8}
             translateExtent={flowLayout.bounds}
             onInit={setReactFlowInstance}
+            onMove={handleMove}
             onNodeMouseEnter={handleNodeMouseEnter}
             onNodeMouseLeave={handleNodeMouseLeave}
             onPaneClick={() => {

@@ -382,7 +382,7 @@ export interface HistoryResult {
 
 // Snapshot delta types (event-driven pipeline)
 export interface SnapshotDelta {
-  type: 'full' | 'delta';
+  type: 'full' | 'delta' | 'metrics';
   seq: number;
   timestamp: number;
   // For type 'full': same shape as SystemSnapshot

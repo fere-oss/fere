@@ -1,8 +1,9 @@
-import { createContext, useEffect, useRef } from "react";
+import { createContext, memo, useEffect, useRef } from "react";
 import type { GraphNode } from "../../types/electron";
 import type { MouseEvent as ReactMouseEvent } from "react";
-import { Handle, Position } from "reactflow";
+import { Handle, Position, useStore } from "reactflow";
 import { ServiceNode } from "./ServiceNodes";
+import { MinimalServiceNode } from "./MinimalServiceNode";
 import { useHoverState } from "./hoverContext";
 
 export type HoverState = {
@@ -12,6 +13,9 @@ export type HoverState = {
 
 const defaultHoverState: HoverState = { hoveredNodeId: null, connectedNodeIds: new Set() };
 export const HoverContext = createContext<HoverState>(defaultHoverState);
+
+/** Zoom threshold below which nodes render in minimal (dot + label) mode */
+export const LOD_ZOOM_THRESHOLD = 0.45;
 
 export type FlowServiceNodeData = {
   node: GraphNode;
@@ -58,11 +62,13 @@ export function GroupBoxNode({
   );
 }
 
-export function FlowServiceNode({ data }: { data: FlowServiceNodeData }) {
+const FlowServiceNodeInner = memo(function FlowServiceNodeInner({ data }: { data: FlowServiceNodeData }) {
   const nodeRef = useRef<HTMLDivElement | null>(null);
   const dataRef = useRef(data);
   dataRef.current = data;
   const { hoveredNodeId, connectedNodeIds } = useHoverState();
+  const zoom = useStore((s) => s.transform[2]);
+  const isMinimal = zoom < LOD_ZOOM_THRESHOLD;
 
   useEffect(() => {
     if (!nodeRef.current) return;
@@ -107,18 +113,30 @@ export function FlowServiceNode({ data }: { data: FlowServiceNodeData }) {
       <Handle type="target" id="target-bottom" position={Position.Bottom} className="rf-handle rf-handle-target" />
       <Handle type="target" id="target-left" position={Position.Left} className="rf-handle rf-handle-target" />
       <Handle type="target" id="target-right" position={Position.Right} className="rf-handle rf-handle-target" />
-      <ServiceNode
-        node={data.node}
-        onClick={data.onNodeClick}
-        onContextMenu={data.onNodeContextMenu}
-        animationIndex={0}
-      />
+      {isMinimal ? (
+        <MinimalServiceNode
+          node={data.node}
+          onClick={data.onNodeClick}
+          onContextMenu={data.onNodeContextMenu}
+        />
+      ) : (
+        <ServiceNode
+          node={data.node}
+          onClick={data.onNodeClick}
+          onContextMenu={data.onNodeContextMenu}
+          animationIndex={0}
+        />
+      )}
       <Handle type="source" id="source-top" position={Position.Top} className="rf-handle rf-handle-source" />
       <Handle type="source" id="source-bottom" position={Position.Bottom} className="rf-handle rf-handle-source" />
       <Handle type="source" id="source-left" position={Position.Left} className="rf-handle rf-handle-source" />
       <Handle type="source" id="source-right" position={Position.Right} className="rf-handle rf-handle-source" />
     </div>
   );
+});
+
+export function FlowServiceNode({ data }: { data: FlowServiceNodeData }) {
+  return <FlowServiceNodeInner data={data} />;
 }
 
 export const flowNodeTypes = {

@@ -30,7 +30,6 @@ const isElectron = () => {
  */
 function applyDelta(current: SystemSnapshot, delta: SnapshotDelta): SystemSnapshot {
   if (delta.type === 'full') {
-    // Full snapshot — extract SystemSnapshot shape
     return {
       processes: delta.processes as Process[] || current.processes,
       ports: delta.ports as Port[] || current.ports,
@@ -221,21 +220,18 @@ export function useSystemSnapshot(pollInterval = 2000) {
 
       const unsubscribe = window.electronAPI.onSnapshotDelta((delta: SnapshotDelta) => {
         // Sequence gap detection — request full resync if we missed deltas
-        if (delta.type === 'delta' && lastSeqRef.current >= 0 && delta.seq !== lastSeqRef.current + 1) {
+        if (delta.type !== 'full' && lastSeqRef.current >= 0 && delta.seq !== lastSeqRef.current + 1) {
           refresh();
           return;
         }
         lastSeqRef.current = delta.seq;
 
         const patched = applyDelta(snapshotRef.current, delta);
-        const newKey = createSnapshotKey(patched);
         snapshotRef.current = patched;
 
-        if (newKey !== snapshotKeyRef.current) {
-          snapshotKeyRef.current = newKey;
-          setSnapshot(patched);
-        }
-
+        // Always propagate — layout caching in useGraphLayoutData
+        // prevents expensive recomputation on metrics-only changes
+        setSnapshot(patched);
         setLoading(false);
         setError(null);
       });

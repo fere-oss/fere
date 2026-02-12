@@ -755,6 +755,43 @@ body {
   }
 }
 
+/* Minimal LOD node — shown when zoomed out below threshold */
+.service-node-minimal {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-left: 3px solid var(--node-color, #6B7280);
+  border-radius: 8px;
+  cursor: pointer;
+  white-space: nowrap;
+  min-width: 120px;
+}
+
+.service-node-minimal-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.service-node-minimal-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(0, 0, 0, 0.8);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.service-node-minimal-port {
+  font-size: 12px;
+  font-weight: 500;
+  opacity: 0.7;
+  flex-shrink: 0;
+}
+
 .graph-flow .react-flow__controls {
   position: absolute;
   top: 16px;

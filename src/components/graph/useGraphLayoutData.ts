@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import type { GraphNode, GraphEdge } from "../../types/electron";
 import { computeHierarchicalLayout } from "./layout";
 import { groupContainersByProject } from "./grouping";
@@ -44,7 +44,10 @@ export function useGraphLayoutData({
   );
 
   const layoutNodes = isContainerView ? containerNodes : localNodes;
-  const layoutEdges = isContainerView ? [] : localEdges;
+  const layoutEdges = useMemo(
+    () => (isContainerView ? [] : localEdges),
+    [isContainerView, localEdges],
+  );
 
   const projectPathsKey = useMemo(() => {
     return Array.from(
@@ -54,12 +57,49 @@ export function useGraphLayoutData({
       .join(",");
   }, [localNodes]);
 
+  // Topology key — stable across metrics-only changes (cpu/memory/health).
+  // Only changes when nodes are added/removed or edges change.
+  const topologyKey = useMemo(() => {
+    const nk = layoutNodes.map((n) => n.id).sort().join(",");
+    const ek = layoutEdges.map((e) => `${e.source}-${e.target}`).sort().join(",");
+    return `${nk}|${ek}`;
+  }, [layoutNodes, layoutEdges]);
+
+  // Cache the expensive hierarchical layout computation based on topology key.
+  // computeHierarchicalLayout runs topological sort + 6 iterations of
+  // barycenter crossing minimization — skip it when only metrics changed.
+  const layoutCacheRef = useRef<{
+    key: string;
+    connected: LayoutNode[];
+    standalone: LayoutNode[];
+  }>({ key: "", connected: [], standalone: [] });
+
   const { connected: connectedLayout, standalone: standaloneLayout } = useMemo(
-    () =>
-      isContainerView
-        ? { connected: [], standalone: [] }
-        : computeHierarchicalLayout(localNodes, localEdges),
-    [isContainerView, localNodes, localEdges],
+    () => {
+      if (isContainerView) return { connected: [], standalone: [] };
+
+      if (topologyKey === layoutCacheRef.current.key) {
+        // Topology unchanged — reuse cached layer/order, update node references
+        // so metrics (cpu/memory/health) are fresh
+        const nodeMap = new Map(localNodes.map((n) => [n.id, n]));
+        return {
+          connected: layoutCacheRef.current.connected.map((ln) => ({
+            ...ln,
+            node: nodeMap.get(ln.node.id) || ln.node,
+          })),
+          standalone: layoutCacheRef.current.standalone.map((ln) => ({
+            ...ln,
+            node: nodeMap.get(ln.node.id) || ln.node,
+          })),
+        };
+      }
+
+      // Topology changed — full recomputation
+      const result = computeHierarchicalLayout(localNodes, localEdges);
+      layoutCacheRef.current = { key: topologyKey, ...result };
+      return result;
+    },
+    [topologyKey, isContainerView, localNodes, localEdges],
   );
 
   const stableConnectedLayout = useMemo<LayoutNode[]>(
