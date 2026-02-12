@@ -37,10 +37,13 @@ export function useNodeMeasurements(nodesKey: string, nodeCount: number, allowLo
     (id: string, height: number) => {
       const rounded = Math.round(height);
       const current = nodeHeightsRef.current.get(id);
-      if (current === rounded) return;
+      if (rounded <= 1) return; // Ignore transient hidden/unmounted measurements.
+      const normalized = Math.max(rounded, FLOW_LAYOUT.NODE_MIN_HEIGHT);
+      const next = current ? Math.max(current, normalized) : normalized;
+      if (current === next) return;
       nodeHeightsRef.current.set(
         id,
-        Math.max(rounded, FLOW_LAYOUT.NODE_MIN_HEIGHT),
+        next,
       );
       measuredIdsRef.current.add(id);
       setLayoutVersion((version) => version + 1);

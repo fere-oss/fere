@@ -183,7 +183,6 @@ function App() {
 
   // Open database view directly from top tabs (show database list)
   const handleOpenDatabaseView = useCallback(() => {
-    setDatabaseNode(null);
     setViewMode("database");
   }, []);
 
@@ -538,8 +537,10 @@ function App() {
               </button>
             </div>
 
-            {containerSubTab === "overview" ? (
-              <div className="containers-overview">
+            <div
+              className={`containers-overview ${containerSubTab === "overview" ? "containers-sub-view-active" : ""}`}
+              style={{ display: containerSubTab === "overview" ? "flex" : "none" }}
+            >
                 <div className="graph-container">
                   {loading ? (
                     <div className="loading">Scanning Docker containers...</div>
@@ -579,12 +580,15 @@ function App() {
                   />
                 </div>
               </div>
-            ) : (
+            <div
+              className={`containers-logs ${containerSubTab === "logs" ? "containers-sub-view-active" : ""}`}
+              style={{ display: containerSubTab === "logs" ? "block" : "none" }}
+            >
               <ContainerLogsTab
                 containers={dockerContainerData.nodes}
                 initialSelectedId={initialLogContainerId}
               />
-            )}
+            </div>
           </div>
         </div>
 
