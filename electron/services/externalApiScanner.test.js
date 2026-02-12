@@ -34,6 +34,8 @@ test('scanExternalApis filters test/private/placeholder hosts and keeps real pro
         "fetch('http://10.0.0.1:8080')",
         "fetch('http://192.168.1.1')",
         "fetch('https://api.example.com/v1')",
+        "fetch('https://${forwardedhost}${next}')",
+        "fetch('https://$%7Bforwardedhost%7D$%7Bnext%7D')",
         "fetch('https://fonts.googleapis.com/css2?family=JetBrains+Mono')",
       ].join('\n')
     );
@@ -57,6 +59,8 @@ test('scanExternalApis filters test/private/placeholder hosts and keeps real pro
     assert.ok(!names.includes('192.168.1.1'), 'private IP should not appear as external API');
     assert.ok(!names.includes('api.example.com'), 'placeholder host should be ignored');
     assert.ok(!names.includes('example.com'), 'placeholder host should be ignored');
+    assert.ok(!names.includes('${forwardedhost}${next}'), 'templated host should be ignored');
+    assert.ok(!names.includes('$%7bforwardedhost%7d$%7bnext%7d'), 'encoded templated host should be ignored');
     assert.ok(!names.includes('fonts.googleapis.com'), 'font host should be ignored');
     assert.ok(!names.includes('Google Gemini'), 'generic googleapis false positives should not be inferred from fonts');
   } finally {

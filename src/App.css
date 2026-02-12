@@ -2367,6 +2367,14 @@ body {
   height: 100%;
 }
 
+.brand-icon-image {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+  border-radius: 3px;
+}
+
 .brand-icon-fallback {
   border: 1px solid var(--border-color);
   border-radius: 50%;

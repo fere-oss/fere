@@ -1,110 +1,127 @@
+import { useEffect, useState } from "react";
 import type { GraphNode } from "../../types/electron";
-import {
-  siAlgolia,
-  siAnthropic,
-  siApache,
-  siApachekafka,
-  siCloudflare,
-  siDeepgram,
-  siDiscord,
-  siDocker,
-  siElevenlabs,
-  siFirebase,
-  siGithub,
-  siGitlab,
-  siGooglegemini,
-  siHuggingface,
-  siMailgun,
-  siMistralai,
-  siMixpanel,
-  siMongodb,
-  siMysql,
-  siNatsdotio,
-  siNginx,
-  siNodedotjs,
-  siNotion,
-  siOpenaigym,
-  siOpenrouter,
-  siPerplexity,
-  siPodman,
-  siPostgresql,
-  siPosthog,
-  siPython,
-  siRabbitmq,
-  siRedis,
-  siReplicate,
-  siSentry,
-  siStripe,
-  siSupabase,
-} from "simple-icons";
-
-type IconData = { title: string; hex: string; path: string };
-
-const ICONS_BY_KEY: Record<string, IconData> = {
-  algolia: siAlgolia,
-  anthropic: siAnthropic,
-  apache: siApache,
-  kafka: siApachekafka,
-  cloudflare: siCloudflare,
-  deepgram: siDeepgram,
-  discord: siDiscord,
-  docker: siDocker,
-  elevenlabs: siElevenlabs,
-  firebase: siFirebase,
-  github: siGithub,
-  gitlab: siGitlab,
-  gemini: siGooglegemini,
-  "google gemini": siGooglegemini,
-  "hugging face": siHuggingface,
-  huggingface: siHuggingface,
-  mailgun: siMailgun,
-  mistral: siMistralai,
-  "mistral ai": siMistralai,
-  mixpanel: siMixpanel,
-  mongodb: siMongodb,
-  mysql: siMysql,
-  nats: siNatsdotio,
-  "nats.io": siNatsdotio,
-  nginx: siNginx,
-  node: siNodedotjs,
-  "node.js": siNodedotjs,
-  notion: siNotion,
-  openai: siOpenaigym,
-  openrouter: siOpenrouter,
-  perplexity: siPerplexity,
-  podman: siPodman,
-  postgresql: siPostgresql,
-  postgres: siPostgresql,
-  posthog: siPosthog,
-  python: siPython,
-  rabbitmq: siRabbitmq,
-  redis: siRedis,
-  replicate: siReplicate,
-  sentry: siSentry,
-  stripe: siStripe,
-  supabase: siSupabase,
+const BRAND_DOMAIN_BY_KEY: Record<string, string> = {
+  openai: "openai.com",
+  anthropic: "anthropic.com",
+  groq: "groq.com",
+  "google gemini": "ai.google.dev",
+  gemini: "ai.google.dev",
+  "azure openai": "azure.microsoft.com",
+  "aws bedrock": "aws.amazon.com",
+  cohere: "cohere.com",
+  mistral: "mistral.ai",
+  together: "together.ai",
+  replicate: "replicate.com",
+  "hugging face": "huggingface.co",
+  huggingface: "huggingface.co",
+  openrouter: "openrouter.ai",
+  perplexity: "perplexity.ai",
+  deepgram: "deepgram.com",
+  elevenlabs: "elevenlabs.io",
+  pinecone: "pinecone.io",
+  weaviate: "weaviate.io",
+  supabase: "supabase.com",
+  firebase: "firebase.google.com",
+  stripe: "stripe.com",
+  twilio: "twilio.com",
+  sendgrid: "sendgrid.com",
+  mailgun: "mailgun.com",
+  sentry: "sentry.io",
+  posthog: "posthog.com",
+  segment: "segment.com",
+  amplitude: "amplitude.com",
+  mixpanel: "mixpanel.com",
+  algolia: "algolia.com",
+  cloudflare: "cloudflare.com",
+  github: "github.com",
+  gitlab: "gitlab.com",
+  slack: "slack.com",
+  discord: "discord.com",
+  notion: "notion.so",
+  cartesia: "cartesia.ai",
+  deepseek: "deepseek.com",
+  "x.ai": "x.ai",
+  mongodb: "mongodb.com",
+  postgres: "postgresql.org",
+  postgresql: "postgresql.org",
+  mysql: "mysql.com",
+  redis: "redis.io",
+  rabbitmq: "rabbitmq.com",
+  kafka: "kafka.apache.org",
+  nats: "nats.io",
+  nginx: "nginx.org",
+  apache: "apache.org",
+  docker: "docker.com",
+  podman: "podman.io",
+  "node.js": "nodejs.org",
+  node: "nodejs.org",
+  python: "python.org",
 };
+
+const RAW_LOGO_DEV_TOKEN = (process.env.REACT_APP_LOGO_DEV_TOKEN || "").trim();
+const LOGO_DEV_TOKEN = RAW_LOGO_DEV_TOKEN.startsWith("pk_") ? RAW_LOGO_DEV_TOKEN : "";
+
+if (process.env.NODE_ENV !== "production" && RAW_LOGO_DEV_TOKEN && !RAW_LOGO_DEV_TOKEN.startsWith("pk_")) {
+  // Logo.dev image CDN expects publishable keys in query param.
+  // Secret keys should stay server-side only and are ignored here.
+  // eslint-disable-next-line no-console
+  console.warn("[BrandIcon] REACT_APP_LOGO_DEV_TOKEN should be a publishable key (pk_...).");
+}
 
 function normalize(value: string): string {
   return value.trim().toLowerCase();
 }
 
-export function getBrandIconData(value?: string | null): IconData | null {
-  if (!value) return null;
-  const key = normalize(value);
-  if (ICONS_BY_KEY[key]) return ICONS_BY_KEY[key];
-
-  for (const [lookup, icon] of Object.entries(ICONS_BY_KEY)) {
-    if (key.includes(lookup)) return icon;
+export function inferServiceBrand(node: Pick<GraphNode, "name" | "command" | "containerImage">): string | null {
+  const samples = [node.name, node.command, node.containerImage].filter(Boolean) as string[];
+  for (const sample of samples) {
+    const key = normalize(sample);
+    if (BRAND_DOMAIN_BY_KEY[key]) return sample;
+    for (const lookup of Object.keys(BRAND_DOMAIN_BY_KEY)) {
+      if (key.includes(lookup)) return sample;
+    }
+    const host = extractDomainLike(sample);
+    if (host) return host;
   }
   return null;
 }
 
-export function inferServiceBrand(node: Pick<GraphNode, "name" | "command" | "containerImage">): string | null {
-  const samples = [node.name, node.command, node.containerImage].filter(Boolean) as string[];
-  for (const sample of samples) {
-    const icon = getBrandIconData(sample);
-    if (icon) return icon.title;
+function toLogoDevUrl(domain: string): string {
+  const params = new URLSearchParams({
+    size: "64",
+    format: "png",
+    fallback: "monogram",
+  });
+  if (LOGO_DEV_TOKEN) {
+    params.set("token", LOGO_DEV_TOKEN);
+  }
+  return `https://img.logo.dev/${domain}?${params.toString()}`;
+}
+
+function isHostLike(value: string): boolean {
+  return /^[a-z0-9.-]+\.[a-z]{2,}$/i.test(value);
+}
+
+function extractDomainLike(value: string): string | null {
+  const match = value.match(/([a-z0-9.-]+\.[a-z]{2,})/i);
+  return match ? match[1].toLowerCase() : null;
+}
+
+function getBrandImageUrl(value?: string | null): string | null {
+  if (!value) return null;
+  const key = normalize(value);
+  const extracted = extractDomainLike(key);
+  if (extracted && isHostLike(extracted)) {
+    return toLogoDevUrl(extracted);
+  }
+  if (isHostLike(key)) {
+    return toLogoDevUrl(key);
+  }
+  if (BRAND_DOMAIN_BY_KEY[key]) {
+    return toLogoDevUrl(BRAND_DOMAIN_BY_KEY[key]);
+  }
+  for (const [lookup, domain] of Object.entries(BRAND_DOMAIN_BY_KEY)) {
+    if (key.includes(lookup)) return toLogoDevUrl(domain);
   }
   return null;
 }
@@ -113,41 +130,46 @@ export function BrandIcon({
   value,
   className,
   size = 14,
-  useBrandColor = true,
 }: {
   value?: string | null;
   className?: string;
   size?: number;
-  useBrandColor?: boolean;
 }) {
-  const icon = getBrandIconData(value);
-  if (!icon) {
-    const fallback = value?.trim().charAt(0).toUpperCase() || "?";
+  const imageUrl = getBrandImageUrl(value);
+  const [imgFailed, setImgFailed] = useState(false);
+
+  useEffect(() => {
+    setImgFailed(false);
+  }, [imageUrl]);
+
+  if (imageUrl && !imgFailed) {
     return (
       <span
-        className={`brand-icon brand-icon-fallback${className ? ` ${className}` : ""}`}
-        style={{ width: size, height: size, fontSize: Math.max(9, Math.floor(size * 0.62)) }}
+        className={`brand-icon${className ? ` ${className}` : ""}`}
+        style={{ width: size, height: size }}
         aria-hidden="true"
       >
-        {fallback}
+        <img
+          src={imageUrl}
+          alt=""
+          className="brand-icon-image"
+          loading="lazy"
+          decoding="async"
+          referrerPolicy="origin"
+          onError={() => setImgFailed(true)}
+        />
       </span>
     );
   }
 
+  const fallback = value?.trim().charAt(0).toUpperCase() || "?";
   return (
     <span
-      className={`brand-icon${className ? ` ${className}` : ""}`}
-      style={{
-        width: size,
-        height: size,
-        color: useBrandColor ? `#${icon.hex}` : undefined,
-      }}
-      title={icon.title}
+      className={`brand-icon brand-icon-fallback${className ? ` ${className}` : ""}`}
+      style={{ width: size, height: size, fontSize: Math.max(9, Math.floor(size * 0.62)) }}
       aria-hidden="true"
     >
-      <svg viewBox="0 0 24 24" fill="currentColor" role="img" aria-hidden="true">
-        <path d={icon.path} />
-      </svg>
+      {fallback}
     </span>
   );
 }

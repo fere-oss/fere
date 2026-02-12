@@ -116,9 +116,27 @@ function isReservedTestHost(host) {
   return false;
 }
 
+function isValidPublicHostname(host) {
+  const normalized = normalizeHost(host);
+  if (!normalized) return false;
+  if (normalized.includes('${') || normalized.includes('}')) return false;
+  if (!normalized.includes('.')) return false;
+
+  // Basic RFC-style hostname validation (ascii/punycode labels).
+  const labels = normalized.split('.');
+  if (labels.some(label => !label || label.length > 63)) return false;
+  if (labels.some(label => label.startsWith('-') || label.endsWith('-'))) return false;
+  if (labels.some(label => !/^[a-z0-9-]+$/i.test(label))) return false;
+
+  const tld = labels[labels.length - 1];
+  if (!/^[a-z]{2,63}$/i.test(tld) && !/^xn--[a-z0-9-]{2,59}$/i.test(tld)) return false;
+  return true;
+}
+
 function isIgnoredHost(host) {
   const normalized = normalizeHost(host);
   if (!normalized) return true;
+  if (!isValidPublicHostname(normalized)) return true;
   if (isLocalHost(normalized)) return true;
   if (isPrivateIp(normalized)) return true;
   if (isReservedTestHost(normalized)) return true;
