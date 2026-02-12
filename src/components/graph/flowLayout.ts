@@ -12,9 +12,13 @@ export const FLOW_LAYOUT = {
   GROUP_GAP: 32,
   LAYER_GAP: 140,
   STANDALONE_GROUP_GAP: 24,
-  STANDALONE_LABEL_OFFSET: 48,
+  STANDALONE_LABEL_OFFSET: 32,
+  CONTAINER_SECTION_OFFSET: 64,
+  CONTAINER_LABEL_OFFSET: 0,
+  CONTAINER_GROUP_GAP: 48,
+  CONTAINER_GROUP_ROW_GAP: 48,
   LAYER_LABEL_OFFSET: 52,
-  STANDALONE_SECTION_OFFSET: 112,
+  STANDALONE_SECTION_OFFSET: 72,
   GROUP_BOX_PADDING: 24,
   GROUP_LABEL_OFFSET: 28,
   LABEL_WIDTH: 240,
@@ -122,7 +126,7 @@ type BuildLayoutInput = {
   nodeHeights: Map<string, number>;
   onNodeClick: (node: GraphNode) => void;
   onNodeContextMenu: (event: ReactMouseEvent, node: GraphNode) => void;
-  animateNodes: boolean;
+  animateNodeIds: Set<string>;
   onMeasure: (id: string, height: number) => void;
   isContainerView: boolean;
 };
@@ -135,7 +139,7 @@ export function buildFlowLayout({
   nodeHeights,
   onNodeClick,
   onNodeContextMenu,
-  animateNodes,
+  animateNodeIds,
   onMeasure,
   isContainerView,
 }: BuildLayoutInput): FlowLayoutResult {
@@ -148,6 +152,10 @@ export function buildFlowLayout({
     LAYER_GAP,
     STANDALONE_GROUP_GAP,
     STANDALONE_LABEL_OFFSET,
+    CONTAINER_SECTION_OFFSET,
+    CONTAINER_LABEL_OFFSET,
+    CONTAINER_GROUP_GAP,
+    CONTAINER_GROUP_ROW_GAP,
     LAYER_LABEL_OFFSET,
     STANDALONE_SECTION_OFFSET,
     GROUP_BOX_PADDING,
@@ -339,7 +347,18 @@ export function buildFlowLayout({
   }
 
   if (standaloneGroups.length > 0) {
-    const baseY = currentY + STANDALONE_SECTION_OFFSET;
+    const rowLabelOffset = isContainerView
+      ? CONTAINER_LABEL_OFFSET
+      : STANDALONE_LABEL_OFFSET;
+    const groupGap = isContainerView
+      ? CONTAINER_GROUP_GAP
+      : STANDALONE_GROUP_GAP;
+    const rowGap = isContainerView
+      ? CONTAINER_GROUP_ROW_GAP
+      : STANDALONE_GROUP_GAP;
+    const baseY =
+      currentY +
+      (isContainerView ? CONTAINER_SECTION_OFFSET : STANDALONE_SECTION_OFFSET);
     const meta = standaloneGroups.map((group) => {
       const desiredColumns = Math.ceil(Math.sqrt(group.nodes.length));
       const maxColumns =
@@ -382,7 +401,7 @@ export function buildFlowLayout({
       const rowItems = meta.slice(startIndex, startIndex + maxGroupsPerRow);
       const rowWidth =
         rowItems.reduce((sum, item) => sum + item.occupiedWidth, 0) +
-        STANDALONE_GROUP_GAP * Math.max(0, rowItems.length - 1);
+        groupGap * Math.max(0, rowItems.length - 1);
       const rowOffset = rowWidth / 2;
       let cursorX = 0;
       const currentStartIndex = startIndex;
@@ -400,7 +419,12 @@ export function buildFlowLayout({
             type: "groupLabel",
             position: centeredLabelPosition(
               groupX + item.width / 2,
-              currentCursorY - STANDALONE_LABEL_OFFSET,
+              isContainerView
+                ? currentCursorY -
+                    GROUP_BOX_PADDING -
+                    LABEL_HEIGHT / 2 +
+                    rowLabelOffset
+                : currentCursorY - rowLabelOffset,
             ),
             data: {
               text: item.group.groupName || "Standalone",
@@ -451,7 +475,7 @@ export function buildFlowLayout({
           });
         });
 
-        cursorX += item.occupiedWidth + STANDALONE_GROUP_GAP;
+        cursorX += item.occupiedWidth + groupGap;
       });
 
       const shiftRow = (x: number) => x - rowOffset;
@@ -482,7 +506,7 @@ export function buildFlowLayout({
       });
 
       const rowHeight = Math.max(...rowItems.map((item) => item.height));
-      cursorY += rowHeight + STANDALONE_GROUP_GAP + STANDALONE_LABEL_OFFSET;
+      cursorY += rowHeight + rowGap + rowLabelOffset;
       startIndex += maxGroupsPerRow;
     }
 
@@ -509,7 +533,7 @@ export function buildFlowLayout({
           node,
           onNodeClick,
           onNodeContextMenu,
-          animate: animateNodes,
+          animate: animateNodeIds.has(node.id),
           animationIndex: Math.max(
             0,
             stableConnectedLayout.findIndex((ln) => ln.node.id === node.id),

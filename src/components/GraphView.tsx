@@ -5,7 +5,6 @@ import ReactFlow, {
   Controls,
   Position,
   type ReactFlowInstance,
-  type Viewport,
 } from "reactflow";
 import "reactflow/dist/style.css";
 import type { GraphEdge, GraphNode } from "../types/electron";
@@ -86,7 +85,10 @@ export function GraphView({
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
   const [reactFlowInstance, setReactFlowInstance] =
     useState<ReactFlowInstance | null>(null);
-  const [animateNodes, setAnimateNodes] = useState(true);
+  const animatedNodeIdsRef = useRef<Set<string>>(new Set());
+  const [animateNodeIds, setAnimateNodeIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [contextMenu, setContextMenu] = useState<{
     node: GraphNode;
     x: number;
@@ -97,19 +99,7 @@ export function GraphView({
   const orderCacheRef = useRef<Map<number, string[]>>(new Map());
   const groupOrderCacheRef = useRef<Map<number, string[]>>(new Map());
   const didFitViewRef = useRef(false);
-
-  // Viewport tracking for node culling (virtualization)
-  const viewportRef = useRef<Viewport>({ x: 0, y: 0, zoom: 0.6 });
-  const [viewportVersion, setViewportVersion] = useState(0);
-  const containerSizeRef = useRef({ width: 1200, height: 800 });
-  const didInitialAnimationRef = useRef(false);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
-  useEffect(() => {
-    if (didInitialAnimationRef.current) return;
-    didInitialAnimationRef.current = true;
-    const timer = setTimeout(() => setAnimateNodes(false), 1200);
-    return () => clearTimeout(timer);
-  }, []);
   const handleNodeClick = useCallback(
     (node: GraphNode) => {
       if (
@@ -164,10 +154,36 @@ export function GraphView({
         .join(","),
     [layoutNodes],
   );
+  const nodeIds = useMemo(() => layoutNodes.map((node) => node.id), [layoutNodes]);
   const bumpExternalApiVersion = useCallback(() => undefined, []);
   const externalApisLoaded = useExternalApis(projectPathsKey, bumpExternalApiVersion);
+  void externalApisLoaded;
   const { nodeHeightsRef, layoutVersion, handleNodeMeasure } =
-    useNodeMeasurements(nodesKey, layoutNodes.length, externalApisLoaded);
+    useNodeMeasurements(nodeIds);
+  useEffect(() => {
+    if (nodeIds.length === 0) {
+      setAnimateNodeIds(new Set());
+      return;
+    }
+
+    const known = animatedNodeIdsRef.current;
+    const fresh = nodeIds.filter((id) => !known.has(id));
+    if (fresh.length === 0) return;
+
+    const idsToAnimate = known.size === 0 ? nodeIds : fresh;
+    setAnimateNodeIds(new Set(idsToAnimate));
+
+    const timer = setTimeout(() => {
+      idsToAnimate.forEach((id) => known.add(id));
+      setAnimateNodeIds((current) => {
+        const next = new Set(current);
+        idsToAnimate.forEach((id) => next.delete(id));
+        return next;
+      });
+    }, 700);
+
+    return () => clearTimeout(timer);
+  }, [nodesKey, nodeIds]);
   const connectedNodeIds = useMemo(() => {
     if (!hoveredNodeId) return new Set<string>();
     const connected = new Set<string>();
@@ -191,7 +207,7 @@ export function GraphView({
         nodeHeights: nodeHeightsRef.current,
         onNodeClick: handleNodeClick,
         onNodeContextMenu: handleContextMenu,
-        animateNodes,
+        animateNodeIds,
         onMeasure: handleNodeMeasure,
         isContainerView,
       });
@@ -203,7 +219,7 @@ export function GraphView({
       standaloneGroups,
       handleNodeClick,
       handleContextMenu,
-      animateNodes,
+      animateNodeIds,
       handleNodeMeasure,
       isContainerView,
       layoutVersion,
@@ -215,35 +231,6 @@ export function GraphView({
     () => ({ hoveredNodeId, connectedNodeIds }),
     [hoveredNodeId, connectedNodeIds],
   );
-
-  // Node virtualization — hide nodes far outside the viewport.
-  // Uses a large world-space buffer (2000px) so nodes don't pop in during
-  // normal panning. Only culls truly distant nodes in large graphs.
-  const culledFlowNodes = useMemo(() => {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const _v = viewportVersion; // subscribe to debounced viewport changes
-    const { x: panX, y: panY, zoom: z } = viewportRef.current;
-    const { width: cw, height: ch } = containerSizeRef.current;
-    const buffer = 2000;
-    const worldXMin = -panX / z - buffer;
-    const worldYMin = -panY / z - buffer;
-    const worldXMax = (cw - panX) / z + buffer;
-    const worldYMax = (ch - panY) / z + buffer;
-
-    return flowLayout.nodes.map((node) => {
-      if (node.type !== "service") return node; // always show labels/boxes
-      const { x, y } = node.position;
-      const w = FLOW_LAYOUT.NODE_WIDTH;
-      const h =
-        nodeHeightsRef.current.get(node.id) ?? FLOW_LAYOUT.NODE_MIN_HEIGHT;
-      const visible =
-        x + w >= worldXMin &&
-        x <= worldXMax &&
-        y + h >= worldYMin &&
-        y <= worldYMax;
-      return visible ? node : { ...node, hidden: true };
-    });
-  }, [flowLayout.nodes, viewportVersion, nodeHeightsRef]);
 
   const flowEdges = useMemo(() => {
     if (!hoveredNodeId) return [];
@@ -432,31 +419,6 @@ export function GraphView({
     hoverTimer.current = setTimeout(() => setHoveredNodeId(null), 80);
   }, []);
 
-  // Update viewport ref continuously for accurate culling math.
-  const handleMove = useCallback((_event: unknown, vp: Viewport) => {
-    viewportRef.current = vp;
-  }, []);
-  // Recompute culling only after interaction ends to avoid zoom/pan stutter.
-  const handleMoveEnd = useCallback((_event: unknown, vp: Viewport) => {
-    viewportRef.current = vp;
-    setViewportVersion((v) => v + 1);
-  }, []);
-
-  // Measure container for viewport culling bounds
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver(([entry]) => {
-      containerSizeRef.current = {
-        width: entry.contentRect.width,
-        height: entry.contentRect.height,
-      };
-      setViewportVersion((v) => v + 1);
-    });
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-
   if (layoutNodes.length === 0) {
     const emptyTitle = isContainerView
       ? "No containers running"
@@ -485,13 +447,12 @@ export function GraphView({
       <div className="graph-flow">
         <HoverContext.Provider value={hoverState}>
           <ReactFlow
-            nodes={culledFlowNodes}
+            nodes={flowLayout.nodes}
             edges={flowEdges}
             nodeTypes={NODE_TYPES}
             edgeTypes={EDGE_TYPES}
             proOptions={{ hideAttribution: true }}
             defaultEdgeOptions={defaultEdgeOptions}
-            onlyRenderVisibleElements
             nodesDraggable={false}
             nodesConnectable={false}
             elementsSelectable={false}
@@ -503,8 +464,6 @@ export function GraphView({
             maxZoom={1.8}
             translateExtent={flowLayout.bounds}
             onInit={setReactFlowInstance}
-            onMove={handleMove}
-            onMoveEnd={handleMoveEnd}
             onNodeMouseEnter={handleNodeMouseEnter}
             onNodeMouseLeave={handleNodeMouseLeave}
             onPaneClick={() => {
