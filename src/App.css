@@ -6746,6 +6746,7 @@ body {
   display: flex;
   flex-direction: column;
   flex: 1;
+  min-height: 0;
   background: var(--bg-primary);
   overflow: hidden;
 }
@@ -6753,6 +6754,7 @@ body {
 .unified-logs-layout {
   display: flex;
   flex: 1;
+  min-height: 0;
   overflow: hidden;
   gap: 12px;
   padding: 12px 16px;
@@ -6761,6 +6763,7 @@ body {
 .unified-logs-panel {
   display: flex;
   flex-direction: column;
+  min-height: 0;
   overflow: hidden;
 }
 
@@ -6772,6 +6775,7 @@ body {
 .unified-logs-panel-output {
   flex: 1;
   min-width: 0;
+  min-height: 0;
 }
 
 /* Container Selection Bar */

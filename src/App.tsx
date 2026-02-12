@@ -539,7 +539,11 @@ function App() {
 
             <div
               className={`containers-overview ${containerSubTab === "overview" ? "containers-sub-view-active" : ""}`}
-              style={{ display: containerSubTab === "overview" ? "flex" : "none" }}
+              style={{
+                display: containerSubTab === "overview" ? "flex" : "none",
+                flex: 1,
+                minHeight: 0,
+              }}
             >
                 <div className="graph-container">
                   {loading ? (
@@ -582,7 +586,11 @@ function App() {
               </div>
             <div
               className={`containers-logs ${containerSubTab === "logs" ? "containers-sub-view-active" : ""}`}
-              style={{ display: containerSubTab === "logs" ? "block" : "none" }}
+              style={{
+                display: containerSubTab === "logs" ? "flex" : "none",
+                flex: 1,
+                minHeight: 0,
+              }}
             >
               <ContainerLogsTab
                 containers={dockerContainerData.nodes}
