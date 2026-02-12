@@ -14,7 +14,7 @@ import { NodeDetailPanel } from "./graph/NodeDetailPanel";
 import { flowNodeTypes, HoverContext } from "./graph/flowNodes";
 import { flowEdgeTypes, type ArrowEdgeData } from "./graph/ArrowEdge";
 import { FLOW_LAYOUT, buildFlowLayout } from "./graph/flowLayout";
-import type { GraphViewProps, NodePosition } from "./graph/types";
+import type { GraphViewProps } from "./graph/types";
 import { useExternalApis } from "./graph/useExternalApis";
 import { useGraphLayoutData } from "./graph/useGraphLayoutData";
 import { useNodeMeasurements } from "./graph/useNodeMeasurements";
@@ -83,14 +83,6 @@ export function GraphView({
   dataStatus,
 }: GraphViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const canvasRef = useRef<HTMLDivElement>(null);
-  const [displayNodes, setDisplayNodes] = useState<GraphNode[]>(nodes);
-  const [displayEdges, setDisplayEdges] = useState<GraphEdge[]>(edges);
-  const [nodePositions, setNodePositions] = useState<Map<string, NodePosition>>(new Map());
-  const [zoom, setZoom] = useState(0.6);
-  const [pan, setPan] = useState({ x: 0, y: 0 });
-  const [isDragging, setIsDragging] = useState(false);
-  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
   const [reactFlowInstance, setReactFlowInstance] =
     useState<ReactFlowInstance | null>(null);
@@ -112,7 +104,6 @@ export function GraphView({
   const containerSizeRef = useRef({ width: 1200, height: 800 });
   const didInitialAnimationRef = useRef(false);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
-  const [externalApiVersion, setExternalApiVersion] = useState(0);
   useEffect(() => {
     if (didInitialAnimationRef.current) return;
     didInitialAnimationRef.current = true;
@@ -173,9 +164,7 @@ export function GraphView({
         .join(","),
     [layoutNodes],
   );
-  const bumpExternalApiVersion = useCallback(() => {
-    setExternalApiVersion((version) => version + 1);
-  }, []);
+  const bumpExternalApiVersion = useCallback(() => undefined, []);
   const externalApisLoaded = useExternalApis(projectPathsKey, bumpExternalApiVersion);
   const { nodeHeightsRef, layoutVersion, handleNodeMeasure } =
     useNodeMeasurements(nodesKey, layoutNodes.length, externalApisLoaded);
@@ -189,14 +178,12 @@ export function GraphView({
     return connected;
   }, [hoveredNodeId, layoutEdges]);
 
-  const hoverValue = useMemo(
-    () => ({ hoveredNodeId, connectedNodeIds }),
-    [hoveredNodeId, connectedNodeIds],
-  );
-
   const flowLayout = useMemo(
-    () =>
-      buildFlowLayout({
+    () => {
+      // Keeps memo recalculation tied to measurement updates.
+      const measurementVersion = layoutVersion;
+      void measurementVersion;
+      return buildFlowLayout({
         layoutNodes,
         sortedLayers,
         stableConnectedLayout,
@@ -207,7 +194,8 @@ export function GraphView({
         animateNodes,
         onMeasure: handleNodeMeasure,
         isContainerView,
-      }),
+      });
+    },
     [
       layoutNodes,
       sortedLayers,
@@ -219,7 +207,7 @@ export function GraphView({
       handleNodeMeasure,
       isContainerView,
       layoutVersion,
-      externalApiVersion,
+      nodeHeightsRef,
     ],
   );
 
