@@ -43,11 +43,9 @@ export function useNodeMeasurements(nodesKey: string, nodeCount: number, allowLo
         Math.max(rounded, FLOW_LAYOUT.NODE_MIN_HEIGHT),
       );
       measuredIdsRef.current.add(id);
-      if (measuredIdsRef.current.size >= nodeCount) {
-        setLayoutVersion((version) => version + 1);
-        if (allowLock) {
-          layoutLockedRef.current = true;
-        }
+      setLayoutVersion((version) => version + 1);
+      if (measuredIdsRef.current.size >= nodeCount && allowLock) {
+        layoutLockedRef.current = true;
       }
     },
     [nodeCount, allowLock],

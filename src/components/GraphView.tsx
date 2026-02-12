@@ -8,7 +8,6 @@ import ReactFlow, {
 } from "reactflow";
 import "reactflow/dist/style.css";
 import type { GraphEdge, GraphNode } from "../types/electron";
-import { SERVICE_COLORS } from "./graph/constants";
 import { ContextMenu } from "./graph/ContextMenu";
 import { NodeDetailPanel } from "./graph/NodeDetailPanel";
 import { flowNodeTypes, HoverContext } from "./graph/flowNodes";
@@ -18,6 +17,9 @@ import type { GraphViewProps, NodePosition } from "./graph/types";
 import { useExternalApis } from "./graph/useExternalApis";
 import { useGraphLayoutData } from "./graph/useGraphLayoutData";
 import { useNodeMeasurements } from "./graph/useNodeMeasurements";
+
+const NODE_TYPES = flowNodeTypes;
+const EDGE_TYPES = flowEdgeTypes;
 
 export function GraphView({
   nodes,
@@ -358,21 +360,6 @@ export function GraphView({
 
   return (
     <div className="graph-view" ref={containerRef}>
-      <div className="graph-legend">
-        <div className="graph-legend-title">Service Types</div>
-        {Array.from(new Set(layoutNodes.map((n) => n.type)))
-          .filter((type) => SERVICE_COLORS[type])
-          .map((type) => (
-            <div key={type} className="graph-legend-item">
-              <div
-                className="graph-legend-dot"
-                style={{ backgroundColor: SERVICE_COLORS[type].color }}
-              />
-              <span>{SERVICE_COLORS[type].label}</span>
-            </div>
-          ))}
-      </div>
-
       {/* Data Freshness */}
       {dataStatus && (
         <div
@@ -406,8 +393,9 @@ export function GraphView({
           <ReactFlow
             nodes={flowLayout.nodes}
             edges={flowEdges}
-            nodeTypes={flowNodeTypes}
-            edgeTypes={flowEdgeTypes}
+            nodeTypes={NODE_TYPES}
+            edgeTypes={EDGE_TYPES}
+            proOptions={{ hideAttribution: true }}
             defaultEdgeOptions={defaultEdgeOptions}
             nodesDraggable={false}
             nodesConnectable={false}
@@ -432,7 +420,7 @@ export function GraphView({
             }}
           >
             <Background color="rgba(0,0,0,0.04)" gap={24} />
-            <Controls position="top-right" />
+            <Controls position="top-right" showInteractive={false} />
           </ReactFlow>
         </HoverContext.Provider>
       </div>

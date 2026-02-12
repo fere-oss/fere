@@ -13,10 +13,15 @@ export function ContextMenu({ node, x, y, width, height, onClose }: ContextMenuP
   const hasPort = node.ports.length > 0;
   const hasProjectPath = !!node.projectPath;
   const isExternal = node.type === 'external';
+  const isDockerContainerNode = Boolean(node.isDockerContainer && node.containerId);
   const mainPort = node.ports[0]?.port;
 
   const menuWidth = 200;
-  const menuHeight = 250;
+  let menuItems = 1; // copy pid
+  if (hasPort) menuItems += 2; // open browser + copy port
+  if (hasProjectPath) menuItems += 1; // open terminal
+  if (!isExternal) menuItems += 1; // kill
+  const menuHeight = 32 + menuItems * 34;
   const menuStyle: React.CSSProperties = {
     position: 'absolute',
     left: Math.min(x, width - menuWidth),
@@ -29,6 +34,12 @@ export function ContextMenu({ node, x, y, width, height, onClose }: ContextMenuP
     e.stopPropagation();
     console.log('Context menu action clicked:', action, { hasPort, mainPort, hasProjectPath, projectPath: node.projectPath, pid: node.pid });
 
+    const ensureSuccess = (result: { success?: boolean; error?: string } | undefined, label: string) => {
+      if (!result || result.success !== false) return;
+      console.error(`${label} failed:`, result.error);
+      window.alert(result.error || `${label} failed`);
+    };
+
     const performAction = async () => {
       try {
         switch (action) {
@@ -37,6 +48,7 @@ export function ContextMenu({ node, x, y, width, height, onClose }: ContextMenuP
               console.log('Opening browser:', `http://localhost:${mainPort}`);
               const result = await window.electronAPI.openUrl(`http://localhost:${mainPort}`);
               console.log('Open browser result:', result);
+              ensureSuccess(result, 'Open in Browser');
             }
             break;
           case 'open-terminal':
@@ -44,13 +56,20 @@ export function ContextMenu({ node, x, y, width, height, onClose }: ContextMenuP
               console.log('Opening terminal:', node.projectPath);
               const result = await window.electronAPI.openTerminal(node.projectPath!);
               console.log('Open terminal result:', result);
+              ensureSuccess(result, 'Open in Terminal');
             }
             break;
-          case 'restart':
-            if (!isExternal) {
+          case 'kill-process':
+            if (isDockerContainerNode && node.containerId) {
+              console.log('Stopping container (Kill Process action):', node.containerId);
+              const result = await window.electronAPI.stopContainer(node.containerId);
+              console.log('Kill process (stop container) result:', result);
+              ensureSuccess(result, 'Kill Process');
+            } else if (!isExternal) {
               console.log('Killing process:', node.pid);
               const result = await window.electronAPI.killProcess(node.pid);
               console.log('Kill process result:', result);
+              ensureSuccess(result, 'Kill Process');
             }
             break;
           case 'copy-port':
@@ -116,7 +135,7 @@ export function ContextMenu({ node, x, y, width, height, onClose }: ContextMenuP
         {!isExternal && (
           <div
             className="context-menu-item context-menu-item-danger"
-            onClick={handleAction('restart')}
+            onClick={handleAction('kill-process')}
           >
             <span className="context-menu-icon" aria-hidden="true">
               <svg viewBox="0 0 20 20" width="14" height="14">

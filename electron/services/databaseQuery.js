@@ -1,7 +1,191 @@
-const { exec } = require('child_process');
+const { exec, spawn } = require('child_process');
 const util = require('util');
+let PgClient = null;
+try {
+  ({ Client: PgClient } = require('pg'));
+} catch {
+  PgClient = null;
+}
 
 const execAsync = util.promisify(exec);
+
+async function execDockerWithInput(containerId, commandArgs, input, timeout = 30000) {
+  return new Promise((resolve, reject) => {
+    const child = spawn('docker', ['exec', '-i', containerId, ...commandArgs], {
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+
+    let stdout = '';
+    let stderr = '';
+    let timedOut = false;
+
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill('SIGTERM');
+    }, timeout);
+
+    child.stdout.on('data', (chunk) => {
+      stdout += chunk.toString();
+    });
+
+    child.stderr.on('data', (chunk) => {
+      stderr += chunk.toString();
+    });
+
+    child.on('error', (error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
+
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      if (timedOut) {
+        reject(new Error('Database command timed out'));
+        return;
+      }
+      if (code !== 0) {
+        const err = new Error(stderr || stdout || `Command exited with code ${code}`);
+        err.stdout = stdout;
+        err.stderr = stderr;
+        reject(err);
+        return;
+      }
+      resolve({ stdout, stderr });
+    });
+
+    child.stdin.write(input || '');
+    child.stdin.end();
+  });
+}
+
+async function execMongoUriEval(uri, command, timeout = 30000) {
+  return new Promise((resolve, reject) => {
+    const child = spawn('docker', ['run', '--rm', 'mongo:7', 'mongosh', uri, '--quiet', '--eval', command], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+
+    let stdout = '';
+    let stderr = '';
+    let timedOut = false;
+
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill('SIGTERM');
+    }, timeout);
+
+    child.stdout.on('data', (chunk) => {
+      stdout += chunk.toString();
+    });
+
+    child.stderr.on('data', (chunk) => {
+      stderr += chunk.toString();
+    });
+
+    child.on('error', (error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
+
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      if (timedOut) {
+        reject(new Error('Remote MongoDB command timed out'));
+        return;
+      }
+      if (code !== 0) {
+        reject(new Error(stderr || stdout || `Command exited with code ${code}`));
+        return;
+      }
+      resolve({ stdout, stderr });
+    });
+
+  });
+}
+
+function extractJsonCandidate(output, fallback = '[]') {
+  const lines = String(output || '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  // Prefer full JSON lines and ignore shell banners/noise.
+  for (let i = lines.length - 1; i >= 0; i -= 1) {
+    const line = lines[i];
+    if ((line.startsWith('[') && line.endsWith(']')) || (line.startsWith('{') && line.endsWith('}'))) {
+      return line;
+    }
+  }
+
+  return fallback;
+}
+
+function parseMongoCollectionLines(stdout) {
+  return String(stdout || '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => {
+      if (!line) return false;
+      const lower = line.toLowerCase();
+      if (lower.startsWith('atlas ')) return false;
+      if (lower.startsWith('connecting')) return false;
+      if (lower.startsWith('using mongodb')) return false;
+      if (lower.startsWith('for mongosh info')) return false;
+      if (line.startsWith('Current Mongosh Log ID')) return false;
+      if (line.startsWith('To help improve')) return false;
+      return true;
+    });
+}
+
+function extractMongoDbNameFromUri(uri) {
+  try {
+    const parsed = new URL(uri);
+    const dbPath = (parsed.pathname || '/').replace(/^\//, '').trim();
+    return dbPath || null;
+  } catch {
+    const match = String(uri || '').match(/mongodb(?:\+srv)?:\/\/[^/]+\/([^?]+)/i);
+    return match?.[1]?.trim() || null;
+  }
+}
+
+function detectMongoShellError(output) {
+  const text = String(output || '').toLowerCase();
+  if (text.includes('authentication failed')) return 'MongoDB authentication failed';
+  if (text.includes('not authorized')) return 'MongoDB user is not authorized for this database';
+  if (text.includes('mongoservererror')) return 'MongoDB server returned an error';
+  if (text.includes('bad auth')) return 'MongoDB authentication failed';
+  return null;
+}
+
+function isPostgresUri(uri) {
+  const value = String(uri || '').trim().toLowerCase();
+  return value.startsWith('postgresql://') || value.startsWith('postgres://');
+}
+
+function sanitizePostgresIdentifier(name) {
+  const value = String(name || '').trim();
+  if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(value)) {
+    throw new Error(`Invalid PostgreSQL identifier: ${name}`);
+  }
+  return value;
+}
+
+async function withPostgresUriClient(uri, callback) {
+  if (!PgClient) {
+    throw new Error('PostgreSQL driver is not installed');
+  }
+  const client = new PgClient({
+    connectionString: uri,
+    statement_timeout: 30000,
+    query_timeout: 30000,
+    ssl: { rejectUnauthorized: false },
+  });
+  await client.connect();
+  try {
+    return await callback(client);
+  } finally {
+    await client.end();
+  }
+}
 
 /**
  * Detect database type from container image name
@@ -187,23 +371,39 @@ async function getMySQLTableData(containerId, tableName, limit) {
 
 // MongoDB functions
 async function getMongoCollections(containerId) {
-  // Try mongosh first (newer), then mongo (older)
+  // Try mongosh first (newer), then mongo (older).
+  // Return empty collections on success instead of treating it as a connection error.
   const commands = [
-    `docker exec ${containerId} mongosh --quiet --eval "db.getCollectionNames().forEach(function(c) { print(c) })" 2>/dev/null`,
-    `docker exec ${containerId} mongo --quiet --eval "db.getCollectionNames().forEach(function(c) { print(c) })" 2>/dev/null`
+    `docker exec ${containerId} mongosh --quiet --eval "print(JSON.stringify(db.getCollectionNames()))" 2>/dev/null`,
+    `docker exec ${containerId} mongo --quiet --eval "print(JSON.stringify(db.getCollectionNames()))" 2>/dev/null`
   ];
 
   for (const cmd of commands) {
     try {
       const { stdout } = await execAsync(cmd, { timeout: 10000 });
-      const collections = stdout
+      const output = stdout.trim();
+
+      // Preferred path: JSON array output from shell command
+      if (output.startsWith('[') && output.endsWith(']')) {
+        try {
+          const parsed = JSON.parse(output);
+          if (Array.isArray(parsed)) {
+            const collections = parsed
+              .map(name => String(name).trim())
+              .filter(name => name.length > 0);
+            return { tables: collections, dbType: 'mongodb' };
+          }
+        } catch {
+          // Fall through to legacy line parsing
+        }
+      }
+
+      // Backward-compatible parsing for shells that don't return clean JSON
+      const collections = output
         .split('\n')
         .map(line => line.trim())
         .filter(line => line.length > 0 && !line.startsWith('Connecting'));
-
-      if (collections.length > 0) {
-        return { tables: collections, dbType: 'mongodb' };
-      }
+      return { tables: collections, dbType: 'mongodb' };
     } catch {
       continue;
     }
@@ -284,9 +484,7 @@ async function executeQuery(containerId, containerImage, query) {
 
 async function executePostgresQuery(containerId, query) {
   try {
-    // Use stdin instead of -c to avoid shell escaping issues
-    const cmd = `echo ${JSON.stringify(query)} | docker exec -i ${containerId} psql -U postgres 2>&1`;
-    const { stdout, stderr } = await execAsync(cmd, { timeout: 30000, shell: '/bin/bash' });
+    const { stdout, stderr } = await execDockerWithInput(containerId, ['psql', '-U', 'postgres'], query, 30000);
     const output = stdout || stderr;
 
     // Check if there's an error in the output
@@ -297,9 +495,8 @@ async function executePostgresQuery(containerId, query) {
     // Check if it's a SELECT query - try to parse as JSON
     if (query.trim().toLowerCase().startsWith('select')) {
       const jsonQuery = `SELECT json_agg(t) FROM (${query}) t;`;
-      const jsonCmd = `echo ${JSON.stringify(jsonQuery)} | docker exec -i ${containerId} psql -U postgres -t 2>&1`;
       try {
-        const { stdout: jsonOut } = await execAsync(jsonCmd, { timeout: 30000, shell: '/bin/bash' });
+        const { stdout: jsonOut } = await execDockerWithInput(containerId, ['psql', '-U', 'postgres', '-t'], jsonQuery, 30000);
         const trimmed = jsonOut.trim();
         if (trimmed && trimmed !== 'null' && !trimmed.toLowerCase().includes('error:')) {
           const rows = JSON.parse(trimmed);
@@ -322,9 +519,7 @@ async function executePostgresQuery(containerId, query) {
 
 async function executeMySQLQuery(containerId, query) {
   try {
-    // Use stdin instead of -e to avoid shell escaping issues
-    const cmd = `echo ${JSON.stringify(query)} | docker exec -i ${containerId} mysql -u root --batch 2>&1`;
-    const { stdout, stderr } = await execAsync(cmd, { timeout: 30000, shell: '/bin/bash' });
+    const { stdout, stderr } = await execDockerWithInput(containerId, ['mysql', '-u', 'root', '--batch'], query, 30000);
     const output = stdout || stderr;
 
     // Check if there's an error in the output
@@ -356,15 +551,14 @@ async function executeMySQLQuery(containerId, query) {
 }
 
 async function executeMongoCommand(containerId, command) {
-  // Try mongosh first, then mongo
-  const shellCommands = [
-    `echo ${JSON.stringify(command)} | docker exec -i ${containerId} mongosh --quiet 2>&1`,
-    `echo ${JSON.stringify(command)} | docker exec -i ${containerId} mongo --quiet 2>&1`
+  const commandVariants = [
+    ['mongosh', '--quiet'],
+    ['mongo', '--quiet'],
   ];
 
-  for (const cmd of shellCommands) {
+  for (const variant of commandVariants) {
     try {
-      const { stdout, stderr } = await execAsync(cmd, { timeout: 30000, shell: '/bin/bash' });
+      const { stdout, stderr } = await execDockerWithInput(containerId, variant, command, 30000);
       const output = (stdout || stderr).trim();
 
       // Check for errors
@@ -389,6 +583,235 @@ async function executeMongoCommand(containerId, command) {
   }
 
   throw new Error('Could not execute MongoDB command');
+}
+
+function normalizeMongoRows(rows) {
+  return rows.map(row => {
+    const clean = {};
+    for (const [key, value] of Object.entries(row)) {
+      if (value && typeof value === 'object' && value.$oid) {
+        clean[key] = value.$oid;
+      } else if (value && typeof value === 'object' && value.$date) {
+        clean[key] = new Date(value.$date).toISOString();
+      } else {
+        clean[key] = value;
+      }
+    }
+    return clean;
+  });
+}
+
+async function connectMongoUri(uri) {
+  if (!uri || typeof uri !== 'string') {
+    return { error: 'MongoDB URI is required', tables: [], dbType: 'mongodb' };
+  }
+
+  try {
+    const dbFromUri = extractMongoDbNameFromUri(uri.trim());
+    const cmd = `
+(() => {
+  const preferredDb = ${JSON.stringify(dbFromUri || '')};
+  if (preferredDb) {
+    try {
+      const preferred = db.getMongo().getDB(preferredDb).getCollectionNames();
+      print(JSON.stringify(preferred.map((c) => preferredDb + '.' + c)));
+      return;
+    } catch (_) {
+      // Continue to broader discovery
+    }
+  }
+  try {
+    const systemDbs = new Set(['admin', 'local', 'config']);
+    const dbNames = db.getMongo().getDBNames().filter((name) => !systemDbs.has(name));
+    const qualified = [];
+    dbNames.forEach((dbName) => {
+      const cols = db.getMongo().getDB(dbName).getCollectionNames();
+      cols.forEach((col) => qualified.push(dbName + '.' + col));
+    });
+    if (qualified.length > 0) {
+      print(JSON.stringify(qualified));
+      return;
+    }
+  } catch (_) {
+    // Fall back to current DB only
+  }
+  print(JSON.stringify(db.getCollectionNames()));
+})();
+`;
+    const { stdout, stderr } = await execMongoUriEval(uri.trim(), cmd, 30000);
+    const shellOutput = `${stdout || ''}\n${stderr || ''}`.trim();
+    const shellError = detectMongoShellError(shellOutput);
+    if (shellError) {
+      return { error: shellError, tables: [], dbType: 'mongodb' };
+    }
+    let collections = [];
+
+    try {
+      const jsonPayload = extractJsonCandidate(stdout, '[]');
+      const parsed = JSON.parse(jsonPayload);
+      if (Array.isArray(parsed)) {
+        collections = parsed
+          .map((name) => String(name).trim())
+          .filter(Boolean);
+      }
+    } catch {
+      collections = parseMongoCollectionLines(stdout);
+    }
+
+    return { tables: collections, dbType: 'mongodb' };
+  } catch (error) {
+    return { error: error.message || 'Could not connect to MongoDB URI', tables: [], dbType: 'mongodb' };
+  }
+}
+
+async function getMongoUriCollectionData(uri, collectionName, limit = 100) {
+  if (!uri || !collectionName) {
+    return { error: 'MongoDB URI and collection are required', columns: [], rows: [], dbType: 'mongodb' };
+  }
+
+  const safeLimit = Number.isFinite(limit) ? Math.max(1, Math.min(1000, Number(limit))) : 100;
+  let dbName = '';
+  let bareCollectionName = collectionName;
+  const dotIndex = collectionName.indexOf('.');
+  if (dotIndex > 0) {
+    dbName = collectionName.slice(0, dotIndex);
+    bareCollectionName = collectionName.slice(dotIndex + 1);
+  }
+
+  const safeDbName = dbName.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+  const safeCollectionName = bareCollectionName.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+  const cmd = dbName
+    ? `print(JSON.stringify(db.getMongo().getDB("${safeDbName}").getCollection("${safeCollectionName}").find().limit(${safeLimit}).toArray()))`
+    : `print(JSON.stringify(db.getCollection("${safeCollectionName}").find().limit(${safeLimit}).toArray()))`;
+
+  try {
+    const { stdout } = await execMongoUriEval(uri.trim(), cmd, 30000);
+    const jsonPayload = extractJsonCandidate(stdout, '[]');
+    const rows = JSON.parse(jsonPayload);
+    const cleanRows = Array.isArray(rows) ? normalizeMongoRows(rows) : [];
+    const columnSet = new Set();
+    cleanRows.slice(0, 20).forEach((row) => {
+      Object.keys(row || {}).forEach((key) => columnSet.add(key));
+    });
+    const columns = Array.from(columnSet);
+    return { columns, rows: cleanRows, dbType: 'mongodb', tableName: collectionName };
+  } catch (error) {
+    return { error: error.message || 'Could not query MongoDB URI collection', columns: [], rows: [], dbType: 'mongodb' };
+  }
+}
+
+async function executeMongoUriQuery(uri, command) {
+  if (!uri || !command || !command.trim()) {
+    return { error: 'MongoDB URI and command are required', dbType: 'mongodb' };
+  }
+
+  try {
+    const { stdout, stderr } = await execMongoUriEval(uri.trim(), command, 30000);
+    const output = (stdout || stderr).trim();
+
+    try {
+      const parsed = JSON.parse(output);
+      if (Array.isArray(parsed)) {
+        const cleanRows = normalizeMongoRows(parsed);
+        const columns = cleanRows.length > 0 ? Object.keys(cleanRows[0]) : [];
+        return { columns, rows: cleanRows, rowCount: cleanRows.length, dbType: 'mongodb' };
+      }
+      return { output: JSON.stringify(parsed, null, 2), dbType: 'mongodb' };
+    } catch {
+      return { output, dbType: 'mongodb' };
+    }
+  } catch (error) {
+    return { error: error.message || 'Failed to execute MongoDB URI query', dbType: 'mongodb' };
+  }
+}
+
+async function connectPostgresUri(uri) {
+  if (!uri || typeof uri !== 'string') {
+    return { error: 'PostgreSQL URI is required', tables: [], dbType: 'postgresql' };
+  }
+
+  if (!isPostgresUri(uri)) {
+    return { error: 'Invalid PostgreSQL URI', tables: [], dbType: 'postgresql' };
+  }
+
+  try {
+    const tables = await withPostgresUriClient(uri.trim(), async (client) => {
+      const result = await client.query(
+        `SELECT table_name
+         FROM information_schema.tables
+         WHERE table_schema = 'public'
+           AND table_type = 'BASE TABLE'
+         ORDER BY table_name`
+      );
+      return result.rows.map((row) => String(row.table_name).trim()).filter(Boolean);
+    });
+
+    return { tables, dbType: 'postgresql' };
+  } catch (error) {
+    return { error: error.message || 'Could not connect to PostgreSQL URI', tables: [], dbType: 'postgresql' };
+  }
+}
+
+async function getPostgresUriTableData(uri, tableName, limit = 100) {
+  if (!uri || !tableName) {
+    return { error: 'PostgreSQL URI and table name are required', columns: [], rows: [], dbType: 'postgresql' };
+  }
+
+  const safeLimit = Number.isFinite(limit) ? Math.max(1, Math.min(1000, Number(limit))) : 100;
+
+  try {
+    const safeTableName = sanitizePostgresIdentifier(tableName);
+    const result = await withPostgresUriClient(uri.trim(), async (client) => {
+      const columnsResult = await client.query(
+        `SELECT column_name
+         FROM information_schema.columns
+         WHERE table_schema = 'public'
+           AND table_name = $1
+         ORDER BY ordinal_position`,
+        [safeTableName]
+      );
+      const dataResult = await client.query(`SELECT * FROM "${safeTableName}" LIMIT ${safeLimit}`);
+      return {
+        columns: columnsResult.rows.map((row) => row.column_name),
+        rows: dataResult.rows || [],
+      };
+    });
+
+    return { ...result, tableName: safeTableName, dbType: 'postgresql' };
+  } catch (error) {
+    return { error: error.message || 'Could not query PostgreSQL URI table', columns: [], rows: [], dbType: 'postgresql' };
+  }
+}
+
+async function executePostgresUriQuery(uri, query) {
+  if (!uri || !query || !query.trim()) {
+    return { error: 'PostgreSQL URI and query are required', dbType: 'postgresql' };
+  }
+
+  try {
+    const trimmed = query.trim();
+    const result = await withPostgresUriClient(uri.trim(), async (client) => client.query(trimmed));
+
+    if (Array.isArray(result.rows) && result.rows.length > 0) {
+      const columns = Object.keys(result.rows[0]);
+      return {
+        columns,
+        rows: result.rows,
+        rowCount: result.rowCount ?? result.rows.length,
+        dbType: 'postgresql',
+      };
+    }
+
+    return {
+      output: typeof result.rowCount === 'number' ? `${result.command || 'QUERY'} ${result.rowCount}` : (result.command || 'Query executed'),
+      rowCount: result.rowCount ?? 0,
+      columns: [],
+      rows: [],
+      dbType: 'postgresql',
+    };
+  } catch (error) {
+    return { error: error.message || 'Failed to execute PostgreSQL URI query', dbType: 'postgresql' };
+  }
 }
 
 /**
@@ -536,4 +959,10 @@ module.exports = {
   getTableData,
   executeQuery,
   createTable,
+  connectMongoUri,
+  getMongoUriCollectionData,
+  executeMongoUriQuery,
+  connectPostgresUri,
+  getPostgresUriTableData,
+  executePostgresUriQuery,
 };

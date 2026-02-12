@@ -1,7 +1,8 @@
-const { exec } = require('child_process');
+const { exec, execFile } = require('child_process');
 const { promisify } = require('util');
 
 const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 const CACHE_TTL_MS = 2000; // 2 second cache for Docker data (Docker commands are slower)
 const containersCache = { timestamp: 0, data: [], promise: null };
@@ -521,11 +522,49 @@ function clearDockerCache() {
   networksCache.promise = null;
 }
 
+function sanitizeContainerId(containerId) {
+  return typeof containerId === 'string' && /^[a-zA-Z0-9_.-]+$/.test(containerId);
+}
+
+function shellEscape(value) {
+  return `'${String(value).replace(/'/g, `'\\''`)}'`;
+}
+
+async function runDocker(args) {
+  const normalizedArgs = Array.isArray(args) ? args : [];
+  try {
+    const result = await execFileAsync('docker', normalizedArgs, {
+      maxBuffer: 1024 * 1024,
+    });
+    return result.stdout || '';
+  } catch (error) {
+    // Fallback to shell invocation because PATH differs for some Electron launch modes.
+    const command = `docker ${normalizedArgs.map(shellEscape).join(' ')} 2>/dev/null`;
+    const { stdout } = await execAsync(command, { maxBuffer: 1024 * 1024 });
+    return stdout || '';
+  }
+}
+
+async function stopContainer(containerId, timeoutSeconds = 5) {
+  if (!sanitizeContainerId(containerId)) {
+    return { success: false, error: 'Invalid container ID' };
+  }
+
+  try {
+    await runDocker(['stop', '-t', String(timeoutSeconds), containerId]);
+    clearDockerCache();
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
 module.exports = {
   isDockerAvailable,
   getDockerContainers,
   getDockerNetworks,
   getDockerSnapshot,
+  stopContainer,
   buildContainerConnections,
   containerHealthToGraphHealth,
   clearDockerCache,

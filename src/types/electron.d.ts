@@ -327,6 +327,8 @@ export interface EnvironmentSummary {
 export interface KillResult {
   success: boolean;
   error?: string;
+  pid?: number;
+  command?: string;
 }
 
 // HTTP Request options for API testing
@@ -442,9 +444,16 @@ export interface ElectronAPI {
   getTableData: (containerId: string, containerImage: string, tableName: string, limit?: number) => Promise<TableDataResult>;
   executeDatabaseQuery: (containerId: string, containerImage: string, query: string) => Promise<QueryResult>;
   createDatabaseTable: (containerId: string, containerImage: string, tableName: string, columns: ColumnDefinition[]) => Promise<CreateTableResult>;
+  connectMongoUri: (uri: string) => Promise<DatabaseTablesResult>;
+  getMongoUriCollectionData: (uri: string, collectionName: string, limit?: number) => Promise<TableDataResult>;
+  executeMongoUriQuery: (uri: string, command: string) => Promise<QueryResult>;
+  connectPostgresUri: (uri: string) => Promise<DatabaseTablesResult>;
+  getPostgresUriTableData: (uri: string, tableName: string, limit?: number) => Promise<TableDataResult>;
+  executePostgresUriQuery: (uri: string, query: string) => Promise<QueryResult>;
 
   // Process control
   killProcess: (pid: number) => Promise<KillResult>;
+  stopContainer: (containerId: string) => Promise<KillResult>;
 
   // Quick actions
   openUrl: (url: string) => Promise<{ success: boolean; error?: string }>;

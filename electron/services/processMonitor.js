@@ -137,6 +137,12 @@ function getProcessCacheInfo() {
   };
 }
 
+function clearProcessCache() {
+  processCache.timestamp = 0;
+  processCache.data = [];
+  processCache.promise = null;
+}
+
 /**
  * Get only dev-related processes
  */
@@ -207,5 +213,6 @@ module.exports = {
   filterDevProcesses,
   isDevProcess,
   getProcessCacheInfo,
+  clearProcessCache,
   getProcessPids,
 };

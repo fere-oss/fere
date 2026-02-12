@@ -18,10 +18,12 @@ const {
   getAllProcesses,
   getProcessByPid,
   killProcess,
+  clearProcessCache,
 } = require("./services/processMonitor");
 const {
   getListeningPorts,
   getEstablishedConnections,
+  clearPortCache,
 } = require("./services/portMonitor");
 const {
   buildConnectionGraph,
@@ -40,12 +42,19 @@ const {
   getTableData,
   executeQuery,
   createTable,
+  connectMongoUri,
+  getMongoUriCollectionData,
+  executeMongoUriQuery,
+  connectPostgresUri,
+  getPostgresUriTableData,
+  executePostgresUriQuery,
 } = require("./services/databaseQuery");
 const {
   isDockerAvailable,
   getDockerContainers,
   getDockerNetworks,
   getDockerSnapshot,
+  stopContainer,
 } = require("./services/dockerMonitor");
 const {
   startLogStream,
@@ -308,9 +317,39 @@ ipcMain.handle("kill-process", async (event, pid) => {
 
     // Allow killing any process shown in the graph (they all have listening ports)
     // The graph only shows dev-related processes and processes with network activity
-    return await killProcess(pid);
+    const result = await killProcess(pid);
+    if (result.success) {
+      // Force next snapshot to bypass stale 5s caches.
+      clearProcessCache();
+      clearPortCache();
+      if (snapshotScheduler) {
+        // Trigger immediate reconciliation so UI reflects kill quickly.
+        setImmediate(() => snapshotScheduler.reconcile());
+      }
+    }
+    return result;
   } catch (error) {
     console.error("Error killing process:", error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle("stop-container", async (event, containerId) => {
+  try {
+    if (!containerId || typeof containerId !== "string") {
+      return { success: false, error: "Invalid container ID" };
+    }
+    const result = await stopContainer(containerId);
+    if (result.success) {
+      clearProcessCache();
+      clearPortCache();
+      if (snapshotScheduler) {
+        setImmediate(() => snapshotScheduler.reconcile());
+      }
+    }
+    return result;
+  } catch (error) {
+    console.error("Error stopping container:", error);
     return { success: false, error: error.message };
   }
 });
@@ -618,6 +657,66 @@ ipcMain.handle("create-database-table", async (_, containerId, containerImage, t
   } catch (error) {
     console.error("Error creating database table:", error);
     return { error: error.message, success: false };
+  }
+});
+
+// Connect directly to remote MongoDB via URI
+ipcMain.handle("connect-mongo-uri", async (_, uri) => {
+  try {
+    return await connectMongoUri(uri);
+  } catch (error) {
+    console.error("Error connecting Mongo URI:", error);
+    return { error: error.message, tables: [], dbType: "mongodb" };
+  }
+});
+
+// Get collection data from remote MongoDB URI
+ipcMain.handle("get-mongo-uri-collection-data", async (_, uri, collectionName, limit) => {
+  try {
+    return await getMongoUriCollectionData(uri, collectionName, limit || 100);
+  } catch (error) {
+    console.error("Error loading Mongo URI collection data:", error);
+    return { error: error.message, columns: [], rows: [], dbType: "mongodb" };
+  }
+});
+
+// Execute Mongo command against remote URI
+ipcMain.handle("execute-mongo-uri-query", async (_, uri, command) => {
+  try {
+    return await executeMongoUriQuery(uri, command);
+  } catch (error) {
+    console.error("Error executing Mongo URI query:", error);
+    return { error: error.message, dbType: "mongodb" };
+  }
+});
+
+// Connect directly to remote PostgreSQL via URI
+ipcMain.handle("connect-postgres-uri", async (_, uri) => {
+  try {
+    return await connectPostgresUri(uri);
+  } catch (error) {
+    console.error("Error connecting PostgreSQL URI:", error);
+    return { error: error.message, tables: [], dbType: "postgresql" };
+  }
+});
+
+// Get table data from remote PostgreSQL URI
+ipcMain.handle("get-postgres-uri-table-data", async (_, uri, tableName, limit) => {
+  try {
+    return await getPostgresUriTableData(uri, tableName, limit || 100);
+  } catch (error) {
+    console.error("Error loading PostgreSQL URI table data:", error);
+    return { error: error.message, columns: [], rows: [], dbType: "postgresql" };
+  }
+});
+
+// Execute PostgreSQL query against remote URI
+ipcMain.handle("execute-postgres-uri-query", async (_, uri, query) => {
+  try {
+    return await executePostgresUriQuery(uri, query);
+  } catch (error) {
+    console.error("Error executing PostgreSQL URI query:", error);
+    return { error: error.message, dbType: "postgresql" };
   }
 });
 

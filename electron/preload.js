@@ -25,9 +25,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getTableData: (containerId, containerImage, tableName, limit) => ipcRenderer.invoke('get-table-data', containerId, containerImage, tableName, limit),
   executeDatabaseQuery: (containerId, containerImage, query) => ipcRenderer.invoke('execute-database-query', containerId, containerImage, query),
   createDatabaseTable: (containerId, containerImage, tableName, columns) => ipcRenderer.invoke('create-database-table', containerId, containerImage, tableName, columns),
+  connectMongoUri: (uri) => ipcRenderer.invoke('connect-mongo-uri', uri),
+  getMongoUriCollectionData: (uri, collectionName, limit) => ipcRenderer.invoke('get-mongo-uri-collection-data', uri, collectionName, limit),
+  executeMongoUriQuery: (uri, command) => ipcRenderer.invoke('execute-mongo-uri-query', uri, command),
+  connectPostgresUri: (uri) => ipcRenderer.invoke('connect-postgres-uri', uri),
+  getPostgresUriTableData: (uri, tableName, limit) => ipcRenderer.invoke('get-postgres-uri-table-data', uri, tableName, limit),
+  executePostgresUriQuery: (uri, query) => ipcRenderer.invoke('execute-postgres-uri-query', uri, query),
 
   // Process control
   killProcess: (pid) => ipcRenderer.invoke('kill-process', pid),
+  stopContainer: (containerId) => ipcRenderer.invoke('stop-container', containerId),
 
   // Quick actions
   openUrl: (url) => ipcRenderer.invoke('open-url', url),

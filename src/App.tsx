@@ -36,6 +36,24 @@ const BACKEND_FRAMEWORK_ORDER = [
   "node-http",
 ];
 
+const REMOTE_MONGO_LAUNCHER_NODE: GraphNode = {
+  id: "__remote_mongo_launcher__",
+  pid: 0,
+  name: "Remote Database",
+  command: "remote-mongo",
+  type: "database",
+  cpu: 0,
+  memory: 0,
+  user: "remote",
+  ports: [],
+  healthStatus: "green",
+  lastSeen: Date.now(),
+  isDockerContainer: false,
+  containerImage: "mongo:remote",
+  containerState: "running",
+  containerStatus: "Remote URI mode",
+};
+
 function detectDbLabel(command: string, name: string) {
   if (command.includes("postgres") || name.includes("postgres")) return "Postgres";
   if (command.includes("mysql") || name.includes("mysql") || command.includes("mariadb")) return "MySQL";
@@ -163,6 +181,20 @@ function App() {
     setDatabaseNode(null);
     setViewMode("containers");
   }, []);
+
+  // Open database view directly from top tabs (prefer MongoDB if available)
+  const handleOpenDatabaseView = useCallback(() => {
+    const dbNodes = graph.nodes.filter(
+      (node) => node.isDockerContainer && node.type === "database" && node.containerState === "running"
+    );
+    const preferredNode =
+      dbNodes.find((node) => (node.containerImage || "").toLowerCase().includes("mongo")) ||
+      dbNodes[0] ||
+      REMOTE_MONGO_LAUNCHER_NODE;
+
+    setDatabaseNode(preferredNode);
+    setViewMode("database");
+  }, [graph.nodes]);
 
   // Handle freshness click from main graph - navigate to container logs
   const handleFreshnessClick = useCallback(() => {
@@ -404,6 +436,28 @@ function App() {
           </span>
           Requests
         </button>
+        <button
+          className={`view-mode-tab ${viewMode === "database" ? "view-mode-tab-active" : ""}`}
+          onClick={handleOpenDatabaseView}
+        >
+          <span className="view-mode-icon">
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <ellipse cx="12" cy="5" rx="7" ry="3" />
+              <path d="M5 5v7c0 1.7 3.1 3 7 3s7-1.3 7-3V5" />
+              <path d="M5 12v7c0 1.7 3.1 3 7 3s7-1.3 7-3v-7" />
+            </svg>
+          </span>
+          Database
+        </button>
       </div>
 
       {/* Project Tabs - only show for graph view */}
@@ -427,35 +481,31 @@ function App() {
 
       {/* Main Content */}
       <main className="main-content">
-        {viewMode === "graph" ? (
-          <>
-            {/* Connection Graph */}
-            <div className="graph-container">
-              {loading ? (
-                <div className="loading">Scanning localhost...</div>
-              ) : (
-                <GraphView
-                  nodes={filteredData.nodes}
-                  edges={filteredData.edges}
-                  dataStatus={dataStatus}
-                  onFreshnessClick={handleFreshnessClick}
-                />
-              )}
-            </div>
-
-            {/* Sidebar */}
-            <div className="sidebar">
-              <ServiceSidebar
+        <div className={`main-view main-view-dual ${viewMode === "graph" ? "main-view-active" : ""}`}>
+          <div className="graph-container">
+            {loading ? (
+              <div className="loading">Scanning localhost...</div>
+            ) : (
+              <GraphView
                 nodes={filteredData.nodes}
-                ports={filteredData.ports}
-                loading={loading}
-                onTestService={handleTestService}
+                edges={filteredData.edges}
+                dataStatus={dataStatus}
+                onFreshnessClick={handleFreshnessClick}
               />
-            </div>
-          </>
-        ) : viewMode === "containers" ? (
+            )}
+          </div>
+          <div className="sidebar">
+            <ServiceSidebar
+              nodes={filteredData.nodes}
+              ports={filteredData.ports}
+              loading={loading}
+              onTestService={handleTestService}
+            />
+          </div>
+        </div>
+
+        <div className={`main-view ${viewMode === "containers" ? "main-view-active" : ""}`}>
           <div className="containers-view">
-            {/* Sub-tabs for containers view */}
             <div className="container-sub-tabs">
               <button
                 className={`container-sub-tab ${containerSubTab === "overview" ? "container-sub-tab-active" : ""}`}
@@ -490,7 +540,6 @@ function App() {
               </button>
             </div>
 
-            {/* Sub-tab content */}
             {containerSubTab === "overview" ? (
               <div className="containers-overview">
                 <div className="graph-container">
@@ -539,11 +588,15 @@ function App() {
               />
             )}
           </div>
-        ) : viewMode === "database" && databaseNode ? (
-          /* Database Management Page */
-          <DatabasePage node={databaseNode} onBack={handleDatabaseBack} />
-        ) : (
-          /* API Tester View */
+        </div>
+
+        <div className={`main-view main-view-single ${viewMode === "database" ? "main-view-active" : ""}`}>
+          <div className="api-tester-container">
+            <DatabasePage node={databaseNode || REMOTE_MONGO_LAUNCHER_NODE} onBack={handleDatabaseBack} />
+          </div>
+        </div>
+
+        <div className={`main-view main-view-single ${viewMode === "api-tester" ? "main-view-active" : ""}`}>
           <div className="api-tester-container">
             {loading ? (
               <div className="loading">Scanning localhost...</div>
@@ -551,7 +604,7 @@ function App() {
               <CurlBuilder nodes={graph.nodes} initialServiceId={testServiceId} />
             )}
           </div>
-        )}
+        </div>
       </main>
     </div>
   );
