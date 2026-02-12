@@ -18,10 +18,12 @@ const {
   getAllProcesses,
   getProcessByPid,
   killProcess,
+  clearProcessCache,
 } = require("./services/processMonitor");
 const {
   getListeningPorts,
   getEstablishedConnections,
+  clearPortCache,
 } = require("./services/portMonitor");
 const {
   buildConnectionGraph,
@@ -312,7 +314,17 @@ ipcMain.handle("kill-process", async (event, pid) => {
 
     // Allow killing any process shown in the graph (they all have listening ports)
     // The graph only shows dev-related processes and processes with network activity
-    return await killProcess(pid);
+    const result = await killProcess(pid);
+    if (result.success) {
+      // Force next snapshot to bypass stale 5s caches.
+      clearProcessCache();
+      clearPortCache();
+      if (snapshotScheduler) {
+        // Trigger immediate reconciliation so UI reflects kill quickly.
+        setImmediate(() => snapshotScheduler.reconcile());
+      }
+    }
+    return result;
   } catch (error) {
     console.error("Error killing process:", error);
     return { success: false, error: error.message };
@@ -324,7 +336,15 @@ ipcMain.handle("stop-container", async (event, containerId) => {
     if (!containerId || typeof containerId !== "string") {
       return { success: false, error: "Invalid container ID" };
     }
-    return await stopContainer(containerId);
+    const result = await stopContainer(containerId);
+    if (result.success) {
+      clearProcessCache();
+      clearPortCache();
+      if (snapshotScheduler) {
+        setImmediate(() => snapshotScheduler.reconcile());
+      }
+    }
+    return result;
   } catch (error) {
     console.error("Error stopping container:", error);
     return { success: false, error: error.message };

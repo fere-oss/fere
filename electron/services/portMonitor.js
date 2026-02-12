@@ -236,6 +236,15 @@ async function getListeningPortNumbers() {
   }
 }
 
+function clearPortCache() {
+  listeningCache.timestamp = 0;
+  listeningCache.data = [];
+  listeningCache.promise = null;
+  connectionsCache.timestamp = 0;
+  connectionsCache.data = [];
+  connectionsCache.promise = null;
+}
+
 module.exports = {
   getListeningPorts,
   getEstablishedConnections,
@@ -249,4 +258,5 @@ module.exports = {
     connectionsTimestamp: connectionsCache.timestamp || 0,
   }),
   getListeningPortNumbers,
+  clearPortCache,
 };
