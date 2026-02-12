@@ -1,4 +1,4 @@
-import type { GraphNode, GraphEdge, HealthStatus } from "../../../types/electron";
+import type { GraphNode, GraphEdge, HealthStatus } from "../../types/electron";
 
 let nodeCounter = 0;
 
