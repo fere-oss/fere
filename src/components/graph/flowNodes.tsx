@@ -14,8 +14,9 @@ export type HoverState = {
 const defaultHoverState: HoverState = { hoveredNodeId: null, connectedNodeIds: new Set() };
 export const HoverContext = createContext<HoverState>(defaultHoverState);
 
-/** Zoom threshold below which nodes render in minimal (dot + label) mode */
-export const LOD_ZOOM_THRESHOLD = 0.45;
+/** Zoom threshold below which nodes render in minimal (dot + label) mode.
+ * Set to ~0 so graph defaults to the full card UI. */
+export const LOD_ZOOM_THRESHOLD = 0.001;
 
 export type FlowServiceNodeData = {
   node: GraphNode;

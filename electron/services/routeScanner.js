@@ -281,6 +281,21 @@ async function scanRoutes(projectPath) {
 function matchRoutesToService(routes, service) {
   if (!service.projectPath) return [];
   const normalizedProjectPath = path.resolve(service.projectPath);
+  const serviceType = String(service.type || '').toLowerCase();
+
+  // Guardrail: only attach API routes to service types that can actually
+  // expose application endpoints.
+  const apiEligibleTypes = new Set([
+    'backend',
+    'frontend',
+    'nodejs',
+    'python',
+    'service',
+    'webserver',
+  ]);
+  if (serviceType && !apiEligibleTypes.has(serviceType)) {
+    return [];
+  }
 
   const serviceFrameworks = new Set();
   const command = (service.command || '').toLowerCase();

@@ -8,6 +8,7 @@
 const fs = require('fs');
 const path = require('path');
 const { getPortDescription } = require('./portMonitor');
+const { matchRoutesToService } = require('./routeScanner');
 
 // ============================================
 // Known Services Dictionary
@@ -499,13 +500,16 @@ function buildGraphStructure({
     }
   }
 
-  // Attach routes from pre-scanned data
+  // Attach routes from pre-scanned data, matched per service.
+  // This prevents non-API services (redis/db/broker/etc.) from inheriting
+  // all project routes after route scanning.
   for (const node of nodes) {
-    if (!node.projectPath) continue;
-    const routes = routesByProject[node.projectPath];
-    if (routes && routes.length > 0) {
-      node.routes = routes;
+    if (!node.projectPath) {
+      node.routes = [];
+      continue;
     }
+    const routes = routesByProject[node.projectPath] || [];
+    node.routes = matchRoutesToService(routes, node);
   }
 
   // Add Docker container nodes
