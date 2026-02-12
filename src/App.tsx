@@ -3,7 +3,7 @@ import { useSystemSnapshot } from "./hooks/useSystemMonitor";
 import { GraphView } from "./components/GraphView";
 import { ServiceSidebar } from "./components/ServiceSidebar";
 import { CurlBuilder } from "./components/CurlBuilder";
-import { DatabasePage } from "./components/DatabasePage";
+import { DatabaseListView } from "./components/DatabaseListView";
 import { ContainerLogsTab } from "./components/ContainerLogsTab";
 import type { GraphNode } from "./types/electron";
 import "./App.css";
@@ -176,25 +176,16 @@ function App() {
     setViewMode("database");
   }, []);
 
-  // Handle going back from database page
+  // Handle going back from database page (return to database list)
   const handleDatabaseBack = useCallback(() => {
     setDatabaseNode(null);
-    setViewMode("containers");
   }, []);
 
-  // Open database view directly from top tabs (prefer MongoDB if available)
+  // Open database view directly from top tabs (show database list)
   const handleOpenDatabaseView = useCallback(() => {
-    const dbNodes = graph.nodes.filter(
-      (node) => node.isDockerContainer && node.type === "database" && node.containerState === "running"
-    );
-    const preferredNode =
-      dbNodes.find((node) => (node.containerImage || "").toLowerCase().includes("mongo")) ||
-      dbNodes[0] ||
-      REMOTE_MONGO_LAUNCHER_NODE;
-
-    setDatabaseNode(preferredNode);
+    setDatabaseNode(null);
     setViewMode("database");
-  }, [graph.nodes]);
+  }, []);
 
   // Handle freshness click from main graph - navigate to container logs
   const handleFreshnessClick = useCallback(() => {
@@ -338,6 +329,13 @@ function App() {
       ports: filteredPorts,
     };
   }, [graph.nodes, graph.edges, ports]);
+
+  // Running database containers for the database list view
+  const databaseNodes = useMemo(() => {
+    return graph.nodes.filter(
+      (node) => node.isDockerContainer && node.type === "database" && node.containerState === "running"
+    );
+  }, [graph.nodes]);
 
   // Handle freshness click from container overview - navigate to logs with first container selected
   const handleContainerFreshnessClick = useCallback(() => {
@@ -592,7 +590,12 @@ function App() {
 
         <div className={`main-view main-view-single ${viewMode === "database" ? "main-view-active" : ""}`}>
           <div className="api-tester-container">
-            <DatabasePage node={databaseNode || REMOTE_MONGO_LAUNCHER_NODE} onBack={handleDatabaseBack} />
+            <DatabaseListView
+              databaseNodes={databaseNodes}
+              selectedNode={databaseNode}
+              onSelectNode={setDatabaseNode}
+              remoteMongoLauncherNode={REMOTE_MONGO_LAUNCHER_NODE}
+            />
           </div>
         </div>
 
