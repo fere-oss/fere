@@ -73,6 +73,63 @@ function FreshnessBadge({
   );
 }
 
+function ActivePorts({
+  nodes,
+  reactFlowInstance,
+}: {
+  nodes: GraphNode[];
+  reactFlowInstance: ReactFlowInstance | null;
+}) {
+  const portEntries = useMemo(() => {
+    const seen = new Set<number>();
+    const entries: { port: number; host: string; nodeId: string; nodeName: string }[] = [];
+    for (const node of nodes) {
+      for (const p of node.ports) {
+        if (!seen.has(p.port)) {
+          seen.add(p.port);
+          entries.push({ port: p.port, host: p.host || "localhost", nodeId: node.id, nodeName: node.name });
+        }
+      }
+    }
+    return entries.sort((a, b) => a.port - b.port);
+  }, [nodes]);
+
+  const handleClick = useCallback(
+    (nodeId: string) => {
+      if (!reactFlowInstance) return;
+      const rfNode = reactFlowInstance.getNode(nodeId);
+      if (rfNode) {
+        reactFlowInstance.setCenter(
+          rfNode.position.x + FLOW_LAYOUT.NODE_WIDTH / 2,
+          rfNode.position.y + 95,
+          { zoom: 1.2, duration: 400 },
+        );
+      }
+    },
+    [reactFlowInstance],
+  );
+
+  if (portEntries.length === 0) return null;
+
+  return (
+    <div className="graph-ports">
+      <span className="graph-ports-title">Active Ports</span>
+      <div className="graph-ports-list">
+        {portEntries.map((entry) => (
+          <button
+            key={entry.port}
+            className="graph-ports-item"
+            onClick={() => handleClick(entry.nodeId)}
+          >
+            <span className="graph-ports-number">:{entry.port}</span>
+            <span className="graph-ports-name">{entry.nodeName}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function GraphView({
   nodes,
   edges,
@@ -443,6 +500,8 @@ export function GraphView({
         onFreshnessClick={onFreshnessClick}
         formatAge={formatAge}
       />
+
+      <ActivePorts nodes={layoutNodes} reactFlowInstance={reactFlowInstance} />
 
       <div className="graph-flow">
         <HoverContext.Provider value={hoverState}>
