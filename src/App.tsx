@@ -140,8 +140,6 @@ type ContainerSubTab = "overview" | "logs";
 function App() {
   const { snapshot, loading, error } = useSystemSnapshot(2000);
   const { graph, ports } = snapshot;
-  const dataStatus = useMemo(() => snapshot.meta, [snapshot.meta]);
-
   // View mode state - graph or api-tester
   const [viewMode, setViewMode] = useState<ViewMode>("graph");
 
@@ -171,13 +169,6 @@ function App() {
   // Open database view directly from top tabs (show database list)
   const handleOpenDatabaseView = useCallback(() => {
     setViewMode("database");
-  }, []);
-
-  // Handle freshness click from main graph - navigate to container logs
-  const handleFreshnessClick = useCallback(() => {
-    setViewMode("containers");
-    setContainerSubTab("logs");
-    setInitialLogContainerId(undefined); // Show all containers
   }, []);
 
   // Build tabs from unique projectPaths
@@ -338,16 +329,6 @@ function App() {
     );
   }, [graph.nodes]);
 
-  // Handle freshness click from container overview - navigate to logs with first container selected
-  const handleContainerFreshnessClick = useCallback(() => {
-    setContainerSubTab("logs");
-    // Select the first container by default
-    const firstContainer = dockerContainerData.nodes[0];
-    if (firstContainer?.containerId) {
-      setInitialLogContainerId(firstContainer.containerId);
-    }
-  }, [dockerContainerData.nodes]);
-
   return (
     <div className="app">
       {/* App Title */}
@@ -491,8 +472,6 @@ function App() {
                 key={selectedTab}
                 nodes={filteredData.nodes}
                 edges={filteredData.edges}
-                dataStatus={dataStatus}
-                onFreshnessClick={handleFreshnessClick}
               />
             )}
           </div>
@@ -576,8 +555,6 @@ function App() {
                     edges={dockerContainerData.edges}
                     isContainerView={true}
                     onDatabaseClick={handleDatabaseClick}
-                    onFreshnessClick={handleContainerFreshnessClick}
-                    dataStatus={dataStatus}
                   />
                 )}
               </div>

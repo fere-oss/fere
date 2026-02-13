@@ -185,6 +185,9 @@ export function useSystemSnapshot(pollInterval = 2000) {
   const snapshotRef = useRef<SystemSnapshot>(snapshot);
   const snapshotKeyRef = useRef<string>('');
   const lastSeqRef = useRef<number>(-1);
+  const lastMetricsFlushRef = useRef<number>(0);
+  const pendingMetricsRef = useRef<SystemSnapshot | null>(null);
+  const metricsRafRef = useRef<number>(0);
 
   // On-demand full refresh (keeps existing API surface)
   const refresh = useCallback(async () => {
@@ -218,6 +221,8 @@ export function useSystemSnapshot(pollInterval = 2000) {
     if (window.electronAPI.onSnapshotDelta) {
       window.electronAPI.startSnapshotStream();
 
+      const METRICS_THROTTLE_MS = 2000;
+
       const unsubscribe = window.electronAPI.onSnapshotDelta((delta: SnapshotDelta) => {
         // Sequence gap detection — request full resync if we missed deltas
         if (delta.type !== 'full' && lastSeqRef.current >= 0 && delta.seq !== lastSeqRef.current + 1) {
@@ -229,15 +234,38 @@ export function useSystemSnapshot(pollInterval = 2000) {
         const patched = applyDelta(snapshotRef.current, delta);
         snapshotRef.current = patched;
 
-        // Always propagate — layout caching in useGraphLayoutData
-        // prevents expensive recomputation on metrics-only changes
-        setSnapshot(patched);
+        const newKey = createSnapshotKey(patched);
+        const topologyChanged = newKey !== snapshotKeyRef.current;
+
+        if (topologyChanged) {
+          // Topology changed — propagate immediately
+          snapshotKeyRef.current = newKey;
+          pendingMetricsRef.current = null;
+          cancelAnimationFrame(metricsRafRef.current);
+          setSnapshot(patched);
+        } else {
+          // Metrics-only — throttle to reduce React re-renders
+          const now = Date.now();
+          pendingMetricsRef.current = patched;
+          if (now - lastMetricsFlushRef.current >= METRICS_THROTTLE_MS) {
+            lastMetricsFlushRef.current = now;
+            cancelAnimationFrame(metricsRafRef.current);
+            metricsRafRef.current = requestAnimationFrame(() => {
+              if (pendingMetricsRef.current) {
+                setSnapshot(pendingMetricsRef.current);
+                pendingMetricsRef.current = null;
+              }
+            });
+          }
+        }
+
         setLoading(false);
         setError(null);
       });
 
       return () => {
         unsubscribe();
+        cancelAnimationFrame(metricsRafRef.current);
         window.electronAPI.stopSnapshotStream();
       };
     }

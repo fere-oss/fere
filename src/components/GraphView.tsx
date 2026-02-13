@@ -21,58 +21,6 @@ import { useNodeMeasurements } from "./graph/useNodeMeasurements";
 const NODE_TYPES = flowNodeTypes;
 const EDGE_TYPES = flowEdgeTypes;
 
-function FreshnessBadge({
-  dataStatus,
-  onFreshnessClick,
-  formatAge,
-}: {
-  dataStatus: GraphViewProps["dataStatus"];
-  onFreshnessClick?: GraphViewProps["onFreshnessClick"];
-  formatAge: (ageMs?: number | null) => string;
-}) {
-  const [now, setNow] = useState(() => Date.now());
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setNow(Date.now());
-    }, 1000);
-    return () => clearInterval(interval);
-  }, []);
-
-  if (!dataStatus) return null;
-
-  const lastUpdated = dataStatus.collectedAt
-    ? formatAge(now - dataStatus.collectedAt)
-    : "—";
-
-  return (
-    <div
-      className={`graph-freshness ${onFreshnessClick ? "graph-freshness-clickable" : ""}`}
-      onClick={onFreshnessClick}
-      title={onFreshnessClick ? "Click to view container logs" : undefined}
-    >
-      <span className="graph-freshness-title">Last updated</span>
-      <span className="graph-freshness-value">{lastUpdated} ago</span>
-      <span className="graph-freshness-meta">
-        ps {formatAge(dataStatus.processesAgeMs)} · lsof{" "}
-        {formatAge(dataStatus.portsAgeMs)} · tcp{" "}
-        {formatAge(dataStatus.connectionsAgeMs)}
-      </span>
-      {onFreshnessClick && (
-        <span className="graph-freshness-link">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-            <polyline points="14 2 14 8 20 8" />
-            <line x1="16" y1="13" x2="8" y2="13" />
-            <line x1="16" y1="17" x2="8" y2="17" />
-          </svg>
-          View logs
-        </span>
-      )}
-    </div>
-  );
-}
-
 function ActivePorts({
   nodes,
   reactFlowInstance,
@@ -132,8 +80,6 @@ export function GraphView({
   edges,
   isContainerView = false,
   onDatabaseClick,
-  onFreshnessClick,
-  dataStatus,
 }: GraphViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
@@ -209,9 +155,7 @@ export function GraphView({
     [layoutNodes],
   );
   const nodeIds = useMemo(() => layoutNodes.map((node) => node.id), [layoutNodes]);
-  const bumpExternalApiVersion = useCallback(() => undefined, []);
-  const externalApisLoaded = useExternalApis(projectPathsKey, bumpExternalApiVersion);
-  void externalApisLoaded;
+  useExternalApis(projectPathsKey);
   const { nodeHeightsRef, layoutVersion, handleNodeMeasure } =
     useNodeMeasurements(nodeIds);
   useEffect(() => {
@@ -445,13 +389,6 @@ export function GraphView({
     didFitViewRef.current = true;
   }, [reactFlowInstance, layoutNodes.length]);
 
-  const formatAge = useCallback((ageMs?: number | null) => {
-    if (ageMs === null || ageMs === undefined) return "—";
-    if (ageMs < 1000) return `${Math.max(0, Math.round(ageMs))}ms`;
-    if (ageMs < 60000) return `${(ageMs / 1000).toFixed(1)}s`;
-    return `${Math.round(ageMs / 60000)}m`;
-  }, []);
-
   const hoverTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const pendingHover = useRef<string | null>(null);
   const handleNodeMouseEnter = useCallback(
@@ -492,12 +429,6 @@ export function GraphView({
 
   return (
     <div className={`graph-view${isContainerView ? " container-view" : ""}`} ref={containerRef}>
-      <FreshnessBadge
-        dataStatus={dataStatus}
-        onFreshnessClick={onFreshnessClick}
-        formatAge={formatAge}
-      />
-
       <ActivePorts nodes={layoutNodes} reactFlowInstance={reactFlowInstance} />
 
       <button

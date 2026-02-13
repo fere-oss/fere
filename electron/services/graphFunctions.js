@@ -473,11 +473,14 @@ function buildGraphStructure({
     const sourceProc = processMap.get(conn.pid);
     if (!sourceProc) continue;
 
+    // Skip connections with missing remote endpoint data
+    if (!conn.remoteHost && !conn.remotePort) continue;
+
     const sourceNode = ensureProcessNode(conn.pid, conn.process);
     const targetPid = isLocalHost(conn.remoteHost) ? portToPid.get(conn.remotePort) : null;
     const targetNode = targetPid
       ? ensureProcessNode(targetPid, conn.process)
-      : getExternalNode(conn.remoteHost, conn.remotePort);
+      : getExternalNode(conn.remoteHost || 'unknown', conn.remotePort || 0);
 
     if (sourceNode.id === targetNode.id) continue;
 

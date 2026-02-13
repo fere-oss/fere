@@ -238,12 +238,14 @@ export function ServiceNode({
         <div className="service-node-project">{projectLabel}</div>
       )}
 
-      <div className="service-node-port">
-        <span className="service-node-port-host">localhost</span>
-        <span className="service-node-port-number" style={{ color: accentColor }}>
-          :{mainPort || '?'}
-        </span>
-      </div>
+      {mainPort && (
+        <div className="service-node-port">
+          <span className="service-node-port-host">localhost</span>
+          <span className="service-node-port-number" style={{ color: accentColor }}>
+            :{mainPort}
+          </span>
+        </div>
+      )}
 
       {node.isDockerContainer && node.containerNetworks && node.containerNetworks.length > 0 && (
         <div className="service-node-docker-networks">

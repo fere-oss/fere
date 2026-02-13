@@ -5,7 +5,7 @@ import {
   EXTERNAL_API_CACHE_TTL_MS,
 } from "./externalApis";
 
-export function useExternalApis(projectPathsKey: string, bumpVersion: () => void) {
+export function useExternalApis(projectPathsKey: string, bumpVersion?: () => void) {
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
@@ -27,30 +27,36 @@ export function useExternalApis(projectPathsKey: string, bumpVersion: () => void
     setLoaded(false);
     let cancelled = false;
 
-    (async () => {
-      for (const projectPath of projectPaths) {
-        if (cancelled) return;
-        const cached = externalApiCache.get(projectPath);
-        if (
-          cached &&
-          Date.now() - cached.timestamp < EXTERNAL_API_CACHE_TTL_MS
-        )
-          continue;
-        if (externalApiInFlight.has(projectPath)) continue;
-        externalApiInFlight.add(projectPath);
+    const uncachedPaths = projectPaths.filter((projectPath) => {
+      const cached = externalApiCache.get(projectPath);
+      if (cached && Date.now() - cached.timestamp < EXTERNAL_API_CACHE_TTL_MS) return false;
+      if (externalApiInFlight.has(projectPath)) return false;
+      return true;
+    });
+
+    if (uncachedPaths.length === 0) {
+      setLoaded(true);
+      return;
+    }
+
+    uncachedPaths.forEach((p) => externalApiInFlight.add(p));
+
+    Promise.all(
+      uncachedPaths.map(async (projectPath) => {
         try {
           const apis = await window.electronAPI.getExternalApis(projectPath);
           if (cancelled) return;
           externalApiCache.set(projectPath, { timestamp: Date.now(), apis });
-          bumpVersion();
-        } catch (error) {
-          if (cancelled) return;
+          bumpVersion?.();
+        } catch {
+          // Scan failed for this project — skip
         } finally {
           externalApiInFlight.delete(projectPath);
         }
-      }
+      }),
+    ).then(() => {
       if (!cancelled) setLoaded(true);
-    })();
+    });
 
     return () => {
       cancelled = true;
