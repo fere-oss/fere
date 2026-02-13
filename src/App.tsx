@@ -568,7 +568,7 @@ function App() {
                 minHeight: 0,
               }}
             >
-              <div className="graph-container">
+              <div className={`graph-container${!loading && dockerContainerData.nodes.length === 0 ? " graph-container-empty" : ""}`}>
                 {loading ? (
                   <div className="loading">Scanning Docker containers...</div>
                 ) : dockerContainerData.nodes.length === 0 ? (
