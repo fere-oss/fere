@@ -500,6 +500,20 @@ export function GraphView({
 
       <ActivePorts nodes={layoutNodes} reactFlowInstance={reactFlowInstance} />
 
+      <button
+        className="graph-recenter-btn"
+        onClick={() => reactFlowInstance?.fitView({ padding: 0.32, duration: 300 })}
+        title="Fit all nodes in view"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M15 3h6v6" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M9 21H3v-6" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M21 3l-7 7" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M3 21l7-7" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+        Recenter
+      </button>
+
       <div className="graph-flow">
         <HoverContext.Provider value={hoverState}>
           <ReactFlow

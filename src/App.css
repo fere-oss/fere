@@ -660,6 +660,43 @@ textarea {
   max-width: 100px;
 }
 
+/* Recenter button */
+.graph-recenter-btn {
+  position: absolute;
+  bottom: 20px;
+  right: 20px;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  background: var(--bg-white);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-family: var(--font-ui);
+}
+
+.graph-recenter-btn:hover {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  border-color: var(--border-hover, #a3a3a3);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+}
+
+.graph-recenter-btn svg {
+  opacity: 0.6;
+}
+
+.graph-recenter-btn:hover svg {
+  opacity: 1;
+}
+
 .graph-control-btn {
   width: 32px;
   height: 32px;
