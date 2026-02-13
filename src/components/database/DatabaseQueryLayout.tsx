@@ -271,7 +271,7 @@ const MONGO_FUNCTIONS = new Set([
 function highlightQuery(query: string, dbType: string): React.ReactNode {
   if (!query) return null;
 
-  const tokenRegex = /(--[^\n]*|\/\*[\s\S]*?\*\/|'(?:''|[^'])*'|"(?:\\"|[^"])*"|`(?:\\`|[^`])*`|\b\d+(?:\.\d+)?\b|\$[A-Za-z_][\w$]*\b|\b[A-Za-z_][\w$]*\b|[()*,.;=<>!+\-\/]+|\s+|.)/g;
+  const tokenRegex = /(--[^\n]*|\/\*[\s\S]*?\*\/|'(?:''|[^'])*'|"(?:\\"|[^"])*"|`(?:\\`|[^`])*`|\b\d+(?:\.\d+)?\b|\$[A-Za-z_][\w$]*\b|\b[A-Za-z_][\w$]*\b|[()*,.;=<>!+/-]+|\s+|.)/g;
   const tokens = query.match(tokenRegex) || [];
 
   return tokens.map((token, index) => {
