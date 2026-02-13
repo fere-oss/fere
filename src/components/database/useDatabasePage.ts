@@ -92,10 +92,10 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
   const maskMongoUri = useCallback((uri: string) => {
     const trimmed = uri.trim();
     if (trimmed.toLowerCase().startsWith('mongodb')) {
-      return trimmed.replace(/(mongodb(?:\+srv)?:\/\/[^:\/?#]+:)([^@]+)(@)/i, '$1<password>$3');
+      return trimmed.replace(/(mongodb(?:\+srv)?:\/\/[^:/?#]+:)([^@]+)(@)/i, '$1<password>$3');
     }
     if (trimmed.toLowerCase().startsWith('postgres')) {
-      return trimmed.replace(/(postgres(?:ql)?:\/\/[^:\/?#]+:)([^@]+)(@)/i, '$1<password>$3');
+      return trimmed.replace(/(postgres(?:ql)?:\/\/[^:/?#]+:)([^@]+)(@)/i, '$1<password>$3');
     }
     return trimmed;
   }, []);
@@ -664,7 +664,7 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
       case 'mysql':
         return `-- MySQL Query Editor\n-- Press Cmd/Ctrl + Enter to execute\n\nSELECT * FROM users LIMIT 10;\n\n-- More examples:\n-- INSERT INTO users (name, email) VALUES ('John', 'john@example.com');\n-- CREATE TABLE products (id INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(100));`;
       case 'mongodb':
-        return `// MongoDB Shell\n// Press Cmd/Ctrl + Enter to execute\n\ndb.users.find().limit(10)\n\n// More examples:\n// db.users.insertOne({name: \"John\", email: \"john@example.com\"})\n// db.createCollection(\"products\")`;
+        return `// MongoDB Shell\n// Press Cmd/Ctrl + Enter to execute\n\ndb.users.find().limit(10)\n\n// More examples:\n// db.users.insertOne({name: "John", email: "john@example.com"})\n// db.createCollection("products")`;
       default:
         return 'Enter your query here...';
     }

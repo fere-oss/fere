@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import type { GraphNode } from '../types/electron';
 import type { ContainerLogData } from '../types/electron';
-import { getTypeBadge } from './graph/constants';
 
 interface ContainerLogsTabProps {
   containers: GraphNode[];
@@ -51,6 +50,7 @@ export function ContainerLogsTab({ containers, initialSelectedId }: ContainerLog
   const initialSelectionAppliedRef = useRef(false);
   // Track which containers are actively streaming
   const [activeStreams, setActiveStreams] = useState<Map<string, string>>(new Map()); // containerId -> streamId
+  const activeStreamsRef = useRef(activeStreams);
   // Unified log entries from all containers
   const [logs, setLogs] = useState<UnifiedLogEntry[]>([]);
   // UI state
@@ -105,6 +105,10 @@ export function ContainerLogsTab({ containers, initialSelectedId }: ContainerLog
     document.addEventListener('mousedown', onClick);
     return () => document.removeEventListener('mousedown', onClick);
   }, [isFilterOpen]);
+
+  useEffect(() => {
+    activeStreamsRef.current = activeStreams;
+  }, [activeStreams]);
 
   // Process search query into regex
   useEffect(() => {
@@ -255,7 +259,7 @@ export function ContainerLogsTab({ containers, initialSelectedId }: ContainerLog
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      activeStreams.forEach((streamId) => {
+      activeStreamsRef.current.forEach((streamId) => {
         window.electronAPI.stopContainerLogs(streamId).catch(console.error);
       });
     };
@@ -350,23 +354,6 @@ export function ContainerLogsTab({ containers, initialSelectedId }: ContainerLog
     if (!image) return '—';
     const parts = image.split('/');
     return parts[parts.length - 1];
-  }, []);
-
-  const getNetworkLabel = useCallback((container: GraphNode) => {
-    const count = container.containerNetworks?.length ?? 0;
-    if (count <= 1) return null;
-    return `${count} networks`;
-  }, []);
-
-  const getResourceLabel = useCallback((container: GraphNode) => {
-    const cpu = Number.isFinite(container.cpu) ? container.cpu : null;
-    const mem = Number.isFinite(container.memory) ? container.memory : null;
-    if (cpu === null && mem === null) return null;
-    const parts: string[] = [];
-    if (cpu !== null && cpu >= 0.5) parts.push(`${cpu.toFixed(1)}% CPU`);
-    if (mem !== null && mem >= 0.5) parts.push(`${mem.toFixed(1)}% MEM`);
-    if (parts.length === 0) return null;
-    return parts.join(' · ');
   }, []);
 
   if (containers.length === 0) {

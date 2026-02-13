@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { GraphNode, ColumnDefinition } from '../types/electron';
+import type { GraphNode } from '../types/electron';
 import { CreateTableModal } from './CreateTableModal';
 import { DatabaseHeader } from './database/DatabaseHeader';
 import { DatabaseErrorState } from './database/DatabaseErrorState';

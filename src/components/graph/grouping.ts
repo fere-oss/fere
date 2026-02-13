@@ -45,15 +45,6 @@ const groupContainersByType = (nodes: GraphNode[]): RenderGroup[] => {
   }));
 };
 
-// Extract project name from container name (Docker Compose naming: project_service_1)
-const extractProjectName = (containerName: string): string => {
-  const parts = containerName.split(/[-_]/);
-  if (parts.length >= 2) {
-    return parts[0];
-  }
-  return 'docker';
-};
-
 // Group all containers by type (simpler grouping - no project separation)
 export const groupContainersByProject = (nodes: GraphNode[]): ContainerProject[] => {
   // Group all containers by type, return as a single "project"
