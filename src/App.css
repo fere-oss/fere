@@ -101,10 +101,15 @@ textarea {
   -webkit-app-region: no-drag;
 }
 
+.app-tabs-inline {
+  padding: 0 0 16px 0;
+}
+
 .app-tab {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-height: 36px;
   padding: 8px 16px;
   background: transparent;
   border: 1px solid var(--border-color);
@@ -112,6 +117,7 @@ textarea {
   font-family: inherit;
   font-size: 13px;
   font-weight: 500;
+  line-height: 1;
   color: var(--text-secondary);
   cursor: pointer;
   transition: all 0.15s ease;
@@ -6419,38 +6425,51 @@ textarea {
 .container-sub-tabs {
   display: flex;
   gap: 4px;
-  padding: 12px 20px;
-  background: var(--bg-primary);
+  padding: 0 40px 16px 40px;
+  -webkit-app-region: no-drag;
+  background: transparent;
   border-bottom: none;
+  margin: 0;
 }
 
 .container-sub-tab {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   padding: 8px 16px;
   background: transparent;
-  border: none;
-  border-radius: 6px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  font-family: inherit;
   font-size: 13px;
   font-weight: 500;
   color: var(--text-secondary);
   cursor: pointer;
   transition: all 0.15s ease;
+  box-shadow: none;
 }
 
 .container-sub-tab:hover {
-  background: var(--bg-muted);
+  background: var(--bg-white);
+  border-color: var(--border-hover);
   color: var(--text-primary);
 }
 
 .container-sub-tab-active {
-  background: var(--bg-muted);
+  background: var(--bg-white);
+  border-color: var(--text-primary);
+  color: var(--text-primary);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.container-sub-tab-active:hover {
+  background: var(--bg-white);
+  border-color: var(--text-primary);
   color: var(--text-primary);
 }
 
 .container-sub-tab svg {
-  opacity: 0.7;
+  opacity: 0.72;
 }
 
 .container-sub-tab-active svg {
@@ -6460,6 +6479,8 @@ textarea {
 .containers-overview {
   display: flex;
   flex: 1;
+  gap: 24px;
+  align-items: stretch;
   overflow: hidden;
 }
 
@@ -6476,7 +6497,10 @@ textarea {
   flex-direction: column;
   flex: 1;
   min-height: 0;
-  background: var(--bg-primary);
+  background: var(--bg-white);
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
   overflow: hidden;
 }
 
@@ -6485,8 +6509,8 @@ textarea {
   flex: 1;
   min-height: 0;
   overflow: hidden;
-  gap: 16px;
-  padding: 12px 16px;
+  gap: 0;
+  padding: 0;
 }
 
 .unified-logs-panel {
@@ -6499,40 +6523,47 @@ textarea {
 .unified-logs-panel-list {
   width: 320px;
   min-width: 260px;
+  border-right: 1px solid var(--border-color);
 }
 
 .unified-logs-panel-output {
   flex: 1;
   min-width: 0;
   min-height: 0;
+  background: var(--bg-white);
+  overflow: hidden;
 }
 
 /* Container Selection Bar */
 .unified-logs-containers {
-  background: var(--bg-white);
-  border: 1px solid var(--border-color);
-  border-radius: 12px;
-  padding: 12px;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 0;
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 0;
+  height: 100%;
 }
 
 .unified-logs-containers-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 10px;
+  padding: 14px 14px 12px 14px;
+  border-bottom: 1px solid var(--border-color);
+  background: #fafafa;
 }
 
 .unified-logs-containers-title {
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: 12px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  color: var(--text-faint);
+  color: var(--text-secondary);
+  padding-left: 4px;
 }
 
 .unified-logs-containers-actions {
@@ -6570,18 +6601,20 @@ textarea {
 .unified-logs-container-list {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 0;
   overflow: hidden;
+  flex: 1;
 }
 
 .unified-logs-container-list-body {
   display: flex;
   flex-direction: column;
   background: var(--bg-white);
-  border: 1px solid var(--border-color);
-  border-radius: 10px;
+  border: none;
+  border-radius: 0;
   overflow: hidden;
-  max-height: 100%;
+  max-height: none;
+  height: 100%;
   overflow-y: auto;
 }
 
@@ -6590,9 +6623,10 @@ textarea {
   grid-template-columns: 28px 1fr;
   gap: 10px;
   align-items: center;
-  padding: 10px 10px;
+  padding: 10px 12px;
   background: transparent;
   border: none;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
   text-align: left;
   cursor: pointer;
   transition: background 0.15s ease;
@@ -6600,11 +6634,12 @@ textarea {
 }
 
 .unified-logs-container-row:hover {
-  background: var(--bg-muted);
+  background: #f7f9fc;
 }
 
 .unified-logs-container-row.selected {
-  background: var(--bg-muted);
+  background: #eef4ff;
+  box-shadow: inset 2px 0 0 #4a8af4;
 }
 
 .unified-logs-container-row:focus-visible {
@@ -6683,6 +6718,7 @@ textarea {
 .container-col-main {
   display: flex;
   flex-direction: column;
+  align-items: stretch;
   gap: 6px;
   min-width: 0;
 }
@@ -6692,11 +6728,13 @@ textarea {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
+  text-align: left;
 }
 
 .container-name {
   display: inline-flex;
   align-items: center;
+  justify-content: flex-start;
   gap: 8px;
   min-width: 0;
   overflow: hidden;
@@ -6745,7 +6783,7 @@ textarea {
 }
 
 .container-status-pill {
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -6789,10 +6827,11 @@ textarea {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 10px 12px;
-  background: var(--bg-white);
-  border: 1px solid var(--border-color);
-  border-radius: 12px;
+  padding: 12px 14px;
+  background: #fafafa;
+  border: none;
+  border-bottom: 1px solid var(--border-color);
+  border-radius: 0;
   flex-wrap: wrap;
 }
 
@@ -7006,9 +7045,9 @@ textarea {
   font-size: 12px;
   line-height: 1.6;
   background: var(--bg-white);
-  border: 1px solid var(--border-color);
-  border-radius: 12px;
-  margin-top: 10px;
+  border: none;
+  border-radius: 0;
+  margin-top: 0;
 }
 
 .unified-logs-placeholder {

@@ -54,8 +54,14 @@ const REMOTE_MONGO_LAUNCHER_NODE: GraphNode = {
 };
 
 function detectDbLabel(command: string, name: string) {
-  if (command.includes("postgres") || name.includes("postgres")) return "Postgres";
-  if (command.includes("mysql") || name.includes("mysql") || command.includes("mariadb")) return "MySQL";
+  if (command.includes("postgres") || name.includes("postgres"))
+    return "Postgres";
+  if (
+    command.includes("mysql") ||
+    name.includes("mysql") ||
+    command.includes("mariadb")
+  )
+    return "MySQL";
   if (command.includes("mongo") || name.includes("mongo")) return "MongoDB";
   if (command.includes("sqlite") || name.includes("sqlite")) return "SQLite";
   return "Database";
@@ -63,7 +69,8 @@ function detectDbLabel(command: string, name: string) {
 
 function detectCacheLabel(command: string, name: string) {
   if (command.includes("redis") || name.includes("redis")) return "Redis";
-  if (command.includes("memcached") || name.includes("memcached")) return "Memcached";
+  if (command.includes("memcached") || name.includes("memcached"))
+    return "Memcached";
   return "Cache";
 }
 
@@ -93,18 +100,25 @@ function detectProjectStack(nodes: GraphNode[]) {
     if (command.includes("next")) frameworks.add("nextjs");
     if (command.includes("express")) frameworks.add("express");
     if (command.includes("nestjs")) frameworks.add("nestjs");
-    if (command.includes("fastapi") || command.includes("uvicorn")) frameworks.add("fastapi");
+    if (command.includes("fastapi") || command.includes("uvicorn"))
+      frameworks.add("fastapi");
     if (command.includes("flask")) frameworks.add("flask");
     if (command.includes("django")) frameworks.add("django");
     if (command.includes("koa")) frameworks.add("koa");
     if (command.includes("hono")) frameworks.add("hono");
 
     if (node.type === "frontend") hasFrontend = true;
-    if (node.type === "backend" || node.type === "nodejs" || node.type === "python") hasBackend = true;
+    if (
+      node.type === "backend" ||
+      node.type === "nodejs" ||
+      node.type === "python"
+    )
+      hasBackend = true;
 
     if (node.type === "database") dbLabels.add(detectDbLabel(command, name));
     if (node.type === "cache") cacheLabels.add(detectCacheLabel(command, name));
-    if (node.type === "broker") brokerLabels.add(detectBrokerLabel(command, name));
+    if (node.type === "broker")
+      brokerLabels.add(detectBrokerLabel(command, name));
   });
 
   const parts: string[] = [];
@@ -155,10 +169,13 @@ function App() {
   const [databaseNode, setDatabaseNode] = useState<GraphNode | null>(null);
 
   // Sub-tab for containers view
-  const [containerSubTab, setContainerSubTab] = useState<ContainerSubTab>("overview");
+  const [containerSubTab, setContainerSubTab] =
+    useState<ContainerSubTab>("overview");
 
   // Initial container ID to select in logs view (when navigating from freshness click)
-  const [initialLogContainerId, setInitialLogContainerId] = useState<string | undefined>();
+  const [initialLogContainerId, setInitialLogContainerId] = useState<
+    string | undefined
+  >();
 
 
   // Handle database container click - navigate to database page
@@ -192,12 +209,18 @@ function App() {
       }
     });
 
-    const nonExternalNodes = graph.nodes.filter((node) => node.type !== "external");
-    const systemCount = nonExternalNodes.filter((node) => !node.projectPath).length;
+    const nonExternalNodes = graph.nodes.filter(
+      (node) => node.type !== "external",
+    );
+    const systemCount = nonExternalNodes.filter(
+      (node) => !node.projectPath,
+    ).length;
 
     const stackByProject = new Map<string, string | null>();
     projectPaths.forEach((_, path) => {
-      const projectNodes = graph.nodes.filter((node) => node.projectPath === path);
+      const projectNodes = graph.nodes.filter(
+        (node) => node.projectPath === path,
+      );
       stackByProject.set(path, detectProjectStack(projectNodes));
     });
 
@@ -206,14 +229,20 @@ function App() {
       .map(([path, label]) => ({
         id: path,
         label,
-        count: nonExternalNodes.filter((node) => node.projectPath === path).length,
+        count: nonExternalNodes.filter((node) => node.projectPath === path)
+          .length,
         stackLabel: stackByProject.get(path) || null,
       }))
       .sort((a, b) => a.label.localeCompare(b.label));
 
     // System tab first, then project tabs
     return [
-      { id: SYSTEM_TAB_ID, label: SYSTEM_TAB_LABEL, count: systemCount, stackLabel: null },
+      {
+        id: SYSTEM_TAB_ID,
+        label: SYSTEM_TAB_LABEL,
+        count: systemCount,
+        stackLabel: null,
+      },
       ...projectTabs,
     ];
   }, [graph.nodes]);
@@ -292,7 +321,7 @@ function App() {
   const dockerContainerData = useMemo(() => {
     // Get only running Docker container nodes (exclude exited, dead, etc.)
     const containerNodes = graph.nodes.filter(
-      (node) => node.isDockerContainer && node.containerState === "running"
+      (node) => node.isDockerContainer && node.containerState === "running",
     );
     const containerNodeIds = new Set(containerNodes.map((n) => n.id));
 
@@ -319,7 +348,10 @@ function App() {
   // Running database containers for the database list view
   const databaseNodes = useMemo(() => {
     return graph.nodes.filter(
-      (node) => node.isDockerContainer && node.type === "database" && node.containerState === "running"
+      (node) =>
+        node.isDockerContainer &&
+        node.type === "database" &&
+        node.containerState === "running",
     );
   }, [graph.nodes]);
 
@@ -386,7 +418,7 @@ function App() {
               fill="currentColor"
               xmlns="http://www.w3.org/2000/svg"
             >
-              <path d="M13.983 11.078h2.119a.186.186 0 00.186-.185V9.006a.186.186 0 00-.186-.186h-2.119a.185.185 0 00-.185.185v1.888c0 .102.083.185.185.185m-2.954-5.43h2.118a.186.186 0 00.186-.186V3.574a.186.186 0 00-.186-.185h-2.118a.185.185 0 00-.185.185v1.888c0 .102.082.185.185.186m0 2.716h2.118a.187.187 0 00.186-.186V6.29a.186.186 0 00-.186-.185h-2.118a.185.185 0 00-.185.185v1.887c0 .102.082.185.185.186m-2.93 0h2.12a.186.186 0 00.184-.186V6.29a.185.185 0 00-.185-.185H8.1a.185.185 0 00-.185.185v1.887c0 .102.083.185.185.186m-2.964 0h2.119a.186.186 0 00.185-.186V6.29a.185.185 0 00-.185-.185H5.136a.186.186 0 00-.186.185v1.887c0 .102.084.185.186.186m5.893 2.715h2.118a.186.186 0 00.186-.185V9.006a.186.186 0 00-.186-.186h-2.118a.185.185 0 00-.185.185v1.888c0 .102.082.185.185.185m-2.93 0h2.12a.185.185 0 00.184-.185V9.006a.185.185 0 00-.184-.186h-2.12a.185.185 0 00-.184.185v1.888c0 .102.083.185.185.185m-2.964 0h2.119a.185.185 0 00.185-.185V9.006a.185.185 0 00-.185-.186h-2.119a.185.185 0 00-.186.185v1.888c0 .102.084.185.186.185m-2.92 0h2.12a.185.185 0 00.184-.185V9.006a.185.185 0 00-.184-.186h-2.12a.186.186 0 00-.186.186v1.887c0 .102.084.185.186.185m-2.929 0h2.119a.185.185 0 00.185-.185V9.006a.186.186 0 00-.185-.186h-2.12a.185.185 0 00-.184.185v1.888c0 .102.083.185.185.185M23.763 9.89c-.065-.051-.672-.51-1.954-.51-.338.001-.676.03-1.01.087-.248-1.7-1.653-2.53-1.716-2.566l-.344-.199-.226.327c-.284.438-.49.922-.612 1.43-.23.97-.09 1.882.403 2.661-.595.332-1.55.413-1.744.42H.751a.751.751 0 00-.75.748 11.376 11.376 0 00.692 4.062c.545 1.428 1.355 2.48 2.41 3.124 1.18.723 3.1 1.137 5.275 1.137.983.003 1.963-.086 2.93-.266a12.248 12.248 0 003.823-1.389c.98-.567 1.86-1.288 2.61-2.136 1.252-1.418 1.998-2.997 2.553-4.4h.221c1.372 0 2.215-.549 2.68-1.009.309-.293.55-.65.707-1.046l.098-.288Z"/>
+              <path d="M13.983 11.078h2.119a.186.186 0 00.186-.185V9.006a.186.186 0 00-.186-.186h-2.119a.185.185 0 00-.185.185v1.888c0 .102.083.185.185.185m-2.954-5.43h2.118a.186.186 0 00.186-.186V3.574a.186.186 0 00-.186-.185h-2.118a.185.185 0 00-.185.185v1.888c0 .102.082.185.185.186m0 2.716h2.118a.187.187 0 00.186-.186V6.29a.186.186 0 00-.186-.185h-2.118a.185.185 0 00-.185.185v1.887c0 .102.082.185.185.186m-2.93 0h2.12a.186.186 0 00.184-.186V6.29a.185.185 0 00-.185-.185H8.1a.185.185 0 00-.185.185v1.887c0 .102.083.185.185.186m-2.964 0h2.119a.186.186 0 00.185-.186V6.29a.185.185 0 00-.185-.185H5.136a.186.186 0 00-.186.185v1.887c0 .102.084.185.186.186m5.893 2.715h2.118a.186.186 0 00.186-.185V9.006a.186.186 0 00-.186-.186h-2.118a.185.185 0 00-.185.185v1.888c0 .102.082.185.185.185m-2.93 0h2.12a.185.185 0 00.184-.185V9.006a.185.185 0 00-.184-.186h-2.12a.185.185 0 00-.184.185v1.888c0 .102.083.185.185.185m-2.964 0h2.119a.185.185 0 00.185-.185V9.006a.185.185 0 00-.185-.186h-2.119a.185.185 0 00-.186.185v1.888c0 .102.084.185.186.185m-2.92 0h2.12a.185.185 0 00.184-.185V9.006a.185.185 0 00-.184-.186h-2.12a.186.186 0 00-.186.186v1.887c0 .102.084.185.186.185m-2.929 0h2.119a.185.185 0 00.185-.185V9.006a.186.186 0 00-.185-.186h-2.12a.185.185 0 00-.184.185v1.888c0 .102.083.185.185.185M23.763 9.89c-.065-.051-.672-.51-1.954-.51-.338.001-.676.03-1.01.087-.248-1.7-1.653-2.53-1.716-2.566l-.344-.199-.226.327c-.284.438-.49.922-.612 1.43-.23.97-.09 1.882.403 2.661-.595.332-1.55.413-1.744.42H.751a.751.751 0 00-.75.748 11.376 11.376 0 00.692 4.062c.545 1.428 1.355 2.48 2.41 3.124 1.18.723 3.1 1.137 5.275 1.137.983.003 1.963-.086 2.93-.266a12.248 12.248 0 003.823-1.389c.98-.567 1.86-1.288 2.61-2.136 1.252-1.418 1.998-2.997 2.553-4.4h.221c1.372 0 2.215-.549 2.68-1.009.309-.293.55-.65.707-1.046l.098-.288Z" />
             </svg>
           </span>
           Containers
@@ -465,7 +497,9 @@ function App() {
 
       {/* Main Content */}
       <main className="main-content">
-        <div className={`main-view ${viewMode === "graph" ? "main-view-active" : ""}`}>
+        <div
+          className={`main-view main-view-dual ${viewMode === "graph" ? "main-view-active" : ""}`}
+        >
           <div className="graph-container">
             {loading ? (
               <div className="loading">Scanning localhost...</div>
@@ -480,11 +514,13 @@ function App() {
           </div>
         </div>
 
-        <div className={`main-view ${viewMode === "containers" ? "main-view-active" : ""}`}>
+        <div
+          className={`main-view ${viewMode === "containers" ? "main-view-active" : ""}`}
+        >
           <div className="containers-view">
-            <div className="container-sub-tabs">
+            <div className="app-tabs app-tabs-inline">
               <button
-                className={`container-sub-tab ${containerSubTab === "overview" ? "container-sub-tab-active" : ""}`}
+                className={`app-tab ${containerSubTab === "overview" ? "app-tab-active" : ""}`}
                 onClick={() => setContainerSubTab("overview")}
               >
                 <svg
@@ -503,10 +539,17 @@ function App() {
                 Overview
               </button>
               <button
-                className={`container-sub-tab ${containerSubTab === "logs" ? "container-sub-tab-active" : ""}`}
+                className={`app-tab ${containerSubTab === "logs" ? "app-tab-active" : ""}`}
                 onClick={() => setContainerSubTab("logs")}
               >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
                   <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
                   <polyline points="14 2 14 8 20 8" />
                   <line x1="16" y1="13" x2="8" y2="13" />
@@ -524,37 +567,45 @@ function App() {
                 minHeight: 0,
               }}
             >
-                <div className="graph-container">
-                  {loading ? (
-                    <div className="loading">Scanning Docker containers...</div>
-                  ) : dockerContainerData.nodes.length === 0 ? (
-                    <div className="graph-empty">
-                      <div className="docker-empty-icon">
-                        <svg
-                          width="48"
-                          height="48"
-                          viewBox="0 0 24 24"
-                          fill="currentColor"
-                          opacity="0.3"
-                        >
-                          <path d="M13.983 11.078h2.119a.186.186 0 00.186-.185V9.006a.186.186 0 00-.186-.186h-2.119a.185.185 0 00-.185.185v1.888c0 .102.083.185.185.185m-2.954-5.43h2.118a.186.186 0 00.186-.186V3.574a.186.186 0 00-.186-.185h-2.118a.185.185 0 00-.185.185v1.888c0 .102.082.185.185.186m0 2.716h2.118a.187.187 0 00.186-.186V6.29a.186.186 0 00-.186-.185h-2.118a.185.185 0 00-.185.185v1.887c0 .102.082.185.185.186m-2.93 0h2.12a.186.186 0 00.184-.186V6.29a.185.185 0 00-.185-.185H8.1a.185.185 0 00-.185.185v1.887c0 .102.083.185.185.186m-2.964 0h2.119a.186.186 0 00.185-.186V6.29a.185.185 0 00-.185-.185H5.136a.186.186 0 00-.186.185v1.887c0 .102.084.185.186.186m5.893 2.715h2.118a.186.186 0 00.186-.185V9.006a.186.186 0 00-.186-.186h-2.118a.185.185 0 00-.185.185v1.888c0 .102.082.185.185.185m-2.93 0h2.12a.185.185 0 00.184-.185V9.006a.185.185 0 00-.184-.186h-2.12a.185.185 0 00-.184.185v1.888c0 .102.083.185.185.185m-2.964 0h2.119a.185.185 0 00.185-.185V9.006a.185.185 0 00-.185-.186h-2.119a.185.185 0 00-.186.185v1.888c0 .102.084.185.186.185m-2.92 0h2.12a.185.185 0 00.184-.185V9.006a.185.185 0 00-.184-.186h-2.12a.186.186 0 00-.186.186v1.887c0 .102.084.185.186.185m-2.929 0h2.119a.185.185 0 00.185-.185V9.006a.186.186 0 00-.185-.186h-2.12a.185.185 0 00-.184.185v1.888c0 .102.083.185.185.185M23.763 9.89c-.065-.051-.672-.51-1.954-.51-.338.001-.676.03-1.01.087-.248-1.7-1.653-2.53-1.716-2.566l-.344-.199-.226.327c-.284.438-.49.922-.612 1.43-.23.97-.09 1.882.403 2.661-.595.332-1.55.413-1.744.42H.751a.751.751 0 00-.75.748 11.376 11.376 0 00.692 4.062c.545 1.428 1.355 2.48 2.41 3.124 1.18.723 3.1 1.137 5.275 1.137.983.003 1.963-.086 2.93-.266a12.248 12.248 0 003.823-1.389c.98-.567 1.86-1.288 2.61-2.136 1.252-1.418 1.998-2.997 2.553-4.4h.221c1.372 0 2.215-.549 2.68-1.009.309-.293.55-.65.707-1.046l.098-.288Z"/>
-                        </svg>
-                      </div>
-                      <p>No Docker containers running</p>
-                      <span>Start some containers to see them here</span>
+              <div className="graph-container">
+                {loading ? (
+                  <div className="loading">Scanning Docker containers...</div>
+                ) : dockerContainerData.nodes.length === 0 ? (
+                  <div className="graph-empty">
+                    <div className="docker-empty-icon">
+                      <svg
+                        width="48"
+                        height="48"
+                        viewBox="0 0 24 24"
+                        fill="currentColor"
+                        opacity="0.3"
+                      >
+                        <path d="M13.983 11.078h2.119a.186.186 0 00.186-.185V9.006a.186.186 0 00-.186-.186h-2.119a.185.185 0 00-.185.185v1.888c0 .102.083.185.185.185m-2.954-5.43h2.118a.186.186 0 00.186-.186V3.574a.186.186 0 00-.186-.185h-2.118a.185.185 0 00-.185.185v1.888c0 .102.082.185.185.186m0 2.716h2.118a.187.187 0 00.186-.186V6.29a.186.186 0 00-.186-.185h-2.118a.185.185 0 00-.185.185v1.887c0 .102.082.185.185.186m-2.93 0h2.12a.186.186 0 00.184-.186V6.29a.185.185 0 00-.185-.185H8.1a.185.185 0 00-.185.185v1.887c0 .102.083.185.185.186m-2.964 0h2.119a.186.186 0 00.185-.186V6.29a.185.185 0 00-.185-.185H5.136a.186.186 0 00-.186.185v1.887c0 .102.084.185.186.186m5.893 2.715h2.118a.186.186 0 00.186-.185V9.006a.186.186 0 00-.186-.186h-2.118a.185.185 0 00-.185.185v1.888c0 .102.082.185.185.185m-2.93 0h2.12a.185.185 0 00.184-.185V9.006a.185.185 0 00-.184-.186h-2.12a.185.185 0 00-.184.185v1.888c0 .102.083.185.185.185m-2.964 0h2.119a.185.185 0 00.185-.185V9.006a.185.185 0 00-.185-.186h-2.119a.185.185 0 00-.186.185v1.888c0 .102.084.185.186.185m-2.92 0h2.12a.185.185 0 00.184-.185V9.006a.185.185 0 00-.184-.186h-2.12a.186.186 0 00-.186.186v1.887c0 .102.084.185.186.185m-2.929 0h2.119a.185.185 0 00.185-.185V9.006a.186.186 0 00-.185-.186h-2.12a.185.185 0 00-.184.185v1.888c0 .102.083.185.185.185M23.763 9.89c-.065-.051-.672-.51-1.954-.51-.338.001-.676.03-1.01.087-.248-1.7-1.653-2.53-1.716-2.566l-.344-.199-.226.327c-.284.438-.49.922-.612 1.43-.23.97-.09 1.882.403 2.661-.595.332-1.55.413-1.744.42H.751a.751.751 0 00-.75.748 11.376 11.376 0 00.692 4.062c.545 1.428 1.355 2.48 2.41 3.124 1.18.723 3.1 1.137 5.275 1.137.983.003 1.963-.086 2.93-.266a12.248 12.248 0 003.823-1.389c.98-.567 1.86-1.288 2.61-2.136 1.252-1.418 1.998-2.997 2.553-4.4h.221c1.372 0 2.215-.549 2.68-1.009.309-.293.55-.65.707-1.046l.098-.288Z" />
+                      </svg>
                     </div>
-                  ) : (
-                    <GraphView
-                      nodes={dockerContainerData.nodes}
-                      edges={dockerContainerData.edges}
-                      isContainerView={true}
-                      onDatabaseClick={handleDatabaseClick}
-                      onFreshnessClick={handleContainerFreshnessClick}
-                      dataStatus={dataStatus}
-                    />
-                  )}
-                </div>
+                    <p>No Docker containers running</p>
+                    <span>Start some containers to see them here</span>
+                  </div>
+                ) : (
+                  <GraphView
+                    nodes={dockerContainerData.nodes}
+                    edges={dockerContainerData.edges}
+                    isContainerView={true}
+                    onDatabaseClick={handleDatabaseClick}
+                    onFreshnessClick={handleContainerFreshnessClick}
+                    dataStatus={dataStatus}
+                  />
+                )}
               </div>
+              <div className="sidebar">
+                <ServiceSidebar
+                  nodes={dockerContainerData.nodes}
+                  ports={dockerContainerData.ports}
+                  loading={loading}
+                  onTestService={handleTestService}
+                />
+              </div>
+            </div>
             <div
               className={`containers-logs ${containerSubTab === "logs" ? "containers-sub-view-active" : ""}`}
               style={{
@@ -571,7 +622,9 @@ function App() {
           </div>
         </div>
 
-        <div className={`main-view main-view-single ${viewMode === "database" ? "main-view-active" : ""}`}>
+        <div
+          className={`main-view main-view-single ${viewMode === "database" ? "main-view-active" : ""}`}
+        >
           <div className="api-tester-container">
             <DatabaseListView
               databaseNodes={databaseNodes}
@@ -582,12 +635,17 @@ function App() {
           </div>
         </div>
 
-        <div className={`main-view main-view-single ${viewMode === "api-tester" ? "main-view-active" : ""}`}>
+        <div
+          className={`main-view main-view-single ${viewMode === "api-tester" ? "main-view-active" : ""}`}
+        >
           <div className="api-tester-container">
             {loading ? (
               <div className="loading">Scanning localhost...</div>
             ) : (
-              <CurlBuilder nodes={graph.nodes} />
+              <CurlBuilder
+                nodes={graph.nodes}
+                initialServiceId={testServiceId}
+              />
             )}
           </div>
         </div>
