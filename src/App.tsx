@@ -1,7 +1,6 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
 import { useSystemSnapshot } from "./hooks/useSystemMonitor";
 import { GraphView } from "./components/GraphView";
-import { ServiceSidebar } from "./components/ServiceSidebar";
 import { CurlBuilder } from "./components/CurlBuilder";
 import { DatabaseListView } from "./components/DatabaseListView";
 import { ContainerLogsTab } from "./components/ContainerLogsTab";
@@ -152,9 +151,6 @@ function App() {
   // Selected tab state - default to system tab
   const [selectedTab, setSelectedTab] = useState<string>(SYSTEM_TAB_ID);
 
-  // Service to pre-select in API tester when navigating from sidebar
-  const [testServiceId, setTestServiceId] = useState<string | undefined>();
-
   // Database node for database page
   const [databaseNode, setDatabaseNode] = useState<GraphNode | null>(null);
 
@@ -164,11 +160,6 @@ function App() {
   // Initial container ID to select in logs view (when navigating from freshness click)
   const [initialLogContainerId, setInitialLogContainerId] = useState<string | undefined>();
 
-  // Handle "Test" button click from sidebar - switch to API tester with service pre-selected
-  const handleTestService = useCallback((nodeId: string) => {
-    setTestServiceId(nodeId);
-    setViewMode("api-tester");
-  }, []);
 
   // Handle database container click - navigate to database page
   const handleDatabaseClick = useCallback((node: GraphNode) => {
@@ -176,10 +167,6 @@ function App() {
     setViewMode("database");
   }, []);
 
-  // Handle going back from database page (return to database list)
-  const handleDatabaseBack = useCallback(() => {
-    setDatabaseNode(null);
-  }, []);
 
   // Open database view directly from top tabs (show database list)
   const handleOpenDatabaseView = useCallback(() => {
@@ -478,7 +465,7 @@ function App() {
 
       {/* Main Content */}
       <main className="main-content">
-        <div className={`main-view main-view-dual ${viewMode === "graph" ? "main-view-active" : ""}`}>
+        <div className={`main-view ${viewMode === "graph" ? "main-view-active" : ""}`}>
           <div className="graph-container">
             {loading ? (
               <div className="loading">Scanning localhost...</div>
@@ -490,14 +477,6 @@ function App() {
                 onFreshnessClick={handleFreshnessClick}
               />
             )}
-          </div>
-          <div className="sidebar">
-            <ServiceSidebar
-              nodes={filteredData.nodes}
-              ports={filteredData.ports}
-              loading={loading}
-              onTestService={handleTestService}
-            />
           </div>
         </div>
 
@@ -575,14 +554,6 @@ function App() {
                     />
                   )}
                 </div>
-                <div className="sidebar">
-                  <ServiceSidebar
-                    nodes={dockerContainerData.nodes}
-                    ports={dockerContainerData.ports}
-                    loading={loading}
-                    onTestService={handleTestService}
-                  />
-                </div>
               </div>
             <div
               className={`containers-logs ${containerSubTab === "logs" ? "containers-sub-view-active" : ""}`}
@@ -616,7 +587,7 @@ function App() {
             {loading ? (
               <div className="loading">Scanning localhost...</div>
             ) : (
-              <CurlBuilder nodes={graph.nodes} initialServiceId={testServiceId} />
+              <CurlBuilder nodes={graph.nodes} />
             )}
           </div>
         </div>
