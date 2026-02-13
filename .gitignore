@@ -44,3 +44,6 @@ yarn-error.log*
 # Docker test volumes (optional - remove if you want to track)
 test/docker-test/postgres-data/
 test/docker-test/mongodb-data/
+
+# Website download binaries
+website/downloads/
