@@ -1,13 +1,10 @@
-const { exec, spawn } = require('child_process');
-const util = require('util');
+const { spawn } = require('child_process');
 let PgClient = null;
 try {
   ({ Client: PgClient } = require('pg'));
 } catch {
   PgClient = null;
 }
-
-const execAsync = util.promisify(exec);
 
 async function execDockerWithInput(containerId, commandArgs, input, timeout = 30000) {
   return new Promise((resolve, reject) => {
@@ -55,6 +52,52 @@ async function execDockerWithInput(containerId, commandArgs, input, timeout = 30
 
     child.stdin.write(input || '');
     child.stdin.end();
+  });
+}
+
+async function execDocker(containerId, commandArgs, timeout = 10000) {
+  return new Promise((resolve, reject) => {
+    const child = spawn('docker', ['exec', containerId, ...commandArgs], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+
+    let stdout = '';
+    let stderr = '';
+    let timedOut = false;
+
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill('SIGTERM');
+    }, timeout);
+
+    child.stdout.on('data', (chunk) => {
+      stdout += chunk.toString();
+    });
+
+    child.stderr.on('data', (chunk) => {
+      stderr += chunk.toString();
+    });
+
+    child.on('error', (error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
+
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      if (timedOut) {
+        reject(new Error('Docker command timed out'));
+        return;
+      }
+      if (code !== 0) {
+        const err = new Error(stderr || stdout || `Command exited with code ${code}`);
+        err.stdout = stdout;
+        err.stderr = stderr;
+        reject(err);
+        return;
+      }
+      resolve({ stdout, stderr });
+    });
   });
 }
 
@@ -250,10 +293,10 @@ async function getTableData(containerId, containerImage, tableName, limit = 100)
 
 // PostgreSQL functions
 async function getPostgresTables(containerId) {
-  const cmd = `docker exec ${containerId} psql -U postgres -t -c "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name;" 2>/dev/null`;
+  const sql = "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name;";
 
   try {
-    const { stdout } = await execAsync(cmd, { timeout: 10000 });
+    const { stdout } = await execDocker(containerId, ['psql', '-U', 'postgres', '-t', '-c', sql], 10000);
     const tables = stdout
       .split('\n')
       .map(line => line.trim())
@@ -262,9 +305,8 @@ async function getPostgresTables(containerId) {
     return { tables, dbType: 'postgresql' };
   } catch (error) {
     // Try with different user or database
-    const altCmd = `docker exec ${containerId} psql -t -c "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name;" 2>/dev/null`;
     try {
-      const { stdout } = await execAsync(altCmd, { timeout: 10000 });
+      const { stdout } = await execDocker(containerId, ['psql', '-t', '-c', sql], 10000);
       const tables = stdout
         .split('\n')
         .map(line => line.trim())
@@ -281,16 +323,20 @@ async function getPostgresTableData(containerId, tableName, limit) {
   const safeTableName = tableName.replace(/[^a-zA-Z0-9_]/g, '');
 
   // Get columns first
-  const colCmd = `docker exec ${containerId} psql -U postgres -t -c "SELECT column_name FROM information_schema.columns WHERE table_name = '${safeTableName}' ORDER BY ordinal_position;" 2>/dev/null`;
-  const { stdout: colOut } = await execAsync(colCmd, { timeout: 10000 });
+  const { stdout: colOut } = await execDocker(containerId, [
+    'psql', '-U', 'postgres', '-t', '-c',
+    `SELECT column_name FROM information_schema.columns WHERE table_name = '${safeTableName}' ORDER BY ordinal_position;`
+  ], 10000);
   const columns = colOut
     .split('\n')
     .map(line => line.trim())
     .filter(line => line.length > 0);
 
   // Get data as JSON
-  const dataCmd = `docker exec ${containerId} psql -U postgres -t -c "SELECT row_to_json(t) FROM (SELECT * FROM ${safeTableName} LIMIT ${limit}) t;" 2>/dev/null`;
-  const { stdout: dataOut } = await execAsync(dataCmd, { timeout: 15000 });
+  const { stdout: dataOut } = await execDocker(containerId, [
+    'psql', '-U', 'postgres', '-t', '-c',
+    `SELECT row_to_json(t) FROM (SELECT * FROM ${safeTableName} LIMIT ${limit}) t;`
+  ], 15000);
 
   const rows = dataOut
     .split('\n')
@@ -310,10 +356,8 @@ async function getPostgresTableData(containerId, tableName, limit) {
 
 // MySQL functions
 async function getMySQLTables(containerId) {
-  const cmd = `docker exec ${containerId} mysql -u root -e "SHOW TABLES;" --skip-column-names 2>/dev/null`;
-
   try {
-    const { stdout } = await execAsync(cmd, { timeout: 10000 });
+    const { stdout } = await execDocker(containerId, ['mysql', '-u', 'root', '-e', 'SHOW TABLES;', '--skip-column-names'], 10000);
     const tables = stdout
       .split('\n')
       .map(line => line.trim())
@@ -322,14 +366,12 @@ async function getMySQLTables(containerId) {
     return { tables, dbType: 'mysql' };
   } catch (error) {
     // Try to find the database name first
-    const dbCmd = `docker exec ${containerId} mysql -u root -e "SHOW DATABASES;" --skip-column-names 2>/dev/null`;
     try {
-      const { stdout: dbOut } = await execAsync(dbCmd, { timeout: 10000 });
+      const { stdout: dbOut } = await execDocker(containerId, ['mysql', '-u', 'root', '-e', 'SHOW DATABASES;', '--skip-column-names'], 10000);
       const databases = dbOut.split('\n').map(l => l.trim()).filter(l => l && !['information_schema', 'performance_schema', 'mysql', 'sys'].includes(l));
 
       if (databases.length > 0) {
-        const tableCmd = `docker exec ${containerId} mysql -u root -D ${databases[0]} -e "SHOW TABLES;" --skip-column-names 2>/dev/null`;
-        const { stdout } = await execAsync(tableCmd, { timeout: 10000 });
+        const { stdout } = await execDocker(containerId, ['mysql', '-u', 'root', '-D', databases[0], '-e', 'SHOW TABLES;', '--skip-column-names'], 10000);
         const tables = stdout.split('\n').map(line => line.trim()).filter(line => line.length > 0);
         return { tables, dbType: 'mysql', database: databases[0] };
       }
@@ -344,16 +386,18 @@ async function getMySQLTableData(containerId, tableName, limit) {
   const safeTableName = tableName.replace(/[^a-zA-Z0-9_]/g, '');
 
   // Get columns
-  const colCmd = `docker exec ${containerId} mysql -u root -e "DESCRIBE ${safeTableName};" --skip-column-names 2>/dev/null`;
-  const { stdout: colOut } = await execAsync(colCmd, { timeout: 10000 });
+  const { stdout: colOut } = await execDocker(containerId, [
+    'mysql', '-u', 'root', '-e', `DESCRIBE ${safeTableName};`, '--skip-column-names'
+  ], 10000);
   const columns = colOut
     .split('\n')
     .map(line => line.split('\t')[0]?.trim())
     .filter(col => col && col.length > 0);
 
   // Get data as JSON
-  const dataCmd = `docker exec ${containerId} mysql -u root -e "SELECT * FROM ${safeTableName} LIMIT ${limit};" --batch 2>/dev/null`;
-  const { stdout: dataOut } = await execAsync(dataCmd, { timeout: 15000 });
+  const { stdout: dataOut } = await execDocker(containerId, [
+    'mysql', '-u', 'root', '-e', `SELECT * FROM ${safeTableName} LIMIT ${limit};`, '--batch'
+  ], 15000);
 
   const lines = dataOut.split('\n').filter(l => l.trim().length > 0);
   const headers = lines[0]?.split('\t') || [];
@@ -373,14 +417,14 @@ async function getMySQLTableData(containerId, tableName, limit) {
 async function getMongoCollections(containerId) {
   // Try mongosh first (newer), then mongo (older).
   // Return empty collections on success instead of treating it as a connection error.
-  const commands = [
-    `docker exec ${containerId} mongosh --quiet --eval "print(JSON.stringify(db.getCollectionNames()))" 2>/dev/null`,
-    `docker exec ${containerId} mongo --quiet --eval "print(JSON.stringify(db.getCollectionNames()))" 2>/dev/null`
+  const commandVariants = [
+    ['mongosh', '--quiet', '--eval', 'print(JSON.stringify(db.getCollectionNames()))'],
+    ['mongo', '--quiet', '--eval', 'print(JSON.stringify(db.getCollectionNames()))'],
   ];
 
-  for (const cmd of commands) {
+  for (const cmdArgs of commandVariants) {
     try {
-      const { stdout } = await execAsync(cmd, { timeout: 10000 });
+      const { stdout } = await execDocker(containerId, cmdArgs, 10000);
       const output = stdout.trim();
 
       // Preferred path: JSON array output from shell command
@@ -415,14 +459,14 @@ async function getMongoCollections(containerId) {
 async function getMongoCollectionData(containerId, collectionName, limit) {
   const safeCollectionName = collectionName.replace(/[^a-zA-Z0-9_]/g, '');
 
-  const commands = [
-    `docker exec ${containerId} mongosh --quiet --eval "JSON.stringify(db.${safeCollectionName}.find().limit(${limit}).toArray())" 2>/dev/null`,
-    `docker exec ${containerId} mongo --quiet --eval "JSON.stringify(db.${safeCollectionName}.find().limit(${limit}).toArray())" 2>/dev/null`
+  const commandVariants = [
+    ['mongosh', '--quiet', '--eval', `JSON.stringify(db.${safeCollectionName}.find().limit(${limit}).toArray())`],
+    ['mongo', '--quiet', '--eval', `JSON.stringify(db.${safeCollectionName}.find().limit(${limit}).toArray())`],
   ];
 
-  for (const cmd of commands) {
+  for (const cmdArgs of commandVariants) {
     try {
-      const { stdout } = await execAsync(cmd, { timeout: 15000 });
+      const { stdout } = await execDocker(containerId, cmdArgs, 15000);
       const cleanOutput = stdout.trim().split('\n').pop(); // Get last line (the JSON)
       const rows = JSON.parse(cleanOutput || '[]');
 
