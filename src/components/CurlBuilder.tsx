@@ -514,7 +514,7 @@ function generateHistoryId(): string {
   return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 }
 
-export function CurlBuilder({ nodes, initialServiceId }: CurlBuilderProps) {
+export function CurlBuilder({ nodes }: CurlBuilderProps) {
   // State for request configuration
   const [selectedNodeId, setSelectedNodeId] = useState<string>("");
   const [selectedRouteIndex, setSelectedRouteIndex] = useState<number>(-1);
@@ -574,18 +574,6 @@ export function CurlBuilder({ nodes, initialServiceId }: CurlBuilderProps) {
     };
     loadHistory();
   }, []);
-
-  // Auto-select service when initialServiceId is provided
-  useEffect(() => {
-    if (initialServiceId) {
-      setSelectedNodeId(initialServiceId);
-      setSelectedRouteIndex(-1);
-      setCustomPath("");
-      setRouteSearch("");
-      setResponse(null);
-      setRequestError(null);
-    }
-  }, [initialServiceId]);
 
   // Get nodes that have ports AND discovered routes (actually testable with curl)
   const httpNodes = useMemo(() => {

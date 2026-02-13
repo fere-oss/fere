@@ -2,7 +2,6 @@ import type { GraphNode, ApiRoute, HttpResponse, HistoryEntry } from '../../type
 
 export interface CurlBuilderProps {
   nodes: GraphNode[];
-  initialServiceId?: string;
 }
 
 export interface Header {

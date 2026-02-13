@@ -32,7 +32,6 @@ export function ContextMenu({ node, x, y, width, height, onClose }: ContextMenuP
   const handleAction = (action: string) => (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    console.log('Context menu action clicked:', action, { hasPort, mainPort, hasProjectPath, projectPath: node.projectPath, pid: node.pid });
 
     const ensureSuccess = (result: { success?: boolean; error?: string } | undefined, label: string) => {
       if (!result || result.success !== false) return;
@@ -45,44 +44,32 @@ export function ContextMenu({ node, x, y, width, height, onClose }: ContextMenuP
         switch (action) {
           case 'open-browser':
             if (hasPort) {
-              console.log('Opening browser:', `http://localhost:${mainPort}`);
               const result = await window.electronAPI.openUrl(`http://localhost:${mainPort}`);
-              console.log('Open browser result:', result);
               ensureSuccess(result, 'Open in Browser');
             }
             break;
           case 'open-terminal':
             if (hasProjectPath) {
-              console.log('Opening terminal:', node.projectPath);
               const result = await window.electronAPI.openTerminal(node.projectPath!);
-              console.log('Open terminal result:', result);
               ensureSuccess(result, 'Open in Terminal');
             }
             break;
           case 'kill-process':
             if (isDockerContainerNode && node.containerId) {
-              console.log('Stopping container (Kill Process action):', node.containerId);
               const result = await window.electronAPI.stopContainer(node.containerId);
-              console.log('Kill process (stop container) result:', result);
               ensureSuccess(result, 'Kill Process');
             } else if (!isExternal) {
-              console.log('Killing process:', node.pid);
               const result = await window.electronAPI.killProcess(node.pid);
-              console.log('Kill process result:', result);
               ensureSuccess(result, 'Kill Process');
             }
             break;
           case 'copy-port':
             if (hasPort) {
-              console.log('Copying port:', mainPort);
               await navigator.clipboard.writeText(String(mainPort));
-              console.log('Port copied');
             }
             break;
           case 'copy-pid':
-            console.log('Copying PID:', node.pid);
             await navigator.clipboard.writeText(String(node.pid));
-            console.log('PID copied');
             break;
         }
       } catch (error) {
