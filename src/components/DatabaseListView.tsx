@@ -55,12 +55,12 @@ export function DatabaseListView({
                 <span className="db-list-item-name">{node.name}</span>
                 <span className="db-list-item-type">{detectDbLabelFromNode(node)}</span>
               </div>
-              {node.containerState === 'running' && (
+              {node.containerState === 'running' && node.id !== '__remote_mongo_launcher__' && (
                 <span className="db-list-item-status" />
               )}
             </button>
           ))}
-          {databaseNodes.length === 0 && (
+          {databaseNodes.length === 0 && !remoteMongoLauncherNode && (
             <div className="db-list-empty">
               <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" opacity="0.3">
                 <ellipse cx="12" cy="5" rx="7" ry="3" />

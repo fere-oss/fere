@@ -49,7 +49,6 @@ const REMOTE_MONGO_LAUNCHER_NODE: GraphNode = {
   lastSeen: Date.now(),
   isDockerContainer: false,
   containerImage: "mongo:remote",
-  containerState: "running",
   containerStatus: "Remote URI mode",
 };
 

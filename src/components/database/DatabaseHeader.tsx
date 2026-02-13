@@ -20,9 +20,11 @@ export function DatabaseHeader({ node, dbTypeLabel, activeTab, onBack, onTabChan
         <div className="db-header-info">
           <div className="db-header-title">
             <span className="db-name">{node.name}</span>
-            <span className={`db-status db-status-${node.containerState}`}>
-              {node.containerState}
-            </span>
+            {node.containerState && (
+              <span className={`db-status db-status-${node.containerState}`}>
+                {node.containerState}
+              </span>
+            )}
           </div>
           <span className="db-type-badge">{dbTypeLabel}</span>
         </div>
