@@ -81,14 +81,11 @@ function ActivePorts({
   reactFlowInstance: ReactFlowInstance | null;
 }) {
   const portEntries = useMemo(() => {
-    const seen = new Set<number>();
     const entries: { port: number; host: string; nodeId: string; nodeName: string }[] = [];
     for (const node of nodes) {
-      for (const p of node.ports) {
-        if (!seen.has(p.port)) {
-          seen.add(p.port);
-          entries.push({ port: p.port, host: p.host || "localhost", nodeId: node.id, nodeName: node.name });
-        }
+      const mainPort = node.ports[0];
+      if (mainPort) {
+        entries.push({ port: mainPort.port, host: mainPort.host || "localhost", nodeId: node.id, nodeName: node.name });
       }
     }
     return entries.sort((a, b) => a.port - b.port);
