@@ -505,6 +505,7 @@ function App() {
               <div className="loading">Scanning localhost...</div>
             ) : (
               <GraphView
+                key={selectedTab}
                 nodes={filteredData.nodes}
                 edges={filteredData.edges}
                 dataStatus={dataStatus}
