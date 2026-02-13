@@ -35,22 +35,6 @@ const BACKEND_FRAMEWORK_ORDER = [
   "node-http",
 ];
 
-const REMOTE_MONGO_LAUNCHER_NODE: GraphNode = {
-  id: "__remote_mongo_launcher__",
-  pid: 0,
-  name: "Remote Database",
-  command: "remote-mongo",
-  type: "database",
-  cpu: 0,
-  memory: 0,
-  user: "remote",
-  ports: [],
-  healthStatus: "green",
-  lastSeen: Date.now(),
-  isDockerContainer: false,
-  containerImage: "mongo:remote",
-  containerStatus: "Remote URI mode",
-};
 
 function detectDbLabel(command: string, name: string) {
   if (command.includes("postgres") || name.includes("postgres"))
@@ -622,7 +606,6 @@ function App() {
               databaseNodes={databaseNodes}
               selectedNode={databaseNode}
               onSelectNode={setDatabaseNode}
-              remoteMongoLauncherNode={REMOTE_MONGO_LAUNCHER_NODE}
             />
           </div>
         </div>

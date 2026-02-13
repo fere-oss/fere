@@ -153,11 +153,85 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
     setSelectedRemoteCollection(first.collection);
   }, [parseRemoteTable]);
 
+  // Auto-connect saved remote connections (URI stored in containerStatus)
+  const savedUri = useMemo(() => {
+    const status = node.containerStatus || '';
+    if (status.startsWith('saved-uri:')) return status.slice('saved-uri:'.length);
+    return null;
+  }, [node.containerStatus]);
+
+  useEffect(() => {
+    if (!savedUri) return;
+
+    let isCancelled = false;
+
+    const autoConnect = async () => {
+      const uriType = detectUriDbType(savedUri);
+      if (!uriType) {
+        if (!isCancelled) {
+          setError('Unsupported URI type');
+          setLoading(false);
+        }
+        return;
+      }
+
+      try {
+        if (!isCancelled) {
+          setLoading(true);
+          setError(null);
+        }
+
+        const result = uriType === 'mongodb'
+          ? await window.electronAPI.connectMongoUri(savedUri)
+          : await window.electronAPI.connectPostgresUri(savedUri);
+
+        if (isCancelled) return;
+
+        if (result.error) {
+          setError(result.error);
+          setLoading(false);
+          return;
+        }
+
+        setRemoteMongoUri(savedUri);
+        setRemoteMongoMode(true);
+        setRemoteUriDbType(uriType);
+        setMongoUriInput(savedUri);
+        setDbType(result.dbType || uriType);
+        setTables(result.tables || []);
+
+        if (uriType === 'mongodb') {
+          applyRemoteTableDefaults(result.tables || []);
+        } else {
+          setSelectedRemoteDb('');
+          setSelectedRemoteCollection('');
+        }
+
+        setSelectedTable(null);
+        setTableData(null);
+        setQuery(uriType === 'mongodb' ? 'db.getCollectionNames()' : 'SELECT * FROM ');
+        setMongoUriStatus('ok');
+        setMongoUriStatusMessage('Connected');
+      } catch (err) {
+        if (!isCancelled) {
+          setError(err instanceof Error ? err.message : 'Failed to connect');
+        }
+      } finally {
+        if (!isCancelled) {
+          setLoading(false);
+        }
+      }
+    };
+
+    autoConnect();
+    return () => { isCancelled = true; };
+  }, [savedUri, detectUriDbType, applyRemoteTableDefaults]);
+
   useEffect(() => {
     let isCancelled = false;
 
     const loadTables = async () => {
-      if (remoteMongoMode) return;
+      if (remoteMongoMode || savedUri) return;
 
       const image = (containerImage || '').toLowerCase();
       const isRemoteMongoLauncher = !containerId && image.includes('mongo');
@@ -214,7 +288,7 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
     return () => {
       isCancelled = true;
     };
-  }, [containerId, containerImage, remoteMongoMode]);
+  }, [containerId, containerImage, remoteMongoMode, savedUri]);
 
   const loadTableData = useCallback(async (tableName: string) => {
     if (!window.electronAPI?.getTableData) return;

@@ -9,6 +9,8 @@ interface DatabaseHeaderProps {
 }
 
 export function DatabaseHeader({ node, dbTypeLabel, activeTab, onBack, onTabChange }: DatabaseHeaderProps) {
+  const isRemote = (node.containerStatus || '').startsWith('saved-uri:');
+
   return (
     <header className="db-header">
       <div className="db-header-left">
@@ -20,11 +22,13 @@ export function DatabaseHeader({ node, dbTypeLabel, activeTab, onBack, onTabChan
         <div className="db-header-info">
           <div className="db-header-title">
             <span className="db-name">{node.name}</span>
-            {node.containerState && (
+            {isRemote ? (
+              <span className="db-status db-status-remote">remote</span>
+            ) : node.containerState ? (
               <span className={`db-status db-status-${node.containerState}`}>
                 {node.containerState}
               </span>
-            )}
+            ) : null}
           </div>
           <span className="db-type-badge">{dbTypeLabel}</span>
         </div>
