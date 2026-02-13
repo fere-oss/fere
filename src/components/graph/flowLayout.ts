@@ -14,9 +14,9 @@ export const FLOW_LAYOUT = {
   STANDALONE_GROUP_GAP: 24,
   STANDALONE_LABEL_OFFSET: 32,
   CONTAINER_SECTION_OFFSET: 64,
-  CONTAINER_LABEL_OFFSET: 0,
-  CONTAINER_GROUP_GAP: 48,
-  CONTAINER_GROUP_ROW_GAP: 48,
+  CONTAINER_LABEL_OFFSET: 36,
+  CONTAINER_GROUP_GAP: 32,
+  CONTAINER_GROUP_ROW_GAP: 36,
   LAYER_LABEL_OFFSET: 72,
   STANDALONE_SECTION_OFFSET: 72,
   GROUP_BOX_PADDING: 24,
@@ -25,6 +25,7 @@ export const FLOW_LAYOUT = {
   LABEL_HEIGHT: 28,
   MAX_GROUP_COLUMNS: 2,
   MAX_STANDALONE_COLUMNS: 2,
+  MAX_CONTAINER_COLUMNS: 3,
   MAX_SYSTEM_SERVICE_COLUMNS: 3,
   GROUP_COLOR: "rgba(140, 150, 170, 0.35)",
 } as const;
@@ -164,6 +165,7 @@ export function buildFlowLayout({
     LABEL_HEIGHT,
     MAX_GROUP_COLUMNS,
     MAX_STANDALONE_COLUMNS,
+    MAX_CONTAINER_COLUMNS,
     MAX_SYSTEM_SERVICE_COLUMNS,
     GROUP_COLOR,
   } = FLOW_LAYOUT;
@@ -361,8 +363,9 @@ export function buildFlowLayout({
       (isContainerView ? CONTAINER_SECTION_OFFSET : STANDALONE_SECTION_OFFSET);
     const meta = standaloneGroups.map((group) => {
       const desiredColumns = Math.ceil(Math.sqrt(group.nodes.length));
-      const maxColumns =
-        group.groupType === "service"
+      const maxColumns = isContainerView
+        ? MAX_CONTAINER_COLUMNS
+        : group.groupType === "service"
           ? MAX_SYSTEM_SERVICE_COLUMNS
           : MAX_STANDALONE_COLUMNS;
       const columnCount = Math.min(
@@ -393,7 +396,7 @@ export function buildFlowLayout({
       };
     });
 
-    const maxGroupsPerRow = isContainerView ? 2 : meta.length;
+    const maxGroupsPerRow = isContainerView ? 3 : meta.length;
     let cursorY = baseY;
     let startIndex = 0;
 
@@ -420,10 +423,7 @@ export function buildFlowLayout({
             position: centeredLabelPosition(
               groupX + item.width / 2,
               isContainerView
-                ? currentCursorY -
-                    GROUP_BOX_PADDING -
-                    LABEL_HEIGHT / 2 +
-                    rowLabelOffset
+                ? currentCursorY - GROUP_BOX_PADDING - LABEL_HEIGHT - 4
                 : currentCursorY - rowLabelOffset,
             ),
             data: {
@@ -505,7 +505,9 @@ export function buildFlowLayout({
         };
       });
 
-      const rowHeight = Math.max(...rowItems.map((item) => item.height));
+      const rowHeight = Math.max(...rowItems.map((item) =>
+        item.height + (item.group.isGroup ? GROUP_BOX_PADDING : 0),
+      ));
       cursorY += rowHeight + rowGap + rowLabelOffset;
       startIndex += maxGroupsPerRow;
     }

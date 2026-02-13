@@ -491,7 +491,7 @@ export function GraphView({
   }
 
   return (
-    <div className="graph-view" ref={containerRef}>
+    <div className={`graph-view${isContainerView ? " container-view" : ""}`} ref={containerRef}>
       <FreshnessBadge
         dataStatus={dataStatus}
         onFreshnessClick={onFreshnessClick}

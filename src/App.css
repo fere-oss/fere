@@ -2268,6 +2268,30 @@ textarea {
   color: #6b7280;
 }
 
+/* Container overview — compact cards */
+.container-view .service-node {
+  min-height: auto;
+  padding: 12px 16px;
+  gap: 6px;
+}
+
+.container-view .service-node-header {
+  margin-bottom: 4px;
+}
+
+.container-view .service-node-docker-networks {
+  display: none;
+}
+
+.container-view .service-node-name {
+  font-size: 14px;
+  margin-bottom: 2px;
+}
+
+.container-view .service-node-port {
+  font-size: 13px;
+}
+
 /* Docker health in detail panel */
 .node-detail-docker-health {
   display: flex;
