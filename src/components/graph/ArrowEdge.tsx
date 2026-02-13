@@ -28,7 +28,7 @@ function EdgePath({ id, edgePath, bundleCount, labelX, labelY }: {
       <path
         d={edgePath}
         fill="none"
-        stroke="rgba(10, 10, 10, 0.07)"
+        stroke="rgba(10, 10, 10, 0.13)"
         strokeWidth={bundleCount ? 3 : 2}
         strokeLinecap="round"
       />
@@ -36,7 +36,7 @@ function EdgePath({ id, edgePath, bundleCount, labelX, labelY }: {
         id={id}
         d={edgePath}
         fill="none"
-        stroke="rgba(10, 10, 10, 0.30)"
+        stroke="rgba(10, 10, 10, 0.85)"
         strokeWidth={bundleCount ? 2.5 : 1.5}
         strokeDasharray="4 8"
         strokeLinecap="round"
