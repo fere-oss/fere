@@ -498,7 +498,7 @@ function App() {
       {/* Main Content */}
       <main className="main-content">
         <div
-          className={`main-view main-view-dual ${viewMode === "graph" ? "main-view-active" : ""}`}
+          className={`main-view ${viewMode === "graph" ? "main-view-active" : ""}`}
         >
           <div className="graph-container">
             {loading ? (
@@ -597,14 +597,6 @@ function App() {
                   />
                 )}
               </div>
-              <div className="sidebar">
-                <ServiceSidebar
-                  nodes={dockerContainerData.nodes}
-                  ports={dockerContainerData.ports}
-                  loading={loading}
-                  onTestService={handleTestService}
-                />
-              </div>
             </div>
             <div
               className={`containers-logs ${containerSubTab === "logs" ? "containers-sub-view-active" : ""}`}
@@ -642,10 +634,7 @@ function App() {
             {loading ? (
               <div className="loading">Scanning localhost...</div>
             ) : (
-              <CurlBuilder
-                nodes={graph.nodes}
-                initialServiceId={testServiceId}
-              />
+              <CurlBuilder nodes={graph.nodes} />
             )}
           </div>
         </div>
