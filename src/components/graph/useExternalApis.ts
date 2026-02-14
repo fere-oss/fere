@@ -3,10 +3,19 @@ import {
   externalApiCache,
   externalApiInFlight,
   EXTERNAL_API_CACHE_TTL_MS,
+  setExternalApiCacheEntry,
+  subscribeExternalApiCacheUpdates,
 } from "./externalApis";
 
-export function useExternalApis(projectPathsKey: string, bumpVersion?: () => void) {
+export function useExternalApis(projectPathsKey: string) {
   const [loaded, setLoaded] = useState(false);
+  const [version, setVersion] = useState(0);
+
+  useEffect(() => {
+    return subscribeExternalApiCacheUpdates(() => {
+      setVersion((v) => v + 1);
+    });
+  }, []);
 
   useEffect(() => {
     if (!window.electronAPI?.getExternalApis) {
@@ -46,8 +55,7 @@ export function useExternalApis(projectPathsKey: string, bumpVersion?: () => voi
         try {
           const apis = await window.electronAPI.getExternalApis(projectPath);
           if (cancelled) return;
-          externalApiCache.set(projectPath, { timestamp: Date.now(), apis });
-          bumpVersion?.();
+          setExternalApiCacheEntry(projectPath, apis);
         } catch {
           // Scan failed for this project — skip
         } finally {
@@ -60,8 +68,12 @@ export function useExternalApis(projectPathsKey: string, bumpVersion?: () => voi
 
     return () => {
       cancelled = true;
+      // Remove in-flight markers so a StrictMode re-invocation (or a
+      // re-run after projectPathsKey changes) can retry these paths
+      // instead of skipping them as "already in-flight".
+      uncachedPaths.forEach((p) => externalApiInFlight.delete(p));
     };
-  }, [projectPathsKey, bumpVersion]);
+  }, [projectPathsKey]);
 
-  return loaded;
+  return { loaded, version };
 }

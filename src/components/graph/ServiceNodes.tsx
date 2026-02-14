@@ -1,7 +1,8 @@
+import { useSyncExternalStore } from 'react';
 import type { GraphNode } from '../../types/electron';
 import type { RenderGroup } from './types';
 import { getHealthInfo, getServiceColor, getTypeBadge } from './constants';
-import { externalApiCache, supportsExternalApiScan } from './externalApis';
+import { externalApiCache, supportsExternalApiScan, subscribeExternalApiCacheUpdates } from './externalApis';
 import { BrandIcon, inferServiceBrand } from './brandIcons';
 
 export function CompactServiceNode({
@@ -160,9 +161,15 @@ export function ServiceNode({
   const routes = node.routes || [];
   const visibleRoutes = routes.slice(0, 3);
   const shouldShowApis = supportsExternalApiScan(node);
-  const apiEntry = (shouldShowApis && node.projectPath)
-    ? externalApiCache.get(node.projectPath)
-    : null;
+  // Subscribe to the external API cache via useSyncExternalStore so that
+  // ServiceNode re-renders whenever the cache entry for this node changes,
+  // without depending on ReactFlow's internal re-render propagation.
+  const apiEntry = useSyncExternalStore(
+    subscribeExternalApiCacheUpdates,
+    () => (shouldShowApis && node.projectPath)
+      ? externalApiCache.get(node.projectPath) ?? null
+      : null,
+  );
   const externalApis = shouldShowApis ? (apiEntry?.apis || []) : [];
   const visibleApis = externalApis.slice(0, 3);
   const apiCount = externalApis.length;

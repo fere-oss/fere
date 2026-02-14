@@ -2,7 +2,12 @@ import { useEffect, useState } from 'react';
 import type { GraphNode, GraphEdge, ExternalApi } from '../../types/electron';
 import { DatabaseViewer } from '../DatabaseViewer';
 import { getHealthInfo, getServiceColor } from './constants';
-import { externalApiCache, EXTERNAL_API_CACHE_TTL_MS, supportsExternalApiScan } from './externalApis';
+import {
+  externalApiCache,
+  EXTERNAL_API_CACHE_TTL_MS,
+  setExternalApiCacheEntry,
+  supportsExternalApiScan,
+} from './externalApis';
 import { BrandIcon } from './brandIcons';
 
 interface NodeDetailContentProps {
@@ -66,7 +71,7 @@ export function NodeDetailContent({ node, edges, allNodes }: NodeDetailContentPr
         }
         const apis = await window.electronAPI.getExternalApis(projectPath);
         if (!active) return;
-        externalApiCache.set(projectPath, { timestamp: Date.now(), apis });
+        setExternalApiCacheEntry(projectPath, apis);
         setExternalApis(apis);
         setExternalApiLoading(false);
       } catch (error) {

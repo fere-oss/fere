@@ -6,6 +6,7 @@ export const externalApiCache = new Map<
   { timestamp: number; apis: ExternalApi[] }
 >();
 export const externalApiInFlight = new Set<string>();
+const externalApiCacheListeners = new Set<() => void>();
 const EXTERNAL_API_NODE_TYPES = new Set([
   "frontend",
   "backend",
@@ -16,6 +17,25 @@ const EXTERNAL_API_NODE_TYPES = new Set([
   "realtime",
   "client",
 ]);
+
+function notifyExternalApiCacheUpdate() {
+  externalApiCacheListeners.forEach((listener) => listener());
+}
+
+export function setExternalApiCacheEntry(
+  projectPath: string,
+  apis: ExternalApi[],
+) {
+  externalApiCache.set(projectPath, { timestamp: Date.now(), apis });
+  notifyExternalApiCacheUpdate();
+}
+
+export function subscribeExternalApiCacheUpdates(listener: () => void) {
+  externalApiCacheListeners.add(listener);
+  return () => {
+    externalApiCacheListeners.delete(listener);
+  };
+}
 
 export function supportsExternalApiScan(
   node: Pick<GraphNode, "type" | "projectPath" | "isDockerContainer">,
