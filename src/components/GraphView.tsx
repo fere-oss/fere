@@ -156,9 +156,12 @@ export function GraphView({
     [layoutNodes],
   );
   const nodeIds = useMemo(() => layoutNodes.map((node) => node.id), [layoutNodes]);
-  const { version: externalApiVersion } = useExternalApis(projectPathsKey);
+  useExternalApis(projectPathsKey);
+  const measurementMinHeight = isContainerView
+    ? FLOW_LAYOUT.CONTAINER_NODE_MIN_HEIGHT
+    : FLOW_LAYOUT.NODE_MIN_HEIGHT;
   const { nodeHeightsRef, layoutVersion, handleNodeMeasure } =
-    useNodeMeasurements(nodeIds);
+    useNodeMeasurements(nodeIds, measurementMinHeight);
   useEffect(() => {
     if (nodeIds.length === 0) {
       setAnimateNodeIds(new Set());

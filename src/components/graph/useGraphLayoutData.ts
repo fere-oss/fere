@@ -4,6 +4,7 @@ import { computeHierarchicalLayout } from "./layout";
 import { groupContainersByProject } from "./grouping";
 import { buildStableConnectedLayout } from "./flowLayout";
 import { supportsExternalApiScan } from "./externalApis";
+import { SERVICE_COLORS, getTypePriority } from "./constants";
 import type { LayoutNode, RenderGroup } from "./types";
 
 export function useGraphLayoutData({
@@ -137,35 +138,30 @@ export function useGraphLayoutData({
     if (isContainerView) return containerGroups;
     if (standaloneLayout.length === 0) return [];
 
-    const systemNodes: GraphNode[] = [];
-    const singles: RenderGroup[] = [];
-
+    const groupsByType = new Map<string, GraphNode[]>();
     standaloneLayout.forEach((ln) => {
-      if (ln.node.type === "service") {
-        systemNodes.push(ln.node);
-      } else {
-        singles.push({
-          groupName: ln.node.name,
-          nodes: [ln.node],
-          isGroup: false,
-          groupType: ln.node.type,
-        });
-      }
+      const type = ln.node.type || "service";
+      const existing = groupsByType.get(type) || [];
+      existing.push(ln.node);
+      groupsByType.set(type, existing);
     });
 
-    const result: RenderGroup[] = [];
-    if (systemNodes.length > 0) {
-      result.push({
-        groupName: "System Services",
-        nodes: systemNodes.sort((a, b) => a.name.localeCompare(b.name)),
-        isGroup: systemNodes.length > 1,
-        groupType: "service",
-      });
-    }
-
-    return [...result, ...singles].sort((a, b) =>
-      a.groupName.localeCompare(b.groupName),
-    );
+    return Array.from(groupsByType.entries())
+      .sort((a, b) => {
+        const priorityDiff = getTypePriority(a[0]) - getTypePriority(b[0]);
+        if (priorityDiff !== 0) return priorityDiff;
+        return a[0].localeCompare(b[0]);
+      })
+      .map(([type, nodes]) => ({
+        groupName:
+          type === "service"
+            ? "System Services"
+            : SERVICE_COLORS[type]?.label ||
+              type.charAt(0).toUpperCase() + type.slice(1),
+        nodes: nodes.sort((a, b) => a.name.localeCompare(b.name)),
+        isGroup: nodes.length > 1,
+        groupType: type,
+      }));
   }, [containerGroups, isContainerView, standaloneLayout]);
 
   return {

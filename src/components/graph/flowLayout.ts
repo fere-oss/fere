@@ -17,6 +17,9 @@ export const FLOW_LAYOUT = {
   CONTAINER_LABEL_OFFSET: 36,
   CONTAINER_GROUP_GAP: 32,
   CONTAINER_GROUP_ROW_GAP: 36,
+  CONTAINER_NODE_GAP: 20,
+  CONTAINER_NODE_MIN_HEIGHT: 132,
+  CONTAINER_GROUP_BOX_PADDING: 16,
   LAYER_LABEL_OFFSET: 72,
   STANDALONE_SECTION_OFFSET: 72,
   GROUP_BOX_PADDING: 24,
@@ -159,6 +162,9 @@ export function buildFlowLayout({
     CONTAINER_LABEL_OFFSET,
     CONTAINER_GROUP_GAP,
     CONTAINER_GROUP_ROW_GAP,
+    CONTAINER_NODE_GAP,
+    CONTAINER_NODE_MIN_HEIGHT,
+    CONTAINER_GROUP_BOX_PADDING,
     LAYER_LABEL_OFFSET,
     STANDALONE_SECTION_OFFSET,
     GROUP_BOX_PADDING,
@@ -354,6 +360,13 @@ export function buildFlowLayout({
     const rowLabelOffset = isContainerView
       ? CONTAINER_LABEL_OFFSET
       : STANDALONE_LABEL_OFFSET;
+    const nodeGap = isContainerView ? CONTAINER_NODE_GAP : STANDALONE_NODE_GAP;
+    const nodeMinHeight = isContainerView
+      ? CONTAINER_NODE_MIN_HEIGHT
+      : NODE_MIN_HEIGHT;
+    const groupBoxPadding = isContainerView
+      ? CONTAINER_GROUP_BOX_PADDING
+      : GROUP_BOX_PADDING;
     const groupGap = isContainerView
       ? CONTAINER_GROUP_GAP
       : STANDALONE_GROUP_GAP;
@@ -376,23 +389,23 @@ export function buildFlowLayout({
       );
       const rowCount = Math.ceil(group.nodes.length / columnCount);
       const width =
-        columnCount * NODE_WIDTH + (columnCount - 1) * STANDALONE_NODE_GAP;
-      const rowHeights = new Array(rowCount).fill(NODE_MIN_HEIGHT);
+        columnCount * NODE_WIDTH + (columnCount - 1) * nodeGap;
+      const rowHeights = new Array(rowCount).fill(nodeMinHeight);
       group.nodes.forEach((node, index) => {
         const row = Math.floor(index / columnCount);
-        const measured = nodeHeights.get(node.id) ?? NODE_MIN_HEIGHT;
+        const measured = nodeHeights.get(node.id) ?? nodeMinHeight;
         rowHeights[row] = Math.max(rowHeights[row], measured);
       });
       const height =
         rowHeights.reduce((sum, h) => sum + h, 0) +
-        (rowCount - 1) * STANDALONE_NODE_GAP;
+        (rowCount - 1) * nodeGap;
       return {
         group,
         columnCount,
         width,
         height,
         occupiedWidth: group.isGroup
-          ? Math.max(width + GROUP_BOX_PADDING * 2, LABEL_WIDTH)
+          ? Math.max(width + groupBoxPadding * 2, LABEL_WIDTH)
           : width,
         rowHeights,
       };
@@ -425,7 +438,7 @@ export function buildFlowLayout({
             position: centeredLabelPosition(
               groupX + item.width / 2,
               isContainerView
-                ? currentCursorY - GROUP_BOX_PADDING - LABEL_HEIGHT - 4
+                ? currentCursorY - groupBoxPadding - LABEL_HEIGHT - 4
                 : currentCursorY - rowLabelOffset,
             ),
             data: {
@@ -442,12 +455,12 @@ export function buildFlowLayout({
             id: `standalone-group-box-${item.group.groupName}-${currentStartIndex}`,
             type: "groupBox",
             position: {
-              x: groupX - GROUP_BOX_PADDING,
-              y: currentCursorY - GROUP_BOX_PADDING,
+              x: groupX - groupBoxPadding,
+              y: currentCursorY - groupBoxPadding,
             },
             data: {
-              width: item.width + GROUP_BOX_PADDING * 2,
-              height: item.height + GROUP_BOX_PADDING * 2,
+              width: item.width + groupBoxPadding * 2,
+              height: item.height + groupBoxPadding * 2,
               color: GROUP_COLOR,
               offset: true,
             },
@@ -464,16 +477,16 @@ export function buildFlowLayout({
             item.group.nodes.length - row * item.columnCount,
           );
           const rowWidth =
-            nodesInRow * NODE_WIDTH + (nodesInRow - 1) * STANDALONE_NODE_GAP;
+            nodesInRow * NODE_WIDTH + (nodesInRow - 1) * nodeGap;
           const colOffset = (item.width - rowWidth) / 2;
           positions.set(node.id, {
-            x: groupX + colOffset + col * (NODE_WIDTH + STANDALONE_NODE_GAP),
+            x: groupX + colOffset + col * (NODE_WIDTH + nodeGap),
             y:
               currentCursorY +
               (item.rowHeights ?? [])
                 .slice(0, row)
                 .reduce((sum, h) => sum + h, 0) +
-              row * STANDALONE_NODE_GAP,
+              row * nodeGap,
           });
         });
 
@@ -508,7 +521,7 @@ export function buildFlowLayout({
       });
 
       const rowHeight = Math.max(...rowItems.map((item) =>
-        item.height + (item.group.isGroup ? GROUP_BOX_PADDING : 0),
+        item.height + (item.group.isGroup ? groupBoxPadding : 0),
       ));
       cursorY += rowHeight + rowGap + rowLabelOffset;
       startIndex += maxGroupsPerRow;
