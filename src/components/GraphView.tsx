@@ -11,7 +11,6 @@ import type { GraphEdge, GraphNode } from "../types/electron";
 import { ContextMenu } from "./graph/ContextMenu";
 import { NodeDetailPanel } from "./graph/NodeDetailPanel";
 import { flowNodeTypes, HoverContext } from "./graph/flowNodes";
-import { ExternalApiVersionContext } from "./graph/hoverContext";
 import { flowEdgeTypes, type ArrowEdgeData } from "./graph/ArrowEdge";
 import { FLOW_LAYOUT, buildFlowLayout } from "./graph/flowLayout";
 import type { GraphViewProps } from "./graph/types";
@@ -211,7 +210,6 @@ export function GraphView({
         animateNodeIds,
         onMeasure: handleNodeMeasure,
         isContainerView,
-        externalApiVersion,
       });
     },
     [
@@ -225,7 +223,6 @@ export function GraphView({
       handleNodeMeasure,
       isContainerView,
       layoutVersion,
-      externalApiVersion,
       nodeHeightsRef,
     ],
   );
@@ -452,7 +449,6 @@ export function GraphView({
 
       <div className="graph-flow">
         <HoverContext.Provider value={hoverState}>
-          <ExternalApiVersionContext.Provider value={externalApiVersion}>
           <ReactFlow
             nodes={flowLayout.nodes}
             edges={flowEdges}
@@ -485,7 +481,6 @@ export function GraphView({
             <Background color="rgba(0,0,0,0.04)" gap={24} />
             <Controls position="top-right" showInteractive={false} />
           </ReactFlow>
-          </ExternalApiVersionContext.Provider>
         </HoverContext.Provider>
       </div>
 

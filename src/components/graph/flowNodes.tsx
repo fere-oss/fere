@@ -3,7 +3,7 @@ import type { GraphNode } from "../../types/electron";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import { Handle, Position } from "reactflow";
 import { ServiceNode } from "./ServiceNodes";
-import { useHoverState, useExternalApiVersion } from "./hoverContext";
+import { useHoverState } from "./hoverContext";
 
 export type HoverState = {
   hoveredNodeId: string | null;
@@ -20,7 +20,6 @@ export type FlowServiceNodeData = {
   animate: boolean;
   animationIndex: number;
   onMeasure: (id: string, height: number) => void;
-  externalApiVersion: number;
 };
 
 export function TierLabelNode({ data }: { data: { text: string } }) {
@@ -64,9 +63,6 @@ const FlowServiceNodeInner = memo(function FlowServiceNodeInner({ data }: { data
   const dataRef = useRef(data);
   dataRef.current = data;
   const { hoveredNodeId, connectedNodeIds } = useHoverState();
-  // Subscribe to external API version via context — bypasses ReactFlow's memo
-  // so ServiceNode re-renders and re-reads the populated cache.
-  useExternalApiVersion();
 
   useEffect(() => {
     if (!nodeRef.current) return;

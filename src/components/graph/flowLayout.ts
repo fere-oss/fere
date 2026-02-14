@@ -133,7 +133,6 @@ type BuildLayoutInput = {
   animateNodeIds: Set<string>;
   onMeasure: (id: string, height: number) => void;
   isContainerView: boolean;
-  externalApiVersion: number;
 };
 
 export function buildFlowLayout({
@@ -147,7 +146,6 @@ export function buildFlowLayout({
   animateNodeIds,
   onMeasure,
   isContainerView,
-  externalApiVersion,
 }: BuildLayoutInput): FlowLayoutResult {
   const {
     NODE_WIDTH,
@@ -556,7 +554,6 @@ export function buildFlowLayout({
             stableConnectedLayout.findIndex((ln) => ln.node.id === node.id),
           ),
           onMeasure,
-          externalApiVersion,
         },
         className: undefined,
         draggable: false,
