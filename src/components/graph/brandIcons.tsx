@@ -33,6 +33,12 @@ const BRAND_DOMAIN_BY_KEY: Record<string, string> = {
   mixpanel: "mixpanel.com",
   algolia: "algolia.com",
   cloudflare: "cloudflare.com",
+  "google chrome": "google.com",
+  chrome: "google.com",
+  onedrive: "onedrive.com",
+  "one drive": "onedrive.com",
+  raycast: "raycast.com",
+  ollama: "ollama.com",
   github: "github.com",
   gitlab: "gitlab.com",
   "vs code": "code.visualstudio.com",
@@ -47,6 +53,7 @@ const BRAND_DOMAIN_BY_KEY: Record<string, string> = {
   mongodb: "mongodb.com",
   postgres: "postgresql.org",
   postgresql: "postgresql.org",
+  postman: "postman.com",
   mysql: "mysql.com",
   redis: "redis.io",
   rabbitmq: "rabbitmq.com",
@@ -62,21 +69,33 @@ const BRAND_DOMAIN_BY_KEY: Record<string, string> = {
 };
 
 const RAW_LOGO_DEV_TOKEN = (process.env.REACT_APP_LOGO_DEV_TOKEN || "").trim();
-const LOGO_DEV_TOKEN = RAW_LOGO_DEV_TOKEN.startsWith("pk_") ? RAW_LOGO_DEV_TOKEN : "";
+const LOGO_DEV_TOKEN = RAW_LOGO_DEV_TOKEN.startsWith("pk_")
+  ? RAW_LOGO_DEV_TOKEN
+  : "";
 
-if (process.env.NODE_ENV !== "production" && RAW_LOGO_DEV_TOKEN && !RAW_LOGO_DEV_TOKEN.startsWith("pk_")) {
+if (
+  process.env.NODE_ENV !== "production" &&
+  RAW_LOGO_DEV_TOKEN &&
+  !RAW_LOGO_DEV_TOKEN.startsWith("pk_")
+) {
   // Logo.dev image CDN expects publishable keys in query param.
   // Secret keys should stay server-side only and are ignored here.
   // eslint-disable-next-line no-console
-  console.warn("[BrandIcon] REACT_APP_LOGO_DEV_TOKEN should be a publishable key (pk_...).");
+  console.warn(
+    "[BrandIcon] REACT_APP_LOGO_DEV_TOKEN should be a publishable key (pk_...).",
+  );
 }
 
 function normalize(value: string): string {
   return value.trim().toLowerCase();
 }
 
-export function inferServiceBrand(node: Pick<GraphNode, "name" | "command" | "containerImage">): string | null {
-  const samples = [node.name, node.command, node.containerImage].filter(Boolean) as string[];
+export function inferServiceBrand(
+  node: Pick<GraphNode, "name" | "command" | "containerImage">,
+): string | null {
+  const samples = [node.name, node.command, node.containerImage].filter(
+    Boolean,
+  ) as string[];
   for (const sample of samples) {
     const key = normalize(sample);
     if (BRAND_DOMAIN_BY_KEY[key]) return sample;
@@ -101,8 +120,26 @@ function toLogoDevUrl(domain: string): string {
   return `https://img.logo.dev/${domain}?${params.toString()}`;
 }
 
+function toLogoDevNameUrl(name: string): string {
+  const params = new URLSearchParams({
+    size: "64",
+    format: "png",
+    fallback: "monogram",
+  });
+  if (LOGO_DEV_TOKEN) {
+    params.set("token", LOGO_DEV_TOKEN);
+  }
+  return `https://img.logo.dev/name/${encodeURIComponent(name)}?${params.toString()}`;
+}
+
 function isHostLike(value: string): boolean {
   return /^[a-z0-9.-]+\.[a-z]{2,}$/i.test(value);
+}
+
+function isReverseDnsBundleId(value: string): boolean {
+  return /^(com|org|net|io|dev|app|ai)\.[a-z0-9-]+(\.[a-z0-9-]+)+$/i.test(
+    value,
+  );
 }
 
 function extractDomainLike(value: string): string | null {
@@ -113,18 +150,21 @@ function extractDomainLike(value: string): string | null {
 function getBrandImageUrl(value?: string | null): string | null {
   if (!value) return null;
   const key = normalize(value);
-  const extracted = extractDomainLike(key);
-  if (extracted && isHostLike(extracted)) {
-    return toLogoDevUrl(extracted);
-  }
-  if (isHostLike(key)) {
-    return toLogoDevUrl(key);
-  }
   if (BRAND_DOMAIN_BY_KEY[key]) {
     return toLogoDevUrl(BRAND_DOMAIN_BY_KEY[key]);
   }
   for (const [lookup, domain] of Object.entries(BRAND_DOMAIN_BY_KEY)) {
     if (key.includes(lookup)) return toLogoDevUrl(domain);
+  }
+  const extracted = extractDomainLike(key);
+  if (extracted && isHostLike(extracted) && !isReverseDnsBundleId(extracted)) {
+    return toLogoDevUrl(extracted);
+  }
+  if (isHostLike(key) && !isReverseDnsBundleId(key)) {
+    return toLogoDevUrl(key);
+  }
+  if (key.length <= 80) {
+    return toLogoDevNameUrl(key);
   }
   return null;
 }
@@ -169,7 +209,11 @@ export function BrandIcon({
   return (
     <span
       className={`brand-icon brand-icon-fallback${className ? ` ${className}` : ""}`}
-      style={{ width: size, height: size, fontSize: Math.max(9, Math.floor(size * 0.62)) }}
+      style={{
+        width: size,
+        height: size,
+        fontSize: Math.max(9, Math.floor(size * 0.62)),
+      }}
       aria-hidden="true"
     >
       {fallback}
