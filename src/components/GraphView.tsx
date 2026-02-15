@@ -387,8 +387,29 @@ export function GraphView({
   useEffect(() => {
     if (!reactFlowInstance || didFitViewRef.current) return;
     if (layoutNodes.length === 0) return;
-    reactFlowInstance.fitView({ padding: 0.32, duration: 0 });
-    didFitViewRef.current = true;
+    const el = containerRef.current;
+    if (!el) return;
+
+    // If the container is visible (has dimensions), fitView immediately
+    if (el.offsetWidth > 0 && el.offsetHeight > 0) {
+      reactFlowInstance.fitView({ padding: 0.32, duration: 0 });
+      didFitViewRef.current = true;
+      return;
+    }
+
+    // Container is hidden (e.g. display:none) — wait for it to get real dimensions
+    const observer = new ResizeObserver(() => {
+      if (el.offsetWidth > 0 && el.offsetHeight > 0) {
+        observer.disconnect();
+        // Small delay so ReactFlow can process its own resize first
+        setTimeout(() => {
+          reactFlowInstance.fitView({ padding: 0.32, duration: 0 });
+          didFitViewRef.current = true;
+        }, 50);
+      }
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
   }, [reactFlowInstance, layoutNodes.length]);
 
   const hoverTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
