@@ -313,6 +313,9 @@ function matchRoutesToService(routes, service) {
   // Plain Node.js HTTP servers
   if (command.includes('node') && !command.includes('express') && !command.includes('next')) {
     serviceFrameworks.add('node-http');
+    // Most Node API services are Express-based even when command line
+    // does not include the framework name explicitly.
+    serviceFrameworks.add('express');
   }
 
   const serviceRoutes = [];

@@ -726,30 +726,59 @@ ipcMain.handle("execute-postgres-uri-query", async (_, uri, query) => {
 // Start streaming logs from a container
 ipcMain.handle("start-container-logs", async (event, containerId, options = {}) => {
   try {
-    const streamId = startLogStream(
+    const sender = event.sender;
+    let streamId = "";
+    const safeSend = (channel, payload) => {
+      if (!sender || sender.isDestroyed()) return false;
+      try {
+        sender.send(channel, payload);
+        return true;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        if (!message.includes("Object has been destroyed")) {
+          console.error(`Error sending ${channel} to renderer:`, err);
+        }
+        return false;
+      }
+    };
+
+    streamId = startLogStream(
       containerId,
       options,
       // onData callback - send log data to renderer
       (logData) => {
-        event.sender.send("container-log-data", logData);
+        if (!safeSend("container-log-data", logData) && streamId) {
+          stopLogStream(streamId);
+        }
       },
       // onError callback - send error to renderer
       (error) => {
-        event.sender.send("container-log-error", {
+        const delivered = safeSend("container-log-error", {
           streamId,
           containerId,
           error: error.message,
         });
+        if (!delivered && streamId) {
+          stopLogStream(streamId);
+        }
       },
       // onClose callback - notify renderer that stream closed
       (code) => {
-        event.sender.send("container-log-close", {
+        safeSend("container-log-close", {
           streamId,
           containerId,
           exitCode: code,
         });
       }
     );
+
+    if (sender && !sender.isDestroyed()) {
+      sender.once("destroyed", () => {
+        if (streamId) {
+          stopLogStream(streamId);
+        }
+      });
+    }
 
     return { success: true, streamId };
   } catch (error) {

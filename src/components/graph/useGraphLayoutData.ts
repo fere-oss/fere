@@ -7,6 +7,9 @@ import { supportsExternalApiScan } from "./externalApis";
 import { SERVICE_COLORS, getTypePriority } from "./constants";
 import type { LayoutNode, RenderGroup } from "./types";
 
+const isSyntheticDockerNetworkEdge = (edge: GraphEdge): boolean =>
+  typeof edge.protocol === "string" && edge.protocol.startsWith("docker-network:");
+
 export function useGraphLayoutData({
   nodes,
   edges,
@@ -32,6 +35,10 @@ export function useGraphLayoutData({
     () => stableNodes.filter((n) => n.type !== "external"),
     [stableNodes],
   );
+  const localNodeById = useMemo(
+    () => new Map(localNodes.map((node) => [node.id, node])),
+    [localNodes],
+  );
 
   const localEdges = useMemo(() => {
     const localNodeIds = new Set(localNodes.map((n) => n.id));
@@ -40,6 +47,60 @@ export function useGraphLayoutData({
     );
   }, [localNodes, stableEdges]);
 
+  const structuralEdges = useMemo(
+    () => localEdges.filter((edge) => !isSyntheticDockerNetworkEdge(edge)),
+    [localEdges],
+  );
+
+  const effectiveHierarchyEdges = useMemo(
+    () => (structuralEdges.length > 0 ? structuralEdges : localEdges),
+    [structuralEdges, localEdges],
+  );
+
+  const hierarchyEdges = useMemo(() => {
+    const usingFallbackDockerOnly = structuralEdges.length === 0;
+    if (!usingFallbackDockerOnly) return effectiveHierarchyEdges;
+
+    const normalized = new Map<string, GraphEdge>();
+    for (const edge of effectiveHierarchyEdges) {
+      if (!isSyntheticDockerNetworkEdge(edge)) {
+        normalized.set(edge.id, edge);
+        continue;
+      }
+
+      const sourceNode = localNodeById.get(edge.source);
+      const targetNode = localNodeById.get(edge.target);
+      if (!sourceNode || !targetNode) continue;
+
+      const sourcePriority = getTypePriority(sourceNode.type);
+      const targetPriority = getTypePriority(targetNode.type);
+      if (sourcePriority === targetPriority) continue;
+
+      const [lowNode, highNode] =
+        sourcePriority < targetPriority
+          ? [sourceNode, targetNode]
+          : [targetNode, sourceNode];
+      const lowPriority = Math.min(sourcePriority, targetPriority);
+      const highPriority = Math.max(sourcePriority, targetPriority);
+
+      // Keep layering signal clean when we only have Docker mesh edges.
+      // Frontends should point to app tier, and app tier can point to infra tiers.
+      if (lowPriority === 0 && highPriority !== 1) continue;
+      if (lowPriority === 1 && highPriority > 3) continue;
+      if (highPriority - lowPriority > 2) continue;
+
+      const normalizedId = `hier-${lowNode.id}-${highNode.id}`;
+      normalized.set(normalizedId, {
+        ...edge,
+        id: normalizedId,
+        source: lowNode.id,
+        target: highNode.id,
+      });
+    }
+
+    return Array.from(normalized.values());
+  }, [effectiveHierarchyEdges, structuralEdges.length, localNodeById]);
+
   const containerNodes = useMemo(
     () => localNodes.filter((node) => node.isDockerContainer),
     [localNodes],
@@ -47,8 +108,8 @@ export function useGraphLayoutData({
 
   const layoutNodes = isContainerView ? containerNodes : localNodes;
   const layoutEdges = useMemo(
-    () => (isContainerView ? [] : localEdges),
-    [isContainerView, localEdges],
+    () => (isContainerView ? [] : hierarchyEdges),
+    [isContainerView, hierarchyEdges],
   );
 
   const projectPathsKey = useMemo(() => {
@@ -102,11 +163,11 @@ export function useGraphLayoutData({
       }
 
       // Topology changed — full recomputation
-      const result = computeHierarchicalLayout(localNodes, localEdges);
+      const result = computeHierarchicalLayout(localNodes, hierarchyEdges);
       layoutCacheRef.current = { key: topologyKey, ...result };
       return result;
     },
-    [topologyKey, isContainerView, localNodes, localEdges],
+    [topologyKey, isContainerView, localNodes, hierarchyEdges],
   );
 
   const stableConnectedLayout = useMemo<LayoutNode[]>(

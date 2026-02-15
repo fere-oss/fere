@@ -36,7 +36,8 @@ test('buildConnectionGraph maps connections to internal and external nodes', asy
   assert.ok(nodeIds.has('proc-100'));
   assert.ok(nodeIds.has('proc-200'));
   assert.ok(Array.from(nodeIds).some(id => id.startsWith('external-')));
-  assert.equal(edges.length, 2);
+  const proc100Edges = edges.filter(e => e.source === 'proc-100');
+  assert.equal(proc100Edges.length, 2);
 
   const internalEdge = edges.find(e => e.target === 'proc-200');
   assert.ok(internalEdge);

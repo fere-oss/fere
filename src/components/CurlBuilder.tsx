@@ -380,6 +380,21 @@ const NO_VALUE_FLAGS = new Set([
   "-L",
   "--location",
   "--compressed",
+  "-v",
+  "--verbose",
+  "--http1.0",
+  "--http1.1",
+  "--http2",
+  "--http2-prior-knowledge",
+]);
+
+const VALUE_FLAGS = new Set([
+  "--retry",
+  "--retry-delay",
+  "--retry-max-time",
+  "--connect-timeout",
+  "--max-time",
+  "--url",
 ]);
 
 // Parse a curl command string into its components
@@ -485,6 +500,32 @@ function parseCurlCommand(curlStr: string): {
     }
 
     if (NO_VALUE_FLAGS.has(token)) {
+      continue;
+    }
+
+    if (VALUE_FLAGS.has(token)) {
+      const next = tokens[i + 1];
+      if (!next) {
+        return null;
+      }
+      if (token === "--url" && !url) {
+        url = next;
+      }
+      i += 1;
+      continue;
+    }
+
+    const inlineValueFlag = Array.from(VALUE_FLAGS).find(
+      (flag) => token.startsWith(`${flag}=`),
+    );
+    if (inlineValueFlag) {
+      const value = token.slice(inlineValueFlag.length + 1);
+      if (!value) {
+        return null;
+      }
+      if (inlineValueFlag === "--url" && !url) {
+        url = value;
+      }
       continue;
     }
 
@@ -1324,9 +1365,6 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
               >
                 {isCurlEditing ? (
                   <div className="curl-editor-container">
-                    <pre className="curl-editor-highlight">
-                      {highlightCurl(editedCurl)}
-                    </pre>
                     <textarea
                       className="curl-editor-textarea"
                       value={editedCurl}

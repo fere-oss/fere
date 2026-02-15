@@ -25,14 +25,15 @@ export function DatabaseQueryLayout({
   formatCellValue,
 }: DatabaseQueryLayoutProps) {
   const tabCounterRef = useRef(2);
-  const highlightRef = useRef<HTMLPreElement>(null);
   const [queryTabs, setQueryTabs] = useState([{ id: 'query-tab-1', title: 'Query 1', content: query }]);
   const [activeTabId, setActiveTabId] = useState('query-tab-1');
+  const [isEditorFocused, setIsEditorFocused] = useState(false);
 
   const activeTab = useMemo(
     () => queryTabs.find((tab) => tab.id === activeTabId) ?? queryTabs[0],
     [queryTabs, activeTabId],
   );
+  const showHighlightPreview = !isEditorFocused && activeTab.content.trim().length > 0;
 
   useEffect(() => {
     setQueryTabs((prev) =>
@@ -77,12 +78,6 @@ export function DatabaseQueryLayout({
       setActiveTabId(fallbackTab.id);
       onChangeQuery(fallbackTab.content);
     }
-  };
-
-  const handleEditorScroll = (event: React.UIEvent<HTMLTextAreaElement>) => {
-    if (!highlightRef.current) return;
-    highlightRef.current.scrollTop = event.currentTarget.scrollTop;
-    highlightRef.current.scrollLeft = event.currentTarget.scrollLeft;
   };
 
   return (
@@ -151,15 +146,18 @@ export function DatabaseQueryLayout({
           </button>
         </div>
         <div className="db-query-editor-container">
-          <pre ref={highlightRef} className="db-query-highlight" aria-hidden="true">
-            {highlightQuery(activeTab.content, dbType)}
-          </pre>
+          {showHighlightPreview && (
+            <pre className="db-query-highlight" aria-hidden>
+              {highlightQuery(activeTab.content, dbType)}
+            </pre>
+          )}
           <textarea
-            className="db-query-textarea"
+            className={`db-query-textarea ${showHighlightPreview ? 'is-preview' : ''}`}
             value={activeTab.content}
             onChange={(e) => handleChangeQuery(e.target.value)}
             onKeyDown={onKeyDown}
-            onScroll={handleEditorScroll}
+            onFocus={() => setIsEditorFocused(true)}
+            onBlur={() => setIsEditorFocused(false)}
             placeholder={getQueryPlaceholder()}
             spellCheck={false}
           />
@@ -235,81 +233,70 @@ export function DatabaseQueryLayout({
 }
 
 const SQL_KEYWORDS = new Set([
-  'select', 'from', 'where', 'and', 'or', 'not', 'null', 'is', 'in', 'like',
-  'insert', 'into', 'values', 'update', 'set', 'delete',
-  'create', 'table', 'drop', 'alter', 'add', 'column', 'primary', 'key', 'foreign',
-  'references', 'constraint', 'index', 'unique', 'default', 'check',
-  'join', 'left', 'right', 'inner', 'outer', 'full', 'on',
-  'group', 'by', 'order', 'having', 'limit', 'offset', 'distinct',
-  'returning', 'cascade', 'if', 'exists', 'database', 'schema', 'view', 'truncate',
-]);
-
-const SQL_FUNCTIONS = new Set([
-  'coalesce', 'nullif', 'count', 'sum', 'avg', 'min', 'max',
-  'round', 'date_trunc', 'now', 'upper', 'lower', 'concat',
-  'substring', 'length', 'trim', 'extract', 'to_char', 'to_date',
-  'json_agg', 'jsonb_agg', 'row_to_json',
+  'select', 'from', 'where', 'and', 'or', 'not', 'insert', 'into', 'values', 'update', 'set', 'delete',
+  'join', 'left', 'right', 'inner', 'outer', 'on', 'group', 'by', 'order', 'limit', 'having', 'as',
+  'distinct', 'count', 'sum', 'avg', 'min', 'max', 'create', 'table', 'drop', 'alter', 'index', 'primary',
+  'key', 'foreign', 'constraint', 'is', 'null', 'true', 'false',
 ]);
 
 const MONGO_KEYWORDS = new Set([
-  'show', 'use', 'help', 'it', 'exit',
-  'true', 'false', 'null', 'undefined', 'new',
-  'db', 'rs', 'sh',
+  'db', 'find', 'findone', 'aggregate', 'insertone', 'insertmany', 'updateone', 'updatemany', 'replaceone',
+  'deleteone', 'deletemany', 'countdocuments', 'distinct', 'createcollection', 'getsiblingdb', 'getcollection',
+  '$match', '$group', '$project', '$sort', '$limit', '$lookup', '$unwind', '$set', '$ifnull', '$sum',
 ]);
 
-const MONGO_FUNCTIONS = new Set([
-  'find', 'findone', 'aggregate', 'countdocuments', 'estimateddocumentcount',
-  'insertone', 'insertmany', 'updateone', 'updatemany', 'replaceone',
-  'deleteone', 'deletemany', 'distinct',
-  'sort', 'limit', 'skip', 'project',
-  'createindex', 'dropindex', 'getindexes',
-  'createcollection', 'drop', 'stats',
-  'objectid', 'isodate', 'numberint', 'numberlong', 'numberdecimal',
-  'bindata', 'uuid', 'date',
+const COMMON_FUNCTIONS = new Set([
+  'json', 'stringify', 'date', 'isodate', 'objectid', 'print',
 ]);
 
 function highlightQuery(query: string, dbType: string): React.ReactNode {
-  if (!query) return null;
+  const tokenPattern = /(--.*$|\/\/.*$|\/\*[\s\S]*?\*\/|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`|\$[a-zA-Z_][a-zA-Z0-9_]*|\b\d+(?:\.\d+)?\b|\b[a-zA-Z_][a-zA-Z0-9_]*\b|[()[\]{}.,;:+\-*/%<>=!?|&]+)/gm;
+  const syntax = dbType === 'mongodb' ? MONGO_KEYWORDS : SQL_KEYWORDS;
+  const parts: React.ReactNode[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
 
-  const tokenRegex = /(--[^\n]*|\/\*[\s\S]*?\*\/|'(?:''|[^'])*'|"(?:\\"|[^"])*"|`(?:\\`|[^`])*`|\b\d+(?:\.\d+)?\b|\$[A-Za-z_][\w$]*\b|\b[A-Za-z_][\w$]*\b|[()*,.;=<>!+/-]+|\s+|.)/g;
-  const tokens = query.match(tokenRegex) || [];
+  while ((match = tokenPattern.exec(query)) !== null) {
+    const token = match[0];
+    const start = match.index;
+    const end = start + token.length;
 
-  return tokens.map((token, index) => {
-    if (/^\s+$/.test(token)) return token;
-    if (token.startsWith('--') || token.startsWith('/*')) {
-      return <span key={index} className="db-hl-comment">{token}</span>;
+    if (start > lastIndex) {
+      parts.push(query.slice(lastIndex, start));
     }
-    if ((token.startsWith("'") && token.endsWith("'")) ||
-        (token.startsWith('"') && token.endsWith('"')) ||
-        (token.startsWith('`') && token.endsWith('`'))) {
-      return <span key={index} className="db-hl-string">{token}</span>;
-    }
-    if (/^\d/.test(token)) {
-      return <span key={index} className="db-hl-number">{token}</span>;
-    }
-    if (/^[A-Za-z_$]/.test(token)) {
-      if (dbType === 'mongodb') {
-        const lower = token.toLowerCase();
-        const isMongoOperator = token.startsWith('$');
-        const isKeyword = isMongoOperator || MONGO_KEYWORDS.has(lower);
-        const isFunction = MONGO_FUNCTIONS.has(lower);
-        return (
-          <span key={index} className={isKeyword ? 'db-hl-keyword' : isFunction ? 'db-hl-function' : 'db-hl-identifier'}>
-            {token}
-          </span>
-        );
-      }
 
-      const isKeyword = SQL_KEYWORDS.has(token.toLowerCase());
-      const isFunction = SQL_FUNCTIONS.has(token.toLowerCase());
-      return (
-        <span key={index} className={isKeyword ? 'db-hl-keyword' : isFunction ? 'db-hl-function' : 'db-hl-identifier'}>
-          {token}
-        </span>
-      );
+    let className = '';
+    const lower = token.toLowerCase();
+    if (token.startsWith('--') || token.startsWith('//') || token.startsWith('/*')) {
+      className = 'db-hl-comment';
+    } else if (token.startsWith('"') || token.startsWith("'") || token.startsWith('`')) {
+      className = 'db-hl-string';
+    } else if (/^\$[a-zA-Z_]/.test(token) || syntax.has(lower)) {
+      className = 'db-hl-keyword';
+    } else if (/^\d/.test(token)) {
+      className = 'db-hl-number';
+    } else if (/^[()[\]{}.,;:+\-*/%<>=!?|&]+$/.test(token)) {
+      className = 'db-hl-operator';
+    } else if (COMMON_FUNCTIONS.has(lower)) {
+      className = 'db-hl-function';
+    } else if (/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(token)) {
+      className = 'db-hl-identifier';
     }
-    return <span key={index} className="db-hl-operator">{token}</span>;
-  });
+
+    if (className) {
+      parts.push(<span key={start} className={className}>{token}</span>);
+    } else {
+      parts.push(token);
+    }
+
+    lastIndex = end;
+  }
+
+  if (lastIndex < query.length) {
+    parts.push(query.slice(lastIndex));
+  }
+
+  return parts;
 }
 
 function highlightQueryOutput(output: string): React.ReactNode {
