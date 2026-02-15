@@ -21,7 +21,7 @@ export const FLOW_LAYOUT = {
   CONTAINER_NODE_MIN_HEIGHT: 132,
   CONTAINER_GROUP_BOX_PADDING: 16,
   LAYER_LABEL_OFFSET: 84,
-  STANDALONE_SECTION_OFFSET: 48,
+  STANDALONE_SECTION_OFFSET: 80,
   GROUP_BOX_PADDING: 24,
   GROUP_LABEL_OFFSET: 28,
   LABEL_WIDTH: 240,
@@ -526,14 +526,18 @@ export function buildFlowLayout({
     }
 
     if (!isContainerView) {
+      const sectionLabelWidth = LABEL_WIDTH + 60;
       labelNodes.push({
         id: "standalone-label",
         type: "tierLabel",
-        position: centeredLabelPosition(0, baseY - STANDALONE_SECTION_OFFSET),
+        position: {
+          x: -sectionLabelWidth / 2,
+          y: baseY - STANDALONE_SECTION_OFFSET,
+        },
         data: { text: "Standalone Services", offset: true },
         draggable: false,
         selectable: false,
-        style: { width: LABEL_WIDTH, height: LABEL_HEIGHT },
+        style: { width: sectionLabelWidth, height: LABEL_HEIGHT + 4 },
       });
     }
   }

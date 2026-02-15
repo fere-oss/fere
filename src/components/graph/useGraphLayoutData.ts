@@ -199,30 +199,48 @@ export function useGraphLayoutData({
     if (isContainerView) return containerGroups;
     if (standaloneLayout.length === 0) return [];
 
-    const groupsByType = new Map<string, GraphNode[]>();
+    const groupsByKey = new Map<string, GraphNode[]>();
     standaloneLayout.forEach((ln) => {
       const type = ln.node.type || "service";
-      const existing = groupsByType.get(type) || [];
+      // Separate Docker containers into their own group
+      const key = ln.node.isDockerContainer ? `docker:${type}` : type;
+      const existing = groupsByKey.get(key) || [];
       existing.push(ln.node);
-      groupsByType.set(type, existing);
+      groupsByKey.set(key, existing);
     });
 
-    return Array.from(groupsByType.entries())
+    return Array.from(groupsByKey.entries())
       .sort((a, b) => {
-        const priorityDiff = getTypePriority(a[0]) - getTypePriority(b[0]);
+        const aDocker = a[0].startsWith("docker:") ? 1 : 0;
+        const bDocker = b[0].startsWith("docker:") ? 1 : 0;
+        // Non-docker groups first, then docker groups
+        if (aDocker !== bDocker) return aDocker - bDocker;
+        const aType = a[0].replace("docker:", "");
+        const bType = b[0].replace("docker:", "");
+        const priorityDiff = getTypePriority(aType) - getTypePriority(bType);
         if (priorityDiff !== 0) return priorityDiff;
-        return a[0].localeCompare(b[0]);
+        return aType.localeCompare(bType);
       })
-      .map(([type, nodes]) => ({
-        groupName:
-          type === "service"
-            ? "System Services"
-            : SERVICE_COLORS[type]?.label ||
-              type.charAt(0).toUpperCase() + type.slice(1),
-        nodes: nodes.sort((a, b) => a.name.localeCompare(b.name)),
-        isGroup: nodes.length > 1,
-        groupType: type,
-      }));
+      .map(([key, nodes]) => {
+        const isDocker = key.startsWith("docker:");
+        const type = isDocker ? key.replace("docker:", "") : key;
+        let groupName: string;
+        if (isDocker) {
+          groupName = "Docker Containers";
+        } else if (type === "service") {
+          groupName = "System Services";
+        } else {
+          groupName =
+            SERVICE_COLORS[type]?.label ||
+            type.charAt(0).toUpperCase() + type.slice(1);
+        }
+        return {
+          groupName,
+          nodes: nodes.sort((a, b) => a.name.localeCompare(b.name)),
+          isGroup: isDocker || nodes.length > 1,
+          groupType: type,
+        };
+      });
   }, [containerGroups, isContainerView, standaloneLayout]);
 
   return {
