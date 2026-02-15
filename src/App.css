@@ -5528,13 +5528,15 @@ textarea {
   flex: 1;
   min-height: 300px;
   background: #fafafa;
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
   padding: 20px 24px;
 }
 
 .db-query-highlight {
   position: absolute;
   inset: 0;
+  z-index: 0;
   margin: 0;
   padding: 20px 24px;
   font-family: var(--font-mono);
@@ -5543,7 +5545,7 @@ textarea {
   color: #171717;
   white-space: pre-wrap;
   word-break: break-word;
-  overflow: auto;
+  overflow: hidden;
   pointer-events: none;
 }
 
@@ -5565,8 +5567,13 @@ textarea {
   outline: none;
   white-space: pre-wrap;
   word-break: break-word;
-  overflow: visible;
+  overflow: hidden;
   tab-size: 2;
+}
+
+.db-query-textarea.is-preview {
+  color: transparent;
+  caret-color: transparent;
 }
 
 .db-query-textarea::placeholder {

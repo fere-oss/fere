@@ -472,6 +472,22 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
         .replace(/\\t/g, '\t');
     }
 
+    if (dbType === 'mongodb') {
+      nextQuery = nextQuery.replace(/\\r\\n/g, '\n').replace(/\\n/g, '\n');
+      const withoutTrailingSemicolon = nextQuery.replace(/;+\s*$/, '');
+      const hasPrintWrapper = /\bprint\s*\(/i.test(withoutTrailingSemicolon) || /\bconsole\.log\s*\(/i.test(withoutTrailingSemicolon);
+      const isDbExpression = /^\s*db(?:\.|\[)/i.test(withoutTrailingSemicolon);
+      const returnsCursor = /\.(find|aggregate)\s*\(/i.test(withoutTrailingSemicolon);
+      const hasToArray = /\.toArray\s*\(/i.test(withoutTrailingSemicolon);
+
+      if (!hasPrintWrapper && isDbExpression) {
+        const expression = returnsCursor && !hasToArray
+          ? `${withoutTrailingSemicolon}.toArray()`
+          : withoutTrailingSemicolon;
+        nextQuery = `print(JSON.stringify(${expression}))`;
+      }
+    }
+
     return nextQuery;
   }, [dbType]);
 

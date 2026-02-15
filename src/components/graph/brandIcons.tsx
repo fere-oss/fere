@@ -34,6 +34,8 @@ const BRAND_DOMAIN_BY_KEY: Record<string, string> = {
   algolia: "algolia.com",
   cloudflare: "cloudflare.com",
   vercel: "vercel.com",
+  "storefront-web": "vercel.com",
+  "storefront web": "vercel.com",
   "google chrome": "google.com",
   chrome: "google.com",
   onedrive: "onedrive.com",
