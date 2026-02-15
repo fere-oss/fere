@@ -24,6 +24,7 @@ const {
   categorizeProcess,
   inferProjectFromCommand,
   inferProjectPathFromCommand,
+  inferProjectPathFromContainer,
   findProjectRoot,
   buildGraphStructure,
   overlayMetrics,
@@ -158,10 +159,16 @@ async function getProcessCwd(pid, cache) {
  * @param {Array} nodes - Graph nodes with projectPath
  * @returns {Promise<Object>} Map of projectPath → routes[]
  */
-async function collectRoutes(nodes) {
+async function collectRoutes(nodes, dockerSnapshot = null) {
   const projects = new Set();
   for (const node of nodes) {
     if (node.projectPath) projects.add(node.projectPath);
+  }
+  if (dockerSnapshot?.containers?.length) {
+    for (const container of dockerSnapshot.containers) {
+      const projectPath = inferProjectPathFromContainer(container);
+      if (projectPath) projects.add(projectPath);
+    }
   }
 
   const routesByProject = {};
@@ -318,21 +325,20 @@ async function buildConnectionGraph(snapshot = null) {
 
   // Fetch Docker + routes in parallel
   const startParallel = Date.now();
-  const [dockerSnapshot, routesByProject] = await Promise.all([
-    getDockerSnapshot(),
-    (async () => {
-      // Build preliminary nodes to discover project paths for route scanning
-      const prelimResult = buildGraphStructure({
-        processes, ports, connections,
-        cwdMap: Object.fromEntries(cwdMap),
-        dockerSnapshot: null,
-        routesByProject: {},
-        healthByPid,
-        containerHealthToGraphHealth,
-      });
-      return collectRoutes(prelimResult.nodes);
-    })(),
-  ]);
+  const dockerSnapshot = await getDockerSnapshot();
+  const routesByProject = await (async () => {
+    // Build preliminary nodes to discover process project paths for route scanning,
+    // and include docker-derived project paths from mounts/compose labels.
+    const prelimResult = buildGraphStructure({
+      processes, ports, connections,
+      cwdMap: Object.fromEntries(cwdMap),
+      dockerSnapshot: null,
+      routesByProject: {},
+      healthByPid,
+      containerHealthToGraphHealth,
+    });
+    return collectRoutes(prelimResult.nodes, dockerSnapshot);
+  })();
   perfLog('Parallel operations (docker + routes)', Date.now() - startParallel);
 
   // Full structure build with all data

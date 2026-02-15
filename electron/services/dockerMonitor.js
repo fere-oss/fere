@@ -70,6 +70,7 @@ async function getDockerContainers() {
             name: container.Names,
             image: container.Image,
             command: container.Command,
+            fullCommand: buildFullCommand(inspectData, container.Command),
             created: container.CreatedAt,
             status: container.Status,
             state: container.State, // running, exited, paused, etc.
@@ -159,6 +160,21 @@ function parsePorts(portsString) {
   }
 
   return ports;
+}
+
+function buildFullCommand(inspectData, fallbackCommand = '') {
+  try {
+    const entrypoint = Array.isArray(inspectData?.Config?.Entrypoint)
+      ? inspectData.Config.Entrypoint.join(' ')
+      : (inspectData?.Config?.Entrypoint || '');
+    const cmd = Array.isArray(inspectData?.Config?.Cmd)
+      ? inspectData.Config.Cmd.join(' ')
+      : (inspectData?.Config?.Cmd || '');
+    const full = `${entrypoint} ${cmd}`.trim();
+    return full || fallbackCommand || '';
+  } catch {
+    return fallbackCommand || '';
+  }
 }
 
 /**

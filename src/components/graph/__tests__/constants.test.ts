@@ -34,6 +34,13 @@ describe("getBaseName", () => {
     expect(getBaseName("auth_service")).toBe("auth");
     expect(getBaseName("api_worker")).toBe("api");
   });
+
+  it("strips common demo/test environment prefixes", () => {
+    expect(getBaseName("fere-test-user-service")).toBe("user");
+    expect(getBaseName("fere-demo-order-service")).toBe("order");
+    expect(getBaseName("test-postgres")).toBe("postgres");
+    expect(getBaseName("demo-redis")).toBe("redis");
+  });
 });
 
 describe("getTypePriority", () => {

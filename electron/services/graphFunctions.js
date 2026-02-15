@@ -207,6 +207,22 @@ function categorizeContainerImage(image) {
   return 'container';
 }
 
+function resolveContainerType(container) {
+  const labeledType = container?.labels?.['fere.type'];
+  if (typeof labeledType === 'string') {
+    const normalized = labeledType.trim().toLowerCase();
+    const allowedTypes = new Set([
+      'frontend', 'backend', 'webserver', 'database', 'cache', 'nodejs',
+      'python', 'container', 'broker', 'realtime', 'worker', 'client',
+      'service', 'external',
+    ]);
+    if (allowedTypes.has(normalized)) {
+      return normalized;
+    }
+  }
+  return categorizeContainerImage(container.image || '');
+}
+
 // ============================================
 // Project / Path Helpers
 // ============================================
@@ -260,6 +276,27 @@ function findProjectRoot(startPath) {
   return null;
 }
 
+function findNearestProjectMarkerRoot(startPath) {
+  let current = startPath;
+  if (!current) return null;
+  try {
+    const stat = fs.statSync(current);
+    if (stat.isFile()) current = path.dirname(current);
+  } catch (error) {
+    return null;
+  }
+
+  let previous = null;
+  while (current && current !== previous) {
+    for (const marker of PROJECT_MARKERS) {
+      if (fs.existsSync(path.join(current, marker))) return current;
+    }
+    previous = current;
+    current = path.dirname(current);
+  }
+  return null;
+}
+
 function inferProjectPathFromCommand(command = '') {
   const tokens = command.split(/\s+/);
   const candidates = [];
@@ -285,19 +322,21 @@ function extractProjectFromContainerName(containerName) {
 }
 
 function inferProjectPathFromContainer(container) {
+  if (container.mounts && Array.isArray(container.mounts)) {
+    for (const mount of container.mounts) {
+      if (mount.type === 'bind' && mount.source) {
+        const projectRoot =
+          findNearestProjectMarkerRoot(mount.source) ||
+          findProjectRoot(mount.source);
+        if (projectRoot) return projectRoot;
+      }
+    }
+  }
   if (container.labels) {
     const workingDir = container.labels['com.docker.compose.project.working_dir'];
     if (workingDir) {
       const projectRoot = findProjectRoot(workingDir);
       return projectRoot || workingDir;
-    }
-  }
-  if (container.mounts && Array.isArray(container.mounts)) {
-    for (const mount of container.mounts) {
-      if (mount.type === 'bind' && mount.source) {
-        const projectRoot = findProjectRoot(mount.source);
-        if (projectRoot) return projectRoot;
-      }
     }
   }
   return null;
@@ -308,10 +347,22 @@ function inferProjectPathFromContainer(container) {
 // ============================================
 
 function findMatchingNativeNode(container, nodes) {
+  const isDockerBackendNode = (node) => {
+    const name = String(node.name || '').toLowerCase();
+    const command = String(node.command || '').toLowerCase();
+    return (
+      node.type === 'container' ||
+      name.includes('docker') ||
+      command.includes('docker')
+    );
+  };
+
   for (const port of container.ports) {
     if (port.hostPort) {
       const matchingNode = nodes.find(n =>
-        !n.isDockerContainer && n.ports.some(p => p.port === port.hostPort)
+        !n.isDockerContainer &&
+        !isDockerBackendNode(n) &&
+        n.ports.some(p => p.port === port.hostPort)
       );
       if (matchingNode) return matchingNode;
     }
@@ -320,7 +371,9 @@ function findMatchingNativeNode(container, nodes) {
 }
 
 function enhanceNodeWithDockerInfo(node, container) {
+  const containerType = resolveContainerType(container);
   node.isDockerContainer = true;
+  node.type = containerType;
   node.containerId = container.id;
   node.containerImage = container.image;
   node.containerState = container.state;
@@ -520,6 +573,17 @@ function buildGraphStructure({
     addDockerContainerNodes(nodes, edges, dockerSnapshot, nodesByPid, portToPid, containerHealthToGraphHealth);
   }
 
+  // Docker nodes are added after the initial route pass; run route matching again
+  // so containerized services with project paths get API routes attached.
+  for (const node of nodes) {
+    if (!node.projectPath) {
+      node.routes = [];
+      continue;
+    }
+    const routes = routesByProject[node.projectPath] || [];
+    node.routes = matchRoutesToService(routes, node);
+  }
+
   return { nodes, edges, dockerSnapshot: dockerSnapshot || null };
 }
 
@@ -553,8 +617,10 @@ function addDockerContainerNodes(nodes, edges, dockerSnapshot, nodesByPid, portT
       id: nodeId,
       pid: -1,
       name: container.name,
-      command: `docker: ${container.image}`,
-      type: categorizeContainerImage(container.image),
+      command: (container.fullCommand || container.command)
+        ? `docker: ${container.image} | ${container.fullCommand || container.command}`
+        : `docker: ${container.image}`,
+      type: resolveContainerType(container),
       cpu: container.cpu || 0,
       memory: container.memory || 0,
       user: 'docker',
@@ -688,6 +754,7 @@ module.exports = {
   // Classification
   categorizeProcess,
   categorizeContainerImage,
+  resolveContainerType,
   // Project/path helpers
   isLocalHost,
   inferProjectFromCommand,

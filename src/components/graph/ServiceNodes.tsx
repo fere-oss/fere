@@ -159,7 +159,61 @@ export function ServiceNode({
   const healthInfo = getHealthInfo(node.healthStatus);
   const mainPort = node.ports[0]?.port;
   const routes = node.routes || [];
-  const visibleRoutes = routes.slice(0, 3);
+  const routeMethodRank = (method: string): number => {
+    switch (method.toUpperCase()) {
+      case 'DELETE':
+        return 0;
+      case 'POST':
+        return 1;
+      case 'PUT':
+        return 2;
+      case 'PATCH':
+        return 3;
+      case 'GET':
+        return 4;
+      default:
+        return 5;
+    }
+  };
+  const visibleRoutes = (() => {
+    if (routes.length <= 3) return routes;
+
+    const sorted = [...routes].sort((a, b) => {
+      const methodDiff = routeMethodRank(a.method) - routeMethodRank(b.method);
+      if (methodDiff !== 0) return methodDiff;
+      return a.path.localeCompare(b.path);
+    });
+
+    const gets = sorted.filter(r => r.method.toUpperCase() === 'GET');
+    const mutating = sorted.filter(r => r.method.toUpperCase() !== 'GET');
+    const picked: typeof routes = [];
+    const seen = new Set<string>();
+
+    const pushUnique = (route: (typeof routes)[number] | undefined) => {
+      if (!route) return;
+      const key = `${route.method}:${route.path}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      picked.push(route);
+    };
+
+    // Ensure at least one GET is visible when available.
+    pushUnique(gets[0]);
+
+    // Prefer mutating routes in preview so cards don't look GET-only.
+    for (const route of mutating) {
+      if (picked.length >= 3) break;
+      pushUnique(route);
+    }
+
+    // Fill remaining slots deterministically.
+    for (const route of sorted) {
+      if (picked.length >= 3) break;
+      pushUnique(route);
+    }
+
+    return picked;
+  })();
   const shouldShowApis = supportsExternalApiScan(node);
   // Subscribe to the external API cache via useSyncExternalStore so that
   // ServiceNode re-renders whenever the cache entry for this node changes,

@@ -56,6 +56,10 @@ export const getTypeBadge = (type: string) => {
 // Extract a normalized base name for grouping related services
 export const getBaseName = (name: string): string => {
   let base = name.toLowerCase().trim();
+  const envPrefixPattern = /^(?:fere[-_])?(?:test|demo|dev|prod|staging|stage|qa|local)[-_]+/i;
+  while (envPrefixPattern.test(base)) {
+    base = base.replace(envPrefixPattern, '');
+  }
   base = base.replace(/[-_]?(server|api|service|app|client|worker|main|dev|prod|test)$/i, '');
   base = base.replace(/[-_]?\d+$/, '');
   base = base.replace(/[-_]+$/, '');

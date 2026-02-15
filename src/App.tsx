@@ -35,6 +35,12 @@ const BACKEND_FRAMEWORK_ORDER = [
   "node-http",
 ];
 
+function normalizeProjectTabPath(projectPath: string): string {
+  if (!projectPath) return projectPath;
+  // Collapse common compose/monorepo service folders into one project tab.
+  return projectPath.replace(/\/services\/[^/]+$/, "");
+}
+
 
 function detectDbLabel(command: string, name: string) {
   if (command.includes("postgres") || name.includes("postgres"))
@@ -177,9 +183,10 @@ function App() {
 
     graph.nodes.forEach((node) => {
       if (node.projectPath) {
+        const tabPath = normalizeProjectTabPath(node.projectPath);
         // Extract folder name as label
-        const label = node.projectPath.split("/").pop() || node.projectPath;
-        projectPaths.set(node.projectPath, label);
+        const label = tabPath.split("/").pop() || tabPath;
+        projectPaths.set(tabPath, label);
       }
     });
 
@@ -193,7 +200,7 @@ function App() {
     const stackByProject = new Map<string, string | null>();
     projectPaths.forEach((_, path) => {
       const projectNodes = graph.nodes.filter(
-        (node) => node.projectPath === path,
+        (node) => node.projectPath && normalizeProjectTabPath(node.projectPath) === path,
       );
       stackByProject.set(path, detectProjectStack(projectNodes));
     });
@@ -203,8 +210,10 @@ function App() {
       .map(([path, label]) => ({
         id: path,
         label,
-        count: nonExternalNodes.filter((node) => node.projectPath === path)
-          .length,
+        count: nonExternalNodes.filter(
+          (node) =>
+            node.projectPath && normalizeProjectTabPath(node.projectPath) === path,
+        ).length,
         stackLabel: stackByProject.get(path) || null,
       }))
       .sort((a, b) => a.label.localeCompare(b.label));
@@ -242,8 +251,11 @@ function App() {
         // System tab: nodes without projectPath
         return !node.projectPath;
       } else {
-        // Project tab: nodes matching this projectPath
-        return node.projectPath === selectedTab;
+        // Project tab: nodes matching normalized project path
+        return (
+          !!node.projectPath &&
+          normalizeProjectTabPath(node.projectPath) === selectedTab
+        );
       }
     });
 

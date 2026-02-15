@@ -33,6 +33,7 @@ const BRAND_DOMAIN_BY_KEY: Record<string, string> = {
   mixpanel: "mixpanel.com",
   algolia: "algolia.com",
   cloudflare: "cloudflare.com",
+  vercel: "vercel.com",
   "google chrome": "google.com",
   chrome: "google.com",
   onedrive: "onedrive.com",
@@ -93,7 +94,9 @@ function normalize(value: string): string {
 export function inferServiceBrand(
   node: Pick<GraphNode, "name" | "command" | "containerImage">,
 ): string | null {
-  const samples = [node.name, node.command, node.containerImage].filter(
+  // Prefer service name and image over command to avoid
+  // "docker: ..." strings forcing a Docker logo.
+  const samples = [node.name, node.containerImage, node.command].filter(
     Boolean,
   ) as string[];
   for (const sample of samples) {

@@ -221,7 +221,7 @@ class SnapshotScheduler extends EventEmitter {
         healthByPid,
         containerHealthToGraphHealth: () => 'yellow',
       });
-      const routesByProject = await collectRoutes(prelimResult.nodes);
+      const routesByProject = await collectRoutes(prelimResult.nodes, dockerSnapshot);
 
       const workerData = {
         processes: rawData.processes,
