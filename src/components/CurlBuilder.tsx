@@ -538,6 +538,8 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
   // State for editable curl
   const [isCurlEditing, setIsCurlEditing] = useState(false);
   const [editedCurl, setEditedCurl] = useState<string>("");
+  const editorTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const editorHighlightRef = useRef<HTMLPreElement | null>(null);
 
   // State for request history
   const [history, setHistory] = useState<HistoryEntry[]>([]);
@@ -761,6 +763,17 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
     setEditedCurl(curlCommand);
     setIsCurlEditing(false);
   }, [curlCommand]);
+
+  const handleEditorScroll = useCallback(
+    (event: React.UIEvent<HTMLTextAreaElement>) => {
+      const target = event.currentTarget;
+      const highlight = editorHighlightRef.current;
+      if (!highlight) return;
+      highlight.scrollTop = target.scrollTop;
+      highlight.scrollLeft = target.scrollLeft;
+    },
+    [],
+  );
 
   // Load a request from history into the builder
   const loadFromHistory = useCallback((entry: HistoryEntry) => {
@@ -1324,13 +1337,15 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
               >
                 {isCurlEditing ? (
                   <div className="curl-editor-container">
-                    <pre className="curl-editor-highlight">
+                    <pre ref={editorHighlightRef} className="curl-editor-highlight">
                       {highlightCurl(editedCurl)}
                     </pre>
                     <textarea
+                      ref={editorTextareaRef}
                       className="curl-editor-textarea"
                       value={editedCurl}
                       onChange={(e) => setEditedCurl(e.target.value)}
+                      onScroll={handleEditorScroll}
                       spellCheck={false}
                     />
                   </div>

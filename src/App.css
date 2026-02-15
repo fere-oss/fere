@@ -3330,7 +3330,7 @@ textarea {
   white-space: pre-wrap;
   word-break: break-all;
   pointer-events: none;
-  overflow: auto;
+  overflow: hidden;
 }
 
 .curl-editor-textarea {
@@ -3352,6 +3352,9 @@ textarea {
   white-space: pre-wrap;
   word-break: break-all;
   box-sizing: border-box;
+  overflow: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 .curl-editor-textarea::selection {
