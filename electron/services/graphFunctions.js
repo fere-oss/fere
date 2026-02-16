@@ -335,8 +335,10 @@ function inferProjectPathFromContainer(container) {
   if (container.labels) {
     const workingDir = container.labels['com.docker.compose.project.working_dir'];
     if (workingDir) {
-      const projectRoot = findProjectRoot(workingDir);
-      return projectRoot || workingDir;
+      // Keep compose working_dir as the container project path so subproject
+      // grouping reflects the compose stack directory (e.g. ".../docker-test")
+      // instead of collapsing to the repo git root.
+      return workingDir;
     }
   }
   return null;

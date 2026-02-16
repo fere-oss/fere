@@ -7651,6 +7651,8 @@ textarea {
   max-width: 320px;
   max-height: 300px;
   overflow-y: auto;
+  -ms-overflow-style: none;
+  scrollbar-width: none;
   background: var(--bg-white);
   border: 1px solid var(--border-color);
   border-radius: 10px;
@@ -7658,6 +7660,12 @@ textarea {
   z-index: 100;
   padding: 4px 0;
   animation: serviceDropdownIn 0.12s ease;
+}
+
+.service-dropdown::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
 }
 
 @keyframes serviceDropdownIn {
