@@ -3,6 +3,7 @@ import type { MouseEvent as ReactMouseEvent } from "react";
 import ReactFlow, {
   Background,
   Controls,
+  ControlButton,
   Position,
   type ReactFlowInstance,
 } from "reactflow";
@@ -477,20 +478,6 @@ export function GraphView({
     <div className={`graph-view${isContainerView ? " container-view" : ""}`} ref={containerRef}>
       <ActivePorts nodes={layoutNodes} reactFlowInstance={reactFlowInstance} />
 
-      <button
-        className="graph-recenter-btn"
-        onClick={() => reactFlowInstance?.fitView({ padding: 0.32, duration: 300 })}
-        title="Fit all nodes in view"
-      >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <path d="M15 3h6v6" strokeLinecap="round" strokeLinejoin="round" />
-          <path d="M9 21H3v-6" strokeLinecap="round" strokeLinejoin="round" />
-          <path d="M21 3l-7 7" strokeLinecap="round" strokeLinejoin="round" />
-          <path d="M3 21l7-7" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-        Recenter
-      </button>
-
       <div className="graph-flow">
         <HoverContext.Provider value={hoverState}>
           <ReactFlow
@@ -523,7 +510,23 @@ export function GraphView({
             }}
           >
             <Background color="rgba(0,0,0,0.04)" gap={24} />
-            <Controls position="top-right" showInteractive={false} />
+            <Controls position="top-right" showZoom={false} showFitView={false} showInteractive={false}>
+              <ControlButton onClick={() => reactFlowInstance?.zoomIn({ duration: 200 })} title="Zoom in">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <path d="M8 3v10M3 8h10" />
+                </svg>
+              </ControlButton>
+              <ControlButton onClick={() => reactFlowInstance?.zoomOut({ duration: 200 })} title="Zoom out">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <path d="M3 8h10" />
+                </svg>
+              </ControlButton>
+              <ControlButton onClick={() => reactFlowInstance?.fitView({ padding: 0.32, duration: 300 })} title="Recenter">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <path d="M2 5V2h3M11 2h3v3M14 11v3h-3M5 14H2v-3" />
+                </svg>
+              </ControlButton>
+            </Controls>
           </ReactFlow>
         </HoverContext.Provider>
       </div>
