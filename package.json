@@ -45,7 +45,6 @@
   "build": {
     "appId": "com.fere.app",
     "productName": "Fere",
-    "artifactName": "fere.${ext}",
     "extends": null,
     "extraMetadata": {
       "main": "electron/main.js"
@@ -58,8 +57,8 @@
       ]
     },
     "dmg": {
-      "title": "Fere",
-      "volumeName": "Fere",
+      "artifactName": "fere.dmg",
+      "title": "Fere ${version}",
       "backgroundColor": "#ffffff",
       "window": {
         "width": 560,
