@@ -25,10 +25,37 @@ interface Tab {
 }
 
 const STORAGE_PREFIX = "fere.knownServices.";
+const REMOVED_PREFIX = "fere.removedServices.";
 const SYSTEM_TAB_ID = "__system__";
 
 function storageKey(tabId: string): string {
   return STORAGE_PREFIX + tabId;
+}
+
+function removedStorageKey(tabId: string): string {
+  return REMOVED_PREFIX + tabId;
+}
+
+function loadRemovedKeys(tabId: string): Set<string> {
+  try {
+    const raw = window.localStorage.getItem(removedStorageKey(tabId));
+    if (!raw) return new Set();
+    const parsed = JSON.parse(raw);
+    return new Set(Array.isArray(parsed) ? parsed : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function persistRemovedKeys(tabId: string, keys: Set<string>) {
+  try {
+    window.localStorage.setItem(
+      removedStorageKey(tabId),
+      JSON.stringify(Array.from(keys)),
+    );
+  } catch {
+    /* ignore */
+  }
 }
 
 function loadServices(tabId: string): KnownService[] {
@@ -91,6 +118,18 @@ export function useKnownServices(
     },
   );
 
+  // Track permanently removed service keys so auto-learn doesn't re-add them
+  const [removedKeys] = useState(() => {
+    const map = new Map<string, Set<string>>();
+    tabs.forEach((tab) => {
+      if (tab.id !== SYSTEM_TAB_ID) {
+        const keys = loadRemovedKeys(tab.id);
+        if (keys.size > 0) map.set(tab.id, keys);
+      }
+    });
+    return map;
+  });
+
   // Load services for new tabs that appear
   const prevTabIdsRef = useRef(new Set(tabs.map((t) => t.id)));
   useEffect(() => {
@@ -142,9 +181,11 @@ export function useKnownServices(
         let tabChanged = false;
         const updated = [...existing];
 
+        const tabRemoved = removedKeys.get(tab.id);
+
         for (const node of tabNodes) {
           const key = serviceKey(node.name, node.type);
-          if (!existingKeys.has(key)) {
+          if (!existingKeys.has(key) && (!tabRemoved || !tabRemoved.has(key))) {
             updated.push({
               name: node.name,
               type: node.type,
@@ -264,6 +305,15 @@ export function useKnownServices(
 
   const addService = useCallback(
     (tabId: string, name: string, type: string) => {
+      // Remove from blocklist if it was previously permanently removed
+      const tabRemoved = removedKeys.get(tabId);
+      if (tabRemoved) {
+        const key = serviceKey(name, type);
+        if (tabRemoved.delete(key)) {
+          persistRemovedKeys(tabId, tabRemoved);
+        }
+      }
+
       setServiceMap((prev) => {
         const newMap = new Map(prev);
         const services = [...(newMap.get(tabId) || [])];
@@ -291,15 +341,22 @@ export function useKnownServices(
         return newMap;
       });
     },
-    [],
+    [removedKeys],
   );
 
   const removeService = useCallback(
     (tabId: string, name: string, type: string) => {
+      const key = serviceKey(name, type);
+
+      // Add to removed blocklist so auto-learn won't re-add
+      const tabRemoved = removedKeys.get(tabId) || new Set<string>();
+      tabRemoved.add(key);
+      removedKeys.set(tabId, tabRemoved);
+      persistRemovedKeys(tabId, tabRemoved);
+
       setServiceMap((prev) => {
         const newMap = new Map(prev);
         const services = [...(newMap.get(tabId) || [])];
-        const key = serviceKey(name, type);
         const filtered = services.filter(
           (s) => serviceKey(s.name, s.type) !== key,
         );
@@ -310,7 +367,7 @@ export function useKnownServices(
         return newMap;
       });
     },
-    [],
+    [removedKeys],
   );
 
   return {
