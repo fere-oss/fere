@@ -71,10 +71,24 @@ test('inferProjectPathFromCommand prefers git root', () => {
 });
 
 test('inferProjectPathFromCommand falls back to marker files', () => {
-  const root = fs.mkdtempSync(path.join(os.homedir(), 'tmp-graph-'));
-  const nested = path.join(root, 'api');
+  // inferProjectPathFromCommand only considers paths starting with /Users/
+  // or /home/, so the temp dir must live under one of those prefixes.
+  // Try os.homedir() first (works locally), fall back to os.tmpdir() if not
+  // writable (sandbox/CI), and skip if neither provides a recognized prefix.
+  let base;
+  try {
+    base = fs.mkdtempSync(path.join(os.homedir(), 'tmp-graph-'));
+  } catch {
+    const tmp = os.tmpdir();
+    if (!tmp.startsWith('/Users/') && !tmp.startsWith('/home/')) {
+      return; // skip: no writable path under a recognized prefix
+    }
+    base = fs.mkdtempSync(path.join(tmp, 'tmp-graph-'));
+  }
+
+  const nested = path.join(base, 'api');
   fs.mkdirSync(nested, { recursive: true });
-  fs.writeFileSync(path.join(root, 'package.json'), '{}');
+  fs.writeFileSync(path.join(base, 'package.json'), '{}');
 
   try {
     const serverPath = path.join(nested, 'server.js');
@@ -83,8 +97,8 @@ test('inferProjectPathFromCommand falls back to marker files', () => {
     const projectPath = inferProjectPathFromCommand(cmd);
     // Should find the real project root, never collapse to $HOME
     // even if ~/.git exists (e.g. for dotfile management)
-    assert.equal(projectPath, root);
+    assert.equal(projectPath, base);
   } finally {
-    fs.rmSync(root, { recursive: true, force: true });
+    fs.rmSync(base, { recursive: true, force: true });
   }
 });
