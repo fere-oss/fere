@@ -419,6 +419,86 @@ ipcMain.handle("start-container", async (event, containerId) => {
   }
 });
 
+// Allowlisted binaries for start-process (prevents arbitrary command execution)
+const ALLOWED_BINARIES = new Set([
+  // Node.js / JavaScript
+  "node", "npm", "npx", "yarn", "pnpm", "bun", "deno", "tsx", "ts-node",
+  // Python
+  "python", "python3", "pip", "pip3", "uvicorn", "gunicorn", "flask",
+  "django-admin", "poetry", "pipenv", "uv",
+  // Ruby
+  "ruby", "rails", "bundle", "bundler", "rake", "puma",
+  // Java / JVM
+  "java", "javac", "mvn", "gradle", "gradlew", "./gradlew",
+  // Go
+  "go", "air",
+  // Rust
+  "cargo", "rustc",
+  // PHP
+  "php", "composer", "artisan",
+  // .NET
+  "dotnet",
+  // Elixir / Erlang
+  "mix", "elixir", "iex",
+  // Docker (compose only)
+  "docker-compose",
+  // General
+  "make",
+]);
+
+/**
+ * Parse a command string into [binary, ...args] without using a shell.
+ * Supports simple quoting (single and double quotes).
+ */
+function parseCommand(command) {
+  const args = [];
+  let current = "";
+  let inSingle = false;
+  let inDouble = false;
+  let escaped = false;
+
+  for (let i = 0; i < command.length; i++) {
+    const ch = command[i];
+
+    if (escaped) {
+      current += ch;
+      escaped = false;
+      continue;
+    }
+
+    if (ch === "\\" && !inSingle) {
+      escaped = true;
+      continue;
+    }
+
+    if (ch === "'" && !inDouble) {
+      inSingle = !inSingle;
+      continue;
+    }
+
+    if (ch === '"' && !inSingle) {
+      inDouble = !inDouble;
+      continue;
+    }
+
+    if ((ch === " " || ch === "\t") && !inSingle && !inDouble) {
+      if (current.length > 0) {
+        args.push(current);
+        current = "";
+      }
+      continue;
+    }
+
+    current += ch;
+  }
+
+  if (current.length > 0) {
+    args.push(current);
+  }
+
+  return args;
+}
+
 ipcMain.handle("start-process", async (event, command, cwd) => {
   try {
     if (!command || typeof command !== "string") {
@@ -427,8 +507,36 @@ ipcMain.handle("start-process", async (event, command, cwd) => {
     if (!cwd || typeof cwd !== "string") {
       return { success: false, error: "Invalid working directory" };
     }
+
+    // Validate cwd is an existing directory
+    const fs = require("fs");
+    try {
+      const stat = fs.statSync(cwd);
+      if (!stat.isDirectory()) {
+        return { success: false, error: "Working directory is not a directory" };
+      }
+    } catch {
+      return { success: false, error: "Working directory does not exist" };
+    }
+
+    // Reject shell metacharacters that indicate shell piping/chaining
+    if (/[|;&`$><\n]/.test(command)) {
+      return { success: false, error: "Command contains disallowed shell metacharacters" };
+    }
+
+    const parts = parseCommand(command);
+    if (parts.length === 0) {
+      return { success: false, error: "Empty command" };
+    }
+
+    const binary = path.basename(parts[0]);
+    if (!ALLOWED_BINARIES.has(binary)) {
+      console.warn(`start-process: blocked disallowed binary "${binary}"`);
+      return { success: false, error: `Binary "${binary}" is not in the allowlist` };
+    }
+
     const { spawn } = require("child_process");
-    const child = spawn("sh", ["-c", command], {
+    const child = spawn(parts[0], parts.slice(1), {
       cwd,
       detached: true,
       stdio: "ignore",
