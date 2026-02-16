@@ -81,8 +81,32 @@ function persistServices(tabId: string, services: KnownService[]) {
   }
 }
 
-function serviceKey(name: string, type: string): string {
+// Legacy key format for backward-compatible removedKeys matching
+function legacyServiceKey(name: string, type: string): string {
   return `${name}::${type}`;
+}
+
+export function serviceKey(svc: {
+  name: string;
+  type: string;
+  containerId?: string;
+  projectPath?: string;
+  isDockerContainer?: boolean;
+}): string {
+  const base = `${svc.name}::${svc.type}`;
+  if (svc.isDockerContainer && svc.containerId) return `${base}::c:${svc.containerId}`;
+  if (svc.projectPath) return `${base}::p:${svc.projectPath}`;
+  return base;
+}
+
+export function nodeServiceKey(node: GraphNode): string {
+  return serviceKey({
+    name: node.name,
+    type: node.type,
+    containerId: node.containerId || undefined,
+    projectPath: node.projectPath || undefined,
+    isDockerContainer: node.isDockerContainer || false,
+  });
 }
 
 type TabGrouping = "repo" | "subproject";
@@ -187,7 +211,7 @@ export function useKnownServices(
 
         const existing = newMap.get(tab.id) || [];
         const existingKeys = new Set(
-          existing.map((s) => serviceKey(s.name, s.type)),
+          existing.map((s) => serviceKey(s)),
         );
 
         let tabChanged = false;
@@ -196,8 +220,9 @@ export function useKnownServices(
         const tabRemoved = removedKeys.get(tab.id);
 
         for (const node of tabNodes) {
-          const key = serviceKey(node.name, node.type);
-          if (!existingKeys.has(key) && (!tabRemoved || !tabRemoved.has(key))) {
+          const key = nodeServiceKey(node);
+          const legacy = legacyServiceKey(node.name, node.type);
+          if (!existingKeys.has(key) && (!tabRemoved || (!tabRemoved.has(key) && !tabRemoved.has(legacy)))) {
             updated.push({
               name: node.name,
               type: node.type,
@@ -213,7 +238,7 @@ export function useKnownServices(
           } else {
             // Update start metadata for existing services (containerId may change)
             const idx = updated.findIndex(
-              (s) => serviceKey(s.name, s.type) === key,
+              (s) => serviceKey(s) === key,
             );
             if (idx !== -1) {
               const prev = updated[idx];
@@ -266,8 +291,9 @@ export function useKnownServices(
 
       const evaluated: ServiceStatus[] = activeServices.map(
         (svc: KnownService) => {
+          const svcKey = serviceKey(svc);
           const matchingNode = tabNodes.find(
-            (n) => n.name === svc.name && n.type === svc.type,
+            (n) => nodeServiceKey(n) === svcKey,
           );
           return {
             service: svc,
@@ -302,13 +328,12 @@ export function useKnownServices(
   );
 
   const dismissService = useCallback(
-    (tabId: string, name: string, type: string) => {
+    (tabId: string, key: string) => {
       setServiceMap((prev) => {
         const newMap = new Map(prev);
         const services = [...(newMap.get(tabId) || [])];
-        const key = serviceKey(name, type);
         const idx = services.findIndex(
-          (s) => serviceKey(s.name, s.type) === key,
+          (s) => serviceKey(s) === key,
         );
         if (idx !== -1) {
           services[idx] = { ...services[idx], dismissed: true };
@@ -322,13 +347,12 @@ export function useKnownServices(
   );
 
   const restoreService = useCallback(
-    (tabId: string, name: string, type: string) => {
+    (tabId: string, key: string) => {
       setServiceMap((prev) => {
         const newMap = new Map(prev);
         const services = [...(newMap.get(tabId) || [])];
-        const key = serviceKey(name, type);
         const idx = services.findIndex(
-          (s) => serviceKey(s.name, s.type) === key,
+          (s) => serviceKey(s) === key,
         );
         if (idx !== -1) {
           services[idx] = { ...services[idx], dismissed: false };
@@ -342,24 +366,34 @@ export function useKnownServices(
   );
 
   const addService = useCallback(
-    (tabId: string, name: string, type: string) => {
+    (tabId: string, node: {
+      name: string;
+      type: string;
+      containerId?: string;
+      projectPath?: string;
+      isDockerContainer?: boolean;
+      command?: string;
+    }) => {
+      const key = serviceKey(node);
+
       // Remove from blocklist if it was previously permanently removed
       const tabRemoved = removedKeys.get(tabId);
       if (tabRemoved) {
-        const key = serviceKey(name, type);
-        if (tabRemoved.delete(key)) {
-          persistRemovedKeys(tabId, tabRemoved);
-        }
+        let blocklist_changed = false;
+        if (tabRemoved.delete(key)) blocklist_changed = true;
+        // Also clear legacy-format key for backward compat
+        const legacy = legacyServiceKey(node.name, node.type);
+        if (tabRemoved.delete(legacy)) blocklist_changed = true;
+        if (blocklist_changed) persistRemovedKeys(tabId, tabRemoved);
       }
 
       setServiceMap((prev) => {
         const newMap = new Map(prev);
         const services = [...(newMap.get(tabId) || [])];
-        const key = serviceKey(name, type);
-        if (services.some((s) => serviceKey(s.name, s.type) === key)) {
+        if (services.some((s) => serviceKey(s) === key)) {
           // Already exists — just un-dismiss it
           const idx = services.findIndex(
-            (s) => serviceKey(s.name, s.type) === key,
+            (s) => serviceKey(s) === key,
           );
           if (idx !== -1 && services[idx].dismissed) {
             services[idx] = { ...services[idx], dismissed: false };
@@ -369,10 +403,14 @@ export function useKnownServices(
           return newMap;
         }
         services.push({
-          name,
-          type,
+          name: node.name,
+          type: node.type,
           dismissed: false,
           addedManually: true,
+          projectPath: node.projectPath,
+          containerId: node.containerId,
+          isDockerContainer: node.isDockerContainer || false,
+          lastCommand: node.command,
         });
         newMap.set(tabId, services);
         persistServices(tabId, services);
@@ -383,9 +421,7 @@ export function useKnownServices(
   );
 
   const removeService = useCallback(
-    (tabId: string, name: string, type: string) => {
-      const key = serviceKey(name, type);
-
+    (tabId: string, key: string) => {
       // Add to removed blocklist so auto-learn won't re-add
       const tabRemoved = removedKeys.get(tabId) || new Set<string>();
       tabRemoved.add(key);
@@ -396,7 +432,7 @@ export function useKnownServices(
         const newMap = new Map(prev);
         const services = [...(newMap.get(tabId) || [])];
         const filtered = services.filter(
-          (s) => serviceKey(s.name, s.type) !== key,
+          (s) => serviceKey(s) !== key,
         );
         if (filtered.length !== services.length) {
           newMap.set(tabId, filtered);

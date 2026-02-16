@@ -3,15 +3,16 @@ import { HEALTH_COLORS } from "../graph/constants";
 import { SERVICE_COLORS } from "../graph/constants";
 import { BrandIcon, inferServiceBrand } from "../graph/brandIcons";
 import type { GraphNode } from "../../types/electron";
+import { serviceKey, nodeServiceKey } from "./useKnownServices";
 import type { KnownService, ServiceStatus } from "./useKnownServices";
 
 interface ServiceDropdownProps {
   services: ServiceStatus[];
   dismissedServices: KnownService[];
-  onDismiss: (name: string, type: string) => void;
-  onRestore: (name: string, type: string) => void;
-  onRemove: (name: string, type: string) => void;
-  onAdd: (name: string, type: string) => void;
+  onDismiss: (key: string) => void;
+  onRestore: (key: string) => void;
+  onRemove: (key: string) => void;
+  onAdd: (node: GraphNode) => void;
   onStart: (service: KnownService) => void;
   allNodes: GraphNode[];
   onClose: () => void;
@@ -29,7 +30,7 @@ function AddServicesModal({
   onClose,
 }: {
   addableNodes: GraphNode[];
-  onAdd: (name: string, type: string) => void;
+  onAdd: (node: GraphNode) => void;
   onClose: () => void;
 }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -48,9 +49,9 @@ function AddServicesModal({
 
   const handleConfirm = useCallback(() => {
     for (const node of addableNodes) {
-      const key = `${node.name}::${node.type}`;
+      const key = nodeServiceKey(node);
       if (selected.has(key)) {
-        onAdd(node.name, node.type);
+        onAdd(node);
       }
     }
     onClose();
@@ -86,7 +87,7 @@ function AddServicesModal({
           ) : (
             <div className="add-services-list">
               {addableNodes.map((node) => {
-                const key = `${node.name}::${node.type}`;
+                const key = nodeServiceKey(node);
                 const checked = selected.has(key);
                 return (
                   <label
@@ -179,17 +180,17 @@ export function ServiceDropdown({
 
   // Nodes available to add (not already tracked)
   const trackedKeys = new Set([
-    ...services.map((s) => `${s.service.name}::${s.service.type}`),
-    ...dismissedServices.map((s) => `${s.name}::${s.type}`),
+    ...services.map((s) => serviceKey(s.service)),
+    ...dismissedServices.map((s) => serviceKey(s)),
   ]);
   const addableNodes = allNodes.filter(
-    (n) => n.type !== "external" && !trackedKeys.has(`${n.name}::${n.type}`),
+    (n) => n.type !== "external" && !trackedKeys.has(nodeServiceKey(n)),
   );
   const nodeByServiceKey = useMemo(() => {
     const map = new Map<string, GraphNode>();
     for (const node of allNodes) {
       if (node.type === "external") continue;
-      const key = `${node.name}::${node.type}`;
+      const key = nodeServiceKey(node);
       if (!map.has(key)) map.set(key, node);
     }
     return map;
@@ -203,7 +204,7 @@ export function ServiceDropdown({
         )}
 
         {services.map((s) => {
-          const key = `${s.service.name}::${s.service.type}`;
+          const key = serviceKey(s.service);
           const sourceNode = nodeByServiceKey.get(key);
           const brandValue = sourceNode
             ? inferServiceBrand(sourceNode)
@@ -256,7 +257,7 @@ export function ServiceDropdown({
             <button
               className="service-dropdown-dismiss"
               title="Dismiss"
-              onClick={() => onDismiss(s.service.name, s.service.type)}
+              onClick={() => onDismiss(key)}
             >
               <svg
                 width="12"
@@ -299,7 +300,7 @@ export function ServiceDropdown({
             </button>
             {showDismissed &&
               dismissedServices.map((s) => {
-                const key = `${s.name}::${s.type}`;
+                const key = serviceKey(s);
                 const sourceNode = nodeByServiceKey.get(key);
                 const brandValue = sourceNode
                   ? inferServiceBrand(sourceNode)
@@ -311,7 +312,7 @@ export function ServiceDropdown({
                 return (
                 <div
                   className="service-dropdown-row service-dropdown-row-dismissed"
-                  key={`dismissed-${s.name}::${s.type}`}
+                  key={`dismissed-${key}`}
                 >
                   <span className="service-dropdown-dot service-dropdown-dot-dismissed" />
                   <BrandIcon
@@ -327,14 +328,14 @@ export function ServiceDropdown({
                   </span>
                   <button
                     className="service-dropdown-restore"
-                    onClick={() => onRestore(s.name, s.type)}
+                    onClick={() => onRestore(key)}
                   >
                     Restore
                   </button>
                   <button
                     className="service-dropdown-remove"
                     title="Remove permanently"
-                    onClick={() => onRemove(s.name, s.type)}
+                    onClick={() => onRemove(key)}
                   >
                     <svg
                       width="12"

@@ -4,7 +4,7 @@ import { GraphView } from "./components/GraphView";
 import { CurlBuilder } from "./components/CurlBuilder";
 import { DatabaseListView } from "./components/DatabaseListView";
 import { ContainerLogsTab } from "./components/ContainerLogsTab";
-import { useKnownServices } from "./components/checklist/useKnownServices";
+import { useKnownServices, serviceKey, nodeServiceKey } from "./components/checklist/useKnownServices";
 import { ServiceDropdown } from "./components/checklist/ServiceDropdown";
 import { HEALTH_COLORS } from "./components/graph/constants";
 import type { GraphNode } from "./types/electron";
@@ -359,22 +359,23 @@ function App() {
     if (!isSystemTab) {
       const status = getProjectStatus(selectedTab);
       const primaryKeys = new Set(
-        primaryNodes.map((n) => `${n.name}::${n.type}`),
+        primaryNodes.map((n) => nodeServiceKey(n)),
       );
       for (const svc of status.services) {
-        const key = `${svc.service.name}::${svc.service.type}`;
+        const key = serviceKey(svc.service);
         if (primaryKeys.has(key)) continue;
 
         // Look for a live node anywhere in the system
+        const svcKey = serviceKey(svc.service);
         const liveNode = graph.nodes.find(
-          (n) => n.name === svc.service.name && n.type === svc.service.type && n.type !== "external",
+          (n) => n.type !== "external" && nodeServiceKey(n) === svcKey,
         );
         if (liveNode) {
           trackedExtra.push(liveNode);
         } else {
           // Create ghost node for tracked service that isn't running
           trackedExtra.push({
-            id: `ghost-${svc.service.name}-${svc.service.type}`,
+            id: `ghost-${key}`,
             pid: 0,
             name: svc.service.name,
             command: svc.service.lastCommand || "",
@@ -659,18 +660,17 @@ function App() {
                   <ServiceDropdown
                     services={status.services}
                     dismissedServices={getDismissedServices(tab.id)}
-                    onDismiss={(name, type) =>
-                      dismissService(tab.id, name, type)
-                    }
-                    onRestore={(name, type) =>
-                      restoreService(tab.id, name, type)
-                    }
-                    onRemove={(name, type) =>
-                      removeService(tab.id, name, type)
-                    }
-                    onAdd={(name, type) =>
-                      addService(tab.id, name, type)
-                    }
+                    onDismiss={(key) => dismissService(tab.id, key)}
+                    onRestore={(key) => restoreService(tab.id, key)}
+                    onRemove={(key) => removeService(tab.id, key)}
+                    onAdd={(node) => addService(tab.id, {
+                      name: node.name,
+                      type: node.type,
+                      containerId: node.containerId || undefined,
+                      projectPath: node.projectPath || undefined,
+                      isDockerContainer: node.isDockerContainer || false,
+                      command: node.command || undefined,
+                    })}
                     onStart={async (service) => {
                       try {
                         if (service.isDockerContainer) {
