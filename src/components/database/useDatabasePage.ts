@@ -623,22 +623,29 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
     setDeletingRow(rowIndex);
 
     try {
+      const escapeCol = dbType === 'mysql'
+        ? (c: string) => `\`${c.replace(/`/g, '``')}\``
+        : (c: string) => `"${c.replace(/"/g, '""')}"`;
       const whereClauses = tableData.columns.map((col) => {
         const value = row[col];
+        const qCol = escapeCol(col);
         if (value === null || value === undefined) {
-          return `${col} IS NULL`;
+          return `${qCol} IS NULL`;
         } else if (typeof value === 'string') {
           const escapedValue = value.replace(/'/g, "''");
-          return `${col} = '${escapedValue}'`;
+          return `${qCol} = '${escapedValue}'`;
         } else if (typeof value === 'number' || typeof value === 'boolean') {
-          return `${col} = ${value}`;
+          return `${qCol} = ${value}`;
         } else {
           const escapedValue = JSON.stringify(value).replace(/'/g, "''");
-          return `${col}::text = '${escapedValue}'`;
+          return `${qCol}::text = '${escapedValue}'`;
         }
       });
 
-      const deleteQuery = `DELETE FROM ${selectedTable} WHERE ${whereClauses.join(' AND ')};`;
+      const escapedTable = dbType === 'mysql'
+        ? `\`${selectedTable.replace(/`/g, '``')}\``
+        : `"${selectedTable.replace(/"/g, '""')}"`;
+      const deleteQuery = `DELETE FROM ${escapedTable} WHERE ${whereClauses.join(' AND ')};`;
 
       const result = remoteMongoMode && remoteMongoUri && remoteUriDbType === 'postgresql' && window.electronAPI.executePostgresUriQuery
         ? await window.electronAPI.executePostgresUriQuery(remoteMongoUri, deleteQuery)
@@ -656,7 +663,7 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
     } finally {
       setDeletingRow(null);
     }
-  }, [selectedTable, tableData, containerId, containerImage, loadTableData, remoteMongoMode, remoteMongoUri, remoteUriDbType]);
+  }, [selectedTable, tableData, containerId, containerImage, loadTableData, remoteMongoMode, remoteMongoUri, remoteUriDbType, dbType]);
 
   const formatCellValue = (value: unknown): string => {
     if (value === null || value === undefined) return 'NULL';

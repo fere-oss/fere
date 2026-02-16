@@ -6,7 +6,16 @@ try {
   PgClient = null;
 }
 
+const VALID_CONTAINER_ID = /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/;
+
+function validateContainerId(containerId) {
+  if (!containerId || typeof containerId !== 'string' || !VALID_CONTAINER_ID.test(containerId)) {
+    throw new Error('Invalid container ID');
+  }
+}
+
 async function execDockerWithInput(containerId, commandArgs, input, timeout = 30000) {
+  validateContainerId(containerId);
   return new Promise((resolve, reject) => {
     const child = spawn('docker', ['exec', '-i', containerId, ...commandArgs], {
       stdio: ['pipe', 'pipe', 'pipe'],
@@ -56,6 +65,7 @@ async function execDockerWithInput(containerId, commandArgs, input, timeout = 30
 }
 
 async function execDocker(containerId, commandArgs, timeout = 10000) {
+  validateContainerId(containerId);
   return new Promise((resolve, reject) => {
     const child = spawn('docker', ['exec', containerId, ...commandArgs], {
       stdio: ['ignore', 'pipe', 'pipe'],

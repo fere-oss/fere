@@ -133,12 +133,15 @@ export function ContainerLogsTab({ containers, initialSelectedId }: ContainerLog
   // Flush buffer to logs every 100ms
   useEffect(() => {
     const interval = setInterval(() => {
-      if (bufferRef.current.length > 0 && !isPaused) {
-        setLogs(prev => {
-          const newLogs = [...prev, ...bufferRef.current];
-          // Keep only last 5000 logs for performance
-          return newLogs.slice(-5000);
-        });
+      if (bufferRef.current.length > 0) {
+        if (!isPaused) {
+          setLogs(prev => {
+            const newLogs = [...prev, ...bufferRef.current];
+            // Keep only last 5000 logs for performance
+            return newLogs.slice(-5000);
+          });
+        }
+        // Always drain buffer to prevent unbounded growth when paused
         bufferRef.current = [];
       }
     }, 100);

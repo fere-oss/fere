@@ -55,14 +55,14 @@ function applyDelta(current: SystemSnapshot, delta: SnapshotDelta): SystemSnapsh
   // Apply process delta
   if (delta.processes && 'added' in delta.processes) {
     const pd = delta.processes;
-    if (pd.removed.length > 0) {
+    if (pd.removed?.length > 0) {
       const removedSet = new Set(pd.removed);
       result.processes = result.processes.filter(p => !removedSet.has(p.pid));
     }
-    if (pd.added.length > 0) {
+    if (pd.added?.length > 0) {
       result.processes.push(...pd.added);
     }
-    if (pd.modified.length > 0) {
+    if (pd.modified?.length > 0) {
       const modMap = new Map(pd.modified.map(p => [p.pid, p]));
       result.processes = result.processes.map(p => {
         const mod = modMap.get(p.pid);
@@ -74,11 +74,11 @@ function applyDelta(current: SystemSnapshot, delta: SnapshotDelta): SystemSnapsh
   // Apply port delta
   if (delta.ports && 'added' in delta.ports) {
     const portd = delta.ports;
-    if (portd.removed.length > 0) {
+    if (portd.removed?.length > 0) {
       const removedSet = new Set(portd.removed);
       result.ports = result.ports.filter(p => !removedSet.has(`${p.port}-${p.pid}`));
     }
-    if (portd.added.length > 0) {
+    if (portd.added?.length > 0) {
       result.ports.push(...portd.added);
     }
   }
@@ -86,13 +86,13 @@ function applyDelta(current: SystemSnapshot, delta: SnapshotDelta): SystemSnapsh
   // Apply connection delta
   if (delta.connections && 'added' in delta.connections) {
     const cd = delta.connections;
-    if (cd.removed.length > 0) {
+    if (cd.removed?.length > 0) {
       const removedSet = new Set(cd.removed);
       result.connections = result.connections.filter(c =>
         !removedSet.has(`${c.pid}-${c.localPort}-${c.remoteHost}-${c.remotePort}`)
       );
     }
-    if (cd.added.length > 0) {
+    if (cd.added?.length > 0) {
       result.connections.push(...cd.added);
     }
   }
@@ -100,14 +100,14 @@ function applyDelta(current: SystemSnapshot, delta: SnapshotDelta): SystemSnapsh
   // Apply graph node delta
   if (delta.graph && 'nodes' in delta.graph && delta.graph.nodes) {
     const nd = delta.graph.nodes as { added: GraphNode[]; removed: string[]; modified: (Partial<GraphNode> & { id: string })[] };
-    if (nd.removed.length > 0) {
+    if (nd.removed?.length > 0) {
       const removedSet = new Set(nd.removed);
       result.graph.nodes = result.graph.nodes.filter(n => !removedSet.has(n.id));
     }
-    if (nd.added.length > 0) {
+    if (nd.added?.length > 0) {
       result.graph.nodes.push(...nd.added);
     }
-    if (nd.modified.length > 0) {
+    if (nd.modified?.length > 0) {
       const modMap = new Map(nd.modified.map(n => [n.id, n]));
       result.graph.nodes = result.graph.nodes.map(n => {
         const mod = modMap.get(n.id);
@@ -119,11 +119,11 @@ function applyDelta(current: SystemSnapshot, delta: SnapshotDelta): SystemSnapsh
   // Apply graph edge delta
   if (delta.graph && 'edges' in delta.graph && delta.graph.edges) {
     const ed = delta.graph.edges as { added: GraphEdge[]; removed: string[] };
-    if (ed.removed.length > 0) {
+    if (ed.removed?.length > 0) {
       const removedSet = new Set(ed.removed);
       result.graph.edges = result.graph.edges.filter(e => !removedSet.has(e.id));
     }
-    if (ed.added.length > 0) {
+    if (ed.added?.length > 0) {
       result.graph.edges.push(...ed.added);
     }
   }

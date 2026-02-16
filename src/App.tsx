@@ -191,7 +191,8 @@ function App() {
     useState<ContainerSubTab>("overview");
 
   // Initial container ID to select in logs view (when navigating from freshness click)
-  const [initialLogContainerId, setInitialLogContainerId] = useState<
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [initialLogContainerId, _setInitialLogContainerId] = useState<
     string | undefined
   >();
 

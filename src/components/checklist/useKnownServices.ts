@@ -243,6 +243,7 @@ export function useKnownServices(
 
       return changed ? newMap : prev;
     });
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- removedKeys is a mutated Map ref, not React state; its identity never changes
   }, [nodes, tabs, tabGrouping]);
 
   // Evaluate status for all tabs
