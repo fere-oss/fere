@@ -686,7 +686,12 @@ function App() {
                         // silently fail
                       }
                     }}
-                    allNodes={graph.nodes}
+                    allNodes={graph.nodes.filter((n) =>
+                      n.type !== "external" &&
+                      (tab.id === SYSTEM_TAB_ID
+                        ? !getNodeTabPath(n, tabGrouping)
+                        : getNodeTabPath(n, tabGrouping) === tab.id)
+                    )}
                     onClose={() => setServiceDropdownTab(null)}
                   />
                 )}
