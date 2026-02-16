@@ -7784,17 +7784,12 @@ textarea {
   cursor: pointer;
   padding: 4px;
   border-radius: 4px;
-  color: var(--text-muted);
+  color: #c62828;
   flex-shrink: 0;
-  opacity: 0;
-  transition: opacity 0.15s ease, color 0.15s ease;
-}
-.service-dropdown-row-dismissed:hover .service-dropdown-remove {
-  opacity: 1;
+  transition: background 0.15s ease;
 }
 .service-dropdown-remove:hover {
-  color: #c62828;
-  background: rgba(198, 40, 40, 0.08);
+  background: rgba(198, 40, 40, 0.1);
 }
 
 .service-dropdown-dismissed-toggle {
