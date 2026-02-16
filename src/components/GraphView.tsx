@@ -28,6 +28,8 @@ function ActivePorts({
   nodes: GraphNode[];
   reactFlowInstance: ReactFlowInstance | null;
 }) {
+  const [expanded, setExpanded] = useState(false);
+
   const portEntries = useMemo(() => {
     const entries: { port: number; host: string; nodeId: string; nodeName: string }[] = [];
     for (const node of nodes) {
@@ -57,14 +59,35 @@ function ActivePorts({
   if (portEntries.length === 0) return null;
 
   return (
-    <div className="graph-ports">
-      <span className="graph-ports-title">Active Ports</span>
+    <div
+      className={`graph-ports${expanded ? " graph-ports-expanded" : ""}`}
+      onClick={() => { if (!expanded) setExpanded(true); }}
+    >
+      {/* Collapsed: pill content */}
+      <div className="graph-ports-pill-content">
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+          <circle cx="8" cy="8" r="3" />
+          <path d="M8 1v2M8 13v2M1 8h2M13 8h2" />
+        </svg>
+        <span>{portEntries.length} {portEntries.length === 1 ? "port" : "ports"}</span>
+      </div>
+
+      {/* Expanded: header + list */}
+      <button
+        className="graph-ports-header"
+        onClick={(e) => { e.stopPropagation(); setExpanded(false); }}
+      >
+        <span className="graph-ports-title">Active Ports</span>
+        <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M4 4L12 12M12 4L4 12" />
+        </svg>
+      </button>
       <div className="graph-ports-list">
         {portEntries.map((entry) => (
           <button
             key={entry.port}
             className="graph-ports-item"
-            onClick={() => handleClick(entry.nodeId)}
+            onClick={(e) => { e.stopPropagation(); handleClick(entry.nodeId); }}
           >
             <span className="graph-ports-number">:{entry.port}</span>
             <span className="graph-ports-name">{entry.nodeName}</span>

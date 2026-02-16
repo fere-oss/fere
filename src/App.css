@@ -677,6 +677,7 @@ textarea {
   color: var(--accent-hover);
 }
 
+/* Active Ports — single container, transitions between collapsed pill and expanded panel */
 .graph-ports {
   position: absolute;
   bottom: 16px;
@@ -684,14 +685,97 @@ textarea {
   z-index: 20;
   display: flex;
   flex-direction: column;
-  gap: 6px;
   background: var(--bg-white);
   border: 1px solid var(--border-color);
+  border-radius: 14px;
+  padding: 4px 8px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+  cursor: pointer;
+  overflow: hidden;
+  max-height: 24px;
+  width: fit-content;
+  min-width: 0;
+  transition:
+    max-height 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+    width 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+    min-width 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+    border-radius 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+    padding 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow 0.15s ease,
+    border-color 0.15s ease;
+}
+.graph-ports:hover {
+  border-color: var(--border-hover);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.12);
+}
+
+/* Expanded state */
+.graph-ports.graph-ports-expanded {
+  max-height: 280px;
+  min-width: 180px;
   border-radius: 10px;
   padding: 8px 10px;
+  cursor: default;
+}
+.graph-ports.graph-ports-expanded:hover {
+  border-color: var(--border-color);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-  max-height: 240px;
-  min-width: 140px;
+}
+
+/* Pill content — visible when collapsed, hidden when expanded */
+.graph-ports-pill-content {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+  white-space: nowrap;
+  height: 16px;
+  opacity: 1;
+  transition: opacity 0.2s ease 0.12s;
+}
+.graph-ports-pill-content svg {
+  color: var(--text-faint);
+  width: 10px;
+  height: 10px;
+}
+.graph-ports-expanded .graph-ports-pill-content {
+  height: 0;
+  opacity: 0;
+  overflow: hidden;
+  transition: opacity 0.12s ease, height 0s linear 0.12s;
+}
+
+/* Header — hidden when collapsed, visible when expanded */
+.graph-ports-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  padding: 0 2px 4px;
+  opacity: 0;
+  height: 0;
+  overflow: hidden;
+  transition: opacity 0.12s ease, height 0s linear 0.12s;
+}
+.graph-ports-expanded .graph-ports-header {
+  opacity: 1;
+  height: auto;
+  overflow: visible;
+  transition: opacity 0.2s ease 0.12s;
+}
+.graph-ports-header svg {
+  color: var(--text-muted);
+  opacity: 0.6;
+  transition: opacity 0.12s ease;
+}
+.graph-ports-header:hover svg {
+  opacity: 1;
 }
 
 .graph-ports-title {
@@ -702,11 +786,22 @@ textarea {
   color: var(--text-faint);
 }
 
+/* List — hidden when collapsed, visible when expanded */
 .graph-ports-list {
   display: flex;
   flex-direction: column;
   gap: 2px;
   overflow-y: auto;
+  opacity: 0;
+  max-height: 0;
+  transition: opacity 0.12s ease, max-height 0s linear 0.12s;
+}
+.graph-ports-expanded .graph-ports-list {
+  opacity: 1;
+  max-height: 220px;
+  transition:
+    opacity 0.2s ease 0.12s,
+    max-height 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .graph-ports-item {
@@ -739,7 +834,7 @@ textarea {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 100px;
+  max-width: 120px;
 }
 
 /* Recenter button */
