@@ -541,6 +541,39 @@ ipcMain.handle("start-process", async (event, command, cwd) => {
       detached: true,
       stdio: "ignore",
     });
+
+    // Wait for a short window to catch early spawn failures (e.g. ENOENT,
+    // EACCES) before reporting success.  The 'spawn' event fires once the
+    // child process has actually been created by the OS.
+    const launched = await new Promise((resolve) => {
+      const onError = (err) => {
+        cleanup();
+        resolve({ ok: false, error: err.message });
+      };
+      const onSpawn = () => {
+        cleanup();
+        resolve({ ok: true });
+      };
+      const timeout = setTimeout(() => {
+        cleanup();
+        // If neither event fired within 2 s, assume success — the process
+        // is running but Node didn't emit 'spawn' (shouldn't happen, but
+        // be defensive).
+        resolve({ ok: true });
+      }, 2000);
+      function cleanup() {
+        clearTimeout(timeout);
+        child.removeListener("error", onError);
+        child.removeListener("spawn", onSpawn);
+      }
+      child.once("error", onError);
+      child.once("spawn", onSpawn);
+    });
+
+    if (!launched.ok) {
+      return { success: false, error: launched.error };
+    }
+
     child.unref();
     const pid = child.pid;
     clearProcessCache();
