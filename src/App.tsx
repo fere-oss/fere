@@ -4,9 +4,6 @@ import { GraphView } from "./components/GraphView";
 import { CurlBuilder } from "./components/CurlBuilder";
 import { DatabaseListView } from "./components/DatabaseListView";
 import { ContainerLogsTab } from "./components/ContainerLogsTab";
-import { ChecklistPanel } from "./components/checklist/ChecklistPanel";
-import { useChecklist } from "./components/checklist/useChecklist";
-import type { EvaluatedChecklistItem } from "./components/checklist/types";
 import type { GraphNode } from "./types/electron";
 import "./App.css";
 
@@ -195,16 +192,6 @@ function App() {
     string | undefined
   >();
 
-  // Startup checklist
-  const checklist = useChecklist(graph.nodes);
-  const [checklistCollapsed, setChecklistCollapsed] = useState<boolean>(() => {
-    try {
-      return window.localStorage.getItem("fere.checklistCollapsed") === "true";
-    } catch {
-      return false;
-    }
-  });
-
   // Alert preferences state
   const [alertsEnabled, setAlertsEnabled] = useState(true);
 
@@ -230,45 +217,10 @@ function App() {
     setViewMode("database");
   }, []);
 
+
   // Open database view directly from top tabs (show database list)
   const handleOpenDatabaseView = useCallback(() => {
     setViewMode("database");
-  }, []);
-
-  // Checklist navigation — deep-link to the relevant view for a matched node
-  const handleChecklistNavigate = useCallback(
-    (ev: EvaluatedChecklistItem) => {
-      const node = ev.matchedNode;
-      if (!node) return;
-
-      if (node.type === "database" && node.isDockerContainer) {
-        handleDatabaseClick(node);
-      } else if (node.isDockerContainer) {
-        setViewMode("containers");
-        setContainerSubTab("overview");
-      } else {
-        setViewMode("graph");
-        const tabPath = getNodeTabPath(node, tabGrouping);
-        if (tabPath) {
-          setSelectedTab(tabPath);
-        } else {
-          setSelectedTab(SYSTEM_TAB_ID);
-        }
-      }
-    },
-    [handleDatabaseClick, tabGrouping],
-  );
-
-  const handleToggleChecklistCollapsed = useCallback(() => {
-    setChecklistCollapsed((prev) => {
-      const next = !prev;
-      try {
-        window.localStorage.setItem("fere.checklistCollapsed", String(next));
-      } catch {
-        /* ignore */
-      }
-      return next;
-    });
   }, []);
 
   useEffect(() => {
@@ -599,20 +551,6 @@ function App() {
           Database
         </button>
       </div>
-
-      {/* Startup Checklist */}
-      <ChecklistPanel
-        evaluated={checklist.evaluated}
-        overallStatus={checklist.overallStatus}
-        healthyCount={checklist.healthyCount}
-        totalCount={checklist.items.length}
-        collapsed={checklistCollapsed}
-        onToggleCollapsed={handleToggleChecklistCollapsed}
-        onNavigate={handleChecklistNavigate}
-        onAddItem={checklist.addItem}
-        onUpdateItem={checklist.updateItem}
-        onRemoveItem={checklist.removeItem}
-      />
 
       {/* Project Tabs - only show for graph view */}
       {viewMode === "graph" && tabs.length > 1 && (
