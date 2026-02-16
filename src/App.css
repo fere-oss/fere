@@ -7785,7 +7785,7 @@ textarea {
   border-radius: 10px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
   z-index: 100;
-  padding: 4px 0;
+  padding: 4px 0 0 0;
   animation: serviceDropdownIn 0.12s ease;
 }
 
@@ -7817,13 +7817,17 @@ textarea {
 .service-dropdown-row {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 14px;
-  transition: background 0.1s ease;
+  gap: 9px;
+  margin: 2px 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  transition: all 0.12s ease;
 }
 
 .service-dropdown-row:hover {
   background: var(--bg-muted);
+  border-color: var(--border-color);
 }
 
 .service-dropdown-dot {
@@ -7838,10 +7842,14 @@ textarea {
   box-shadow: none !important;
 }
 
+.service-dropdown-brand-icon {
+  opacity: 0.95;
+}
+
 .service-dropdown-name {
   font-family: var(--font-ui);
-  font-size: 12px;
-  font-weight: 500;
+  font-size: 13px;
+  font-weight: 600;
   color: var(--text-primary);
   flex: 1;
   min-width: 0;
@@ -7857,14 +7865,14 @@ textarea {
 
 .service-dropdown-type {
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.045em;
   color: var(--text-muted);
   background: var(--bg-muted);
-  padding: 1px 5px;
-  border-radius: 3px;
+  padding: 3px 7px;
+  border-radius: 6px;
   flex-shrink: 0;
 }
 
@@ -7880,12 +7888,12 @@ textarea {
   cursor: pointer;
   border-radius: 4px;
   flex-shrink: 0;
-  opacity: 0;
+  opacity: 0.45;
   transition: all 0.1s ease;
 }
 
 .service-dropdown-row:hover .service-dropdown-dismiss {
-  opacity: 1;
+  opacity: 0.95;
 }
 
 .service-dropdown-dismiss:hover {
@@ -7972,11 +7980,12 @@ textarea {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  width: 100%;
-  padding: 8px 14px;
-  border: none;
-  border-top: 1px dashed var(--border-color);
-  background: none;
+  width: calc(100% - 16px);
+  margin: 6px 8px 8px 8px;
+  padding: 9px 12px;
+  border: 1px dashed var(--border-color);
+  border-radius: 8px;
+  background: var(--bg-white);
   font-family: var(--font-ui);
   font-size: 11px;
   font-weight: 500;
@@ -7988,6 +7997,7 @@ textarea {
 .service-dropdown-add:hover {
   color: var(--text-secondary);
   background: var(--bg-muted);
+  border-color: var(--border-hover);
 }
 
 /* Add Services Modal */

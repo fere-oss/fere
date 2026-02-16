@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { HEALTH_COLORS } from "../graph/constants";
 import { SERVICE_COLORS } from "../graph/constants";
 import { BrandIcon, inferServiceBrand } from "../graph/brandIcons";
@@ -185,6 +185,15 @@ export function ServiceDropdown({
   const addableNodes = allNodes.filter(
     (n) => n.type !== "external" && !trackedKeys.has(`${n.name}::${n.type}`),
   );
+  const nodeByServiceKey = useMemo(() => {
+    const map = new Map<string, GraphNode>();
+    for (const node of allNodes) {
+      if (node.type === "external") continue;
+      const key = `${node.name}::${node.type}`;
+      if (!map.has(key)) map.set(key, node);
+    }
+    return map;
+  }, [allNodes]);
 
   return (
     <>
@@ -193,10 +202,20 @@ export function ServiceDropdown({
           <div className="service-dropdown-empty">No tracked services</div>
         )}
 
-        {services.map((s) => (
+        {services.map((s) => {
+          const key = `${s.service.name}::${s.service.type}`;
+          const sourceNode = nodeByServiceKey.get(key);
+          const brandValue = sourceNode
+            ? inferServiceBrand(sourceNode)
+            : inferServiceBrand({
+                name: s.service.name,
+                command: s.service.lastCommand || "",
+                containerImage: undefined,
+              });
+          return (
           <div
             className="service-dropdown-row"
-            key={`${s.service.name}::${s.service.type}`}
+            key={key}
           >
             <span
               className="service-dropdown-dot"
@@ -208,6 +227,11 @@ export function ServiceDropdown({
                   ? HEALTH_COLORS.green.glow
                   : HEALTH_COLORS.red.glow,
               }}
+            />
+            <BrandIcon
+              value={brandValue}
+              className="service-dropdown-brand-icon"
+              size={14}
             />
             <span className="service-dropdown-name">{s.service.name}</span>
             <span className="service-dropdown-type">
@@ -246,7 +270,7 @@ export function ServiceDropdown({
               </svg>
             </button>
           </div>
-        ))}
+        )})}
 
         {/* Dismissed section */}
         {dismissedServices.length > 0 && (
@@ -274,12 +298,27 @@ export function ServiceDropdown({
               {dismissedServices.length} dismissed
             </button>
             {showDismissed &&
-              dismissedServices.map((s) => (
+              dismissedServices.map((s) => {
+                const key = `${s.name}::${s.type}`;
+                const sourceNode = nodeByServiceKey.get(key);
+                const brandValue = sourceNode
+                  ? inferServiceBrand(sourceNode)
+                  : inferServiceBrand({
+                      name: s.name,
+                      command: s.lastCommand || "",
+                      containerImage: undefined,
+                    });
+                return (
                 <div
                   className="service-dropdown-row service-dropdown-row-dismissed"
                   key={`dismissed-${s.name}::${s.type}`}
                 >
                   <span className="service-dropdown-dot service-dropdown-dot-dismissed" />
+                  <BrandIcon
+                    value={brandValue}
+                    className="service-dropdown-brand-icon"
+                    size={14}
+                  />
                   <span className="service-dropdown-name service-dropdown-name-dismissed">
                     {s.name}
                   </span>
@@ -309,7 +348,7 @@ export function ServiceDropdown({
                     </svg>
                   </button>
                 </div>
-              ))}
+              )})}
           </>
         )}
 
