@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { HEALTH_COLORS } from "../graph/constants";
 import { SERVICE_COLORS } from "../graph/constants";
+import { BrandIcon, inferServiceBrand } from "../graph/brandIcons";
 import type { GraphNode } from "../../types/electron";
 import type { KnownService, ServiceStatus } from "./useKnownServices";
 
@@ -57,72 +58,83 @@ function AddServicesModal({
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div
-        className="modal-content"
-        style={{ maxWidth: 440 }}
+        className="modal-content add-services-modal"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="modal-header">
-          <h2>Add Services</h2>
-          <button className="modal-close-btn" onClick={onClose}>
+          <h2 className="modal-title">Add Services</h2>
+          <button className="modal-close" onClick={onClose} type="button">
             <svg
-              width="16"
-              height="16"
-              viewBox="0 0 16 16"
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
-              strokeWidth="1.5"
+              strokeWidth="2"
             >
-              <path d="M4 4L12 12M12 4L4 12" />
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
             </svg>
           </button>
         </div>
-        <div className="modal-body" style={{ padding: "8px 0" }}>
+        <div className="modal-body add-services-modal-body">
           {addableNodes.length === 0 ? (
             <div className="add-services-empty">
               All active services are already tracked
             </div>
           ) : (
-            addableNodes.map((node) => {
-              const key = `${node.name}::${node.type}`;
-              const checked = selected.has(key);
-              return (
-                <label className="add-services-row" key={key}>
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    onChange={() => toggle(key)}
-                    className="add-services-checkbox"
-                  />
-                  <span
-                    className="service-dropdown-dot"
-                    style={{
-                      backgroundColor:
-                        node.healthStatus !== "red"
-                          ? HEALTH_COLORS.green.color
-                          : HEALTH_COLORS.red.color,
-                      boxShadow:
-                        node.healthStatus !== "red"
-                          ? HEALTH_COLORS.green.glow
-                          : HEALTH_COLORS.red.glow,
-                    }}
-                  />
-                  <span className="add-services-name">{node.name}</span>
-                  <span className="service-dropdown-type">
-                    {typeLabel(node.type)}
-                  </span>
-                </label>
-              );
-            })
+            <div className="add-services-list">
+              {addableNodes.map((node) => {
+                const key = `${node.name}::${node.type}`;
+                const checked = selected.has(key);
+                return (
+                  <label
+                    className={`add-services-row ${checked ? "add-services-row-selected" : ""}`}
+                    key={key}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => toggle(key)}
+                      className="add-services-checkbox"
+                    />
+                    <span
+                      className="service-dropdown-dot"
+                      style={{
+                        backgroundColor:
+                          node.healthStatus !== "red"
+                            ? HEALTH_COLORS.green.color
+                            : HEALTH_COLORS.red.color,
+                        boxShadow:
+                          node.healthStatus !== "red"
+                            ? HEALTH_COLORS.green.glow
+                            : HEALTH_COLORS.red.glow,
+                      }}
+                    />
+                    <BrandIcon
+                      value={inferServiceBrand(node)}
+                      className="add-services-brand-icon"
+                      size={16}
+                    />
+                    <span className="add-services-name">{node.name}</span>
+                    <span className="service-dropdown-type">
+                      {typeLabel(node.type)}
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
           )}
         </div>
-        <div className="modal-actions">
-          <button className="modal-btn modal-btn-secondary" onClick={onClose}>
+        <div className="modal-actions add-services-actions">
+          <button className="modal-btn modal-btn-secondary" onClick={onClose} type="button">
             Cancel
           </button>
           <button
             className="modal-btn modal-btn-primary"
             onClick={handleConfirm}
             disabled={selected.size === 0}
+            type="button"
           >
             Add {selected.size > 0 ? `(${selected.size})` : ""}
           </button>
