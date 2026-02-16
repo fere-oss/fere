@@ -12,6 +12,7 @@ interface ServiceDropdownProps {
   onRestore: (name: string, type: string) => void;
   onRemove: (name: string, type: string) => void;
   onAdd: (name: string, type: string) => void;
+  onStart: (service: KnownService) => void;
   allNodes: GraphNode[];
   onClose: () => void;
 }
@@ -151,6 +152,7 @@ export function ServiceDropdown({
   onRestore,
   onRemove,
   onAdd,
+  onStart,
   allNodes,
   onClose,
 }: ServiceDropdownProps) {
@@ -211,6 +213,22 @@ export function ServiceDropdown({
             <span className="service-dropdown-type">
               {typeLabel(s.service.type)}
             </span>
+            {!s.running && (
+              <button
+                className="service-dropdown-start"
+                title="Start service"
+                onClick={() => onStart(s.service)}
+              >
+                <svg
+                  width="12"
+                  height="12"
+                  viewBox="0 0 16 16"
+                  fill="currentColor"
+                >
+                  <path d="M4 2l10 6-10 6V2z" />
+                </svg>
+              </button>
+            )}
             <button
               className="service-dropdown-dismiss"
               title="Dismiss"

@@ -620,12 +620,27 @@ async function stopContainer(containerId, timeoutSeconds = 5) {
   }
 }
 
+async function startContainer(containerId) {
+  if (!sanitizeContainerId(containerId)) {
+    return { success: false, error: 'Invalid container ID' };
+  }
+
+  try {
+    await runDocker(['start', containerId]);
+    clearDockerCache();
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
 module.exports = {
   isDockerAvailable,
   getDockerContainers,
   getDockerNetworks,
   getDockerSnapshot,
   stopContainer,
+  startContainer,
   buildContainerConnections,
   containerHealthToGraphHealth,
   clearDockerCache,

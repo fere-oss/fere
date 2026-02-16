@@ -269,6 +269,8 @@ export interface GraphNode {
   memoryUsage?: string;
   // Synthetic node for tracked services not currently running
   isGhost?: boolean;
+  startCommand?: string;
+  startProjectPath?: string;
 }
 
 export interface GraphEdge {
@@ -463,6 +465,8 @@ export interface ElectronAPI {
   // Process control
   killProcess: (pid: number) => Promise<KillResult>;
   stopContainer: (containerId: string) => Promise<KillResult>;
+  startContainer: (containerId: string) => Promise<KillResult>;
+  startProcess: (command: string, cwd: string) => Promise<KillResult>;
 
   // Quick actions
   openUrl: (url: string) => Promise<{ success: boolean; error?: string }>;

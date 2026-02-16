@@ -376,7 +376,7 @@ function App() {
             id: `ghost-${svc.service.name}-${svc.service.type}`,
             pid: 0,
             name: svc.service.name,
-            command: "",
+            command: svc.service.lastCommand || "",
             type: svc.service.type as GraphNode["type"],
             cpu: 0,
             memory: 0,
@@ -385,6 +385,10 @@ function App() {
             healthStatus: "red",
             lastSeen: 0,
             isGhost: true,
+            isDockerContainer: svc.service.isDockerContainer,
+            containerId: svc.service.containerId,
+            startCommand: svc.service.lastCommand,
+            startProjectPath: svc.service.projectPath,
           });
         }
       }
@@ -666,6 +670,21 @@ function App() {
                     onAdd={(name, type) =>
                       addService(tab.id, name, type)
                     }
+                    onStart={async (service) => {
+                      try {
+                        if (service.isDockerContainer) {
+                          const id = service.containerId || service.name;
+                          await window.electronAPI.startContainer(id);
+                        } else if (service.lastCommand && service.projectPath) {
+                          await window.electronAPI.startProcess(
+                            service.lastCommand,
+                            service.projectPath,
+                          );
+                        }
+                      } catch {
+                        // silently fail
+                      }
+                    }}
                     allNodes={graph.nodes}
                     onClose={() => setServiceDropdownTab(null)}
                   />
