@@ -14,6 +14,123 @@ interface ServiceDropdownProps {
   onClose: () => void;
 }
 
+function typeLabel(type: string) {
+  return (
+    SERVICE_COLORS[type]?.label || type.charAt(0).toUpperCase() + type.slice(1)
+  );
+}
+
+function AddServicesModal({
+  addableNodes,
+  onAdd,
+  onClose,
+}: {
+  addableNodes: GraphNode[];
+  onAdd: (name: string, type: string) => void;
+  onClose: () => void;
+}) {
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  const toggle = useCallback((key: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleConfirm = useCallback(() => {
+    for (const node of addableNodes) {
+      const key = `${node.name}::${node.type}`;
+      if (selected.has(key)) {
+        onAdd(node.name, node.type);
+      }
+    }
+    onClose();
+  }, [addableNodes, selected, onAdd, onClose]);
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div
+        className="modal-content"
+        style={{ maxWidth: 440 }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="modal-header">
+          <h2>Add Services</h2>
+          <button className="modal-close-btn" onClick={onClose}>
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+            >
+              <path d="M4 4L12 12M12 4L4 12" />
+            </svg>
+          </button>
+        </div>
+        <div className="modal-body" style={{ padding: "8px 0" }}>
+          {addableNodes.length === 0 ? (
+            <div className="add-services-empty">
+              All active services are already tracked
+            </div>
+          ) : (
+            addableNodes.map((node) => {
+              const key = `${node.name}::${node.type}`;
+              const checked = selected.has(key);
+              return (
+                <label className="add-services-row" key={key}>
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => toggle(key)}
+                    className="add-services-checkbox"
+                  />
+                  <span
+                    className="service-dropdown-dot"
+                    style={{
+                      backgroundColor:
+                        node.healthStatus !== "red"
+                          ? HEALTH_COLORS.green.color
+                          : HEALTH_COLORS.red.color,
+                      boxShadow:
+                        node.healthStatus !== "red"
+                          ? HEALTH_COLORS.green.glow
+                          : HEALTH_COLORS.red.glow,
+                    }}
+                  />
+                  <span className="add-services-name">{node.name}</span>
+                  <span className="service-dropdown-type">
+                    {typeLabel(node.type)}
+                  </span>
+                </label>
+              );
+            })
+          )}
+        </div>
+        <div className="modal-actions">
+          <button className="modal-btn modal-btn-secondary" onClick={onClose}>
+            Cancel
+          </button>
+          <button
+            className="modal-btn modal-btn-primary"
+            onClick={handleConfirm}
+            disabled={selected.size === 0}
+          >
+            Add {selected.size > 0 ? `(${selected.size})` : ""}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function ServiceDropdown({
   services,
   dismissedServices,
@@ -24,17 +141,17 @@ export function ServiceDropdown({
   onClose,
 }: ServiceDropdownProps) {
   const [showDismissed, setShowDismissed] = useState(false);
-  const [showAddPicker, setShowAddPicker] = useState(false);
+  const [showAddModal, setShowAddModal] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Click outside to close
   useEffect(() => {
     function handleClick(e: MouseEvent) {
+      if (showAddModal) return; // modal handles its own clicks
       if (
         dropdownRef.current &&
         !dropdownRef.current.contains(e.target as Node)
       ) {
-        // Check if the click is on the parent tab button (handled by App.tsx)
         const target = e.target as HTMLElement;
         if (target.closest(".app-tab")) return;
         onClose();
@@ -42,7 +159,7 @@ export function ServiceDropdown({
     }
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
-  }, [onClose]);
+  }, [onClose, showAddModal]);
 
   // Nodes available to add (not already tracked)
   const trackedKeys = new Set([
@@ -53,107 +170,105 @@ export function ServiceDropdown({
     (n) => n.type !== "external" && !trackedKeys.has(`${n.name}::${n.type}`),
   );
 
-  const handleAdd = useCallback(
-    (node: GraphNode) => {
-      onAdd(node.name, node.type);
-      setShowAddPicker(false);
-    },
-    [onAdd],
-  );
-
-  const typeLabel = (type: string) =>
-    SERVICE_COLORS[type]?.label || type.charAt(0).toUpperCase() + type.slice(1);
-
   return (
-    <div className="service-dropdown" ref={dropdownRef}>
-      {services.length === 0 && dismissedServices.length === 0 && (
-        <div className="service-dropdown-empty">No tracked services</div>
-      )}
+    <>
+      <div className="service-dropdown" ref={dropdownRef}>
+        {services.length === 0 && dismissedServices.length === 0 && (
+          <div className="service-dropdown-empty">No tracked services</div>
+        )}
 
-      {services.map((s) => (
-        <div className="service-dropdown-row" key={`${s.service.name}::${s.service.type}`}>
-          <span
-            className="service-dropdown-dot"
-            style={{
-              backgroundColor: s.running
-                ? HEALTH_COLORS.green.color
-                : HEALTH_COLORS.red.color,
-              boxShadow: s.running
-                ? HEALTH_COLORS.green.glow
-                : HEALTH_COLORS.red.glow,
-            }}
-          />
-          <span className="service-dropdown-name">{s.service.name}</span>
-          <span className="service-dropdown-type">{typeLabel(s.service.type)}</span>
-          <button
-            className="service-dropdown-dismiss"
-            title="Dismiss"
-            onClick={() => onDismiss(s.service.name, s.service.type)}
+        {services.map((s) => (
+          <div
+            className="service-dropdown-row"
+            key={`${s.service.name}::${s.service.type}`}
           >
-            <svg
-              width="12"
-              height="12"
-              viewBox="0 0 16 16"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-            >
-              <path d="M4 4L12 12M12 4L4 12" />
-            </svg>
-          </button>
-        </div>
-      ))}
-
-      {/* Dismissed section */}
-      {dismissedServices.length > 0 && (
-        <>
-          <button
-            className="service-dropdown-dismissed-toggle"
-            onClick={() => setShowDismissed(!showDismissed)}
-          >
-            <svg
-              width="10"
-              height="10"
-              viewBox="0 0 16 16"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
+            <span
+              className="service-dropdown-dot"
               style={{
-                transform: showDismissed ? "rotate(0deg)" : "rotate(-90deg)",
-                transition: "transform 0.15s ease",
+                backgroundColor: s.running
+                  ? HEALTH_COLORS.green.color
+                  : HEALTH_COLORS.red.color,
+                boxShadow: s.running
+                  ? HEALTH_COLORS.green.glow
+                  : HEALTH_COLORS.red.glow,
               }}
+            />
+            <span className="service-dropdown-name">{s.service.name}</span>
+            <span className="service-dropdown-type">
+              {typeLabel(s.service.type)}
+            </span>
+            <button
+              className="service-dropdown-dismiss"
+              title="Dismiss"
+              onClick={() => onDismiss(s.service.name, s.service.type)}
             >
-              <path d="M4 6L8 10L12 6" />
-            </svg>
-            {dismissedServices.length} dismissed
-          </button>
-          {showDismissed &&
-            dismissedServices.map((s) => (
-              <div
-                className="service-dropdown-row service-dropdown-row-dismissed"
-                key={`dismissed-${s.name}::${s.type}`}
+              <svg
+                width="12"
+                height="12"
+                viewBox="0 0 16 16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
               >
-                <span className="service-dropdown-dot service-dropdown-dot-dismissed" />
-                <span className="service-dropdown-name service-dropdown-name-dismissed">
-                  {s.name}
-                </span>
-                <span className="service-dropdown-type">{typeLabel(s.type)}</span>
-                <button
-                  className="service-dropdown-restore"
-                  onClick={() => onRestore(s.name, s.type)}
-                >
-                  Restore
-                </button>
-              </div>
-            ))}
-        </>
-      )}
+                <path d="M4 4L12 12M12 4L4 12" />
+              </svg>
+            </button>
+          </div>
+        ))}
 
-      {/* Add service */}
-      {!showAddPicker ? (
+        {/* Dismissed section */}
+        {dismissedServices.length > 0 && (
+          <>
+            <button
+              className="service-dropdown-dismissed-toggle"
+              onClick={() => setShowDismissed(!showDismissed)}
+            >
+              <svg
+                width="10"
+                height="10"
+                viewBox="0 0 16 16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                style={{
+                  transform: showDismissed
+                    ? "rotate(0deg)"
+                    : "rotate(-90deg)",
+                  transition: "transform 0.15s ease",
+                }}
+              >
+                <path d="M4 6L8 10L12 6" />
+              </svg>
+              {dismissedServices.length} dismissed
+            </button>
+            {showDismissed &&
+              dismissedServices.map((s) => (
+                <div
+                  className="service-dropdown-row service-dropdown-row-dismissed"
+                  key={`dismissed-${s.name}::${s.type}`}
+                >
+                  <span className="service-dropdown-dot service-dropdown-dot-dismissed" />
+                  <span className="service-dropdown-name service-dropdown-name-dismissed">
+                    {s.name}
+                  </span>
+                  <span className="service-dropdown-type">
+                    {typeLabel(s.type)}
+                  </span>
+                  <button
+                    className="service-dropdown-restore"
+                    onClick={() => onRestore(s.name, s.type)}
+                  >
+                    Restore
+                  </button>
+                </div>
+              ))}
+          </>
+        )}
+
+        {/* Add service button */}
         <button
           className="service-dropdown-add"
-          onClick={() => setShowAddPicker(true)}
+          onClick={() => setShowAddModal(true)}
         >
           <svg
             width="12"
@@ -167,34 +282,16 @@ export function ServiceDropdown({
           </svg>
           Add service
         </button>
-      ) : (
-        <div className="service-dropdown-picker">
-          {addableNodes.length > 0 ? (
-            addableNodes.map((node) => (
-              <button
-                key={node.id}
-                className="service-dropdown-picker-item"
-                onClick={() => handleAdd(node)}
-              >
-                <span className="service-dropdown-name">{node.name}</span>
-                <span className="service-dropdown-type">
-                  {typeLabel(node.type)}
-                </span>
-              </button>
-            ))
-          ) : (
-            <div className="service-dropdown-picker-empty">
-              All running services are tracked
-            </div>
-          )}
-          <button
-            className="service-dropdown-picker-cancel"
-            onClick={() => setShowAddPicker(false)}
-          >
-            Cancel
-          </button>
-        </div>
+      </div>
+
+      {/* Add services modal */}
+      {showAddModal && (
+        <AddServicesModal
+          addableNodes={addableNodes}
+          onAdd={onAdd}
+          onClose={() => setShowAddModal(false)}
+        />
       )}
-    </div>
+    </>
   );
 }
