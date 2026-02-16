@@ -81,9 +81,9 @@ test('inferProjectPathFromCommand falls back to marker files', () => {
     fs.writeFileSync(serverPath, 'console.log("ok");');
     const cmd = `node ${serverPath}`;
     const projectPath = inferProjectPathFromCommand(cmd);
-    const homeGit = fs.existsSync(path.join(os.homedir(), '.git'));
-    const expected = homeGit ? os.homedir() : root;
-    assert.equal(projectPath, expected);
+    // Should find the real project root, never collapse to $HOME
+    // even if ~/.git exists (e.g. for dotfile management)
+    assert.equal(projectPath, root);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

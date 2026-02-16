@@ -6,6 +6,7 @@
  */
 
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const { getPortDescription } = require('./portMonitor');
 const { matchRoutesToService } = require('./routeScanner');
@@ -257,9 +258,14 @@ function findProjectRoot(startPath) {
     return null;
   }
 
+  // Never treat $HOME (or ancestors) as a project root — ~/.git is
+  // commonly used for dotfile management, not as a real project.
+  const homeDir = os.homedir();
+
   let probe = current;
   let probePrev = null;
   while (probe && probe !== probePrev) {
+    if (probe === homeDir) break;
     if (fs.existsSync(path.join(probe, '.git'))) return probe;
     probePrev = probe;
     probe = path.dirname(probe);
@@ -267,6 +273,7 @@ function findProjectRoot(startPath) {
 
   let previous = null;
   while (current && current !== previous) {
+    if (current === homeDir) break;
     for (const marker of PROJECT_MARKERS) {
       if (fs.existsSync(path.join(current, marker))) return current;
     }
@@ -286,8 +293,10 @@ function findNearestProjectMarkerRoot(startPath) {
     return null;
   }
 
+  const homeDir = os.homedir();
   let previous = null;
   while (current && current !== previous) {
+    if (current === homeDir) break;
     for (const marker of PROJECT_MARKERS) {
       if (fs.existsSync(path.join(current, marker))) return current;
     }
