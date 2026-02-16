@@ -173,8 +173,8 @@ export function ServiceDropdown({
         onClose();
       }
     }
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
+    document.addEventListener("mousedown", handleClick, true);
+    return () => document.removeEventListener("mousedown", handleClick, true);
   }, [onClose, showAddModal]);
 
   // Nodes available to add (not already tracked)
