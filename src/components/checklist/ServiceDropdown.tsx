@@ -10,7 +10,7 @@ interface ServiceDropdownProps {
   onDismiss: (name: string, type: string) => void;
   onRestore: (name: string, type: string) => void;
   onAdd: (name: string, type: string) => void;
-  projectNodes: GraphNode[];
+  allNodes: GraphNode[];
   onClose: () => void;
 }
 
@@ -20,7 +20,7 @@ export function ServiceDropdown({
   onDismiss,
   onRestore,
   onAdd,
-  projectNodes,
+  allNodes,
   onClose,
 }: ServiceDropdownProps) {
   const [showDismissed, setShowDismissed] = useState(false);
@@ -49,7 +49,7 @@ export function ServiceDropdown({
     ...services.map((s) => `${s.service.name}::${s.service.type}`),
     ...dismissedServices.map((s) => `${s.name}::${s.type}`),
   ]);
-  const addableNodes = projectNodes.filter(
+  const addableNodes = allNodes.filter(
     (n) => n.type !== "external" && !trackedKeys.has(`${n.name}::${n.type}`),
   );
 

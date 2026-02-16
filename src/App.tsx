@@ -620,17 +620,7 @@ function App() {
                     onAdd={(name, type) =>
                       knownServices.addService(tab.id, name, type)
                     }
-                    projectNodes={graph.nodes.filter(
-                      (n) =>
-                        n.type !== "external" &&
-                        (n.projectPath === tab.id ||
-                          n.repoPath === tab.id ||
-                          (n.projectPath &&
-                            n.projectPath.replace(
-                              /\/services\/[^/]+$/,
-                              "",
-                            ) === tab.id)),
-                    )}
+                    allNodes={graph.nodes}
                     onClose={() => setServiceDropdownTab(null)}
                   />
                 )}
