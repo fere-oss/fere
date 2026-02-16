@@ -150,6 +150,14 @@ export function useKnownServices(
     }
     if (newTabIds.length === 0) return;
 
+    // Load removed keys for new tabs so the blocklist is available
+    for (const id of newTabIds) {
+      if (!removedKeys.has(id)) {
+        const keys = loadRemovedKeys(id);
+        if (keys.size > 0) removedKeys.set(id, keys);
+      }
+    }
+
     setServiceMap((prev) => {
       const newMap = new Map(prev);
       let changed = false;
@@ -161,7 +169,7 @@ export function useKnownServices(
       }
       return changed ? newMap : prev;
     });
-  }, [tabs]);
+  }, [tabs, removedKeys]);
 
   // Auto-learn: add new services from current nodes
   useEffect(() => {
