@@ -132,6 +132,8 @@ textarea {
   gap: 4px;
   padding: 0 40px 16px 40px;
   -webkit-app-region: no-drag;
+  align-items: center;
+  flex-wrap: wrap;
 }
 
 .app-tabs-inline {
@@ -197,6 +199,53 @@ textarea {
   background: var(--bg-muted);
   padding: 2px 6px;
   border-radius: 10px;
+}
+
+.tab-grouping-toggle {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--bg-white);
+}
+
+.app-tabs-controls {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tab-grouping-btn {
+  min-height: 32px;
+  padding: 0 12px;
+  border: 0;
+  border-right: 1px solid var(--border-color);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.tab-grouping-btn:last-child {
+  border-right: 0;
+}
+
+.tab-grouping-btn:hover {
+  background: var(--bg-muted);
+  color: var(--text-secondary);
+}
+
+.tab-grouping-btn-active {
+  background: var(--text-primary);
+  color: var(--bg-white);
+}
+
+.tab-grouping-btn-active:hover {
+  background: var(--text-primary);
+  color: var(--bg-white);
 }
 
 /* Main Content */

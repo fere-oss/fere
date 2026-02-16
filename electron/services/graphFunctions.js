@@ -457,6 +457,7 @@ function buildGraphStructure({
       tty: proc?.tty || null,
       project: projectPath ? path.basename(projectPath) : null,
       projectPath,
+      repoPath: projectPath,
       description: getServiceDescription(rawName, command),
       ports: [],
       routes: [],
@@ -512,6 +513,7 @@ function buildGraphStructure({
       tty: null,
       project: null,
       projectPath: null,
+      repoPath: null,
       ports: [{ port, host, description: null }],
       routes: [],
       healthStatus: 'yellow',
@@ -609,6 +611,9 @@ function addDockerContainerNodes(nodes, edges, dockerSnapshot, nodesByPid, portT
       }));
 
     const containerProjectPath = inferProjectPathFromContainer(container);
+    const containerRepoPath = containerProjectPath
+      ? (findProjectRoot(containerProjectPath) || containerProjectPath)
+      : null;
     const containerProject = containerProjectPath
       ? path.basename(containerProjectPath)
       : extractProjectFromContainerName(container.name);
@@ -627,6 +632,7 @@ function addDockerContainerNodes(nodes, edges, dockerSnapshot, nodesByPid, portT
       tty: null,
       project: containerProject,
       projectPath: containerProjectPath,
+      repoPath: containerRepoPath,
       description: `Docker container running ${container.image}`,
       ports: graphPorts,
       routes: [],

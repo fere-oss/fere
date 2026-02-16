@@ -45,6 +45,7 @@
   "build": {
     "appId": "com.fere.app",
     "productName": "Fere",
+    "artifactName": "fere.${ext}",
     "extends": null,
     "extraMetadata": {
       "main": "electron/main.js"
@@ -54,6 +55,30 @@
       "target": [
         "dmg",
         "zip"
+      ]
+    },
+    "dmg": {
+      "title": "Fere",
+      "volumeName": "Fere",
+      "backgroundColor": "#ffffff",
+      "window": {
+        "width": 560,
+        "height": 360
+      },
+      "iconSize": 96,
+      "contents": [
+        {
+          "x": 150,
+          "y": 180,
+          "type": "file"
+        },
+        {
+          "x": 410,
+          "y": 180,
+          "type": "link",
+          "name": "Applications",
+          "path": "/Applications"
+        }
       ]
     },
     "files": [

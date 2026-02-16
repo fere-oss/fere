@@ -193,6 +193,7 @@ export interface Service {
   tty?: string | null;
   project?: string | null;
   projectPath?: string | null;
+  repoPath?: string | null;
   cpu: number;
   memory: number;
   ports: {
@@ -243,6 +244,7 @@ export interface GraphNode {
   tty?: string | null;
   project?: string | null;
   projectPath?: string | null;
+  repoPath?: string | null;
   description?: string | null;
   ports: {
     port: number;

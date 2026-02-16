@@ -450,19 +450,32 @@ class SnapshotScheduler extends EventEmitter {
     const modifiedNodes = currentSnapshot.graph.nodes.filter(n => {
       const p = prevNodes.get(n.id);
       if (!p) return false;
-      return p.type !== n.type || p.name !== n.name || p.healthStatus !== n.healthStatus ||
-        p.cpu !== n.cpu || p.memory !== n.memory ||
+      return p.type !== n.type ||
+        p.name !== n.name ||
+        p.command !== n.command ||
+        p.project !== n.project ||
+        p.projectPath !== n.projectPath ||
+        p.repoPath !== n.repoPath ||
+        p.healthStatus !== n.healthStatus ||
+        p.cpu !== n.cpu ||
+        p.memory !== n.memory ||
         JSON.stringify(p.ports) !== JSON.stringify(n.ports) ||
+        JSON.stringify(p.routes || []) !== JSON.stringify(n.routes || []) ||
         p.containerState !== n.containerState;
     }).map(n => {
       const p = prevNodes.get(n.id);
       const patch = { id: n.id };
       if (p.type !== n.type) patch.type = n.type;
       if (p.name !== n.name) patch.name = n.name;
+      if (p.command !== n.command) patch.command = n.command;
+      if (p.project !== n.project) patch.project = n.project;
+      if (p.projectPath !== n.projectPath) patch.projectPath = n.projectPath;
+      if (p.repoPath !== n.repoPath) patch.repoPath = n.repoPath;
       if (p.healthStatus !== n.healthStatus) patch.healthStatus = n.healthStatus;
       if (p.cpu !== n.cpu) patch.cpu = n.cpu;
       if (p.memory !== n.memory) patch.memory = n.memory;
       if (JSON.stringify(p.ports) !== JSON.stringify(n.ports)) patch.ports = n.ports;
+      if (JSON.stringify(p.routes || []) !== JSON.stringify(n.routes || [])) patch.routes = n.routes;
       if (p.containerState !== n.containerState) patch.containerState = n.containerState;
       return patch;
     });

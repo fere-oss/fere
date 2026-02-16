@@ -1,19 +1,92 @@
-const { exec, execFile } = require('child_process');
+const { execFile } = require('child_process');
 const { promisify } = require('util');
+const fs = require('fs');
 
-const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
 
 const CACHE_TTL_MS = 2000; // 2 second cache for Docker data (Docker commands are slower)
 const containersCache = { timestamp: 0, data: [], promise: null };
 const networksCache = { timestamp: 0, data: [], promise: null };
+const DOCKER_EXEC_TIMEOUT_MS = 15000;
+const DOCKER_BIN_CANDIDATES = [
+  process.env.FERE_DOCKER_BIN,
+  '/opt/homebrew/bin/docker',
+  '/usr/local/bin/docker',
+  '/Applications/Docker.app/Contents/Resources/bin/docker',
+  'docker',
+].filter(Boolean);
+let resolvedDockerBin = null;
+
+function getDockerBinaries() {
+  const bins = [];
+  for (const bin of DOCKER_BIN_CANDIDATES) {
+    if (bin.includes('/') && !fs.existsSync(bin)) continue;
+    bins.push(bin);
+  }
+  return bins.length > 0 ? bins : ['docker'];
+}
+
+async function resolveDockerBinary() {
+  if (resolvedDockerBin) return resolvedDockerBin;
+
+  const candidates = getDockerBinaries();
+  for (const candidate of candidates) {
+    try {
+      await execFileAsync(candidate, ['version', '--format', '{{.Client.Version}}'], {
+        timeout: DOCKER_EXEC_TIMEOUT_MS,
+        maxBuffer: 1024 * 1024,
+      });
+      resolvedDockerBin = candidate;
+      return candidate;
+    } catch (error) {
+      // Try next candidate
+    }
+  }
+
+  resolvedDockerBin = null;
+  return null;
+}
+
+async function runDocker(args, options = {}) {
+  const normalizedArgs = Array.isArray(args) ? args : [];
+  const allowFailure = !!options.allowFailure;
+  const preferred = await resolveDockerBinary();
+  const candidates = preferred
+    ? [preferred, ...getDockerBinaries().filter((bin) => bin !== preferred)]
+    : getDockerBinaries();
+
+  let lastError = null;
+  for (const bin of candidates) {
+    try {
+      const result = await execFileAsync(bin, normalizedArgs, {
+        timeout: DOCKER_EXEC_TIMEOUT_MS,
+        maxBuffer: 1024 * 1024,
+      });
+      resolvedDockerBin = bin;
+      return result.stdout || '';
+    } catch (error) {
+      lastError = error;
+      const isMissingBinary = error?.code === 'ENOENT' || /not found/i.test(String(error?.message || ''));
+      if (isMissingBinary) continue;
+      if (allowFailure) {
+        throw error;
+      }
+      throw error;
+    }
+  }
+
+  if (allowFailure && lastError) {
+    throw lastError;
+  }
+  throw new Error('Docker CLI not found. Tried: ' + candidates.join(', '));
+}
 
 /**
  * Check if Docker is available and running
  */
 async function isDockerAvailable() {
   try {
-    await execAsync('docker info 2>/dev/null');
+    await runDocker(['info'], { allowFailure: true });
     return true;
   } catch (error) {
     return false;
@@ -44,9 +117,7 @@ async function getDockerContainers() {
       }
 
       // Get container list with JSON output for reliable parsing
-      const { stdout } = await execAsync(
-        'docker ps -a --format \'{{json .}}\' 2>/dev/null'
-      );
+      const stdout = await runDocker(['ps', '-a', '--format', '{{json .}}']);
 
       if (!stdout.trim()) {
         containersCache.data = [];
@@ -110,9 +181,7 @@ async function getDockerContainers() {
  */
 async function inspectContainer(containerId) {
   try {
-    const { stdout } = await execAsync(
-      `docker inspect ${containerId} 2>/dev/null`
-    );
+    const stdout = await runDocker(['inspect', containerId]);
     const data = JSON.parse(stdout);
     return data[0] || null;
   } catch (error) {
@@ -265,9 +334,7 @@ async function attachContainerStats(containers) {
 
   try {
     // Get stats for all running containers at once
-    const { stdout } = await execAsync(
-      'docker stats --no-stream --format \'{{json .}}\' 2>/dev/null'
-    );
+    const stdout = await runDocker(['stats', '--no-stream', '--format', '{{json .}}']);
 
     if (!stdout.trim()) return;
 
@@ -323,9 +390,7 @@ async function getDockerNetworks() {
       }
 
       // Get network list
-      const { stdout } = await execAsync(
-        'docker network ls --format \'{{json .}}\' 2>/dev/null'
-      );
+      const stdout = await runDocker(['network', 'ls', '--format', '{{json .}}']);
 
       if (!stdout.trim()) {
         networksCache.data = [];
@@ -378,9 +443,7 @@ async function getDockerNetworks() {
  */
 async function inspectNetwork(networkId) {
   try {
-    const { stdout } = await execAsync(
-      `docker network inspect ${networkId} 2>/dev/null`
-    );
+    const stdout = await runDocker(['network', 'inspect', networkId]);
     const data = JSON.parse(stdout);
     return data[0] || null;
   } catch (error) {
@@ -536,29 +599,11 @@ function clearDockerCache() {
   networksCache.timestamp = 0;
   networksCache.data = [];
   networksCache.promise = null;
+  resolvedDockerBin = null;
 }
 
 function sanitizeContainerId(containerId) {
   return typeof containerId === 'string' && /^[a-zA-Z0-9_.-]+$/.test(containerId);
-}
-
-function shellEscape(value) {
-  return `'${String(value).replace(/'/g, `'\\''`)}'`;
-}
-
-async function runDocker(args) {
-  const normalizedArgs = Array.isArray(args) ? args : [];
-  try {
-    const result = await execFileAsync('docker', normalizedArgs, {
-      maxBuffer: 1024 * 1024,
-    });
-    return result.stdout || '';
-  } catch (error) {
-    // Fallback to shell invocation because PATH differs for some Electron launch modes.
-    const command = `docker ${normalizedArgs.map(shellEscape).join(' ')} 2>/dev/null`;
-    const { stdout } = await execAsync(command, { maxBuffer: 1024 * 1024 });
-    return stdout || '';
-  }
 }
 
 async function stopContainer(containerId, timeoutSeconds = 5) {
