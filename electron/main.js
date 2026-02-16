@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell, nativeImage } = require("electron");
+const { app, BrowserWindow, ipcMain, shell, nativeImage, Notification } = require("electron");
 const path = require("path");
 
 // Import security utilities
@@ -62,6 +62,12 @@ const {
   stopContainerStreams,
   stopAllStreams,
 } = require("./services/containerLogs");
+const {
+  initAlertManager,
+  evaluateAlerts,
+  getAlertPreferences,
+  setAlertPreferences,
+} = require("./services/alertManager");
 
 app.setName("Fere");
 app.name = "Fere";
@@ -71,6 +77,7 @@ process.title = "Fere";
 let mainWindow;
 let snapshotScheduler = null;
 let snapshotHandler = null;
+let alertNodeMap = new Map();
 
 const isDev = process.env.NODE_ENV === "development" || !app.isPackaged;
 
@@ -118,6 +125,7 @@ function createWindow() {
       snapshotScheduler.removeAllListeners();
       snapshotScheduler = null;
       snapshotHandler = null;
+      alertNodeMap = new Map();
     }
     mainWindow = null;
   });
@@ -129,6 +137,9 @@ app.whenReady().then(() => {
 
   // Security: Set up CSP (different for dev vs production)
   setupCSP(isDev);
+
+  // Initialize alert manager (loads preferences from disk)
+  initAlertManager();
 
   if (process.platform === "darwin") {
     const icon = nativeImage.createFromPath(
@@ -152,6 +163,32 @@ app.on("activate", () => {
     createWindow();
   }
 });
+
+/**
+ * Maintain a shadow copy of all graph nodes from snapshot deltas
+ * for alert evaluation purposes.
+ */
+function updateAlertNodeMap(delta) {
+  if (delta.type === 'full' && delta.graph && Array.isArray(delta.graph.nodes)) {
+    alertNodeMap = new Map(delta.graph.nodes.map(n => [n.id, n]));
+    return;
+  }
+  if (delta.graph && delta.graph.nodes) {
+    const nd = delta.graph.nodes;
+    if (nd.removed) {
+      for (const id of nd.removed) alertNodeMap.delete(id);
+    }
+    if (nd.added) {
+      for (const node of nd.added) alertNodeMap.set(node.id, node);
+    }
+    if (nd.modified) {
+      for (const patch of nd.modified) {
+        const existing = alertNodeMap.get(patch.id);
+        if (existing) alertNodeMap.set(patch.id, { ...existing, ...patch });
+      }
+    }
+  }
+}
 
 // ============================================
 // IPC Handlers - System Monitoring API
@@ -241,6 +278,14 @@ ipcMain.handle("start-snapshot-stream", async (event) => {
         return;
       }
       event.sender.send("snapshot-delta", delta);
+
+      // Evaluate alert notifications on each snapshot
+      try {
+        updateAlertNodeMap(delta);
+        evaluateAlerts(Array.from(alertNodeMap.values()));
+      } catch (err) {
+        console.error("[AlertManager] Error evaluating alerts:", err);
+      }
     };
 
     snapshotScheduler.on("snapshot", snapshotHandler);
@@ -523,6 +568,31 @@ ipcMain.handle("clear-request-history", async () => {
     return clearHistory();
   } catch (error) {
     console.error("Error clearing request history:", error);
+    return { success: false, error: error.message };
+  }
+});
+
+// ============================================
+// IPC Handlers - Alert Preferences
+// ============================================
+
+ipcMain.handle("get-alert-preferences", async () => {
+  try {
+    return getAlertPreferences();
+  } catch (error) {
+    console.error("Error getting alert preferences:", error);
+    return { alertsEnabled: true };
+  }
+});
+
+ipcMain.handle("set-alert-preferences", async (event, prefs) => {
+  try {
+    if (typeof prefs !== "object" || prefs === null) {
+      return { success: false, error: "Invalid preferences" };
+    }
+    return setAlertPreferences(prefs);
+  } catch (error) {
+    console.error("Error setting alert preferences:", error);
     return { success: false, error: error.message };
   }
 });

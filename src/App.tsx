@@ -4,6 +4,9 @@ import { GraphView } from "./components/GraphView";
 import { CurlBuilder } from "./components/CurlBuilder";
 import { DatabaseListView } from "./components/DatabaseListView";
 import { ContainerLogsTab } from "./components/ContainerLogsTab";
+import { ChecklistPanel } from "./components/checklist/ChecklistPanel";
+import { useChecklist } from "./components/checklist/useChecklist";
+import type { EvaluatedChecklistItem } from "./components/checklist/types";
 import type { GraphNode } from "./types/electron";
 import "./App.css";
 
@@ -192,6 +195,34 @@ function App() {
     string | undefined
   >();
 
+  // Startup checklist
+  const checklist = useChecklist(graph.nodes);
+  const [checklistCollapsed, setChecklistCollapsed] = useState<boolean>(() => {
+    try {
+      return window.localStorage.getItem("fere.checklistCollapsed") === "true";
+    } catch {
+      return false;
+    }
+  });
+
+  // Alert preferences state
+  const [alertsEnabled, setAlertsEnabled] = useState(true);
+
+  useEffect(() => {
+    if (window.electronAPI?.getAlertPreferences) {
+      window.electronAPI.getAlertPreferences().then((prefs) => {
+        setAlertsEnabled(prefs.alertsEnabled);
+      });
+    }
+  }, []);
+
+  const handleToggleAlerts = useCallback(async () => {
+    const newValue = !alertsEnabled;
+    setAlertsEnabled(newValue);
+    if (window.electronAPI?.setAlertPreferences) {
+      await window.electronAPI.setAlertPreferences({ alertsEnabled: newValue });
+    }
+  }, [alertsEnabled]);
 
   // Handle database container click - navigate to database page
   const handleDatabaseClick = useCallback((node: GraphNode) => {
@@ -199,10 +230,45 @@ function App() {
     setViewMode("database");
   }, []);
 
-
   // Open database view directly from top tabs (show database list)
   const handleOpenDatabaseView = useCallback(() => {
     setViewMode("database");
+  }, []);
+
+  // Checklist navigation — deep-link to the relevant view for a matched node
+  const handleChecklistNavigate = useCallback(
+    (ev: EvaluatedChecklistItem) => {
+      const node = ev.matchedNode;
+      if (!node) return;
+
+      if (node.type === "database" && node.isDockerContainer) {
+        handleDatabaseClick(node);
+      } else if (node.isDockerContainer) {
+        setViewMode("containers");
+        setContainerSubTab("overview");
+      } else {
+        setViewMode("graph");
+        const tabPath = getNodeTabPath(node, tabGrouping);
+        if (tabPath) {
+          setSelectedTab(tabPath);
+        } else {
+          setSelectedTab(SYSTEM_TAB_ID);
+        }
+      }
+    },
+    [handleDatabaseClick, tabGrouping],
+  );
+
+  const handleToggleChecklistCollapsed = useCallback(() => {
+    setChecklistCollapsed((prev) => {
+      const next = !prev;
+      try {
+        window.localStorage.setItem("fere.checklistCollapsed", String(next));
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
   }, []);
 
   useEffect(() => {
@@ -416,6 +482,18 @@ function App() {
       {/* App Title */}
       <div className="app-header">
         <h1 className="app-title">fere</h1>
+        <button
+          className={`alert-toggle${alertsEnabled ? "" : " alert-toggle-off"}`}
+          onClick={handleToggleAlerts}
+          title={alertsEnabled ? "Notifications on" : "Notifications off"}
+          style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+        >
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2">
+            <path d="M8 1.5C5.5 1.5 4 3.5 4 5.5V8L2.5 10.5V11.5H13.5V10.5L12 8V5.5C12 3.5 10.5 1.5 8 1.5Z" />
+            <path d="M6 12.5C6 13.6 6.9 14.5 8 14.5C9.1 14.5 10 13.6 10 12.5" />
+            {!alertsEnabled && <line x1="2" y1="14" x2="14" y2="2" />}
+          </svg>
+        </button>
       </div>
 
       {/* Error Banner */}
@@ -521,6 +599,20 @@ function App() {
           Database
         </button>
       </div>
+
+      {/* Startup Checklist */}
+      <ChecklistPanel
+        evaluated={checklist.evaluated}
+        overallStatus={checklist.overallStatus}
+        healthyCount={checklist.healthyCount}
+        totalCount={checklist.items.length}
+        collapsed={checklistCollapsed}
+        onToggleCollapsed={handleToggleChecklistCollapsed}
+        onNavigate={handleChecklistNavigate}
+        onAddItem={checklist.addItem}
+        onUpdateItem={checklist.updateItem}
+        onRemoveItem={checklist.removeItem}
+      />
 
       {/* Project Tabs - only show for graph view */}
       {viewMode === "graph" && tabs.length > 1 && (

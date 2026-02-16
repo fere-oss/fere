@@ -382,6 +382,11 @@ export interface HistoryResult {
   error?: string;
 }
 
+// Alert preferences
+export interface AlertPreferences {
+  alertsEnabled: boolean;
+}
+
 // Snapshot delta types (event-driven pipeline)
 export interface SnapshotDelta {
   type: 'full' | 'delta' | 'metrics';
@@ -468,6 +473,10 @@ export interface ElectronAPI {
   loadRequestHistory: () => Promise<HistoryResult>;
   saveRequestHistory: (entry: HistoryEntry) => Promise<{ success: boolean; error?: string }>;
   clearRequestHistory: () => Promise<{ success: boolean; error?: string }>;
+
+  // Alert Preferences
+  getAlertPreferences: () => Promise<AlertPreferences>;
+  setAlertPreferences: (prefs: Partial<AlertPreferences>) => Promise<{ success: boolean; error?: string }>;
 
   // Container Logs Streaming
   startContainerLogs: (containerId: string, options?: ContainerLogOptions) => Promise<ContainerLogStreamResult>;
