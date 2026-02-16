@@ -413,13 +413,34 @@ async function getMySQLTableData(containerId, tableName, limit) {
   return { columns: headers, rows, dbType: 'mysql', tableName: safeTableName };
 }
 
+// MongoDB auth helper — extract credentials from container environment variables
+async function getMongoAuthArgs(containerId) {
+  try {
+    const { stdout } = await execDocker(containerId, ['env'], 5000);
+    const env = {};
+    for (const line of stdout.split('\n')) {
+      const eq = line.indexOf('=');
+      if (eq > 0) env[line.slice(0, eq)] = line.slice(eq + 1).trim();
+    }
+    const user = env.MONGO_INITDB_ROOT_USERNAME;
+    const pass = env.MONGO_INITDB_ROOT_PASSWORD;
+    if (user && pass) {
+      return ['-u', user, '-p', pass, '--authenticationDatabase', 'admin'];
+    }
+    return [];
+  } catch {
+    return [];
+  }
+}
+
 // MongoDB functions
 async function getMongoCollections(containerId) {
   // Try mongosh first (newer), then mongo (older).
   // Return empty collections on success instead of treating it as a connection error.
+  const authArgs = await getMongoAuthArgs(containerId);
   const commandVariants = [
-    ['mongosh', '--quiet', '--eval', 'print(JSON.stringify(db.getCollectionNames()))'],
-    ['mongo', '--quiet', '--eval', 'print(JSON.stringify(db.getCollectionNames()))'],
+    ['mongosh', '--quiet', ...authArgs, '--eval', 'print(JSON.stringify(db.getCollectionNames()))'],
+    ['mongo', '--quiet', ...authArgs, '--eval', 'print(JSON.stringify(db.getCollectionNames()))'],
   ];
 
   for (const cmdArgs of commandVariants) {
@@ -458,10 +479,11 @@ async function getMongoCollections(containerId) {
 
 async function getMongoCollectionData(containerId, collectionName, limit) {
   const safeCollectionName = collectionName.replace(/[^a-zA-Z0-9_]/g, '');
+  const authArgs = await getMongoAuthArgs(containerId);
 
   const commandVariants = [
-    ['mongosh', '--quiet', '--eval', `JSON.stringify(db.${safeCollectionName}.find().limit(${limit}).toArray())`],
-    ['mongo', '--quiet', '--eval', `JSON.stringify(db.${safeCollectionName}.find().limit(${limit}).toArray())`],
+    ['mongosh', '--quiet', ...authArgs, '--eval', `JSON.stringify(db.${safeCollectionName}.find().limit(${limit}).toArray())`],
+    ['mongo', '--quiet', ...authArgs, '--eval', `JSON.stringify(db.${safeCollectionName}.find().limit(${limit}).toArray())`],
   ];
 
   for (const cmdArgs of commandVariants) {
@@ -595,9 +617,10 @@ async function executeMySQLQuery(containerId, query) {
 }
 
 async function executeMongoCommand(containerId, command) {
+  const authArgs = await getMongoAuthArgs(containerId);
   const commandVariants = [
-    ['mongosh', '--quiet'],
-    ['mongo', '--quiet'],
+    ['mongosh', '--quiet', ...authArgs],
+    ['mongo', '--quiet', ...authArgs],
   ];
 
   for (const variant of commandVariants) {
