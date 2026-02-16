@@ -1668,6 +1668,38 @@ textarea {
   box-shadow: none !important;
 }
 
+/* Start button on ghost nodes */
+.service-node-start-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-primary);
+  background: var(--bg-muted);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.service-node-start-btn:hover {
+  background: var(--bg-white);
+  border-color: var(--node-color);
+  color: var(--node-color);
+}
+.service-node-start-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+.service-node-start-spinner {
+  animation: spin 1s linear infinite;
+}
+
 .service-node-header {
   display: flex;
   align-items: center;
@@ -7893,6 +7925,23 @@ textarea {
 }
 .service-dropdown-remove:hover {
   background: rgba(198, 40, 40, 0.1);
+}
+
+.service-dropdown-start {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  color: #2e7d32;
+  flex-shrink: 0;
+  transition: background 0.15s ease;
+}
+.service-dropdown-start:hover {
+  background: rgba(46, 125, 50, 0.1);
 }
 
 .service-dropdown-dismissed-toggle {

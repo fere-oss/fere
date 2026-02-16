@@ -6,6 +6,10 @@ export interface KnownService {
   type: string;
   dismissed: boolean;
   addedManually: boolean;
+  lastCommand?: string;
+  projectPath?: string;
+  isDockerContainer?: boolean;
+  containerId?: string;
 }
 
 export interface ServiceStatus {
@@ -191,9 +195,34 @@ export function useKnownServices(
               type: node.type,
               dismissed: false,
               addedManually: false,
+              lastCommand: node.command || undefined,
+              projectPath: node.projectPath || undefined,
+              isDockerContainer: node.isDockerContainer || false,
+              containerId: node.containerId || undefined,
             });
             existingKeys.add(key);
             tabChanged = true;
+          } else {
+            // Update start metadata for existing services (containerId may change)
+            const idx = updated.findIndex(
+              (s) => serviceKey(s.name, s.type) === key,
+            );
+            if (idx !== -1) {
+              const prev = updated[idx];
+              if (
+                prev.containerId !== (node.containerId || undefined) ||
+                prev.lastCommand !== (node.command || undefined)
+              ) {
+                updated[idx] = {
+                  ...prev,
+                  containerId: node.containerId || undefined,
+                  lastCommand: node.command || undefined,
+                  projectPath: node.projectPath || undefined,
+                  isDockerContainer: node.isDockerContainer || false,
+                };
+                tabChanged = true;
+              }
+            }
           }
         }
 

@@ -55,6 +55,7 @@ const {
   getDockerNetworks,
   getDockerSnapshot,
   stopContainer,
+  startContainer,
 } = require("./services/dockerMonitor");
 const {
   startLogStream,
@@ -394,6 +395,54 @@ ipcMain.handle("stop-container", async (event, containerId) => {
     return result;
   } catch (error) {
     console.error("Error stopping container:", error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle("start-container", async (event, containerId) => {
+  try {
+    if (!containerId || typeof containerId !== "string") {
+      return { success: false, error: "Invalid container ID" };
+    }
+    const result = await startContainer(containerId);
+    if (result.success) {
+      clearProcessCache();
+      clearPortCache();
+      if (snapshotScheduler) {
+        setImmediate(() => snapshotScheduler.reconcile());
+      }
+    }
+    return result;
+  } catch (error) {
+    console.error("Error starting container:", error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle("start-process", async (event, command, cwd) => {
+  try {
+    if (!command || typeof command !== "string") {
+      return { success: false, error: "Invalid command" };
+    }
+    if (!cwd || typeof cwd !== "string") {
+      return { success: false, error: "Invalid working directory" };
+    }
+    const { spawn } = require("child_process");
+    const child = spawn("sh", ["-c", command], {
+      cwd,
+      detached: true,
+      stdio: "ignore",
+    });
+    child.unref();
+    const pid = child.pid;
+    clearProcessCache();
+    clearPortCache();
+    if (snapshotScheduler) {
+      setImmediate(() => snapshotScheduler.reconcile());
+    }
+    return { success: true, pid };
+  } catch (error) {
+    console.error("Error starting process:", error);
     return { success: false, error: error.message };
   }
 });

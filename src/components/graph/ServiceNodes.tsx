@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from 'react';
+import { useSyncExternalStore, useState, useCallback } from 'react';
 import type { GraphNode } from '../../types/electron';
 import type { RenderGroup } from './types';
 import { getHealthInfo, getServiceColor, getTypeBadge } from './constants';
@@ -248,6 +248,31 @@ export function ServiceNode({
     onContextMenu(e, node);
   };
 
+  const [starting, setStarting] = useState(false);
+
+  const handleStartService = useCallback(async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (starting) return;
+    setStarting(true);
+    try {
+      if (node.isDockerContainer) {
+        const id = node.containerId || node.name;
+        await window.electronAPI.startContainer(id);
+      } else if (node.startCommand && node.startProjectPath) {
+        await window.electronAPI.startProcess(node.startCommand, node.startProjectPath);
+      }
+    } catch {
+      // silently fail — snapshot will reflect actual state
+    } finally {
+      setTimeout(() => setStarting(false), 3000);
+    }
+  }, [node, starting]);
+
+  const canStart = isGhost && (
+    node.isDockerContainer ||
+    (node.startCommand && node.startProjectPath)
+  );
+
   return (
     <div
       data-node-id={node.id}
@@ -305,6 +330,30 @@ export function ServiceNode({
       )}
       {!node.isDockerContainer && projectLabel && (
         <div className="service-node-project">{projectLabel}</div>
+      )}
+
+      {canStart && (
+        <button
+          className="service-node-start-btn"
+          onClick={handleStartService}
+          disabled={starting}
+        >
+          {starting ? (
+            <>
+              <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="service-node-start-spinner">
+                <path d="M8 1v3M8 12v3M1 8h3M12 8h3" strokeLinecap="round" />
+              </svg>
+              Starting...
+            </>
+          ) : (
+            <>
+              <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+                <path d="M4 2l10 6-10 6V2z" />
+              </svg>
+              Start
+            </>
+          )}
+        </button>
       )}
 
       {!isGhost && mainPort && (
