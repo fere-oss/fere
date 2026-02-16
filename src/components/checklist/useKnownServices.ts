@@ -294,11 +294,31 @@ export function useKnownServices(
     [],
   );
 
+  const removeService = useCallback(
+    (tabId: string, name: string, type: string) => {
+      setServiceMap((prev) => {
+        const newMap = new Map(prev);
+        const services = [...(newMap.get(tabId) || [])];
+        const key = serviceKey(name, type);
+        const filtered = services.filter(
+          (s) => serviceKey(s.name, s.type) !== key,
+        );
+        if (filtered.length !== services.length) {
+          newMap.set(tabId, filtered);
+          persistServices(tabId, filtered);
+        }
+        return newMap;
+      });
+    },
+    [],
+  );
+
   return {
     getProjectStatus,
     getDismissedServices,
     dismissService,
     restoreService,
     addService,
+    removeService,
   };
 }

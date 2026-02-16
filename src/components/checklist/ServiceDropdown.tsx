@@ -9,6 +9,7 @@ interface ServiceDropdownProps {
   dismissedServices: KnownService[];
   onDismiss: (name: string, type: string) => void;
   onRestore: (name: string, type: string) => void;
+  onRemove: (name: string, type: string) => void;
   onAdd: (name: string, type: string) => void;
   allNodes: GraphNode[];
   onClose: () => void;
@@ -136,6 +137,7 @@ export function ServiceDropdown({
   dismissedServices,
   onDismiss,
   onRestore,
+  onRemove,
   onAdd,
   allNodes,
   onClose,
@@ -259,6 +261,22 @@ export function ServiceDropdown({
                     onClick={() => onRestore(s.name, s.type)}
                   >
                     Restore
+                  </button>
+                  <button
+                    className="service-dropdown-remove"
+                    title="Remove permanently"
+                    onClick={() => onRemove(s.name, s.type)}
+                  >
+                    <svg
+                      width="12"
+                      height="12"
+                      viewBox="0 0 16 16"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                    >
+                      <path d="M3 4h10M6 4V3a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v1M5 4v9a1 1 0 0 0 1 1h4a1 1 0 0 0 1-1V4" />
+                    </svg>
                   </button>
                 </div>
               ))}

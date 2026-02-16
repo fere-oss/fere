@@ -7775,6 +7775,28 @@ textarea {
   background: rgba(0, 120, 212, 0.08);
 }
 
+.service-dropdown-remove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.15s ease, color 0.15s ease;
+}
+.service-dropdown-row-dismissed:hover .service-dropdown-remove {
+  opacity: 1;
+}
+.service-dropdown-remove:hover {
+  color: #c62828;
+  background: rgba(198, 40, 40, 0.08);
+}
+
 .service-dropdown-dismissed-toggle {
   display: flex;
   align-items: center;
