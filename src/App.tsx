@@ -299,6 +299,7 @@ function App() {
     dismissService,
     restoreService,
     addService,
+    removeService,
   } = useKnownServices(tabs, graph.nodes, tabGrouping);
   const [serviceDropdownTab, setServiceDropdownTab] = useState<string | null>(
     null,
@@ -658,6 +659,9 @@ function App() {
                     }
                     onRestore={(name, type) =>
                       restoreService(tab.id, name, type)
+                    }
+                    onRemove={(name, type) =>
+                      removeService(tab.id, name, type)
                     }
                     onAdd={(name, type) =>
                       addService(tab.id, name, type)

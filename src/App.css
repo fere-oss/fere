@@ -7783,6 +7783,23 @@ textarea {
   background: rgba(0, 120, 212, 0.08);
 }
 
+.service-dropdown-remove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  color: #c62828;
+  flex-shrink: 0;
+  transition: background 0.15s ease;
+}
+.service-dropdown-remove:hover {
+  background: rgba(198, 40, 40, 0.1);
+}
+
 .service-dropdown-dismissed-toggle {
   display: flex;
   align-items: center;
