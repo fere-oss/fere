@@ -4,6 +4,9 @@ import { GraphView } from "./components/GraphView";
 import { CurlBuilder } from "./components/CurlBuilder";
 import { DatabaseListView } from "./components/DatabaseListView";
 import { ContainerLogsTab } from "./components/ContainerLogsTab";
+import { useKnownServices } from "./components/checklist/useKnownServices";
+import { ServiceDropdown } from "./components/checklist/ServiceDropdown";
+import { HEALTH_COLORS } from "./components/graph/constants";
 import type { GraphNode } from "./types/electron";
 import "./App.css";
 
@@ -289,6 +292,12 @@ function App() {
     ];
   }, [graph.nodes, tabGrouping]);
 
+  // Per-project service tracking
+  const knownServices = useKnownServices(tabs, graph.nodes, tabGrouping);
+  const [serviceDropdownTab, setServiceDropdownTab] = useState<string | null>(
+    null,
+  );
+
   // Auto-select first available tab if current selection becomes invalid
   useEffect(() => {
     const tabIds = tabs.map((t) => t.id);
@@ -555,19 +564,79 @@ function App() {
       {/* Project Tabs - only show for graph view */}
       {viewMode === "graph" && tabs.length > 1 && (
         <div className="app-tabs">
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              className={`app-tab ${selectedTab === tab.id ? "app-tab-active" : ""}`}
-              onClick={() => setSelectedTab(tab.id)}
-            >
-              {tab.label}
-              {tab.stackLabel && (
-                <span className="app-tab-stack">{tab.stackLabel}</span>
-              )}
-              <span className="app-tab-count">{tab.count ?? 0}</span>
-            </button>
-          ))}
+          {tabs.map((tab) => {
+            const status = knownServices.getProjectStatus(tab.id);
+            const hasServices = status.total > 0;
+            const allRunning = hasServices && status.running === status.total;
+            const noneRunning = hasServices && status.running === 0;
+            const statusColor = allRunning
+              ? HEALTH_COLORS.green.color
+              : noneRunning
+                ? HEALTH_COLORS.red.color
+                : HEALTH_COLORS.yellow.color;
+
+            return (
+              <div key={tab.id} className="app-tab-wrapper">
+                <button
+                  className={`app-tab ${selectedTab === tab.id ? "app-tab-active" : ""}`}
+                  onClick={() => {
+                    if (selectedTab === tab.id) {
+                      setServiceDropdownTab(
+                        serviceDropdownTab === tab.id ? null : tab.id,
+                      );
+                    } else {
+                      setSelectedTab(tab.id);
+                      setServiceDropdownTab(null);
+                    }
+                  }}
+                >
+                  {tab.label}
+                  {tab.stackLabel && (
+                    <span className="app-tab-stack">{tab.stackLabel}</span>
+                  )}
+                  {hasServices && (
+                    <span className="app-tab-services">
+                      <span
+                        className="app-tab-services-dot"
+                        style={{ backgroundColor: statusColor }}
+                      />
+                      {status.running}/{status.total}
+                    </span>
+                  )}
+                  <span className="app-tab-count">{tab.count ?? 0}</span>
+                </button>
+                {serviceDropdownTab === tab.id && (
+                  <ServiceDropdown
+                    services={status.services}
+                    dismissedServices={knownServices.getDismissedServices(
+                      tab.id,
+                    )}
+                    onDismiss={(name, type) =>
+                      knownServices.dismissService(tab.id, name, type)
+                    }
+                    onRestore={(name, type) =>
+                      knownServices.restoreService(tab.id, name, type)
+                    }
+                    onAdd={(name, type) =>
+                      knownServices.addService(tab.id, name, type)
+                    }
+                    projectNodes={graph.nodes.filter(
+                      (n) =>
+                        n.type !== "external" &&
+                        (n.projectPath === tab.id ||
+                          n.repoPath === tab.id ||
+                          (n.projectPath &&
+                            n.projectPath.replace(
+                              /\/services\/[^/]+$/,
+                              "",
+                            ) === tab.id)),
+                    )}
+                    onClose={() => setServiceDropdownTab(null)}
+                  />
+                )}
+              </div>
+            );
+          })}
           <div className="app-tabs-controls">
             <div className="tab-grouping-toggle" role="group" aria-label="Tab grouping mode">
               <button
