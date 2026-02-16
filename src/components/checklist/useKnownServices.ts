@@ -95,63 +95,77 @@ export function useKnownServices(
   const prevTabIdsRef = useRef(new Set(tabs.map((t) => t.id)));
   useEffect(() => {
     const currentIds = new Set(tabs.map((t) => t.id));
-    let changed = false;
-    const newMap = new Map(serviceMap);
+    const prevIds = prevTabIdsRef.current;
+    prevTabIdsRef.current = currentIds;
+
+    const newTabIds: string[] = [];
     for (const tab of tabs) {
       if (tab.id === SYSTEM_TAB_ID) continue;
-      if (!prevTabIdsRef.current.has(tab.id) && !newMap.has(tab.id)) {
-        newMap.set(tab.id, loadServices(tab.id));
-        changed = true;
+      if (!prevIds.has(tab.id)) {
+        newTabIds.push(tab.id);
       }
     }
-    prevTabIdsRef.current = currentIds;
-    if (changed) setServiceMap(newMap);
-  }, [tabs]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (newTabIds.length === 0) return;
+
+    setServiceMap((prev) => {
+      const newMap = new Map(prev);
+      let changed = false;
+      for (const id of newTabIds) {
+        if (!newMap.has(id)) {
+          newMap.set(id, loadServices(id));
+          changed = true;
+        }
+      }
+      return changed ? newMap : prev;
+    });
+  }, [tabs]);
 
   // Auto-learn: add new services from current nodes
   useEffect(() => {
-    let changed = false;
-    const newMap = new Map(serviceMap);
+    setServiceMap((prev) => {
+      let changed = false;
+      const newMap = new Map(prev);
 
-    for (const tab of tabs) {
-      if (tab.id === SYSTEM_TAB_ID) continue;
+      for (const tab of tabs) {
+        if (tab.id === SYSTEM_TAB_ID) continue;
 
-      const tabNodes = nodes.filter(
-        (n) => n.type !== "external" && getNodeTabPath(n, tabGrouping) === tab.id,
-      );
-      if (tabNodes.length === 0) continue;
+        const tabNodes = nodes.filter(
+          (n) => n.type !== "external" && getNodeTabPath(n, tabGrouping) === tab.id,
+        );
+        if (tabNodes.length === 0) continue;
 
-      const existing = newMap.get(tab.id) || [];
-      const existingKeys = new Set(
-        existing.map((s) => serviceKey(s.name, s.type)),
-      );
+        const existing = newMap.get(tab.id) || [];
+        const existingKeys = new Set(
+          existing.map((s) => serviceKey(s.name, s.type)),
+        );
 
-      let tabChanged = false;
-      const updated = [...existing];
+        let tabChanged = false;
+        const updated = [...existing];
 
-      for (const node of tabNodes) {
-        const key = serviceKey(node.name, node.type);
-        if (!existingKeys.has(key)) {
-          updated.push({
-            name: node.name,
-            type: node.type,
-            dismissed: false,
-            addedManually: false,
-          });
-          existingKeys.add(key);
-          tabChanged = true;
+        for (const node of tabNodes) {
+          const key = serviceKey(node.name, node.type);
+          if (!existingKeys.has(key)) {
+            updated.push({
+              name: node.name,
+              type: node.type,
+              dismissed: false,
+              addedManually: false,
+            });
+            existingKeys.add(key);
+            tabChanged = true;
+          }
+        }
+
+        if (tabChanged) {
+          newMap.set(tab.id, updated);
+          persistServices(tab.id, updated);
+          changed = true;
         }
       }
 
-      if (tabChanged) {
-        newMap.set(tab.id, updated);
-        persistServices(tab.id, updated);
-        changed = true;
-      }
-    }
-
-    if (changed) setServiceMap(newMap);
-  }, [nodes, tabs, tabGrouping]); // eslint-disable-line react-hooks/exhaustive-deps
+      return changed ? newMap : prev;
+    });
+  }, [nodes, tabs, tabGrouping]);
 
   // Evaluate status for all tabs
   const statusCache = useMemo(() => {
