@@ -293,7 +293,13 @@ function App() {
   }, [graph.nodes, tabGrouping]);
 
   // Per-project service tracking
-  const knownServices = useKnownServices(tabs, graph.nodes, tabGrouping);
+  const {
+    getProjectStatus,
+    getDismissedServices,
+    dismissService,
+    restoreService,
+    addService,
+  } = useKnownServices(tabs, graph.nodes, tabGrouping);
   const [serviceDropdownTab, setServiceDropdownTab] = useState<string | null>(
     null,
   );
@@ -345,7 +351,45 @@ function App() {
     const externalNodes = graph.nodes.filter((n) =>
       connectedExternalIds.has(n.id),
     );
-    const filteredNodes = [...primaryNodes, ...externalNodes];
+
+    // Inject tracked service nodes not already in the primary view
+    const trackedExtra: GraphNode[] = [];
+    if (!isSystemTab) {
+      const status = getProjectStatus(selectedTab);
+      const primaryKeys = new Set(
+        primaryNodes.map((n) => `${n.name}::${n.type}`),
+      );
+      for (const svc of status.services) {
+        const key = `${svc.service.name}::${svc.service.type}`;
+        if (primaryKeys.has(key)) continue;
+
+        // Look for a live node anywhere in the system
+        const liveNode = graph.nodes.find(
+          (n) => n.name === svc.service.name && n.type === svc.service.type && n.type !== "external",
+        );
+        if (liveNode) {
+          trackedExtra.push(liveNode);
+        } else {
+          // Create ghost node for tracked service that isn't running
+          trackedExtra.push({
+            id: `ghost-${svc.service.name}-${svc.service.type}`,
+            pid: 0,
+            name: svc.service.name,
+            command: "",
+            type: svc.service.type as GraphNode["type"],
+            cpu: 0,
+            memory: 0,
+            user: "",
+            ports: [],
+            healthStatus: "red",
+            lastSeen: 0,
+            isGhost: true,
+          });
+        }
+      }
+    }
+
+    const filteredNodes = [...primaryNodes, ...externalNodes, ...trackedExtra];
     const filteredNodeIds = new Set(filteredNodes.map((n) => n.id));
 
     // Filter edges to only include those between filtered nodes
@@ -398,7 +442,7 @@ function App() {
       edges: expandedEdges,
       ports: filteredPorts,
     };
-  }, [graph.nodes, graph.edges, ports, selectedTab, tabGrouping, edgeMode]);
+  }, [graph.nodes, graph.edges, ports, selectedTab, tabGrouping, edgeMode, getProjectStatus]);
 
   // Filter to show only running Docker containers
   const dockerContainerData = useMemo(() => {
@@ -565,7 +609,7 @@ function App() {
       {viewMode === "graph" && tabs.length > 1 && (
         <div className="app-tabs">
           {tabs.map((tab) => {
-            const status = knownServices.getProjectStatus(tab.id);
+            const status = getProjectStatus(tab.id);
             const hasServices = status.total > 0;
             const allRunning = hasServices && status.running === status.total;
             const noneRunning = hasServices && status.running === 0;
@@ -608,17 +652,15 @@ function App() {
                 {serviceDropdownTab === tab.id && (
                   <ServiceDropdown
                     services={status.services}
-                    dismissedServices={knownServices.getDismissedServices(
-                      tab.id,
-                    )}
+                    dismissedServices={getDismissedServices(tab.id)}
                     onDismiss={(name, type) =>
-                      knownServices.dismissService(tab.id, name, type)
+                      dismissService(tab.id, name, type)
                     }
                     onRestore={(name, type) =>
-                      knownServices.restoreService(tab.id, name, type)
+                      restoreService(tab.id, name, type)
                     }
                     onAdd={(name, type) =>
-                      knownServices.addService(tab.id, name, type)
+                      addService(tab.id, name, type)
                     }
                     allNodes={graph.nodes}
                     onClose={() => setServiceDropdownTab(null)}

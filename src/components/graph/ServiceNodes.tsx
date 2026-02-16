@@ -155,8 +155,11 @@ export function ServiceNode({
   onContextMenu: (e: React.MouseEvent, node: GraphNode) => void;
   animationIndex?: number;
 }) {
+  const isGhost = !!node.isGhost;
   const accentColor = getServiceColor(node.type);
-  const healthInfo = getHealthInfo(node.healthStatus);
+  const healthInfo = isGhost
+    ? { color: "var(--text-muted)", glow: "none", label: "Not running" }
+    : getHealthInfo(node.healthStatus);
   const showDockerBadge =
     node.isDockerContainer &&
     new Set(["container", "cache", "database", "broker"]).has(
@@ -248,7 +251,7 @@ export function ServiceNode({
   return (
     <div
       data-node-id={node.id}
-      className="service-node"
+      className={`service-node${isGhost ? " service-node-ghost" : ""}`}
       onClick={handleClick}
       onContextMenu={handleContextMenu}
       style={{
@@ -304,7 +307,7 @@ export function ServiceNode({
         <div className="service-node-project">{projectLabel}</div>
       )}
 
-      {mainPort && (
+      {!isGhost && mainPort && (
         <div className="service-node-port">
           <span className="service-node-port-host">localhost</span>
           <span className="service-node-port-number" style={{ color: accentColor }}>
@@ -313,7 +316,7 @@ export function ServiceNode({
         </div>
       )}
 
-      {node.isDockerContainer && node.containerNetworks && node.containerNetworks.length > 0 && (
+      {!isGhost && node.isDockerContainer && node.containerNetworks && node.containerNetworks.length > 0 && (
         <div className="service-node-docker-networks">
           <span className="service-node-docker-networks-label">Networks:</span>
           <span className="service-node-docker-networks-list">
@@ -323,7 +326,7 @@ export function ServiceNode({
         </div>
       )}
 
-      {routes.length > 0 && (
+      {!isGhost && routes.length > 0 && (
         <div className="service-node-routes">
           <div className="service-node-routes-header">
             <span className="service-node-routes-title">API routes</span>
@@ -347,7 +350,7 @@ export function ServiceNode({
         </div>
       )}
 
-      {shouldShowApis && (
+      {!isGhost && shouldShowApis && (
         <div
           className={`service-node-apis${apiCount === 0 ? " is-empty" : ""}`}
         >

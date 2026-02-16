@@ -267,6 +267,8 @@ export interface GraphNode {
   containerMounts?: DockerMount[];
   containerPorts?: DockerPort[];
   memoryUsage?: string;
+  // Synthetic node for tracked services not currently running
+  isGhost?: boolean;
 }
 
 export interface GraphEdge {
