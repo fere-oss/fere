@@ -4,6 +4,7 @@ import { GraphView } from "./components/GraphView";
 import { CurlBuilder } from "./components/CurlBuilder";
 import { DatabaseListView } from "./components/DatabaseListView";
 import { ContainerLogsTab } from "./components/ContainerLogsTab";
+import { WelcomeModal } from "./components/WelcomeModal";
 import { useKnownServices, serviceKey, nodeServiceKey } from "./components/checklist/useKnownServices";
 import { ServiceDropdown } from "./components/checklist/ServiceDropdown";
 import { HEALTH_COLORS } from "./components/graph/constants";
@@ -16,6 +17,7 @@ const SYSTEM_TAB_LABEL = isMacOS ? "macOS" : "System";
 const SYSTEM_TAB_ID = "__system__";
 const TAB_GROUPING_KEY = "fere.tabGrouping";
 const EDGE_MODE_KEY = "fere.edgeMode";
+const WELCOME_SEEN_KEY = "fere.hasSeenWelcome";
 
 const STACK_FRAMEWORK_LABELS: Record<string, string> = {
   nextjs: "Next",
@@ -199,11 +201,26 @@ function App() {
   // Alert preferences state
   const [alertsEnabled, setAlertsEnabled] = useState(true);
 
+  // Welcome modal state
+  const [showWelcome, setShowWelcome] = useState(false);
+
   useEffect(() => {
     if (window.electronAPI?.getAlertPreferences) {
       window.electronAPI.getAlertPreferences().then((prefs) => {
         setAlertsEnabled(prefs.alertsEnabled);
       });
+    }
+  }, []);
+
+  // Check if user has seen welcome modal
+  useEffect(() => {
+    try {
+      const hasSeenWelcome = window.localStorage.getItem(WELCOME_SEEN_KEY);
+      if (!hasSeenWelcome) {
+        setShowWelcome(true);
+      }
+    } catch {
+      // Ignore localStorage read errors
     }
   }, []);
 
@@ -214,6 +231,15 @@ function App() {
       await window.electronAPI.setAlertPreferences({ alertsEnabled: newValue });
     }
   }, [alertsEnabled]);
+
+  const handleCloseWelcome = useCallback(() => {
+    setShowWelcome(false);
+    try {
+      window.localStorage.setItem(WELCOME_SEEN_KEY, "true");
+    } catch {
+      // Ignore localStorage write errors
+    }
+  }, []);
 
   // Handle database container click - navigate to database page
   const handleDatabaseClick = useCallback((node: GraphNode) => {
@@ -871,6 +897,9 @@ function App() {
           </div>
         </div>
       </main>
+
+      {/* Welcome Modal */}
+      {showWelcome && <WelcomeModal onClose={handleCloseWelcome} />}
     </div>
   );
 }

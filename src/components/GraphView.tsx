@@ -460,10 +460,10 @@ export function GraphView({
   if (layoutNodes.length === 0) {
     const emptyTitle = isContainerView
       ? "No containers running"
-      : "No services running";
+      : "No services detected";
     const emptySubtitle = isContainerView
       ? "Start Docker containers to see them here"
-      : "Start a dev server to see the connection graph";
+      : "Try: npm run dev in your project";
     return (
       <div className="graph-view" ref={containerRef}>
         <div className="graph-empty">
