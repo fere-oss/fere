@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { useSystemSnapshot } from "./hooks/useSystemMonitor";
 import { GraphView } from "./components/GraphView";
 import { CurlBuilder } from "./components/CurlBuilder";
@@ -200,6 +200,12 @@ function App() {
 
   // Alert preferences state
   const [alertsEnabled, setAlertsEnabled] = useState(true);
+  const [optimisticHiddenNodeIds, setOptimisticHiddenNodeIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const optimisticHideTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(
+    new Map(),
+  );
 
   // Welcome modal state
   const [showWelcome, setShowWelcome] = useState(false);
@@ -212,17 +218,73 @@ function App() {
     }
   }, []);
 
-  // Check if user has seen welcome modal
   useEffect(() => {
-    try {
-      const hasSeenWelcome = window.localStorage.getItem(WELCOME_SEEN_KEY);
-      if (!hasSeenWelcome) {
-        setShowWelcome(true);
+    const handleOptimisticHide = (event: Event) => {
+      const customEvent = event as CustomEvent<{ nodeId?: string }>;
+      const nodeId = customEvent.detail?.nodeId;
+      if (!nodeId) return;
+
+      setOptimisticHiddenNodeIds((current) => {
+        const next = new Set(current);
+        next.add(nodeId);
+        return next;
+      });
+
+      const existing = optimisticHideTimersRef.current.get(nodeId);
+      if (existing) {
+        clearTimeout(existing);
       }
-    } catch {
-      // Ignore localStorage read errors
-    }
+      const timer = setTimeout(() => {
+        setOptimisticHiddenNodeIds((current) => {
+          if (!current.has(nodeId)) return current;
+          const next = new Set(current);
+          next.delete(nodeId);
+          return next;
+        });
+        optimisticHideTimersRef.current.delete(nodeId);
+      }, 8000);
+      optimisticHideTimersRef.current.set(nodeId, timer);
+    };
+
+    window.addEventListener(
+      "fere:optimistic-hide-node",
+      handleOptimisticHide as EventListener,
+    );
+    return () => {
+      window.removeEventListener(
+        "fere:optimistic-hide-node",
+        handleOptimisticHide as EventListener,
+      );
+      optimisticHideTimersRef.current.forEach((timer) => clearTimeout(timer));
+      optimisticHideTimersRef.current.clear();
+    };
   }, []);
+
+  useEffect(() => {
+    if (optimisticHiddenNodeIds.size === 0) return;
+    const visibleIds = new Set(graph.nodes.map((node) => node.id));
+    setOptimisticHiddenNodeIds((current) => {
+      let changed = false;
+      const next = new Set<string>();
+      current.forEach((id) => {
+        if (visibleIds.has(id)) {
+          next.add(id);
+        } else {
+          changed = true;
+          const timer = optimisticHideTimersRef.current.get(id);
+          if (timer) clearTimeout(timer);
+          optimisticHideTimersRef.current.delete(id);
+        }
+      });
+      return changed ? next : current;
+    });
+  }, [graph.nodes, optimisticHiddenNodeIds.size]);
+
+  const visibleGraphNodes = useMemo(
+    () =>
+      graph.nodes.filter((node) => !optimisticHiddenNodeIds.has(node.id)),
+    [graph.nodes, optimisticHiddenNodeIds],
+  );
 
   const handleToggleAlerts = useCallback(async () => {
     const newValue = !alertsEnabled;
@@ -273,14 +335,14 @@ function App() {
   const tabs = useMemo(() => {
     const projectPaths = new Map<string, string>(); // path -> label
 
-    graph.nodes.forEach((node) => {
+    visibleGraphNodes.forEach((node) => {
       const tabPath = getNodeTabPath(node, tabGrouping);
       if (!tabPath) return;
       const label = tabPath.split("/").pop() || tabPath;
       projectPaths.set(tabPath, label);
     });
 
-    const nonExternalNodes = graph.nodes.filter(
+    const nonExternalNodes = visibleGraphNodes.filter(
       (node) => node.type !== "external",
     );
     const systemCount = nonExternalNodes.filter(
@@ -289,7 +351,7 @@ function App() {
 
     const stackByProject = new Map<string, string | null>();
     projectPaths.forEach((_, path) => {
-      const projectNodes = graph.nodes.filter(
+      const projectNodes = visibleGraphNodes.filter(
         (node) => getNodeTabPath(node, tabGrouping) === path,
       );
       stackByProject.set(path, detectProjectStack(projectNodes));
@@ -317,7 +379,7 @@ function App() {
       },
       ...projectTabs,
     ];
-  }, [graph.nodes, tabGrouping]);
+  }, [visibleGraphNodes, tabGrouping]);
 
   // Per-project service tracking
   const {
@@ -327,7 +389,7 @@ function App() {
     restoreService,
     addService,
     removeService,
-  } = useKnownServices(tabs, graph.nodes, tabGrouping);
+  } = useKnownServices(tabs, visibleGraphNodes, tabGrouping);
   const [serviceDropdownTab, setServiceDropdownTab] = useState<string | null>(
     null,
   );
@@ -343,9 +405,10 @@ function App() {
   // Filter nodes based on selected tab
   const filteredData = useMemo(() => {
     const isSystemTab = selectedTab === SYSTEM_TAB_ID;
+    const nodeById = new Map(visibleGraphNodes.map((node) => [node.id, node]));
 
     // Get primary nodes for this tab (non-external nodes matching the filter)
-    const primaryNodes = graph.nodes.filter((node) => {
+    const primaryNodes = visibleGraphNodes.filter((node) => {
       // External nodes are handled separately
       if (node.type === "external") return false;
 
@@ -365,8 +428,8 @@ function App() {
     graph.edges.forEach((edge) => {
       if (primaryNodeIds.has(edge.source) || primaryNodeIds.has(edge.target)) {
         // Check if either end is an external node
-        const sourceNode = graph.nodes.find((n) => n.id === edge.source);
-        const targetNode = graph.nodes.find((n) => n.id === edge.target);
+        const sourceNode = nodeById.get(edge.source);
+        const targetNode = nodeById.get(edge.target);
 
         if (sourceNode?.type === "external")
           connectedExternalIds.add(sourceNode.id);
@@ -376,7 +439,7 @@ function App() {
     });
 
     // Include external nodes that are connected
-    const externalNodes = graph.nodes.filter((n) =>
+    const externalNodes = visibleGraphNodes.filter((n) =>
       connectedExternalIds.has(n.id),
     );
 
@@ -393,7 +456,7 @@ function App() {
 
         // Look for a live node anywhere in the system
         const svcKey = serviceKey(svc.service);
-        const liveNode = graph.nodes.find(
+        const liveNode = visibleGraphNodes.find(
           (n) => n.type !== "external" && nodeServiceKey(n) === svcKey,
         );
         if (liveNode) {
@@ -475,12 +538,12 @@ function App() {
       edges: expandedEdges,
       ports: filteredPorts,
     };
-  }, [graph.nodes, graph.edges, ports, selectedTab, tabGrouping, edgeMode, getProjectStatus]);
+  }, [visibleGraphNodes, graph.edges, ports, selectedTab, tabGrouping, edgeMode, getProjectStatus]);
 
   // Filter to show only running Docker containers
   const dockerContainerData = useMemo(() => {
     // Get only running Docker container nodes (exclude exited, dead, etc.)
-    const containerNodes = graph.nodes.filter(
+    const containerNodes = visibleGraphNodes.filter(
       (node) => node.isDockerContainer && node.containerState === "running",
     );
     const containerNodeIds = new Set(containerNodes.map((n) => n.id));
@@ -503,17 +566,17 @@ function App() {
       edges: containerEdges,
       ports: filteredPorts,
     };
-  }, [graph.nodes, graph.edges, ports]);
+  }, [visibleGraphNodes, graph.edges, ports]);
 
   // Running database containers for the database list view
   const databaseNodes = useMemo(() => {
-    return graph.nodes.filter(
+    return visibleGraphNodes.filter(
       (node) =>
         node.isDockerContainer &&
         node.type === "database" &&
         node.containerState === "running",
     );
-  }, [graph.nodes]);
+  }, [visibleGraphNodes]);
 
   return (
     <div className="app">
@@ -699,20 +762,26 @@ function App() {
                     })}
                     onStart={async (service) => {
                       try {
+                        let started = false;
                         if (service.isDockerContainer) {
                           const id = service.containerId || service.name;
-                          await window.electronAPI.startContainer(id);
+                          const result = await window.electronAPI.startContainer(id);
+                          started = !!result?.success;
                         } else if (service.lastCommand && service.projectPath) {
-                          await window.electronAPI.startProcess(
+                          const result = await window.electronAPI.startProcess(
                             service.lastCommand,
                             service.projectPath,
                           );
+                          started = !!result?.success;
+                        }
+                        if (started) {
+                          window.dispatchEvent(new CustomEvent("fere:refresh-snapshot"));
                         }
                       } catch {
                         // silently fail
                       }
                     }}
-                    allNodes={graph.nodes.filter((n) =>
+                    allNodes={visibleGraphNodes.filter((n) =>
                       n.type !== "external" &&
                       (tab.id === SYSTEM_TAB_ID
                         ? !getNodeTabPath(n, tabGrouping)
@@ -892,7 +961,7 @@ function App() {
             {loading ? (
               <div className="loading">Scanning localhost...</div>
             ) : (
-              <CurlBuilder nodes={graph.nodes} />
+              <CurlBuilder nodes={visibleGraphNodes} />
             )}
           </div>
         </div>

@@ -33,13 +33,15 @@ export function ContextMenu({ node, x, y, width, height, onClose }: ContextMenuP
     e.preventDefault();
     e.stopPropagation();
 
-    const ensureSuccess = (result: { success?: boolean; error?: string } | undefined, label: string) => {
-      if (!result || result.success !== false) return;
+    const ensureSuccess = (result: { success?: boolean; error?: string } | undefined, label: string): boolean => {
+      if (!result || result.success !== false) return true;
       console.error(`${label} failed:`, result.error);
       window.alert(result.error || `${label} failed`);
+      return false;
     };
 
     const performAction = async () => {
+      let needsRefresh = false;
       try {
         switch (action) {
           case 'open-browser':
@@ -57,10 +59,10 @@ export function ContextMenu({ node, x, y, width, height, onClose }: ContextMenuP
           case 'kill-process':
             if (isDockerContainerNode && node.containerId) {
               const result = await window.electronAPI.stopContainer(node.containerId);
-              ensureSuccess(result, 'Kill Process');
+              needsRefresh = ensureSuccess(result, 'Kill Process');
             } else if (!isExternal) {
               const result = await window.electronAPI.killProcess(node.pid);
-              ensureSuccess(result, 'Kill Process');
+              needsRefresh = ensureSuccess(result, 'Kill Process');
             }
             break;
           case 'copy-port':
@@ -74,6 +76,15 @@ export function ContextMenu({ node, x, y, width, height, onClose }: ContextMenuP
         }
       } catch (error) {
         console.error('Context menu action failed:', error);
+      } finally {
+        if (needsRefresh) {
+          window.dispatchEvent(
+            new CustomEvent("fere:optimistic-hide-node", {
+              detail: { nodeId: node.id },
+            }),
+          );
+          window.dispatchEvent(new CustomEvent('fere:refresh-snapshot'));
+        }
       }
     };
 

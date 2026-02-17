@@ -4,15 +4,24 @@ export function useNodeMeasurements(nodeIds: string[], minHeight: number) {
   const nodeHeightsRef = useRef<Map<string, number>>(new Map());
   const measuredIdsRef = useRef<Set<string>>(new Set());
   const minHeightRef = useRef(minHeight);
+  const rafRef = useRef<number | null>(null);
   const [layoutVersion, setLayoutVersion] = useState(0);
+
+  const bumpLayoutVersion = useCallback(() => {
+    if (rafRef.current !== null) return;
+    rafRef.current = requestAnimationFrame(() => {
+      rafRef.current = null;
+      setLayoutVersion((version) => version + 1);
+    });
+  }, []);
 
   useEffect(() => {
     if (minHeightRef.current === minHeight) return;
     minHeightRef.current = minHeight;
     nodeHeightsRef.current.clear();
     measuredIdsRef.current.clear();
-    setLayoutVersion((version) => version + 1);
-  }, [minHeight]);
+    bumpLayoutVersion();
+  }, [minHeight, bumpLayoutVersion]);
 
   useEffect(() => {
     const validIds = new Set(nodeIds);
@@ -26,9 +35,17 @@ export function useNodeMeasurements(nodeIds: string[], minHeight: number) {
       }
     }
     if (changed) {
-      setLayoutVersion((version) => version + 1);
+      bumpLayoutVersion();
     }
-  }, [nodeIds]);
+  }, [nodeIds, bumpLayoutVersion]);
+
+  useEffect(() => {
+    return () => {
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current);
+      }
+    };
+  }, []);
 
   const handleNodeMeasure = useCallback(
     (id: string, height: number) => {
@@ -36,16 +53,14 @@ export function useNodeMeasurements(nodeIds: string[], minHeight: number) {
       const current = nodeHeightsRef.current.get(id);
       if (rounded <= 1) return; // Ignore transient hidden/unmounted measurements.
       const normalized = Math.max(rounded, minHeightRef.current);
-      const next = normalized;
-      if (current === next) return;
-      nodeHeightsRef.current.set(
-        id,
-        next,
-      );
+      // Only allow growth during the current node lifecycle to prevent
+      // jitter/overlap from intermediate shrinking while async content settles.
+      if (current !== undefined && normalized <= current) return;
+      nodeHeightsRef.current.set(id, normalized);
       measuredIdsRef.current.add(id);
-      setLayoutVersion((version) => version + 1);
+      bumpLayoutVersion();
     },
-    [],
+    [bumpLayoutVersion],
   );
 
   return { nodeHeightsRef, layoutVersion, handleNodeMeasure };

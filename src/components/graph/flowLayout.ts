@@ -3,6 +3,7 @@ import type { MouseEvent as ReactMouseEvent } from "react";
 import type { LayoutNode, RenderGroup } from "./types";
 import { groupLayoutNodes } from "./grouping";
 import type { FlowServiceNodeData } from "./flowNodes";
+import { supportsExternalApiScan } from "./externalApis";
 
 export const FLOW_LAYOUT = {
   NODE_WIDTH: 260,
@@ -188,6 +189,31 @@ export function buildFlowLayout({
     x: centerX - LABEL_WIDTH / 2,
     y: topY,
   });
+  const fallbackNodeHeight = isContainerView
+    ? CONTAINER_NODE_MIN_HEIGHT
+    : NODE_MIN_HEIGHT;
+  const estimateNodeHeight = (node: GraphNode): number => {
+    let estimated = fallbackNodeHeight;
+
+    // Reserve space while deferred enrichments (routes/external APIs) stream in.
+    if (!isContainerView && supportsExternalApiScan(node)) {
+      estimated += 64;
+    }
+    if (!isContainerView && node.routes && node.routes.length > 0) {
+      const visibleRoutes = Math.min(3, node.routes.length);
+      estimated += 26 + visibleRoutes * 18 + (node.routes.length > 3 ? 16 : 0);
+    }
+    if (isContainerView && node.containerNetworks && node.containerNetworks.length > 0) {
+      estimated += 24;
+    }
+
+    return estimated;
+  };
+  const resolveNodeHeight = (node: GraphNode): number => {
+    const measured = nodeHeights.get(node.id);
+    if (measured !== undefined) return measured;
+    return estimateNodeHeight(node);
+  };
 
   let currentY = 0;
   if (!isContainerView) {
@@ -195,8 +221,10 @@ export function buildFlowLayout({
       const groups = groupLayoutNodes(stableConnectedLayout, layer);
       const groupLayouts = groups.map((group) => {
         if (!group.isGroup) {
-          const measured =
-            nodeHeights.get(group.nodes[0]?.id ?? "") ?? NODE_MIN_HEIGHT;
+          const firstNode = group.nodes[0];
+          const measured = firstNode
+            ? resolveNodeHeight(firstNode)
+            : NODE_MIN_HEIGHT;
           return {
             group,
             width: NODE_WIDTH,
@@ -217,8 +245,7 @@ export function buildFlowLayout({
         const rowHeights = new Array(rowCount).fill(NODE_MIN_HEIGHT);
         group.nodes.forEach((node, index) => {
           const row = Math.floor(index / columnCount);
-          const measured = nodeHeights.get(node.id) ?? NODE_MIN_HEIGHT;
-          rowHeights[row] = Math.max(rowHeights[row], measured);
+          rowHeights[row] = Math.max(rowHeights[row], resolveNodeHeight(node));
         });
         const height =
           rowHeights.reduce((sum, h) => sum + h, 0) + (rowCount - 1) * NODE_GAP;
@@ -327,7 +354,7 @@ export function buildFlowLayout({
               maxX,
               groupX + colOffset + col * (NODE_WIDTH + NODE_GAP) + NODE_WIDTH,
             );
-            const measured = nodeHeights.get(node.id) ?? NODE_MIN_HEIGHT;
+            const measured = resolveNodeHeight(node);
             maxY = Math.max(maxY, groupY + rowOffset + measured);
           });
 
@@ -391,7 +418,7 @@ export function buildFlowLayout({
       const rowHeights = new Array(rowCount).fill(nodeMinHeight);
       group.nodes.forEach((node, index) => {
         const row = Math.floor(index / columnCount);
-        const measured = nodeHeights.get(node.id) ?? nodeMinHeight;
+        const measured = resolveNodeHeight(node);
         rowHeights[row] = Math.max(rowHeights[row], measured);
       });
       const height =
@@ -585,7 +612,8 @@ export function buildFlowLayout({
   };
 
   nodePositions.forEach((node) => {
-    const measured = nodeHeights.get(node.id) ?? NODE_MIN_HEIGHT;
+    const serviceNode = node.data.node;
+    const measured = resolveNodeHeight(serviceNode);
     updateBounds(node.position.x, node.position.y, NODE_WIDTH, measured);
   });
 
