@@ -492,6 +492,17 @@ export function GraphView({
     };
   }, []);
 
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setContextMenu(null);
+      setSelectedNode(null);
+      setHoveredNodeId(null);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
   if (layoutNodes.length === 0) {
     const emptyTitle = isContainerView
       ? "No containers running"
