@@ -1,4 +1,17 @@
-const { spawn } = require('child_process');
+const { spawn, execFile } = require('child_process');
+const fs = require('fs');
+const { promisify } = require('util');
+const execFileAsync = promisify(execFile);
+
+const DOCKER_EXEC_TIMEOUT_MS = 15000;
+const DOCKER_BIN_CANDIDATES = [
+  process.env.FERE_DOCKER_BIN,
+  '/opt/homebrew/bin/docker',
+  '/usr/local/bin/docker',
+  '/Applications/Docker.app/Contents/Resources/bin/docker',
+  'docker',
+].filter(Boolean);
+let resolvedDockerBin = null;
 let PgClient = null;
 try {
   ({ Client: PgClient } = require('pg'));
@@ -8,6 +21,44 @@ try {
 
 const VALID_CONTAINER_ID = /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/;
 
+function getDockerBinaries() {
+  const bins = [];
+  for (const bin of DOCKER_BIN_CANDIDATES) {
+    if (bin.includes('/') && !fs.existsSync(bin)) continue;
+    bins.push(bin);
+  }
+  return bins.length > 0 ? bins : ['docker'];
+}
+
+async function resolveDockerBinary() {
+  if (resolvedDockerBin) return resolvedDockerBin;
+
+  const candidates = getDockerBinaries();
+  for (const candidate of candidates) {
+    try {
+      await execFileAsync(candidate, ['version', '--format', '{{.Client.Version}}'], {
+        timeout: DOCKER_EXEC_TIMEOUT_MS,
+        maxBuffer: 1024 * 1024,
+      });
+      resolvedDockerBin = candidate;
+      return candidate;
+    } catch {
+      // Try next candidate
+    }
+  }
+
+  resolvedDockerBin = null;
+  return null;
+}
+
+async function getDockerBinaryOrThrow() {
+  const dockerBin = await resolveDockerBinary();
+  if (!dockerBin) {
+    throw new Error('Docker CLI not found. Tried: ' + getDockerBinaries().join(', '));
+  }
+  return dockerBin;
+}
+
 function validateContainerId(containerId) {
   if (!containerId || typeof containerId !== 'string' || !VALID_CONTAINER_ID.test(containerId)) {
     throw new Error('Invalid container ID');
@@ -16,8 +67,9 @@ function validateContainerId(containerId) {
 
 async function execDockerWithInput(containerId, commandArgs, input, timeout = 30000) {
   validateContainerId(containerId);
+  const dockerBin = await getDockerBinaryOrThrow();
   return new Promise((resolve, reject) => {
-    const child = spawn('docker', ['exec', '-i', containerId, ...commandArgs], {
+    const child = spawn(dockerBin, ['exec', '-i', containerId, ...commandArgs], {
       stdio: ['pipe', 'pipe', 'pipe'],
     });
 
@@ -66,8 +118,9 @@ async function execDockerWithInput(containerId, commandArgs, input, timeout = 30
 
 async function execDocker(containerId, commandArgs, timeout = 10000) {
   validateContainerId(containerId);
+  const dockerBin = await getDockerBinaryOrThrow();
   return new Promise((resolve, reject) => {
-    const child = spawn('docker', ['exec', containerId, ...commandArgs], {
+    const child = spawn(dockerBin, ['exec', containerId, ...commandArgs], {
       stdio: ['ignore', 'pipe', 'pipe'],
     });
 
@@ -112,8 +165,9 @@ async function execDocker(containerId, commandArgs, timeout = 10000) {
 }
 
 async function execMongoUriEval(uri, command, timeout = 30000) {
+  const dockerBin = await getDockerBinaryOrThrow();
   return new Promise((resolve, reject) => {
-    const child = spawn('docker', ['run', '--rm', 'mongo:7', 'mongosh', uri, '--quiet', '--eval', command], {
+    const child = spawn(dockerBin, ['run', '--rm', 'mongo:7', 'mongosh', uri, '--quiet', '--eval', command], {
       stdio: ['ignore', 'pipe', 'pipe'],
     });
 

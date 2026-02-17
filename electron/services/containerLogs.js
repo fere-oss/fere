@@ -1,4 +1,17 @@
-const { spawn } = require('child_process');
+const { spawn, execFile } = require('child_process');
+const fs = require('fs');
+const { promisify } = require('util');
+
+const execFileAsync = promisify(execFile);
+const DOCKER_EXEC_TIMEOUT_MS = 15000;
+const DOCKER_BIN_CANDIDATES = [
+  process.env.FERE_DOCKER_BIN,
+  '/opt/homebrew/bin/docker',
+  '/usr/local/bin/docker',
+  '/Applications/Docker.app/Contents/Resources/bin/docker',
+  'docker',
+].filter(Boolean);
+let resolvedDockerBin = null;
 
 // Active log streams: Map<streamId, { process, containerId, onData, onError, onClose }>
 const activeStreams = new Map();
@@ -6,6 +19,36 @@ const activeStreams = new Map();
 // Generate unique stream ID
 function generateStreamId() {
   return `stream-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+}
+
+function getDockerBinaries() {
+  const bins = [];
+  for (const bin of DOCKER_BIN_CANDIDATES) {
+    if (bin.includes('/') && !fs.existsSync(bin)) continue;
+    bins.push(bin);
+  }
+  return bins.length > 0 ? bins : ['docker'];
+}
+
+async function resolveDockerBinary() {
+  if (resolvedDockerBin) return resolvedDockerBin;
+
+  const candidates = getDockerBinaries();
+  for (const candidate of candidates) {
+    try {
+      await execFileAsync(candidate, ['version', '--format', '{{.Client.Version}}'], {
+        timeout: DOCKER_EXEC_TIMEOUT_MS,
+        maxBuffer: 1024 * 1024,
+      });
+      resolvedDockerBin = candidate;
+      return candidate;
+    } catch {
+      // Try next candidate
+    }
+  }
+
+  resolvedDockerBin = null;
+  return null;
 }
 
 /**
@@ -20,7 +63,7 @@ function generateStreamId() {
  * @param {function} onClose - Callback when stream closes: (code: number) => void
  * @returns {string} streamId - Unique identifier for this stream
  */
-function startLogStream(containerId, options = {}, onData, onError, onClose) {
+async function startLogStream(containerId, options = {}, onData, onError, onClose) {
   const {
     tail = 100,
     timestamps = false,
@@ -45,8 +88,15 @@ function startLogStream(containerId, options = {}, onData, onError, onClose) {
   // Add container ID
   args.push(containerId);
 
+  const dockerBin = await resolveDockerBinary();
+  if (!dockerBin) {
+    throw new Error(
+      'Docker CLI not found. Tried: ' + getDockerBinaries().join(', ')
+    );
+  }
+
   // Spawn docker logs process
-  const dockerProcess = spawn('docker', args, {
+  const dockerProcess = spawn(dockerBin, args, {
     stdio: ['ignore', 'pipe', 'pipe'],
   });
 

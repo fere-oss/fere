@@ -1002,7 +1002,7 @@ ipcMain.handle("start-container-logs", async (event, containerId, options = {}) 
       }
     };
 
-    streamId = startLogStream(
+    streamId = await startLogStream(
       containerId,
       options,
       // onData callback - send log data to renderer
