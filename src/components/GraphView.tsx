@@ -122,7 +122,9 @@ export function GraphView({
   } | null>(null);
   const orderCacheRef = useRef<Map<number, string[]>>(new Map());
   const groupOrderCacheRef = useRef<Map<number, string[]>>(new Map());
-  const didFitViewRef = useRef(false);
+  const fitPendingRef = useRef(true);
+  const wasVisibleRef = useRef(false);
+  const [viewportReady, setViewportReady] = useState(false);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const handleNodeClick = useCallback(
     (node: GraphNode) => {
@@ -410,38 +412,58 @@ export function GraphView({
   );
 
   useEffect(() => {
-    if (!reactFlowInstance || didFitViewRef.current) return;
-    if (layoutNodes.length === 0) return;
+    fitPendingRef.current = true;
+    setViewportReady(false);
+  }, [nodesKey]);
+
+  useEffect(() => {
+    if (!reactFlowInstance) return;
     const el = containerRef.current;
     if (!el) return;
+
     let cancelled = false;
+    let rafA = 0;
+    let rafB = 0;
 
-    // If the container is visible (has dimensions), fitView immediately
-    if (el.offsetWidth > 0 && el.offsetHeight > 0) {
-      reactFlowInstance.fitView({ padding: 0.32, duration: 0 });
-      didFitViewRef.current = true;
-      return;
-    }
-
-    // Container is hidden (e.g. display:none) — wait for it to get real dimensions
-    const observer = new ResizeObserver(() => {
-      if (cancelled) return;
-      if (el.offsetWidth > 0 && el.offsetHeight > 0) {
-        observer.disconnect();
-        requestAnimationFrame(() => {
+    const fitNow = () => {
+      cancelAnimationFrame(rafA);
+      cancelAnimationFrame(rafB);
+      rafA = requestAnimationFrame(() => {
+        rafB = requestAnimationFrame(() => {
           if (cancelled) return;
-          // Let ReactFlow process the resize before fitting.
           reactFlowInstance.fitView({ padding: 0.32, duration: 0 });
-          didFitViewRef.current = true;
+          fitPendingRef.current = false;
+          setViewportReady(true);
         });
+      });
+    };
+
+    const handleVisibilityCheck = () => {
+      if (cancelled) return;
+      const visible = el.offsetWidth > 0 && el.offsetHeight > 0;
+      const becameVisible = visible && !wasVisibleRef.current;
+      if (visible && (fitPendingRef.current || becameVisible)) {
+        fitNow();
+      } else if (visible && !fitPendingRef.current) {
+        setViewportReady(true);
       }
+      wasVisibleRef.current = visible;
+    };
+
+    handleVisibilityCheck();
+
+    const observer = new ResizeObserver(() => {
+      handleVisibilityCheck();
     });
     observer.observe(el);
+
     return () => {
       cancelled = true;
       observer.disconnect();
+      cancelAnimationFrame(rafA);
+      cancelAnimationFrame(rafB);
     };
-  }, [reactFlowInstance, layoutNodes.length]);
+  }, [reactFlowInstance, nodesKey]);
 
   const hoverTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const pendingHover = useRef<string | null>(null);
@@ -491,7 +513,7 @@ export function GraphView({
     <div className={`graph-view${isContainerView ? " container-view" : ""}`} ref={containerRef}>
       <ActivePorts nodes={layoutNodes} reactFlowInstance={reactFlowInstance} />
 
-      <div className="graph-flow">
+      <div className={`graph-flow${viewportReady ? "" : " graph-flow-hidden"}`}>
         <HoverContext.Provider value={hoverState}>
           <ReactFlow
             nodes={flowLayout.nodes}
