@@ -7,7 +7,7 @@ interface WelcomeModalProps {
 interface OnboardingStep {
   title: string;
   description: string;
-  icon: ReactElement;
+  icon?: ReactElement;
   details: string[];
 }
 
@@ -15,14 +15,6 @@ const ONBOARDING_STEPS: OnboardingStep[] = [
   {
     title: 'Welcome to Fere',
     description: 'Visualize and manage your local development stack in real-time',
-    icon: (
-      <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-        <circle cx="5" cy="12" r="3" />
-        <circle cx="19" cy="8" r="3" />
-        <circle cx="19" cy="16" r="3" />
-        <path d="M8 12h8M8 12l8-3M8 12l8 3" strokeWidth="2" />
-      </svg>
-    ),
     details: [
       'Automatically discovers running services on your machine',
       'Visualizes connections between your microservices',
@@ -145,9 +137,11 @@ export function WelcomeModal({ onClose }: WelcomeModalProps) {
         </div>
 
         <div className="modal-body welcome-body">
-          <div className="welcome-icon">
-            {step.icon}
-          </div>
+          {step.icon && (
+            <div className="welcome-icon">
+              {step.icon}
+            </div>
+          )}
 
           <h2 className="welcome-title" id="welcome-title">{step.title}</h2>
           <p className="welcome-description">{step.description}</p>

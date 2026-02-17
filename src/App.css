@@ -5997,6 +5997,11 @@ textarea {
   font-family: var(--font-display);
 }
 
+.welcome-body:not(:has(.welcome-icon)) .welcome-title {
+  margin-top: 16px;
+  font-size: 28px;
+}
+
 .welcome-description {
   font-size: 15px;
   line-height: 1.6;
