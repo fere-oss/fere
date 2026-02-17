@@ -171,11 +171,7 @@ export function GraphView({
     groupOrderCache: groupOrderCacheRef.current,
   });
   const nodesKey = useMemo(
-    () =>
-      layoutNodes
-        .map((node) => node.id)
-        .sort()
-        .join(","),
+    () => layoutNodes.map((node) => node.id).sort().join(","),
     [layoutNodes],
   );
   const nodeIds = useMemo(() => layoutNodes.map((node) => node.id), [layoutNodes]);
@@ -186,12 +182,17 @@ export function GraphView({
   const { nodeHeightsRef, layoutVersion, handleNodeMeasure } =
     useNodeMeasurements(nodeIds, measurementMinHeight);
   useEffect(() => {
+    const nodeIds = nodesKey ? nodesKey.split(",") : [];
     if (nodeIds.length === 0) {
       setAnimateNodeIds(new Set());
       return;
     }
 
     const known = animatedNodeIdsRef.current;
+    const currentIdSet = new Set(nodeIds);
+    Array.from(known).forEach((id) => {
+      if (!currentIdSet.has(id)) known.delete(id);
+    });
     const fresh = nodeIds.filter((id) => !known.has(id));
     if (fresh.length === 0) return;
 
@@ -208,7 +209,7 @@ export function GraphView({
     }, 700);
 
     return () => clearTimeout(timer);
-  }, [nodesKey, nodeIds]);
+  }, [nodesKey]);
   const connectedNodeIds = useMemo(() => {
     if (!hoveredNodeId) return new Set<string>();
     const connected = new Set<string>();

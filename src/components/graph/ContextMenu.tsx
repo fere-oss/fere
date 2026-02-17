@@ -78,6 +78,11 @@ export function ContextMenu({ node, x, y, width, height, onClose }: ContextMenuP
         console.error('Context menu action failed:', error);
       } finally {
         if (needsRefresh) {
+          window.dispatchEvent(
+            new CustomEvent("fere:optimistic-hide-node", {
+              detail: { nodeId: node.id },
+            }),
+          );
           window.dispatchEvent(new CustomEvent('fere:refresh-snapshot'));
         }
       }
