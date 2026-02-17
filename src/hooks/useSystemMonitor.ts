@@ -276,6 +276,19 @@ export function useSystemSnapshot(pollInterval = 2000) {
     return () => clearInterval(interval);
   }, [refresh, pollInterval]);
 
+  useEffect(() => {
+    const handleForceRefresh = () => {
+      pendingMetricsRef.current = null;
+      cancelAnimationFrame(metricsRafRef.current);
+      refresh();
+    };
+
+    window.addEventListener('fere:refresh-snapshot', handleForceRefresh);
+    return () => {
+      window.removeEventListener('fere:refresh-snapshot', handleForceRefresh);
+    };
+  }, [refresh]);
+
   return { snapshot, loading, error, refresh };
 }
 

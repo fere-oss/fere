@@ -254,16 +254,22 @@ export function ServiceNode({
     e.stopPropagation();
     if (starting) return;
     setStarting(true);
+    let started = false;
     try {
       if (node.isDockerContainer) {
         const id = node.containerId || node.name;
-        await window.electronAPI.startContainer(id);
+        const result = await window.electronAPI.startContainer(id);
+        started = !!result?.success;
       } else if (node.startCommand && node.startProjectPath) {
-        await window.electronAPI.startProcess(node.startCommand, node.startProjectPath);
+        const result = await window.electronAPI.startProcess(node.startCommand, node.startProjectPath);
+        started = !!result?.success;
       }
     } catch {
       // silently fail — snapshot will reflect actual state
     } finally {
+      if (started) {
+        window.dispatchEvent(new CustomEvent('fere:refresh-snapshot'));
+      }
       setTimeout(() => setStarting(false), 3000);
     }
   }, [node, starting]);

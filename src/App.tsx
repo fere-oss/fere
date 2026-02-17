@@ -673,14 +673,20 @@ function App() {
                     })}
                     onStart={async (service) => {
                       try {
+                        let started = false;
                         if (service.isDockerContainer) {
                           const id = service.containerId || service.name;
-                          await window.electronAPI.startContainer(id);
+                          const result = await window.electronAPI.startContainer(id);
+                          started = !!result?.success;
                         } else if (service.lastCommand && service.projectPath) {
-                          await window.electronAPI.startProcess(
+                          const result = await window.electronAPI.startProcess(
                             service.lastCommand,
                             service.projectPath,
                           );
+                          started = !!result?.success;
+                        }
+                        if (started) {
+                          window.dispatchEvent(new CustomEvent("fere:refresh-snapshot"));
                         }
                       } catch {
                         // silently fail
