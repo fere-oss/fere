@@ -32,11 +32,21 @@ function ActivePorts({
   const [expanded, setExpanded] = useState(false);
 
   const portEntries = useMemo(() => {
-    const entries: { port: number; host: string; nodeId: string; nodeName: string }[] = [];
+    const entries: {
+      port: number;
+      host: string;
+      nodeId: string;
+      nodeName: string;
+    }[] = [];
     for (const node of nodes) {
       const mainPort = node.ports[0];
       if (mainPort) {
-        entries.push({ port: mainPort.port, host: mainPort.host || "localhost", nodeId: node.id, nodeName: node.name });
+        entries.push({
+          port: mainPort.port,
+          host: mainPort.host || "localhost",
+          nodeId: node.id,
+          nodeName: node.name,
+        });
       }
     }
     return entries.sort((a, b) => a.port - b.port);
@@ -62,24 +72,45 @@ function ActivePorts({
   return (
     <div
       className={`graph-ports${expanded ? " graph-ports-expanded" : ""}`}
-      onClick={() => { if (!expanded) setExpanded(true); }}
+      onClick={() => {
+        if (!expanded) setExpanded(true);
+      }}
     >
       {/* Collapsed: pill content */}
       <div className="graph-ports-pill-content">
-        <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+        <svg
+          width="12"
+          height="12"
+          viewBox="0 0 16 16"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+        >
           <circle cx="8" cy="8" r="3" />
           <path d="M8 1v2M8 13v2M1 8h2M13 8h2" />
         </svg>
-        <span>{portEntries.length} {portEntries.length === 1 ? "port" : "ports"}</span>
+        <span>
+          {portEntries.length} {portEntries.length === 1 ? "port" : "ports"}
+        </span>
       </div>
 
       {/* Expanded: header + list */}
       <button
         className="graph-ports-header"
-        onClick={(e) => { e.stopPropagation(); setExpanded(false); }}
+        onClick={(e) => {
+          e.stopPropagation();
+          setExpanded(false);
+        }}
       >
         <span className="graph-ports-title">Active Ports</span>
-        <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2">
+        <svg
+          width="10"
+          height="10"
+          viewBox="0 0 16 16"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+        >
           <path d="M4 4L12 12M12 4L4 12" />
         </svg>
       </button>
@@ -88,7 +119,10 @@ function ActivePorts({
           <button
             key={entry.port}
             className="graph-ports-item"
-            onClick={(e) => { e.stopPropagation(); handleClick(entry.nodeId); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              handleClick(entry.nodeId);
+            }}
           >
             <span className="graph-ports-number">:{entry.port}</span>
             <span className="graph-ports-name">{entry.nodeName}</span>
@@ -173,10 +207,17 @@ export function GraphView({
     groupOrderCache: groupOrderCacheRef.current,
   });
   const nodesKey = useMemo(
-    () => layoutNodes.map((node) => node.id).sort().join(","),
+    () =>
+      layoutNodes
+        .map((node) => node.id)
+        .sort()
+        .join(","),
     [layoutNodes],
   );
-  const nodeIds = useMemo(() => layoutNodes.map((node) => node.id), [layoutNodes]);
+  const nodeIds = useMemo(
+    () => layoutNodes.map((node) => node.id),
+    [layoutNodes],
+  );
   useExternalApis(projectPathsKey);
   const measurementMinHeight = isContainerView
     ? FLOW_LAYOUT.CONTAINER_NODE_MIN_HEIGHT
@@ -222,37 +263,34 @@ export function GraphView({
     return connected;
   }, [hoveredNodeId, layoutEdges]);
 
-  const flowLayout = useMemo(
-    () => {
-      // Keeps memo recalculation tied to measurement and external API updates.
-      void layoutVersion;
-      return buildFlowLayout({
-        layoutNodes,
-        sortedLayers,
-        stableConnectedLayout,
-        standaloneGroups,
-        nodeHeights: nodeHeightsRef.current,
-        onNodeClick: handleNodeClick,
-        onNodeContextMenu: handleContextMenu,
-        animateNodeIds,
-        onMeasure: handleNodeMeasure,
-        isContainerView,
-      });
-    },
-    [
+  const flowLayout = useMemo(() => {
+    // Keeps memo recalculation tied to measurement and external API updates.
+    void layoutVersion;
+    return buildFlowLayout({
       layoutNodes,
       sortedLayers,
       stableConnectedLayout,
       standaloneGroups,
-      handleNodeClick,
-      handleContextMenu,
+      nodeHeights: nodeHeightsRef.current,
+      onNodeClick: handleNodeClick,
+      onNodeContextMenu: handleContextMenu,
       animateNodeIds,
-      handleNodeMeasure,
+      onMeasure: handleNodeMeasure,
       isContainerView,
-      layoutVersion,
-      nodeHeightsRef,
-    ],
-  );
+    });
+  }, [
+    layoutNodes,
+    sortedLayers,
+    stableConnectedLayout,
+    standaloneGroups,
+    handleNodeClick,
+    handleContextMenu,
+    animateNodeIds,
+    handleNodeMeasure,
+    isContainerView,
+    layoutVersion,
+    nodeHeightsRef,
+  ]);
 
   const hoverState = useMemo(
     () => ({ hoveredNodeId, connectedNodeIds }),
@@ -268,7 +306,8 @@ export function GraphView({
     for (const node of flowLayout.nodes) {
       posMap.set(node.id, node.position);
       if (node.type === "service") {
-        const h = nodeHeightsRef.current.get(node.id) ?? FLOW_LAYOUT.NODE_MIN_HEIGHT;
+        const h =
+          nodeHeightsRef.current.get(node.id) ?? FLOW_LAYOUT.NODE_MIN_HEIGHT;
         heightMap.set(node.id, h);
         serviceCenters.push({
           id: node.id,
@@ -314,9 +353,7 @@ export function GraphView({
     const edgesByGroup = new Map<string, GraphEdge[]>();
     dedupedEdges.forEach((edge) => {
       const tgt = layoutLookup.get(edge.target);
-      const groupKey = tgt
-        ? `layer-${tgt.layer}-${tgt.groupId}`
-        : edge.target;
+      const groupKey = tgt ? `layer-${tgt.layer}-${tgt.groupId}` : edge.target;
       if (!edgesByGroup.has(groupKey)) edgesByGroup.set(groupKey, []);
       edgesByGroup.get(groupKey)!.push(edge);
     });
@@ -328,81 +365,93 @@ export function GraphView({
       } else {
         // Pick the middle target as the bundle representative
         const rep = groupEdges[Math.floor(groupEdges.length / 2)];
-        bundled.push({ ...rep, id: `bundle-${rep.id}`, _bundleCount: groupEdges.length });
+        bundled.push({
+          ...rep,
+          id: `bundle-${rep.id}`,
+          _bundleCount: groupEdges.length,
+        });
       }
     });
 
     return bundled.map((edge) => {
-        const srcPos = posMap.get(edge.source);
-        const tgtPos = posMap.get(edge.target);
-        const srcH = heightMap.get(edge.source) ?? FLOW_LAYOUT.NODE_MIN_HEIGHT;
-        const tgtH = heightMap.get(edge.target) ?? FLOW_LAYOUT.NODE_MIN_HEIGHT;
-        let srcSide: "top" | "bottom" | "left" | "right" = "bottom";
-        let tgtSide: "top" | "bottom" | "left" | "right" = "top";
-        let edgeType: "arrowBezier" | "arrowStep" = "arrowBezier";
-        if (srcPos && tgtPos) {
-          const dx = tgtPos.x - srcPos.x;
-          const dy = tgtPos.y - srcPos.y;
-          const sameLayer = Math.abs(dy) < 80;
-          if (sameLayer) {
-            const srcCenterX = srcPos.x + W / 2;
-            const tgtCenterX = tgtPos.x + W / 2;
-            const minX = Math.min(srcCenterX, tgtCenterX);
-            const maxX = Math.max(srcCenterX, tgtCenterX);
-            const hasIntermediate = serviceCenters.some((node) => {
-              if (node.id === edge.source || node.id === edge.target) return false;
-              if (Math.abs(node.y - srcPos.y) > 60) return false;
-              return node.x > minX + 8 && node.x < maxX - 8;
-            });
+      const srcPos = posMap.get(edge.source);
+      const tgtPos = posMap.get(edge.target);
+      const srcH = heightMap.get(edge.source) ?? FLOW_LAYOUT.NODE_MIN_HEIGHT;
+      const tgtH = heightMap.get(edge.target) ?? FLOW_LAYOUT.NODE_MIN_HEIGHT;
+      let srcSide: "top" | "bottom" | "left" | "right" = "bottom";
+      let tgtSide: "top" | "bottom" | "left" | "right" = "top";
+      let edgeType: "arrowBezier" | "arrowStep" = "arrowBezier";
+      if (srcPos && tgtPos) {
+        const dx = tgtPos.x - srcPos.x;
+        const dy = tgtPos.y - srcPos.y;
+        const sameLayer = Math.abs(dy) < 80;
+        if (sameLayer) {
+          const srcCenterX = srcPos.x + W / 2;
+          const tgtCenterX = tgtPos.x + W / 2;
+          const minX = Math.min(srcCenterX, tgtCenterX);
+          const maxX = Math.max(srcCenterX, tgtCenterX);
+          const hasIntermediate = serviceCenters.some((node) => {
+            if (node.id === edge.source || node.id === edge.target)
+              return false;
+            if (Math.abs(node.y - srcPos.y) > 60) return false;
+            return node.x > minX + 8 && node.x < maxX - 8;
+          });
 
-            if (hasIntermediate) {
-              edgeType = "arrowStep";
-              if (dx > 0) {
-                srcSide = "top";
-                tgtSide = "top";
-              } else {
-                srcSide = "bottom";
-                tgtSide = "bottom";
-              }
-            } else if (dx > 0) {
-              srcSide = "right";
-              tgtSide = "left";
+          if (hasIntermediate) {
+            edgeType = "arrowStep";
+            if (dx > 0) {
+              srcSide = "top";
+              tgtSide = "top";
             } else {
-              srcSide = "left";
-              tgtSide = "right";
+              srcSide = "bottom";
+              tgtSide = "bottom";
             }
-          } else if (dy > 0) {
-            srcSide = "bottom";
-            tgtSide = "top";
+          } else if (dx > 0) {
+            srcSide = "right";
+            tgtSide = "left";
           } else {
-            srcSide = "top";
-            tgtSide = "bottom";
+            srcSide = "left";
+            tgtSide = "right";
           }
+        } else if (dy > 0) {
+          srcSide = "bottom";
+          tgtSide = "top";
+        } else {
+          srcSide = "top";
+          tgtSide = "bottom";
         }
-        const src = srcPos
-          ? endpoint(srcPos, srcH, srcSide)
-          : { x: 0, y: 0, pos: Position.Bottom };
-        const tgt = tgtPos
-          ? endpoint(tgtPos, tgtH, tgtSide)
-          : { x: 0, y: 0, pos: Position.Top };
-        const data: ArrowEdgeData = {
-          sx: src.x,
-          sy: src.y,
-          tx: tgt.x,
-          ty: tgt.y,
-          sourcePos: src.pos,
-          targetPos: tgt.pos,
-          bundleCount: (edge as typeof edge & { _bundleCount?: number })._bundleCount,
-        };
-        return {
-          id: edge.id,
-          source: edge.source,
-          target: edge.target,
-          type: edgeType,
-          data,
-        };
-      });
-  }, [layoutEdges, hoveredNodeId, flowLayout.nodes, nodeHeightsRef, stableConnectedLayout]);
+      }
+      const src = srcPos
+        ? endpoint(srcPos, srcH, srcSide)
+        : { x: 0, y: 0, pos: Position.Bottom };
+      const tgt = tgtPos
+        ? endpoint(tgtPos, tgtH, tgtSide)
+        : { x: 0, y: 0, pos: Position.Top };
+      const data: ArrowEdgeData = {
+        sx: src.x,
+        sy: src.y,
+        tx: tgt.x,
+        ty: tgt.y,
+        sourcePos: src.pos,
+        targetPos: tgt.pos,
+        bundleCount: (edge as typeof edge & { _bundleCount?: number })
+          ._bundleCount,
+      };
+      return {
+        id: edge.id,
+        source: edge.source,
+        target: edge.target,
+        type: edgeType,
+        data,
+      };
+    });
+  }, [
+    layoutEdges,
+    hoveredNodeId,
+    flowLayout.nodes,
+    nodeHeightsRef,
+    stableConnectedLayout,
+  ]);
 
   const defaultEdgeOptions = useMemo(
     () => ({
@@ -499,8 +548,15 @@ export function GraphView({
       setSelectedNode(null);
       setHoveredNodeId(null);
     };
+    const closeContextMenu = () => setContextMenu(null);
     window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+    window.addEventListener("resize", closeContextMenu);
+    window.addEventListener("blur", closeContextMenu);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("resize", closeContextMenu);
+      window.removeEventListener("blur", closeContextMenu);
+    };
   }, []);
 
   if (layoutNodes.length === 0) {
@@ -521,7 +577,10 @@ export function GraphView({
   }
 
   return (
-    <div className={`graph-view${isContainerView ? " container-view" : ""}`} ref={containerRef}>
+    <div
+      className={`graph-view${isContainerView ? " container-view" : ""}`}
+      ref={containerRef}
+    >
       <ActivePorts nodes={layoutNodes} reactFlowInstance={reactFlowInstance} />
 
       <div className={`graph-flow${viewportReady ? "" : " graph-flow-hidden"}`}>
@@ -556,19 +615,50 @@ export function GraphView({
             }}
           >
             <Background color="rgba(0,0,0,0.04)" gap={24} />
-            <Controls position="top-right" showZoom={false} showFitView={false} showInteractive={false}>
-              <ControlButton onClick={() => reactFlowInstance?.zoomIn({ duration: 200 })} title="Zoom in">
-                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <Controls
+              position="top-right"
+              showZoom={false}
+              showFitView={false}
+              showInteractive={false}
+            >
+              <ControlButton
+                onClick={() => reactFlowInstance?.zoomIn({ duration: 200 })}
+                title="Zoom in"
+              >
+                <svg
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                >
                   <path d="M8 3v10M3 8h10" />
                 </svg>
               </ControlButton>
-              <ControlButton onClick={() => reactFlowInstance?.zoomOut({ duration: 200 })} title="Zoom out">
-                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <ControlButton
+                onClick={() => reactFlowInstance?.zoomOut({ duration: 200 })}
+                title="Zoom out"
+              >
+                <svg
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                >
                   <path d="M3 8h10" />
                 </svg>
               </ControlButton>
-              <ControlButton onClick={() => reactFlowInstance?.fitView({ padding: 0.32, duration: 300 })} title="Recenter">
-                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <ControlButton
+                onClick={() =>
+                  reactFlowInstance?.fitView({ padding: 0.32, duration: 300 })
+                }
+                title="Recenter"
+              >
+                <svg
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                >
                   <path d="M2 5V2h3M11 2h3v3M14 11v3h-3M5 14H2v-3" />
                 </svg>
               </ControlButton>

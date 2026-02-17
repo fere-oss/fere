@@ -1,9 +1,13 @@
-import { useSyncExternalStore, useState, useCallback } from 'react';
-import type { GraphNode } from '../../types/electron';
-import type { RenderGroup } from './types';
-import { getHealthInfo, getServiceColor, getTypeBadge } from './constants';
-import { externalApiCache, supportsExternalApiScan, subscribeExternalApiCacheUpdates } from './externalApis';
-import { BrandIcon, inferServiceBrand } from './brandIcons';
+import { useSyncExternalStore, useState, useCallback } from "react";
+import type { GraphNode } from "../../types/electron";
+import type { RenderGroup } from "./types";
+import { getHealthInfo, getServiceColor, getTypeBadge } from "./constants";
+import {
+  externalApiCache,
+  supportsExternalApiScan,
+  subscribeExternalApiCacheUpdates,
+} from "./externalApis";
+import { BrandIcon, inferServiceBrand } from "./brandIcons";
 
 export function CompactServiceNode({
   node,
@@ -34,9 +38,11 @@ export function CompactServiceNode({
       className="compact-service-node"
       onClick={handleClick}
       onContextMenu={handleContextMenu}
-      style={{
-        animationDelay: `${animationIndex * 40}ms`,
-      } as React.CSSProperties}
+      style={
+        {
+          animationDelay: `${animationIndex * 40}ms`,
+        } as React.CSSProperties
+      }
     >
       <div className="compact-node-header">
         <div className="compact-node-status">
@@ -54,21 +60,26 @@ export function CompactServiceNode({
             {healthInfo.label}
           </span>
         </div>
-        <span className="compact-node-badge">
-          {getTypeBadge(node.type)}
-        </span>
+        <span className="compact-node-badge">{getTypeBadge(node.type)}</span>
       </div>
 
       <h4 className="compact-node-name">{node.name}</h4>
 
       {node.containerImage && (
         <div className="compact-node-image" title={node.containerImage}>
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-            <circle cx="8.5" cy="8.5" r="1.5"/>
-            <polyline points="21 15 16 10 5 21"/>
+          <svg
+            width="12"
+            height="12"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+          >
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+            <circle cx="8.5" cy="8.5" r="1.5" />
+            <polyline points="21 15 16 10 5 21" />
           </svg>
-          <span>{node.containerImage.split('/').pop()?.split(':')[0]}</span>
+          <span>{node.containerImage.split("/").pop()?.split(":")[0]}</span>
         </div>
       )}
 
@@ -81,14 +92,25 @@ export function CompactServiceNode({
 
       {node.containerNetworks && node.containerNetworks.length > 0 && (
         <div className="compact-node-networks">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <circle cx="12" cy="12" r="10"/>
-            <line x1="2" y1="12" x2="22" y2="12"/>
-            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+          <svg
+            width="12"
+            height="12"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+          >
+            <circle cx="12" cy="12" r="10" />
+            <line x1="2" y1="12" x2="22" y2="12" />
+            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
           </svg>
           <span className="compact-networks-list">
-            {node.containerNetworks.slice(0, 2).map(n => n.name).join(', ')}
-            {node.containerNetworks.length > 2 && ` +${node.containerNetworks.length - 2}`}
+            {node.containerNetworks
+              .slice(0, 2)
+              .map((n) => n.name)
+              .join(", ")}
+            {node.containerNetworks.length > 2 &&
+              ` +${node.containerNetworks.length - 2}`}
           </span>
         </div>
       )}
@@ -121,8 +143,8 @@ export function NodeGroupContainer({
   const groupCount = group.nodes.length;
   const columnCount = Math.max(2, Math.ceil(Math.sqrt(groupCount)));
   const groupStyle = {
-    ['--group-columns' as string]: columnCount,
-    ['--group-span' as string]: columnCount,
+    ["--group-columns" as string]: columnCount,
+    ["--group-span" as string]: columnCount,
     animationDelay: `${baseIndex * 50}ms`,
   } as React.CSSProperties;
 
@@ -169,15 +191,15 @@ export function ServiceNode({
   const routes = node.routes || [];
   const routeMethodRank = (method: string): number => {
     switch (method.toUpperCase()) {
-      case 'DELETE':
+      case "DELETE":
         return 0;
-      case 'POST':
+      case "POST":
         return 1;
-      case 'PUT':
+      case "PUT":
         return 2;
-      case 'PATCH':
+      case "PATCH":
         return 3;
-      case 'GET':
+      case "GET":
         return 4;
       default:
         return 5;
@@ -192,8 +214,8 @@ export function ServiceNode({
       return a.path.localeCompare(b.path);
     });
 
-    const gets = sorted.filter(r => r.method.toUpperCase() === 'GET');
-    const mutating = sorted.filter(r => r.method.toUpperCase() !== 'GET');
+    const gets = sorted.filter((r) => r.method.toUpperCase() === "GET");
+    const mutating = sorted.filter((r) => r.method.toUpperCase() !== "GET");
     const picked: typeof routes = [];
     const seen = new Set<string>();
 
@@ -226,17 +248,18 @@ export function ServiceNode({
   // Subscribe to the external API cache via useSyncExternalStore so that
   // ServiceNode re-renders whenever the cache entry for this node changes,
   // without depending on ReactFlow's internal re-render propagation.
-  const apiEntry = useSyncExternalStore(
-    subscribeExternalApiCacheUpdates,
-    () => (shouldShowApis && node.projectPath)
-      ? externalApiCache.get(node.projectPath) ?? null
+  const apiEntry = useSyncExternalStore(subscribeExternalApiCacheUpdates, () =>
+    shouldShowApis && node.projectPath
+      ? (externalApiCache.get(node.projectPath) ?? null)
       : null,
   );
-  const externalApis = shouldShowApis ? (apiEntry?.apis || []) : [];
+  const externalApis = shouldShowApis ? apiEntry?.apis || [] : [];
   const visibleApis = externalApis.slice(0, 3);
   const apiCount = externalApis.length;
   const isApiLoading = shouldShowApis && !apiEntry;
-  const projectLabel = node.projectPath ? node.projectPath.split('/').pop() : null;
+  const projectLabel = node.projectPath
+    ? node.projectPath.split("/").pop()
+    : null;
   const serviceBrand = inferServiceBrand(node);
 
   const handleClick = (e: React.MouseEvent) => {
@@ -250,34 +273,39 @@ export function ServiceNode({
 
   const [starting, setStarting] = useState(false);
 
-  const handleStartService = useCallback(async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (starting) return;
-    setStarting(true);
-    let started = false;
-    try {
-      if (node.isDockerContainer) {
-        const id = node.containerId || node.name;
-        const result = await window.electronAPI.startContainer(id);
-        started = !!result?.success;
-      } else if (node.startCommand && node.startProjectPath) {
-        const result = await window.electronAPI.startProcess(node.startCommand, node.startProjectPath);
-        started = !!result?.success;
+  const handleStartService = useCallback(
+    async (e: React.MouseEvent) => {
+      e.stopPropagation();
+      if (starting) return;
+      setStarting(true);
+      let started = false;
+      try {
+        if (node.isDockerContainer) {
+          const id = node.containerId || node.name;
+          const result = await window.electronAPI.startContainer(id);
+          started = !!result?.success;
+        } else if (node.startCommand && node.startProjectPath) {
+          const result = await window.electronAPI.startProcess(
+            node.startCommand,
+            node.startProjectPath,
+          );
+          started = !!result?.success;
+        }
+      } catch {
+        // silently fail — snapshot will reflect actual state
+      } finally {
+        if (started) {
+          window.dispatchEvent(new CustomEvent("fere:refresh-snapshot"));
+        }
+        setTimeout(() => setStarting(false), 3000);
       }
-    } catch {
-      // silently fail — snapshot will reflect actual state
-    } finally {
-      if (started) {
-        window.dispatchEvent(new CustomEvent('fere:refresh-snapshot'));
-      }
-      setTimeout(() => setStarting(false), 3000);
-    }
-  }, [node, starting]);
-
-  const canStart = isGhost && (
-    node.isDockerContainer ||
-    (node.startCommand && node.startProjectPath)
+    },
+    [node, starting],
   );
+
+  const canStart =
+    isGhost &&
+    (node.isDockerContainer || (node.startCommand && node.startProjectPath));
 
   return (
     <div
@@ -285,10 +313,12 @@ export function ServiceNode({
       className={`service-node${isGhost ? " service-node-ghost" : ""}`}
       onClick={handleClick}
       onContextMenu={handleContextMenu}
-      style={{
-        '--node-color': accentColor,
-        animationDelay: `${animationIndex * 50}ms`,
-      } as React.CSSProperties}
+      style={
+        {
+          "--node-color": accentColor,
+          animationDelay: `${animationIndex * 50}ms`,
+        } as React.CSSProperties
+      }
     >
       <div className="service-node-header">
         <div className="service-node-status-row">
@@ -307,9 +337,17 @@ export function ServiceNode({
             {healthInfo.label}
           </span>
           {showDockerBadge && (
-            <span className="service-node-docker-badge" title="Docker Container">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M13.983 11.078h2.119a.186.186 0 00.186-.185V9.006a.186.186 0 00-.186-.186h-2.119a.185.185 0 00-.185.185v1.888c0 .102.083.185.185.185m-2.954-5.43h2.118a.186.186 0 00.186-.186V3.574a.186.186 0 00-.186-.185h-2.118a.185.185 0 00-.185.185v1.888c0 .102.082.185.185.186m0 2.716h2.118a.187.187 0 00.186-.186V6.29a.186.186 0 00-.186-.185h-2.118a.185.185 0 00-.185.185v1.887c0 .102.082.185.185.186m-2.93 0h2.12a.186.186 0 00.184-.186V6.29a.185.185 0 00-.185-.185H8.1a.185.185 0 00-.185.185v1.887c0 .102.083.185.185.186m-2.964 0h2.119a.186.186 0 00.185-.186V6.29a.185.185 0 00-.185-.185H5.136a.186.186 0 00-.186.185v1.887c0 .102.084.185.186.186m5.893 2.715h2.118a.186.186 0 00.186-.185V9.006a.186.186 0 00-.186-.186h-2.118a.185.185 0 00-.185.185v1.888c0 .102.082.185.185.185m-2.93 0h2.12a.185.185 0 00.184-.185V9.006a.185.185 0 00-.184-.186h-2.12a.185.185 0 00-.184.185v1.888c0 .102.083.185.185.185m-2.964 0h2.119a.185.185 0 00.185-.185V9.006a.186.186 0 00-.185-.186h-2.119a.185.185 0 00-.186.185v1.888c0 .102.084.185.186.185m-2.92 0h2.12a.185.185 0 00.184-.185V9.006a.185.185 0 00-.184-.186h-2.12a.186.186 0 00-.186.186v1.887c0 .102.084.185.186.185m-2.929 0h2.119a.185.185 0 00.185-.185V9.006a.186.186 0 00-.185-.186h-2.12a.185.185 0 00-.184.185v1.888c0 .102.083.185.185.185M23.763 9.89c-.065-.051-.672-.51-1.954-.51-.338.001-.676.03-1.01.087-.248-1.7-1.653-2.53-1.716-2.566l-.344-.199-.226.327c-.284.438-.49.922-.612 1.43-.23.97-.09 1.882.403 2.661-.595.332-1.55.413-1.744.42H.751a.751.751 0 00-.75.748 11.376 11.376 0 00.692 4.062c.545 1.428 1.355 2.48 2.41 3.124 1.18.723 3.1 1.137 5.275 1.137.983.003 1.963-.086 2.93-.266a12.248 12.248 0 003.823-1.389c.98-.567 1.86-1.288 2.61-2.136 1.252-1.418 1.998-2.997 2.553-4.4h.221c1.372 0 2.215-.549 2.68-1.009.309-.293.55-.65.707-1.046l.098-.288Z"/>
+            <span
+              className="service-node-docker-badge"
+              title="Docker Container"
+            >
+              <svg
+                width="12"
+                height="12"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+              >
+                <path d="M13.983 11.078h2.119a.186.186 0 00.186-.185V9.006a.186.186 0 00-.186-.186h-2.119a.185.185 0 00-.185.185v1.888c0 .102.083.185.185.185m-2.954-5.43h2.118a.186.186 0 00.186-.186V3.574a.186.186 0 00-.186-.185h-2.118a.185.185 0 00-.185.185v1.888c0 .102.082.185.185.186m0 2.716h2.118a.187.187 0 00.186-.186V6.29a.186.186 0 00-.186-.185h-2.118a.185.185 0 00-.185.185v1.887c0 .102.082.185.185.186m-2.93 0h2.12a.186.186 0 00.184-.186V6.29a.185.185 0 00-.185-.185H8.1a.185.185 0 00-.185.185v1.887c0 .102.083.185.185.186m-2.964 0h2.119a.186.186 0 00.185-.186V6.29a.185.185 0 00-.185-.185H5.136a.186.186 0 00-.186.185v1.887c0 .102.084.185.186.186m5.893 2.715h2.118a.186.186 0 00.186-.185V9.006a.186.186 0 00-.186-.186h-2.118a.185.185 0 00-.185.185v1.888c0 .102.082.185.185.185m-2.93 0h2.12a.185.185 0 00.184-.185V9.006a.185.185 0 00-.184-.186h-2.12a.185.185 0 00-.184.185v1.888c0 .102.083.185.185.185m-2.964 0h2.119a.185.185 0 00.185-.185V9.006a.186.186 0 00-.185-.186h-2.119a.185.185 0 00-.186.185v1.888c0 .102.084.185.186.185m-2.92 0h2.12a.185.185 0 00.184-.185V9.006a.185.185 0 00-.184-.186h-2.12a.186.186 0 00-.186.186v1.887c0 .102.084.185.186.185m-2.929 0h2.119a.185.185 0 00.185-.185V9.006a.186.186 0 00-.185-.186h-2.12a.185.185 0 00-.184.185v1.888c0 .102.083.185.185.185M23.763 9.89c-.065-.051-.672-.51-1.954-.51-.338.001-.676.03-1.01.087-.248-1.7-1.653-2.53-1.716-2.566l-.344-.199-.226.327c-.284.438-.49.922-.612 1.43-.23.97-.09 1.882.403 2.661-.595.332-1.55.413-1.744.42H.751a.751.751 0 00-.75.748 11.376 11.376 0 00.692 4.062c.545 1.428 1.355 2.48 2.41 3.124 1.18.723 3.1 1.137 5.275 1.137.983.003 1.963-.086 2.93-.266a12.248 12.248 0 003.823-1.389c.98-.567 1.86-1.288 2.61-2.136 1.252-1.418 1.998-2.997 2.553-4.4h.221c1.372 0 2.215-.549 2.68-1.009.309-.293.55-.65.707-1.046l.098-.288Z" />
               </svg>
             </span>
           )}
@@ -326,12 +364,19 @@ export function ServiceNode({
       </div>
 
       <h3 className="service-node-name">
-        {serviceBrand && <BrandIcon value={serviceBrand} className="service-node-brand-icon" size={15} />}
+        {serviceBrand && (
+          <BrandIcon
+            value={serviceBrand}
+            className="service-node-brand-icon"
+            size={15}
+          />
+        )}
         <span>{node.name}</span>
       </h3>
       {node.isDockerContainer && node.containerImage && (
         <div className="service-node-docker-image" title={node.containerImage}>
-          {node.containerImage.split('/').pop()?.split(':')[0] || node.containerImage}
+          {node.containerImage.split("/").pop()?.split(":")[0] ||
+            node.containerImage}
         </div>
       )}
       {!node.isDockerContainer && projectLabel && (
@@ -346,14 +391,27 @@ export function ServiceNode({
         >
           {starting ? (
             <>
-              <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="service-node-start-spinner">
+              <svg
+                width="12"
+                height="12"
+                viewBox="0 0 16 16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                className="service-node-start-spinner"
+              >
                 <path d="M8 1v3M8 12v3M1 8h3M12 8h3" strokeLinecap="round" />
               </svg>
               Starting...
             </>
           ) : (
             <>
-              <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+              <svg
+                width="12"
+                height="12"
+                viewBox="0 0 16 16"
+                fill="currentColor"
+              >
                 <path d="M4 2l10 6-10 6V2z" />
               </svg>
               Start
@@ -365,21 +423,33 @@ export function ServiceNode({
       {!isGhost && mainPort && (
         <div className="service-node-port">
           <span className="service-node-port-host">localhost</span>
-          <span className="service-node-port-number" style={{ color: accentColor }}>
+          <span
+            className="service-node-port-number"
+            style={{ color: accentColor }}
+          >
             :{mainPort}
           </span>
         </div>
       )}
 
-      {!isGhost && node.isDockerContainer && node.containerNetworks && node.containerNetworks.length > 0 && (
-        <div className="service-node-docker-networks">
-          <span className="service-node-docker-networks-label">Networks:</span>
-          <span className="service-node-docker-networks-list">
-            {node.containerNetworks.slice(0, 2).map(n => n.name).join(', ')}
-            {node.containerNetworks.length > 2 && ` +${node.containerNetworks.length - 2}`}
-          </span>
-        </div>
-      )}
+      {!isGhost &&
+        node.isDockerContainer &&
+        node.containerNetworks &&
+        node.containerNetworks.length > 0 && (
+          <div className="service-node-docker-networks">
+            <span className="service-node-docker-networks-label">
+              Networks:
+            </span>
+            <span className="service-node-docker-networks-list">
+              {node.containerNetworks
+                .slice(0, 2)
+                .map((n) => n.name)
+                .join(", ")}
+              {node.containerNetworks.length > 2 &&
+                ` +${node.containerNetworks.length - 2}`}
+            </span>
+          </div>
+        )}
 
       {!isGhost && routes.length > 0 && (
         <div className="service-node-routes">
@@ -388,9 +458,14 @@ export function ServiceNode({
             <span className="service-node-routes-count">{routes.length}</span>
           </div>
           <div className="service-node-routes-list">
-            {visibleRoutes.map(route => (
-              <div key={`${route.method}-${route.path}`} className="service-route">
-                <span className={`route-method route-${route.method.toLowerCase()}`}>
+            {visibleRoutes.map((route) => (
+              <div
+                key={`${route.method}-${route.path}`}
+                className="service-route"
+              >
+                <span
+                  className={`route-method route-${route.method.toLowerCase()}`}
+                >
                   {route.method}
                 </span>
                 <span className="route-path">{route.path}</span>
@@ -417,9 +492,17 @@ export function ServiceNode({
           </div>
           <div className="service-node-apis-list">
             {apiCount === 0 ? (
-              <div className="service-api-placeholder">
-                {isApiLoading ? "Loading APIs…" : "No external APIs detected"}
-              </div>
+              isApiLoading ? (
+                <div className="service-api-loading" aria-hidden="true">
+                  <span className="service-api-loading-dot" />
+                  <span className="service-api-loading-line" />
+                  <span className="service-api-loading-line service-api-loading-line-short" />
+                </div>
+              ) : (
+                <div className="service-api-placeholder">
+                  No external APIs detected
+                </div>
+              )
             ) : (
               <>
                 {visibleApis.map((api) => (
