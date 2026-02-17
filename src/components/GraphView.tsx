@@ -549,13 +549,18 @@ export function GraphView({
       setHoveredNodeId(null);
     };
     const closeContextMenu = () => setContextMenu(null);
+    const closeOnWheel = () => setContextMenu((current) => (current ? null : current));
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("resize", closeContextMenu);
     window.addEventListener("blur", closeContextMenu);
+    window.addEventListener("wheel", closeOnWheel, { passive: true });
+    window.addEventListener("scroll", closeOnWheel, { passive: true, capture: true });
     return () => {
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("resize", closeContextMenu);
       window.removeEventListener("blur", closeContextMenu);
+      window.removeEventListener("wheel", closeOnWheel);
+      window.removeEventListener("scroll", closeOnWheel, true);
     };
   }, []);
 
