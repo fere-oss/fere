@@ -172,6 +172,9 @@ export function ContainerLogsTab({ containers, initialSelectedId }: ContainerLog
 
   // Set up event listeners
   useEffect(() => {
+    // Guard: only set up listeners if Electron APIs are available
+    if (!window.electronAPI?.onContainerLogData) return;
+
     const removeDataListener = window.electronAPI.onContainerLogData(handleLogData);
     const removeErrorListener = window.electronAPI.onContainerLogError((data) => {
       console.error('Log error:', data);
@@ -194,6 +197,7 @@ export function ContainerLogsTab({ containers, initialSelectedId }: ContainerLog
   // Start streaming for a container
   const startStream = useCallback(async (containerId: string) => {
     if (activeStreams.has(containerId)) return;
+    if (!window.electronAPI?.startContainerLogs) return;
 
     try {
       const result = await window.electronAPI.startContainerLogs(containerId, {
@@ -215,6 +219,7 @@ export function ContainerLogsTab({ containers, initialSelectedId }: ContainerLog
   const stopStream = useCallback(async (containerId: string) => {
     const streamId = activeStreams.get(containerId);
     if (!streamId) return;
+    if (!window.electronAPI?.stopContainerLogs) return;
 
     try {
       await window.electronAPI.stopContainerLogs(streamId);
@@ -262,6 +267,7 @@ export function ContainerLogsTab({ containers, initialSelectedId }: ContainerLog
   // Cleanup on unmount
   useEffect(() => {
     return () => {
+      if (!window.electronAPI?.stopContainerLogs) return;
       activeStreamsRef.current.forEach((streamId) => {
         window.electronAPI.stopContainerLogs(streamId).catch(console.error);
       });

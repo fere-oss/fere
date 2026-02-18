@@ -219,6 +219,18 @@ function App() {
     }
   }, []);
 
+  // Check if user has seen welcome modal
+  useEffect(() => {
+    try {
+      const hasSeenWelcome = window.localStorage.getItem(WELCOME_SEEN_KEY);
+      if (!hasSeenWelcome) {
+        setShowWelcome(true);
+      }
+    } catch {
+      // Ignore localStorage read errors
+    }
+  }, []);
+
   useEffect(() => {
     const handleOptimisticDown = (event: Event) => {
       const customEvent = event as CustomEvent<{ node?: GraphNode }>;

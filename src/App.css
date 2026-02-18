@@ -6032,6 +6032,129 @@ textarea {
   max-width: 700px;
 }
 
+/* ========================================
+   Welcome Onboarding Modal
+   ======================================== */
+
+.welcome-modal {
+  max-width: 560px;
+  min-height: 520px;
+}
+
+.welcome-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 32px 40px 24px;
+}
+
+.welcome-icon {
+  color: #171717;
+  margin-bottom: 24px;
+  opacity: 0.9;
+}
+
+.welcome-title {
+  font-size: 24px;
+  font-weight: 600;
+  color: #171717;
+  margin: 0 0 12px 0;
+  font-family: var(--font-display);
+}
+
+.welcome-body:not(:has(.welcome-icon)) .welcome-title {
+  margin-top: 16px;
+  font-size: 28px;
+}
+
+.welcome-description {
+  font-size: 15px;
+  line-height: 1.6;
+  color: #525252;
+  margin: 0 0 28px 0;
+  max-width: 440px;
+}
+
+.welcome-details {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  width: 100%;
+  max-width: 440px;
+  text-align: left;
+}
+
+.welcome-details li {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #525252;
+}
+
+.welcome-details li svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: #22c55e;
+}
+
+.welcome-details li span {
+  flex: 1;
+}
+
+.welcome-progress {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.welcome-progress-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #e5e5e5;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.welcome-progress-dot:hover {
+  background: #d4d4d4;
+  transform: scale(1.2);
+}
+
+.welcome-progress-dot.active {
+  background: #171717;
+  width: 24px;
+  border-radius: 4px;
+}
+
+.welcome-progress-dot.completed {
+  background: #a3a3a3;
+}
+
+.welcome-nav-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.welcome-nav-buttons .modal-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.welcome-modal .modal-actions {
+  padding: 20px 32px 28px;
+  margin: 0;
+  border-top: 1px solid #e5e5e5;
+  justify-content: space-between;
+}
+
 .modal-header {
   display: flex;
   align-items: center;
