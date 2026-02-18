@@ -14,13 +14,14 @@ export function ContextMenu({ node, x, y, width, height, onClose }: ContextMenuP
   const hasProjectPath = !!node.projectPath;
   const isExternal = node.type === 'external';
   const isDockerContainerNode = Boolean(node.isDockerContainer && node.containerId);
+  const canKillProcess = !isExternal && (isDockerContainerNode || node.pid > 0);
   const mainPort = node.ports[0]?.port;
 
   const menuWidth = 200;
   let menuItems = 1; // copy pid
   if (hasPort) menuItems += 2; // open browser + copy port
   if (hasProjectPath) menuItems += 1; // open terminal
-  if (!isExternal) menuItems += 1; // kill
+  if (canKillProcess) menuItems += 1; // kill
   const menuHeight = 32 + menuItems * 34;
   const menuStyle: React.CSSProperties = {
     position: 'absolute',
@@ -60,7 +61,7 @@ export function ContextMenu({ node, x, y, width, height, onClose }: ContextMenuP
             if (isDockerContainerNode && node.containerId) {
               const result = await window.electronAPI.stopContainer(node.containerId);
               needsRefresh = ensureSuccess(result, 'Kill Process');
-            } else if (!isExternal) {
+            } else if (canKillProcess) {
               const result = await window.electronAPI.killProcess(node.pid);
               needsRefresh = ensureSuccess(result, 'Kill Process');
             }
@@ -79,8 +80,8 @@ export function ContextMenu({ node, x, y, width, height, onClose }: ContextMenuP
       } finally {
         if (needsRefresh) {
           window.dispatchEvent(
-            new CustomEvent("fere:optimistic-hide-node", {
-              detail: { nodeId: node.id },
+            new CustomEvent("fere:optimistic-mark-down", {
+              detail: { node },
             }),
           );
           window.dispatchEvent(new CustomEvent('fere:refresh-snapshot'));
@@ -130,7 +131,7 @@ export function ContextMenu({ node, x, y, width, height, onClose }: ContextMenuP
             <span>Open in Terminal</span>
           </div>
         )}
-        {!isExternal && (
+        {canKillProcess && (
           <div
             className="context-menu-item context-menu-item-danger"
             onClick={handleAction('kill-process')}

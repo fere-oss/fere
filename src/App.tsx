@@ -200,12 +200,13 @@ function App() {
 
   // Alert preferences state
   const [alertsEnabled, setAlertsEnabled] = useState(true);
-  const [optimisticHiddenNodeIds, setOptimisticHiddenNodeIds] = useState<Set<string>>(
-    () => new Set(),
+  const [optimisticDownNodes, setOptimisticDownNodes] = useState<Map<string, GraphNode>>(
+    () => new Map(),
   );
-  const optimisticHideTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(
+  const optimisticDownTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(
     new Map(),
   );
+  const lastNodeIdByServiceRef = useRef<Map<string, string>>(new Map());
 
   // Welcome modal state
   const [showWelcome, setShowWelcome] = useState(false);
@@ -219,72 +220,123 @@ function App() {
   }, []);
 
   useEffect(() => {
-    const handleOptimisticHide = (event: Event) => {
-      const customEvent = event as CustomEvent<{ nodeId?: string }>;
-      const nodeId = customEvent.detail?.nodeId;
-      if (!nodeId) return;
+    const handleOptimisticDown = (event: Event) => {
+      const customEvent = event as CustomEvent<{ node?: GraphNode }>;
+      const node = customEvent.detail?.node;
+      if (!node) return;
 
-      setOptimisticHiddenNodeIds((current) => {
-        const next = new Set(current);
-        next.add(nodeId);
+      const downNode: GraphNode = {
+        ...node,
+        pid: 0,
+        cpu: 0,
+        memory: 0,
+        ports: [],
+        healthStatus: "red",
+        lastSeen: Date.now(),
+        isGhost: true,
+        startCommand: node.startCommand || node.command || undefined,
+        startProjectPath: node.startProjectPath || node.projectPath || undefined,
+      };
+
+      setOptimisticDownNodes((current) => {
+        const next = new Map(current);
+        next.set(node.id, downNode);
         return next;
       });
 
-      const existing = optimisticHideTimersRef.current.get(nodeId);
+      const existing = optimisticDownTimersRef.current.get(node.id);
       if (existing) {
         clearTimeout(existing);
       }
       const timer = setTimeout(() => {
-        setOptimisticHiddenNodeIds((current) => {
-          if (!current.has(nodeId)) return current;
-          const next = new Set(current);
-          next.delete(nodeId);
+        setOptimisticDownNodes((current) => {
+          if (!current.has(node.id)) return current;
+          const next = new Map(current);
+          next.delete(node.id);
           return next;
         });
-        optimisticHideTimersRef.current.delete(nodeId);
-      }, 8000);
-      optimisticHideTimersRef.current.set(nodeId, timer);
+        optimisticDownTimersRef.current.delete(node.id);
+      }, 15000);
+      optimisticDownTimersRef.current.set(node.id, timer);
     };
 
     window.addEventListener(
-      "fere:optimistic-hide-node",
-      handleOptimisticHide as EventListener,
+      "fere:optimistic-mark-down",
+      handleOptimisticDown as EventListener,
     );
     return () => {
       window.removeEventListener(
-        "fere:optimistic-hide-node",
-        handleOptimisticHide as EventListener,
+        "fere:optimistic-mark-down",
+        handleOptimisticDown as EventListener,
       );
-      optimisticHideTimersRef.current.forEach((timer) => clearTimeout(timer));
-      optimisticHideTimersRef.current.clear();
+      optimisticDownTimersRef.current.forEach((timer) => clearTimeout(timer));
+      optimisticDownTimersRef.current.clear();
     };
   }, []);
 
   useEffect(() => {
-    if (optimisticHiddenNodeIds.size === 0) return;
-    const visibleIds = new Set(graph.nodes.map((node) => node.id));
-    setOptimisticHiddenNodeIds((current) => {
+    if (optimisticDownNodes.size === 0) return;
+    const liveNodeById = new Map(graph.nodes.map((node) => [node.id, node]));
+    const runningServiceKeys = new Set(
+      graph.nodes
+        .filter(
+          (node) =>
+            node.type !== "external" &&
+            !node.isGhost &&
+            node.healthStatus !== "red" &&
+            (!node.isDockerContainer || node.containerState === "running"),
+        )
+        .map((node) => nodeServiceKey(node)),
+    );
+    setOptimisticDownNodes((current) => {
       let changed = false;
-      const next = new Set<string>();
-      current.forEach((id) => {
-        if (visibleIds.has(id)) {
-          next.add(id);
-        } else {
+      const next = new Map(current);
+      current.forEach((optimisticNode, id) => {
+        const liveNode = liveNodeById.get(id);
+        const serviceRecovered = runningServiceKeys.has(
+          nodeServiceKey(optimisticNode),
+        );
+        const idRecovered =
+          !!liveNode &&
+          !liveNode.isGhost &&
+          liveNode.healthStatus !== "red" &&
+          (!liveNode.isDockerContainer || liveNode.containerState === "running");
+        if (serviceRecovered || idRecovered) {
+          next.delete(id);
           changed = true;
-          const timer = optimisticHideTimersRef.current.get(id);
+          const timer = optimisticDownTimersRef.current.get(id);
           if (timer) clearTimeout(timer);
-          optimisticHideTimersRef.current.delete(id);
+          optimisticDownTimersRef.current.delete(id);
         }
       });
       return changed ? next : current;
     });
-  }, [graph.nodes, optimisticHiddenNodeIds.size]);
+  }, [graph.nodes, optimisticDownNodes.size]);
 
   const visibleGraphNodes = useMemo(
-    () =>
-      graph.nodes.filter((node) => !optimisticHiddenNodeIds.has(node.id)),
-    [graph.nodes, optimisticHiddenNodeIds],
+    () => {
+      const merged = graph.nodes.map(
+        (node) => optimisticDownNodes.get(node.id) || node,
+      );
+      const mergedIds = new Set(merged.map((node) => node.id));
+      optimisticDownNodes.forEach((node, id) => {
+        if (!mergedIds.has(id)) {
+          merged.push(node);
+        }
+      });
+      return merged;
+    },
+    [graph.nodes, optimisticDownNodes],
   );
+
+  useEffect(() => {
+    const next = new Map(lastNodeIdByServiceRef.current);
+    visibleGraphNodes.forEach((node) => {
+      if (node.type === "external") return;
+      next.set(nodeServiceKey(node), node.id);
+    });
+    lastNodeIdByServiceRef.current = next;
+  }, [visibleGraphNodes]);
 
   const handleToggleAlerts = useCallback(async () => {
     const newValue = !alertsEnabled;
@@ -464,7 +516,7 @@ function App() {
         } else {
           // Create ghost node for tracked service that isn't running
           trackedExtra.push({
-            id: `ghost-${key}`,
+            id: lastNodeIdByServiceRef.current.get(key) || `ghost-${key}`,
             pid: 0,
             name: svc.service.name,
             command: svc.service.lastCommand || "",

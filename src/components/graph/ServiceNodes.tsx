@@ -178,8 +178,9 @@ export function ServiceNode({
   animationIndex?: number;
 }) {
   const isGhost = !!node.isGhost;
+  const isDownLike = isGhost || node.healthStatus === "red";
   const accentColor = getServiceColor(node.type);
-  const healthInfo = isGhost
+  const healthInfo = isDownLike
     ? { color: "var(--text-muted)", glow: "none", label: "Not running" }
     : getHealthInfo(node.healthStatus);
   const showDockerBadge =
@@ -272,6 +273,8 @@ export function ServiceNode({
   };
 
   const [starting, setStarting] = useState(false);
+  const startCommand = node.startCommand || node.command || "";
+  const startProjectPath = node.startProjectPath || node.projectPath || "";
 
   const handleStartService = useCallback(
     async (e: React.MouseEvent) => {
@@ -284,10 +287,10 @@ export function ServiceNode({
           const id = node.containerId || node.name;
           const result = await window.electronAPI.startContainer(id);
           started = !!result?.success;
-        } else if (node.startCommand && node.startProjectPath) {
+        } else if (startCommand && startProjectPath) {
           const result = await window.electronAPI.startProcess(
-            node.startCommand,
-            node.startProjectPath,
+            startCommand,
+            startProjectPath,
           );
           started = !!result?.success;
         }
@@ -300,17 +303,17 @@ export function ServiceNode({
         setTimeout(() => setStarting(false), 3000);
       }
     },
-    [node, starting],
+    [node, startCommand, startProjectPath, starting],
   );
 
   const canStart =
-    isGhost &&
-    (node.isDockerContainer || (node.startCommand && node.startProjectPath));
+    isDownLike &&
+    (node.isDockerContainer || (startCommand && startProjectPath));
 
   return (
     <div
       data-node-id={node.id}
-      className={`service-node${isGhost ? " service-node-ghost" : ""}`}
+      className={`service-node${isDownLike ? " service-node-ghost" : ""}`}
       onClick={handleClick}
       onContextMenu={handleContextMenu}
       style={
@@ -420,7 +423,7 @@ export function ServiceNode({
         </button>
       )}
 
-      {!isGhost && mainPort && (
+      {!isDownLike && mainPort && (
         <div className="service-node-port">
           <span className="service-node-port-host">localhost</span>
           <span
@@ -432,7 +435,7 @@ export function ServiceNode({
         </div>
       )}
 
-      {!isGhost &&
+      {!isDownLike &&
         node.isDockerContainer &&
         node.containerNetworks &&
         node.containerNetworks.length > 0 && (
@@ -451,7 +454,7 @@ export function ServiceNode({
           </div>
         )}
 
-      {!isGhost && routes.length > 0 && (
+      {!isDownLike && routes.length > 0 && (
         <div className="service-node-routes">
           <div className="service-node-routes-header">
             <span className="service-node-routes-title">API routes</span>
@@ -480,7 +483,7 @@ export function ServiceNode({
         </div>
       )}
 
-      {!isGhost && shouldShowApis && (
+      {!isDownLike && shouldShowApis && (
         <div
           className={`service-node-apis${apiCount === 0 ? " is-empty" : ""}`}
         >
