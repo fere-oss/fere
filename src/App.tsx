@@ -329,6 +329,48 @@ function App() {
     [graph.nodes, optimisticDownNodes],
   );
 
+  const graphIndex = useMemo(() => {
+    const nodeById = new Map<string, GraphNode>();
+    const nonExternalNodes: GraphNode[] = [];
+    const systemNodes: GraphNode[] = [];
+    const nodesByTabPath = new Map<string, GraphNode[]>();
+    const nodeByService = new Map<string, GraphNode>();
+
+    visibleGraphNodes.forEach((node) => {
+      nodeById.set(node.id, node);
+
+      if (node.type === "external") return;
+      nonExternalNodes.push(node);
+
+      const serviceKeyValue = nodeServiceKey(node);
+      const existing = nodeByService.get(serviceKeyValue);
+      // Prefer a concrete running node over a ghost/down fallback.
+      if (!existing || (existing.isGhost && !node.isGhost)) {
+        nodeByService.set(serviceKeyValue, node);
+      }
+
+      const tabPath = getNodeTabPath(node, tabGrouping);
+      if (!tabPath) {
+        systemNodes.push(node);
+        return;
+      }
+      const list = nodesByTabPath.get(tabPath);
+      if (list) {
+        list.push(node);
+      } else {
+        nodesByTabPath.set(tabPath, [node]);
+      }
+    });
+
+    return {
+      nodeById,
+      nonExternalNodes,
+      systemNodes,
+      nodesByTabPath,
+      nodeByService,
+    };
+  }, [visibleGraphNodes, tabGrouping]);
+
   useEffect(() => {
     const next = new Map(lastNodeIdByServiceRef.current);
     visibleGraphNodes.forEach((node) => {
@@ -386,26 +428,16 @@ function App() {
   // Build tabs from unique projectPaths
   const tabs = useMemo(() => {
     const projectPaths = new Map<string, string>(); // path -> label
-
-    visibleGraphNodes.forEach((node) => {
-      const tabPath = getNodeTabPath(node, tabGrouping);
-      if (!tabPath) return;
+    graphIndex.nodesByTabPath.forEach((_, tabPath) => {
       const label = tabPath.split("/").pop() || tabPath;
       projectPaths.set(tabPath, label);
     });
 
-    const nonExternalNodes = visibleGraphNodes.filter(
-      (node) => node.type !== "external",
-    );
-    const systemCount = nonExternalNodes.filter(
-      (node) => !getNodeTabPath(node, tabGrouping),
-    ).length;
+    const systemCount = graphIndex.systemNodes.length;
 
     const stackByProject = new Map<string, string | null>();
     projectPaths.forEach((_, path) => {
-      const projectNodes = visibleGraphNodes.filter(
-        (node) => getNodeTabPath(node, tabGrouping) === path,
-      );
+      const projectNodes = graphIndex.nodesByTabPath.get(path) || [];
       stackByProject.set(path, detectProjectStack(projectNodes));
     });
 
@@ -414,9 +446,7 @@ function App() {
       .map(([path, label]) => ({
         id: path,
         label,
-        count: nonExternalNodes.filter(
-          (node) => getNodeTabPath(node, tabGrouping) === path,
-        ).length,
+        count: graphIndex.nodesByTabPath.get(path)?.length || 0,
         stackLabel: stackByProject.get(path) || null,
       }))
       .sort((a, b) => a.label.localeCompare(b.label));
@@ -431,7 +461,7 @@ function App() {
       },
       ...projectTabs,
     ];
-  }, [visibleGraphNodes, tabGrouping]);
+  }, [graphIndex]);
 
   // Per-project service tracking
   const {
@@ -445,6 +475,13 @@ function App() {
   const [serviceDropdownTab, setServiceDropdownTab] = useState<string | null>(
     null,
   );
+  const nodesForTab = useCallback(
+    (tabId: string) => {
+      if (tabId === SYSTEM_TAB_ID) return graphIndex.systemNodes;
+      return graphIndex.nodesByTabPath.get(tabId) || [];
+    },
+    [graphIndex],
+  );
 
   // Auto-select first available tab if current selection becomes invalid
   useEffect(() => {
@@ -457,21 +494,11 @@ function App() {
   // Filter nodes based on selected tab
   const filteredData = useMemo(() => {
     const isSystemTab = selectedTab === SYSTEM_TAB_ID;
-    const nodeById = new Map(visibleGraphNodes.map((node) => [node.id, node]));
 
     // Get primary nodes for this tab (non-external nodes matching the filter)
-    const primaryNodes = visibleGraphNodes.filter((node) => {
-      // External nodes are handled separately
-      if (node.type === "external") return false;
-
-      if (isSystemTab) {
-        // System tab: nodes without projectPath
-        return !getNodeTabPath(node, tabGrouping);
-      } else {
-        // Project tab: nodes matching normalized project path
-        return getNodeTabPath(node, tabGrouping) === selectedTab;
-      }
-    });
+    const primaryNodes = isSystemTab
+      ? graphIndex.systemNodes
+      : graphIndex.nodesByTabPath.get(selectedTab) || [];
 
     const primaryNodeIds = new Set(primaryNodes.map((n) => n.id));
 
@@ -480,8 +507,8 @@ function App() {
     graph.edges.forEach((edge) => {
       if (primaryNodeIds.has(edge.source) || primaryNodeIds.has(edge.target)) {
         // Check if either end is an external node
-        const sourceNode = nodeById.get(edge.source);
-        const targetNode = nodeById.get(edge.target);
+        const sourceNode = graphIndex.nodeById.get(edge.source);
+        const targetNode = graphIndex.nodeById.get(edge.target);
 
         if (sourceNode?.type === "external")
           connectedExternalIds.add(sourceNode.id);
@@ -491,9 +518,11 @@ function App() {
     });
 
     // Include external nodes that are connected
-    const externalNodes = visibleGraphNodes.filter((n) =>
-      connectedExternalIds.has(n.id),
-    );
+    const externalNodes: GraphNode[] = [];
+    connectedExternalIds.forEach((id) => {
+      const node = graphIndex.nodeById.get(id);
+      if (node) externalNodes.push(node);
+    });
 
     // Inject tracked service nodes not already in the primary view
     const trackedExtra: GraphNode[] = [];
@@ -508,9 +537,7 @@ function App() {
 
         // Look for a live node anywhere in the system
         const svcKey = serviceKey(svc.service);
-        const liveNode = visibleGraphNodes.find(
-          (n) => n.type !== "external" && nodeServiceKey(n) === svcKey,
-        );
+        const liveNode = graphIndex.nodeByService.get(svcKey);
         if (liveNode) {
           trackedExtra.push(liveNode);
         } else {
@@ -590,12 +617,12 @@ function App() {
       edges: expandedEdges,
       ports: filteredPorts,
     };
-  }, [visibleGraphNodes, graph.edges, ports, selectedTab, tabGrouping, edgeMode, getProjectStatus]);
+  }, [graphIndex, graph.edges, ports, selectedTab, edgeMode, getProjectStatus]);
 
   // Filter to show only running Docker containers
   const dockerContainerData = useMemo(() => {
     // Get only running Docker container nodes (exclude exited, dead, etc.)
-    const containerNodes = visibleGraphNodes.filter(
+    const containerNodes = graphIndex.nonExternalNodes.filter(
       (node) => node.isDockerContainer && node.containerState === "running",
     );
     const containerNodeIds = new Set(containerNodes.map((n) => n.id));
@@ -618,17 +645,17 @@ function App() {
       edges: containerEdges,
       ports: filteredPorts,
     };
-  }, [visibleGraphNodes, graph.edges, ports]);
+  }, [graphIndex.nonExternalNodes, graph.edges, ports]);
 
   // Running database containers for the database list view
   const databaseNodes = useMemo(() => {
-    return visibleGraphNodes.filter(
+    return graphIndex.nonExternalNodes.filter(
       (node) =>
         node.isDockerContainer &&
         node.type === "database" &&
         node.containerState === "running",
     );
-  }, [visibleGraphNodes]);
+  }, [graphIndex.nonExternalNodes]);
 
   return (
     <div className="app">
@@ -833,12 +860,7 @@ function App() {
                         // silently fail
                       }
                     }}
-                    allNodes={visibleGraphNodes.filter((n) =>
-                      n.type !== "external" &&
-                      (tab.id === SYSTEM_TAB_ID
-                        ? !getNodeTabPath(n, tabGrouping)
-                        : getNodeTabPath(n, tabGrouping) === tab.id)
-                    )}
+                    allNodes={nodesForTab(tab.id)}
                     onClose={() => setServiceDropdownTab(null)}
                   />
                 )}
