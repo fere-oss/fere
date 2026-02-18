@@ -23,8 +23,7 @@ export const FLOW_LAYOUT = {
   CONTAINER_GROUP_BOX_PADDING: 16,
   LAYER_LABEL_OFFSET: 84,
   STANDALONE_SECTION_OFFSET: 80,
-  GROUP_BOX_PADDING: 24,
-  GROUP_LABEL_OFFSET: 28,
+  GROUP_BOX_PADDING: 16,
   LABEL_WIDTH: 240,
   LABEL_HEIGHT: 28,
   MAX_GROUP_COLUMNS: 2,
@@ -167,7 +166,6 @@ export function buildFlowLayout({
     LAYER_LABEL_OFFSET,
     STANDALONE_SECTION_OFFSET,
     GROUP_BOX_PADDING,
-    GROUP_LABEL_OFFSET,
     LABEL_WIDTH,
     LABEL_HEIGHT,
     MAX_GROUP_COLUMNS,
@@ -315,7 +313,7 @@ export function buildFlowLayout({
               type: "groupLabel",
               position: centeredLabelPosition(
                 groupX + width / 2,
-                groupY - GROUP_LABEL_OFFSET,
+                groupY - GROUP_BOX_PADDING - LABEL_HEIGHT - 4,
               ),
               data: { text: group.groupName || "Group", color: GROUP_COLOR },
               draggable: false,
@@ -323,9 +321,12 @@ export function buildFlowLayout({
               style: { width: LABEL_WIDTH, height: LABEL_HEIGHT },
             });
             minX = Math.min(minX, groupX + width / 2 - LABEL_WIDTH / 2);
-            minY = Math.min(minY, groupY - GROUP_LABEL_OFFSET);
+            minY = Math.min(minY, groupY - GROUP_BOX_PADDING - LABEL_HEIGHT - 4);
             maxX = Math.max(maxX, groupX + width / 2 + LABEL_WIDTH / 2);
-            maxY = Math.max(maxY, groupY - GROUP_LABEL_OFFSET + LABEL_HEIGHT);
+            maxY = Math.max(
+              maxY,
+              groupY - GROUP_BOX_PADDING - LABEL_HEIGHT - 4 + LABEL_HEIGHT,
+            );
           }
 
           group.nodes.forEach((node, index) => {
