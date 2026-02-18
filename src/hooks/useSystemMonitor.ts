@@ -188,45 +188,86 @@ export function useSystemSnapshot(pollInterval = 2000) {
   const lastMetricsFlushRef = useRef<number>(0);
   const pendingMetricsRef = useRef<SystemSnapshot | null>(null);
   const metricsRafRef = useRef<number>(0);
+  const metricsThrottleMsRef = useRef<number>(1200);
+  const refreshInFlightRef = useRef(false);
+  const refreshQueuedRef = useRef(false);
+  const unmountedRef = useRef(false);
+  const streamReceivedDeltaRef = useRef(false);
+
+  const getAdaptivePollInterval = useCallback(() => {
+    if (typeof document === 'undefined') return pollInterval;
+    const hidden = document.visibilityState === 'hidden';
+    if (hidden) return Math.min(10000, Math.max(3000, pollInterval * 3));
+    return pollInterval;
+  }, [pollInterval]);
+
+  const updateMetricsThrottle = useCallback(() => {
+    if (typeof document === 'undefined') {
+      metricsThrottleMsRef.current = 1200;
+      return;
+    }
+    const hidden = document.visibilityState === 'hidden';
+    // Slower metric flush in background to reduce unnecessary re-renders.
+    metricsThrottleMsRef.current = hidden ? 3000 : 900;
+  }, []);
 
   // On-demand full refresh (keeps existing API surface)
   const refresh = useCallback(async () => {
+    if (refreshInFlightRef.current) {
+      refreshQueuedRef.current = true;
+      return;
+    }
+
     if (!isElectron()) {
       setError('Not running in Electron');
       setLoading(false);
       return;
     }
 
+    refreshInFlightRef.current = true;
     try {
       const data = await window.electronAPI.getSystemSnapshot();
+      if (unmountedRef.current) return;
       snapshotRef.current = data;
       snapshotKeyRef.current = createSnapshotKey(data);
       setSnapshot(data);
       setError(null);
     } catch (err) {
+      if (unmountedRef.current) return;
       setError(err instanceof Error ? err.message : 'Failed to fetch system snapshot');
     } finally {
-      setLoading(false);
+      if (!unmountedRef.current) {
+        setLoading(false);
+      }
+      refreshInFlightRef.current = false;
+      if (refreshQueuedRef.current && !unmountedRef.current) {
+        refreshQueuedRef.current = false;
+        void refresh();
+      }
     }
   }, []);
 
   useEffect(() => {
+    unmountedRef.current = false;
+
     if (!isElectron()) {
       setError('Not running in Electron');
       setLoading(false);
       return;
     }
 
+    updateMetricsThrottle();
+
     // Prefer push-based channel when available
     if (window.electronAPI.onSnapshotDelta) {
       window.electronAPI.startSnapshotStream();
-
-      const METRICS_THROTTLE_MS = 2000;
+      streamReceivedDeltaRef.current = false;
 
       const unsubscribe = window.electronAPI.onSnapshotDelta((delta: SnapshotDelta) => {
+        streamReceivedDeltaRef.current = true;
         // Sequence gap detection — request full resync if we missed deltas
         if (delta.type !== 'full' && lastSeqRef.current >= 0 && delta.seq !== lastSeqRef.current + 1) {
-          refresh();
+          void refresh();
           return;
         }
         lastSeqRef.current = delta.seq;
@@ -247,7 +288,7 @@ export function useSystemSnapshot(pollInterval = 2000) {
           // Metrics-only — throttle to reduce React re-renders
           const now = Date.now();
           pendingMetricsRef.current = patched;
-          if (now - lastMetricsFlushRef.current >= METRICS_THROTTLE_MS) {
+          if (now - lastMetricsFlushRef.current >= metricsThrottleMsRef.current) {
             lastMetricsFlushRef.current = now;
             cancelAnimationFrame(metricsRafRef.current);
             metricsRafRef.current = requestAnimationFrame(() => {
@@ -263,7 +304,15 @@ export function useSystemSnapshot(pollInterval = 2000) {
         setError(null);
       });
 
+      const bootstrapTimer = setTimeout(() => {
+        if (!streamReceivedDeltaRef.current) {
+          void refresh();
+        }
+      }, 1200);
+
       return () => {
+        unmountedRef.current = true;
+        clearTimeout(bootstrapTimer);
         unsubscribe();
         cancelAnimationFrame(metricsRafRef.current);
         window.electronAPI.stopSnapshotStream();
@@ -271,16 +320,29 @@ export function useSystemSnapshot(pollInterval = 2000) {
     }
 
     // Fallback: existing polling mechanism
-    refresh();
-    const interval = setInterval(refresh, pollInterval);
-    return () => clearInterval(interval);
-  }, [refresh, pollInterval]);
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const run = async () => {
+      if (cancelled) return;
+      await refresh();
+      if (cancelled) return;
+      timer = setTimeout(run, getAdaptivePollInterval());
+    };
+
+    run();
+    return () => {
+      unmountedRef.current = true;
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [refresh, getAdaptivePollInterval, updateMetricsThrottle]);
 
   useEffect(() => {
     const handleForceRefresh = () => {
       pendingMetricsRef.current = null;
       cancelAnimationFrame(metricsRafRef.current);
-      refresh();
+      void refresh();
     };
 
     window.addEventListener('fere:refresh-snapshot', handleForceRefresh);
@@ -288,6 +350,25 @@ export function useSystemSnapshot(pollInterval = 2000) {
       window.removeEventListener('fere:refresh-snapshot', handleForceRefresh);
     };
   }, [refresh]);
+
+  useEffect(() => {
+    const handleVisibilityOrFocus = () => {
+      updateMetricsThrottle();
+      // When returning to the app, fetch a fresh snapshot immediately.
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        pendingMetricsRef.current = null;
+        cancelAnimationFrame(metricsRafRef.current);
+        void refresh();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityOrFocus);
+    window.addEventListener('focus', handleVisibilityOrFocus);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
+      window.removeEventListener('focus', handleVisibilityOrFocus);
+    };
+  }, [refresh, updateMetricsThrottle]);
 
   return { snapshot, loading, error, refresh };
 }
