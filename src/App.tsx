@@ -207,6 +207,7 @@ function App() {
     new Map(),
   );
   const lastNodeIdByServiceRef = useRef<Map<string, string>>(new Map());
+  const inferredEdgesCacheRef = useRef<Map<string, typeof graph.edges>>(new Map());
 
   // Welcome modal state
   const [showWelcome, setShowWelcome] = useState(false);
@@ -591,12 +592,31 @@ function App() {
         filteredNodeIds.has(edge.source) && filteredNodeIds.has(edge.target),
     );
 
-    const expandedEdges = [...filteredEdges];
-    if (edgeMode === "expanded") {
+    const expandedEdges = (() => {
+      if (edgeMode !== "expanded") return filteredEdges;
+
+      const inferable = primaryNodes.filter((node) => node.ports.length > 0);
+      const inferredKey = [
+        selectedTab,
+        inferable
+          .map((node) => `${node.id}:${node.ports[0]?.port || 0}`)
+          .sort()
+          .join(","),
+        filteredEdges
+          .map((edge) => `${edge.source}->${edge.target}`)
+          .sort()
+          .join(","),
+      ].join("|");
+
+      const cached = inferredEdgesCacheRef.current.get(inferredKey);
+      if (cached) {
+        return cached;
+      }
+
+      const next = [...filteredEdges];
       const existing = new Set(
         filteredEdges.map((edge) => `${edge.source}->${edge.target}`),
       );
-      const inferable = primaryNodes.filter((node) => node.ports.length > 0);
       const MAX_INFERRED_EDGES = 300;
       let inferredCount = 0;
 
@@ -608,7 +628,7 @@ function App() {
           const key = `${source.id}->${target.id}`;
           if (existing.has(key)) continue;
           existing.add(key);
-          expandedEdges.push({
+          next.push({
             id: `inferred-${source.id}-${target.id}`,
             source: source.id,
             target: target.id,
@@ -621,7 +641,14 @@ function App() {
         }
         if (inferredCount >= MAX_INFERRED_EDGES) break;
       }
-    }
+
+      inferredEdgesCacheRef.current.set(inferredKey, next);
+      if (inferredEdgesCacheRef.current.size > 24) {
+        const oldestKey = inferredEdgesCacheRef.current.keys().next().value;
+        if (oldestKey) inferredEdgesCacheRef.current.delete(oldestKey);
+      }
+      return next;
+    })();
 
     // Filter ports to only include those from primary nodes (not external)
     const primaryPorts = new Set<number>();

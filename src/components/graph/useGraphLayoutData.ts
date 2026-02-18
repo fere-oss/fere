@@ -10,6 +10,15 @@ import type { LayoutNode, RenderGroup } from "./types";
 const isSyntheticDockerNetworkEdge = (edge: GraphEdge): boolean =>
   typeof edge.protocol === "string" && edge.protocol.startsWith("docker-network:");
 
+const shouldProfileLayout = (): boolean => {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem("fere.perf.layout") === "1";
+  } catch {
+    return false;
+  }
+};
+
 export function useGraphLayoutData({
   nodes,
   edges,
@@ -163,7 +172,13 @@ export function useGraphLayoutData({
       }
 
       // Topology changed — full recomputation
+      const start = performance.now();
       const result = computeHierarchicalLayout(localNodes, hierarchyEdges);
+      if (shouldProfileLayout()) {
+        console.log(
+          `[PERF] computeHierarchicalLayout: ${(performance.now() - start).toFixed(2)}ms (${localNodes.length} nodes, ${hierarchyEdges.length} edges)`,
+        );
+      }
       layoutCacheRef.current = { key: topologyKey, ...result };
       return result;
     },
@@ -171,12 +186,20 @@ export function useGraphLayoutData({
   );
 
   const stableConnectedLayout = useMemo<LayoutNode[]>(
-    () =>
-      buildStableConnectedLayout(
+    () => {
+      const start = performance.now();
+      const result = buildStableConnectedLayout(
         connectedLayout,
         orderCache,
         groupOrderCache,
-      ),
+      );
+      if (shouldProfileLayout()) {
+        console.log(
+          `[PERF] buildStableConnectedLayout: ${(performance.now() - start).toFixed(2)}ms (${connectedLayout.length} connected nodes)`,
+        );
+      }
+      return result;
+    },
     [connectedLayout, orderCache, groupOrderCache],
   );
 
