@@ -371,6 +371,22 @@ function App() {
     };
   }, [visibleGraphNodes, tabGrouping]);
 
+  const edgeIndex = useMemo(() => {
+    const byNodeId = new Map<string, typeof graph.edges>();
+    graph.edges.forEach((edge) => {
+      const sourceList = byNodeId.get(edge.source);
+      if (sourceList) sourceList.push(edge);
+      else byNodeId.set(edge.source, [edge]);
+
+      if (edge.target !== edge.source) {
+        const targetList = byNodeId.get(edge.target);
+        if (targetList) targetList.push(edge);
+        else byNodeId.set(edge.target, [edge]);
+      }
+    });
+    return { byNodeId };
+  }, [graph.edges]);
+
   useEffect(() => {
     const next = new Map(lastNodeIdByServiceRef.current);
     visibleGraphNodes.forEach((node) => {
@@ -504,17 +520,19 @@ function App() {
 
     // Find external nodes connected to primary nodes
     const connectedExternalIds = new Set<string>();
-    graph.edges.forEach((edge) => {
-      if (primaryNodeIds.has(edge.source) || primaryNodeIds.has(edge.target)) {
-        // Check if either end is an external node
+    const inspectedEdgeIds = new Set<string>();
+    primaryNodeIds.forEach((nodeId) => {
+      const connectedEdges = edgeIndex.byNodeId.get(nodeId);
+      if (!connectedEdges) return;
+      connectedEdges.forEach((edge) => {
+        if (inspectedEdgeIds.has(edge.id)) return;
+        inspectedEdgeIds.add(edge.id);
         const sourceNode = graphIndex.nodeById.get(edge.source);
         const targetNode = graphIndex.nodeById.get(edge.target);
 
-        if (sourceNode?.type === "external")
-          connectedExternalIds.add(sourceNode.id);
-        if (targetNode?.type === "external")
-          connectedExternalIds.add(targetNode.id);
-      }
+        if (sourceNode?.type === "external") connectedExternalIds.add(sourceNode.id);
+        if (targetNode?.type === "external") connectedExternalIds.add(targetNode.id);
+      });
     });
 
     // Include external nodes that are connected
@@ -617,7 +635,7 @@ function App() {
       edges: expandedEdges,
       ports: filteredPorts,
     };
-  }, [graphIndex, graph.edges, ports, selectedTab, edgeMode, getProjectStatus]);
+  }, [graphIndex, edgeIndex, graph.edges, ports, selectedTab, edgeMode, getProjectStatus]);
 
   // Filter to show only running Docker containers
   const dockerContainerData = useMemo(() => {
@@ -628,10 +646,18 @@ function App() {
     const containerNodeIds = new Set(containerNodes.map((n) => n.id));
 
     // Filter edges to only include those between Docker containers
-    const containerEdges = graph.edges.filter(
-      (edge) =>
-        containerNodeIds.has(edge.source) && containerNodeIds.has(edge.target),
-    );
+    const edgeIds = new Set<string>();
+    const containerEdges: typeof graph.edges = [];
+    containerNodeIds.forEach((nodeId) => {
+      const connectedEdges = edgeIndex.byNodeId.get(nodeId);
+      if (!connectedEdges) return;
+      connectedEdges.forEach((edge) => {
+        if (edgeIds.has(edge.id)) return;
+        if (!containerNodeIds.has(edge.source) || !containerNodeIds.has(edge.target)) return;
+        edgeIds.add(edge.id);
+        containerEdges.push(edge);
+      });
+    });
 
     // Get ports from containers
     const containerPorts = new Set<number>();
@@ -645,7 +671,7 @@ function App() {
       edges: containerEdges,
       ports: filteredPorts,
     };
-  }, [graphIndex.nonExternalNodes, graph.edges, ports]);
+  }, [graphIndex.nonExternalNodes, edgeIndex, graph.edges, ports]);
 
   // Running database containers for the database list view
   const databaseNodes = useMemo(() => {
