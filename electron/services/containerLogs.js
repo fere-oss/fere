@@ -217,8 +217,12 @@ function stopLogStream(streamId) {
 
     // Give it a moment to close gracefully
     setTimeout(() => {
-      if (!stream.process.killed) {
-        stream.process.kill('SIGKILL');
+      try {
+        if (!stream.process.killed) {
+          stream.process.kill('SIGKILL');
+        }
+      } catch {
+        // Process already exited
       }
     }, 1000);
 

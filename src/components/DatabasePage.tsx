@@ -328,9 +328,9 @@ export function DatabasePage({ node, onBack }: DatabasePageProps) {
         />
       )}
 
-      {showCreateModal && (
+      {showCreateModal && (dbType === 'postgresql' || dbType === 'mysql' || dbType === 'mongodb') && (
         <CreateTableModal
-          dbType={dbType as 'postgresql' | 'mysql' | 'mongodb'}
+          dbType={dbType}
           onClose={() => setShowCreateModal(false)}
           onSubmit={handleCreateTable}
         />
