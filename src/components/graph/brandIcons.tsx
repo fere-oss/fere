@@ -96,9 +96,17 @@ function normalize(value: string): string {
 export function inferServiceBrand(
   node: Pick<GraphNode, "name" | "command" | "containerImage">,
 ): string | null {
+  // Docker container commands are formatted as "docker: {image} | {actualCommand}".
+  // Extract the runtime command after "|" so the runtime tech (e.g. "node") is
+  // matched instead of "docker" from the prefix.
+  const command = node.command || "";
+  const runtimeCommand = command.includes(" | ")
+    ? command.split(" | ").slice(1).join(" | ")
+    : command;
+
   // Prefer service name and image over command to avoid
   // "docker: ..." strings forcing a Docker logo.
-  const samples = [node.name, node.containerImage, node.command].filter(
+  const samples = [node.name, node.containerImage, runtimeCommand].filter(
     Boolean,
   ) as string[];
   for (const sample of samples) {

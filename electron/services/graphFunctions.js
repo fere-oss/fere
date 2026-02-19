@@ -197,6 +197,7 @@ function categorizeContainerImage(image) {
   if (imageLower.includes('rabbitmq')) return 'broker';
   if (imageLower.includes('kafka')) return 'broker';
   if (imageLower.includes('nats')) return 'broker';
+  if (imageLower.includes('zookeeper')) return 'broker';
   if (imageLower.includes('nginx')) return 'webserver';
   if (imageLower.includes('apache') || imageLower.includes('httpd')) return 'webserver';
   if (imageLower.includes('traefik')) return 'webserver';
@@ -221,7 +222,15 @@ function resolveContainerType(container) {
       return normalized;
     }
   }
-  return categorizeContainerImage(container.image || '');
+  const imageType = categorizeContainerImage(container.image || '');
+  if (imageType !== 'container') return imageType;
+  // For build-context services the image name is project_service, not the base image.
+  // Fall back to the Dockerfile FROM image when available.
+  if (container.baseImage) {
+    const baseType = categorizeContainerImage(container.baseImage);
+    if (baseType !== 'container') return baseType;
+  }
+  return 'container';
 }
 
 // ============================================
@@ -341,6 +350,11 @@ function inferProjectPathFromContainer(container) {
       }
     }
   }
+  // Prefer build context path (specific service subdirectory) over the broader
+  // compose working_dir so route scanning targets the right service's source files.
+  if (container.buildContextPath && fs.existsSync(container.buildContextPath)) {
+    return container.buildContextPath;
+  }
   if (container.labels) {
     const workingDir = container.labels['com.docker.compose.project.working_dir'];
     if (workingDir) {
@@ -395,6 +409,24 @@ function enhanceNodeWithDockerInfo(node, container) {
   node.containerPorts = container.ports;
   node.memoryUsage = container.memoryUsage;
   node.description = `Docker container: ${container.image}`;
+
+  // Override command to the "docker: {image} | {runtime}" format so that
+  // brand/icon detection (inferServiceBrand) can extract the real runtime
+  // (e.g. "node index.js") instead of seeing the host-side proxy command.
+  const runtimeCmd = container.fullCommand || container.command;
+  if (runtimeCmd) {
+    node.command = `docker: ${container.image} | ${runtimeCmd}`;
+  }
+
+  // If the matched native node has no project path (e.g. docker-proxy process),
+  // derive one from the container so routes can be scanned and attached.
+  if (!node.projectPath) {
+    const containerProjectPath = inferProjectPathFromContainer(container);
+    if (containerProjectPath) {
+      node.projectPath = containerProjectPath;
+      node.project = path.basename(containerProjectPath);
+    }
+  }
 }
 
 // ============================================
