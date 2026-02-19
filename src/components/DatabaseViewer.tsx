@@ -199,7 +199,11 @@ export function DatabaseViewer({ containerId, containerImage }: DatabaseViewerPr
           <div className="database-viewer-data-header">
             <span className="data-table-name">{selectedTable}</span>
             {tableData && !tableData.error && (
-              <span className="data-row-count">{tableData.rows.length} rows</span>
+              <span className="data-row-count">
+                {tableData.rows.length >= 100
+                  ? 'First 100 rows (limit applied)'
+                  : `${tableData.rows.length} rows`}
+              </span>
             )}
           </div>
 
@@ -218,16 +222,16 @@ export function DatabaseViewer({ containerId, containerImage }: DatabaseViewerPr
               <table className="database-viewer-table">
                 <thead>
                   <tr>
-                    {tableData.columns.map((col) => (
-                      <th key={col}>{col}</th>
+                    {tableData.columns.map((col, colIdx) => (
+                      <th key={`${colIdx}-${col}`}>{col}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {tableData.rows.map((row, rowIdx) => (
-                    <tr key={rowIdx}>
-                      {tableData.columns.map((col) => (
-                        <td key={col} title={formatCellValue(row[col])}>
+                    <tr key={`row-${rowIdx}-${formatCellValue(row[tableData.columns[0]])}`}>
+                      {tableData.columns.map((col, colIdx) => (
+                        <td key={`${colIdx}-${col}`} title={formatCellValue(row[col])}>
                           {formatCellValue(row[col])}
                         </td>
                       ))}

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import type { GraphNode, DatabaseTablesResult, TableDataResult, QueryResult, ColumnDefinition } from '../../types/electron';
 
 interface UseDatabasePageResult {
@@ -81,6 +81,7 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
   const [selectedRemoteCollection, setSelectedRemoteCollection] = useState('');
   const containerId = node.containerId || '';
   const containerImage = node.containerImage || '';
+  const queryRequestIdRef = useRef(0);
 
   const detectUriDbType = useCallback((uri: string): 'mongodb' | 'postgresql' | null => {
     const lower = uri.trim().toLowerCase();
@@ -479,12 +480,18 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
       const isDbExpression = /^\s*db(?:\.|\[)/i.test(withoutTrailingSemicolon);
       const returnsCursor = /\.(find|aggregate)\s*\(/i.test(withoutTrailingSemicolon);
       const hasToArray = /\.toArray\s*\(/i.test(withoutTrailingSemicolon);
+      // Detect write operations that return result objects, not cursors
+      const isWriteOp = /\.(insertOne|insertMany|updateOne|updateMany|replaceOne|deleteOne|deleteMany|drop|createCollection)\s*\(/i.test(withoutTrailingSemicolon);
 
       if (!hasPrintWrapper && isDbExpression) {
-        const expression = returnsCursor && !hasToArray
-          ? `${withoutTrailingSemicolon}.toArray()`
-          : withoutTrailingSemicolon;
+        let expression = withoutTrailingSemicolon;
+        if (returnsCursor && !hasToArray) {
+          expression = `${expression}.toArray()`;
+        }
         nextQuery = `print(JSON.stringify(${expression}))`;
+      } else if (!hasPrintWrapper && isWriteOp) {
+        // Wrap write ops too so the output is parseable JSON
+        nextQuery = `print(JSON.stringify(${withoutTrailingSemicolon}))`;
       }
     }
 
@@ -496,6 +503,8 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
 
     const executableQuery = normalizeExecutableQuery(query);
     if (!executableQuery) return;
+
+    const requestId = ++queryRequestIdRef.current;
 
     try {
       setExecutingQuery(true);
@@ -509,6 +518,9 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
               : { error: 'Remote database mode is not available for this URI type' })
         : await window.electronAPI.executeDatabaseQuery(containerId, containerImage, executableQuery);
 
+      // Discard stale results if a newer query was launched
+      if (requestId !== queryRequestIdRef.current) return;
+
       setQueryResult(result);
 
       if (!result.error) {
@@ -518,11 +530,14 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
         }
       }
     } catch (err) {
+      if (requestId !== queryRequestIdRef.current) return;
       setQueryResult({
         error: err instanceof Error ? err.message : 'Query execution failed',
       });
     } finally {
-      setExecutingQuery(false);
+      if (requestId === queryRequestIdRef.current) {
+        setExecutingQuery(false);
+      }
     }
   }, [containerId, containerImage, query, refreshTables, selectedTable, loadTableData, normalizeExecutableQuery, remoteMongoMode, remoteMongoUri, remoteUriDbType]);
 
@@ -638,6 +653,10 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
           return `${qCol} = ${value}`;
         } else {
           const escapedValue = JSON.stringify(value).replace(/'/g, "''");
+          // PostgreSQL supports ::text cast, MySQL uses CAST()
+          if (dbType === 'mysql') {
+            return `CAST(${qCol} AS CHAR) = '${escapedValue}'`;
+          }
           return `${qCol}::text = '${escapedValue}'`;
         }
       });

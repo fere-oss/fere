@@ -100,7 +100,9 @@ export function DatabaseDataLayout({
                 <span className="db-table-selected-name">{selectedTable}</span>
                 {tableData && !tableData.error && (
                   <span className="db-row-count">
-                    {tableData.rows.length} {tableData.rows.length === 1 ? 'row' : 'rows'}
+                    {tableData.rows.length >= 100
+                      ? 'First 100 rows (limit applied)'
+                      : `${tableData.rows.length} ${tableData.rows.length === 1 ? 'row' : 'rows'}`}
                   </span>
                 )}
               </div>
@@ -137,18 +139,18 @@ export function DatabaseDataLayout({
                     <thead>
                       <tr>
                         <th className="db-row-num">#</th>
-                        {tableData.columns.map((col) => (
-                          <th key={col}>{col}</th>
+                        {tableData.columns.map((col, colIdx) => (
+                          <th key={`${colIdx}-${col}`}>{col}</th>
                         ))}
                         {dbType === 'postgresql' && <th className="db-actions-col">Actions</th>}
                       </tr>
                     </thead>
                     <tbody>
                       {tableData.rows.map((row, idx) => (
-                        <tr key={idx}>
+                        <tr key={`row-${idx}-${formatCellValue(row[tableData.columns[0]])}`}>
                           <td className="db-row-num">{idx + 1}</td>
-                          {tableData.columns.map((col) => (
-                            <td key={col} title={formatCellValue(row[col])}>
+                          {tableData.columns.map((col, colIdx) => (
+                            <td key={`${colIdx}-${col}`} title={formatCellValue(row[col])}>
                               <span className={`db-cell-value ${row[col] === null || row[col] === undefined ? 'null' : ''}`}>
                                 {formatCellValue(row[col])}
                               </span>

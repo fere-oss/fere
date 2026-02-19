@@ -192,17 +192,17 @@ export function DatabaseQueryLayout({
                 <thead>
                   <tr>
                     <th className="db-row-num">#</th>
-                    {queryResult.columns?.map((col) => (
-                      <th key={col}>{col}</th>
+                    {queryResult.columns?.map((col, colIdx) => (
+                      <th key={`${colIdx}-${col}`}>{col}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {queryResult.rows.map((row, idx) => (
-                    <tr key={idx}>
+                    <tr key={`qrow-${idx}`}>
                       <td className="db-row-num">{idx + 1}</td>
-                      {queryResult.columns?.map((col) => (
-                        <td key={col} title={formatCellValue(row[col])}>
+                      {queryResult.columns?.map((col, colIdx) => (
+                        <td key={`${colIdx}-${col}`} title={formatCellValue(row[col])}>
                           <span className={`db-cell-value ${row[col] === null || row[col] === undefined ? 'null' : ''}`}>
                             {formatCellValue(row[col])}
                           </span>

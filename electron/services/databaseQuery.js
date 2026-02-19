@@ -355,41 +355,74 @@ async function getTableData(containerId, containerImage, tableName, limit = 100)
   }
 }
 
+// Detect the PostgreSQL user from container env vars, falling back to common defaults
+async function resolvePostgresUser(containerId) {
+  try {
+    const { stdout } = await execDocker(containerId, ['env'], 5000);
+    for (const line of stdout.split('\n')) {
+      const eq = line.indexOf('=');
+      if (eq <= 0) continue;
+      const key = line.slice(0, eq);
+      const val = line.slice(eq + 1).trim();
+      if ((key === 'POSTGRES_USER' || key === 'PGUSER') && val) return val;
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
 // PostgreSQL functions
 async function getPostgresTables(containerId) {
   const sql = "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name;";
 
-  try {
-    const { stdout } = await execDocker(containerId, ['psql', '-U', 'postgres', '-t', '-c', sql], 10000);
-    const tables = stdout
-      .split('\n')
-      .map(line => line.trim())
-      .filter(line => line.length > 0);
+  // Try env-detected user first, then 'postgres', then no user flag
+  const envUser = await resolvePostgresUser(containerId);
+  const userCandidates = [
+    ...(envUser ? [envUser] : []),
+    'postgres',
+    null, // let psql use its default
+  ];
 
-    return { tables, dbType: 'postgresql' };
-  } catch (error) {
-    // Try with different user or database
+  let lastError;
+  for (const user of userCandidates) {
     try {
-      const { stdout } = await execDocker(containerId, ['psql', '-t', '-c', sql], 10000);
+      const args = user
+        ? ['psql', '-U', user, '-t', '-c', sql]
+        : ['psql', '-t', '-c', sql];
+      const { stdout } = await execDocker(containerId, args, 10000);
       const tables = stdout
         .split('\n')
         .map(line => line.trim())
         .filter(line => line.length > 0);
       return { tables, dbType: 'postgresql' };
-    } catch {
-      throw error;
+    } catch (err) {
+      lastError = err;
     }
   }
+  throw lastError;
+}
+
+// Escape a PostgreSQL identifier with double-quote wrapping (handles hyphens, dots, etc.)
+function escapePostgresIdent(name) {
+  return '"' + String(name).replace(/"/g, '""') + '"';
+}
+
+// Escape a PostgreSQL string literal (for use inside single quotes)
+function escapePostgresLiteral(name) {
+  return String(name).replace(/'/g, "''");
 }
 
 async function getPostgresTableData(containerId, tableName, limit) {
-  // Sanitize table name to prevent injection
-  const safeTableName = tableName.replace(/[^a-zA-Z0-9_]/g, '');
+  // Use parameterized literal for the information_schema lookup
+  // and quoted identifier for the SELECT
+  const safeIdent = escapePostgresIdent(tableName);
+  const safeLiteral = escapePostgresLiteral(tableName);
 
   // Get columns first
   const { stdout: colOut } = await execDocker(containerId, [
     'psql', '-U', 'postgres', '-t', '-c',
-    `SELECT column_name FROM information_schema.columns WHERE table_name = '${safeTableName}' ORDER BY ordinal_position;`
+    `SELECT column_name FROM information_schema.columns WHERE table_name = '${safeLiteral}' ORDER BY ordinal_position;`
   ], 10000);
   const columns = colOut
     .split('\n')
@@ -399,7 +432,7 @@ async function getPostgresTableData(containerId, tableName, limit) {
   // Get data as JSON
   const { stdout: dataOut } = await execDocker(containerId, [
     'psql', '-U', 'postgres', '-t', '-c',
-    `SELECT row_to_json(t) FROM (SELECT * FROM ${safeTableName} LIMIT ${limit}) t;`
+    `SELECT row_to_json(t) FROM (SELECT * FROM ${safeIdent} LIMIT ${limit}) t;`
   ], 15000);
 
   const rows = dataOut
@@ -415,7 +448,7 @@ async function getPostgresTableData(containerId, tableName, limit) {
     })
     .filter(row => row !== null);
 
-  return { columns, rows, dbType: 'postgresql', tableName: safeTableName };
+  return { columns, rows, dbType: 'postgresql', tableName };
 }
 
 // MySQL functions
@@ -446,12 +479,17 @@ async function getMySQLTables(containerId) {
   }
 }
 
+// Escape a MySQL identifier with backtick wrapping
+function escapeMySQLIdent(name) {
+  return '`' + String(name).replace(/`/g, '``') + '`';
+}
+
 async function getMySQLTableData(containerId, tableName, limit) {
-  const safeTableName = tableName.replace(/[^a-zA-Z0-9_]/g, '');
+  const safeIdent = escapeMySQLIdent(tableName);
 
   // Get columns
   const { stdout: colOut } = await execDocker(containerId, [
-    'mysql', '-u', 'root', '-e', `DESCRIBE ${safeTableName};`, '--skip-column-names'
+    'mysql', '-u', 'root', '-e', `DESCRIBE ${safeIdent};`, '--skip-column-names'
   ], 10000);
   const columns = colOut
     .split('\n')
@@ -460,7 +498,7 @@ async function getMySQLTableData(containerId, tableName, limit) {
 
   // Get data as JSON
   const { stdout: dataOut } = await execDocker(containerId, [
-    'mysql', '-u', 'root', '-e', `SELECT * FROM ${safeTableName} LIMIT ${limit};`, '--batch'
+    'mysql', '-u', 'root', '-e', `SELECT * FROM ${safeIdent} LIMIT ${limit};`, '--batch'
   ], 15000);
 
   const lines = dataOut.split('\n').filter(l => l.trim().length > 0);
@@ -474,7 +512,7 @@ async function getMySQLTableData(containerId, tableName, limit) {
     return row;
   });
 
-  return { columns: headers, rows, dbType: 'mysql', tableName: safeTableName };
+  return { columns: headers, rows, dbType: 'mysql', tableName };
 }
 
 // MongoDB auth helper — extract credentials from container environment variables
@@ -541,13 +579,19 @@ async function getMongoCollections(containerId) {
   throw new Error('Could not connect to MongoDB');
 }
 
+// Escape a string for use inside a JavaScript double-quoted string in mongosh --eval
+function escapeMongoJsString(name) {
+  return String(name).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
 async function getMongoCollectionData(containerId, collectionName, limit) {
-  const safeCollectionName = collectionName.replace(/[^a-zA-Z0-9_]/g, '');
+  // Use getCollection("name") instead of db.name to handle special chars (hyphens, dots, etc.)
+  const safeName = escapeMongoJsString(collectionName);
   const authArgs = await getMongoAuthArgs(containerId);
 
   const commandVariants = [
-    ['mongosh', '--quiet', ...authArgs, '--eval', `JSON.stringify(db.${safeCollectionName}.find().limit(${limit}).toArray())`],
-    ['mongo', '--quiet', ...authArgs, '--eval', `JSON.stringify(db.${safeCollectionName}.find().limit(${limit}).toArray())`],
+    ['mongosh', '--quiet', ...authArgs, '--eval', `JSON.stringify(db.getCollection("${safeName}").find().limit(${limit}).toArray())`],
+    ['mongo', '--quiet', ...authArgs, '--eval', `JSON.stringify(db.getCollection("${safeName}").find().limit(${limit}).toArray())`],
   ];
 
   for (const cmdArgs of commandVariants) {
@@ -578,7 +622,7 @@ async function getMongoCollectionData(containerId, collectionName, limit) {
         return clean;
       });
 
-      return { columns, rows: cleanRows, dbType: 'mongodb', tableName: safeCollectionName };
+      return { columns, rows: cleanRows, dbType: 'mongodb', tableName: collectionName };
     } catch {
       continue;
     }
@@ -687,9 +731,20 @@ async function executeMongoCommand(containerId, command) {
     ['mongo', '--quiet', ...authArgs],
   ];
 
+  // Safety: inject a default limit on .find() calls without one
+  let safeCommand = command;
+  const MAX_QUERY_ROWS = 1000;
+  if (/\.find\s*\(/.test(safeCommand) && !/\.limit\s*\(/.test(safeCommand)) {
+    if (/\.toArray\s*\(/.test(safeCommand)) {
+      safeCommand = safeCommand.replace(/\.toArray\s*\(/, `.limit(${MAX_QUERY_ROWS}).toArray(`);
+    } else {
+      safeCommand = safeCommand.replace(/(\.find\s*\([^)]*\))/, `$1.limit(${MAX_QUERY_ROWS})`);
+    }
+  }
+
   for (const variant of commandVariants) {
     try {
-      const { stdout, stderr } = await execDockerWithInput(containerId, variant, command, 30000);
+      const { stdout, stderr } = await execDockerWithInput(containerId, variant, safeCommand, 30000);
       const output = (stdout || stderr).trim();
 
       // Check for errors
@@ -837,7 +892,20 @@ async function executeMongoUriQuery(uri, command) {
   }
 
   try {
-    const { stdout, stderr } = await execMongoUriEval(uri.trim(), command, 30000);
+    // Safety: inject a default limit on .find() calls that don't already have one
+    // to prevent unbounded result sets from crashing the app.
+    let safeCommand = command;
+    const MAX_QUERY_ROWS = 1000;
+    if (/\.find\s*\(/.test(safeCommand) && !/\.limit\s*\(/.test(safeCommand)) {
+      // Insert .limit() before .toArray() if present, otherwise append it
+      if (/\.toArray\s*\(/.test(safeCommand)) {
+        safeCommand = safeCommand.replace(/\.toArray\s*\(/, `.limit(${MAX_QUERY_ROWS}).toArray(`);
+      } else {
+        safeCommand = safeCommand.replace(/(\.find\s*\([^)]*\))/, `$1.limit(${MAX_QUERY_ROWS})`);
+      }
+    }
+
+    const { stdout, stderr } = await execMongoUriEval(uri.trim(), safeCommand, 30000);
     const output = (stdout || stderr).trim();
 
     try {
@@ -959,20 +1027,20 @@ async function createTable(containerId, containerImage, tableName, columns) {
     return { error: 'Unsupported database type', success: false };
   }
 
-  // Sanitize table name
-  const safeTableName = tableName.replace(/[^a-zA-Z0-9_]/g, '');
-  if (!safeTableName || safeTableName.length === 0) {
+  // Validate table name is non-empty (quoting handles special chars)
+  const trimmedTableName = (tableName || '').trim();
+  if (!trimmedTableName) {
     return { error: 'Invalid table name', success: false };
   }
 
   try {
     switch (dbType) {
       case 'postgresql':
-        return await createPostgresTable(containerId, safeTableName, columns);
+        return await createPostgresTable(containerId, trimmedTableName, columns);
       case 'mysql':
-        return await createMySQLTable(containerId, safeTableName, columns);
+        return await createMySQLTable(containerId, trimmedTableName, columns);
       case 'mongodb':
-        return await createMongoCollection(containerId, safeTableName, columns);
+        return await createMongoCollection(containerId, trimmedTableName, columns);
       default:
         return { error: 'Unsupported database type', success: false };
     }
@@ -986,9 +1054,9 @@ async function createPostgresTable(containerId, tableName, columns) {
     return { error: 'At least one column is required', success: false };
   }
 
-  // Build column definitions
+  // Build column definitions using proper identifier quoting
   const columnDefs = columns.map(col => {
-    const safeName = col.name.replace(/[^a-zA-Z0-9_]/g, '');
+    const safeName = escapePostgresIdent(col.name);
     let def = `${safeName} ${col.type}`;
 
     if (col.primaryKey) def += ' PRIMARY KEY';
@@ -1008,7 +1076,7 @@ async function createPostgresTable(containerId, tableName, columns) {
     return def;
   }).join(', ');
 
-  const query = `CREATE TABLE ${tableName} (${columnDefs});`;
+  const query = `CREATE TABLE ${escapePostgresIdent(tableName)} (${columnDefs});`;
   const result = await executePostgresQuery(containerId, query);
 
   if (result.error) {
@@ -1023,9 +1091,9 @@ async function createMySQLTable(containerId, tableName, columns) {
     return { error: 'At least one column is required', success: false };
   }
 
-  // Build column definitions
+  // Build column definitions using proper identifier quoting
   const columnDefs = columns.map(col => {
-    const safeName = col.name.replace(/[^a-zA-Z0-9_]/g, '');
+    const safeName = escapeMySQLIdent(col.name);
     let def = `${safeName} ${col.type}`;
 
     if (col.notNull || col.primaryKey) def += ' NOT NULL';
@@ -1045,9 +1113,9 @@ async function createMySQLTable(containerId, tableName, columns) {
 
   // Find primary key column
   const primaryKeyCol = columns.find(col => col.primaryKey);
-  const primaryKeyDef = primaryKeyCol ? `, PRIMARY KEY (${primaryKeyCol.name.replace(/[^a-zA-Z0-9_]/g, '')})` : '';
+  const primaryKeyDef = primaryKeyCol ? `, PRIMARY KEY (${escapeMySQLIdent(primaryKeyCol.name)})` : '';
 
-  const query = `CREATE TABLE ${tableName} (${columnDefs}${primaryKeyDef});`;
+  const query = `CREATE TABLE ${escapeMySQLIdent(tableName)} (${columnDefs}${primaryKeyDef});`;
   const result = await executeMySQLQuery(containerId, query);
 
   if (result.error) {
@@ -1061,9 +1129,9 @@ async function createMongoCollection(containerId, collectionName, columns) {
   // MongoDB doesn't require schema, so we just create the collection
   // If columns are provided, we can create a sample document or validation schema
 
+  const safeName = escapeMongoJsString(collectionName);
   const commands = [
-    `db.createCollection('${collectionName}')`,
-    `db.createCollection("${collectionName}")`
+    `db.createCollection("${safeName}")`,
   ];
 
   for (const command of commands) {
