@@ -645,11 +645,19 @@ function addDockerContainerNodes(nodes, edges, dockerSnapshot, nodesByPid, portT
       continue;
     }
 
+    // Deduplicate by hostPort — Docker emits both IPv4 (0.0.0.0) and IPv6 ([::])
+    // bindings for the same port. Keep the first occurrence (IPv4 preferred).
+    const seenHostPorts = new Set();
     const graphPorts = container.ports
       .filter(p => p.hostPort)
+      .filter(p => {
+        if (seenHostPorts.has(p.hostPort)) return false;
+        seenHostPorts.add(p.hostPort);
+        return true;
+      })
       .map(p => ({
         port: p.hostPort,
-        host: p.hostIp || '0.0.0.0',
+        host: p.hostIp === '0.0.0.0' || p.hostIp === '::' ? 'localhost' : (p.hostIp || 'localhost'),
         description: `Container port ${p.containerPort}/${p.protocol}`,
       }));
 
