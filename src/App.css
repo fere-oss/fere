@@ -7663,6 +7663,15 @@ textarea {
   color: var(--text-faint);
 }
 
+.unified-logs-search-error {
+  border-color: #ef4444;
+  background: rgba(239, 68, 68, 0.06);
+}
+
+.unified-logs-search-error:focus {
+  border-color: #ef4444;
+}
+
 .unified-logs-stats {
   font-family: var(--font-mono);
   font-size: 12px;

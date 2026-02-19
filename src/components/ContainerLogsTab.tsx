@@ -51,6 +51,8 @@ export function ContainerLogsTab({ containers, initialSelectedId }: ContainerLog
   // Track which containers are actively streaming
   const [activeStreams, setActiveStreams] = useState<Map<string, string>>(new Map()); // containerId -> streamId
   const activeStreamsRef = useRef(activeStreams);
+  // Track containers with in-flight start/stop to prevent duplicate spawns
+  const pendingStreamsRef = useRef(new Set<string>());
   // Unified log entries from all containers
   const [logs, setLogs] = useState<UnifiedLogEntry[]>([]);
   // UI state
@@ -61,6 +63,7 @@ export function ContainerLogsTab({ containers, initialSelectedId }: ContainerLog
   const [searchQuery, setSearchQuery] = useState('');
   const [searchTestRegex, setSearchTestRegex] = useState<RegExp | null>(null);
   const [searchHighlightRegex, setSearchHighlightRegex] = useState<RegExp | null>(null);
+  const [searchRegexError, setSearchRegexError] = useState(false);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
 
   const logsContainerRef = useRef<HTMLDivElement>(null);
@@ -116,6 +119,7 @@ export function ContainerLogsTab({ containers, initialSelectedId }: ContainerLog
     if (!searchQuery.trim()) {
       setSearchTestRegex(null);
       setSearchHighlightRegex(null);
+      setSearchRegexError(false);
       return;
     }
     try {
@@ -123,9 +127,11 @@ export function ContainerLogsTab({ containers, initialSelectedId }: ContainerLog
       // on .test() and can cause intermittent false negatives.
       setSearchTestRegex(new RegExp(searchQuery, 'i'));
       setSearchHighlightRegex(new RegExp(searchQuery, 'gi'));
+      setSearchRegexError(false);
     } catch {
       setSearchTestRegex(null);
       setSearchHighlightRegex(null);
+      setSearchRegexError(true);
     }
   }, [searchQuery]);
 
@@ -172,30 +178,29 @@ export function ContainerLogsTab({ containers, initialSelectedId }: ContainerLog
     });
   }, [containers]);
 
-  // Auto-scroll when follow is enabled
+  // Auto-scroll when follow is enabled and not paused
   useEffect(() => {
-    if (follow && logsContainerRef.current) {
+    if (follow && !isPaused && logsContainerRef.current) {
       logsContainerRef.current.scrollTop = logsContainerRef.current.scrollHeight;
     }
-  }, [logs, follow]);
+  }, [logs, follow, isPaused]);
 
-  // Flush buffer to logs every 100ms
+  // Flush buffer to logs every 100ms — always flush even when paused so data
+  // is never silently discarded.  The 5000-line cap prevents memory issues.
+  // Pausing only freezes auto-scroll; the user sees new lines when they resume.
   useEffect(() => {
     const interval = setInterval(() => {
       if (bufferRef.current.length > 0) {
-        if (!isPaused) {
-          setLogs(prev => {
-            const newLogs = [...prev, ...bufferRef.current];
-            // Keep only last 5000 logs for performance
-            return newLogs.slice(-5000);
-          });
-        }
-        // Always drain buffer to prevent unbounded growth when paused
+        const batch = bufferRef.current;
         bufferRef.current = [];
+        setLogs(prev => {
+          const newLogs = [...prev, ...batch];
+          return newLogs.slice(-5000);
+        });
       }
     }, 100);
     return () => clearInterval(interval);
-  }, [isPaused]);
+  }, []);
 
   // Handle incoming log data
   const handleLogData = useCallback((data: ContainerLogData) => {
@@ -243,11 +248,15 @@ export function ContainerLogsTab({ containers, initialSelectedId }: ContainerLog
     };
   }, [handleLogData]);
 
-  // Start streaming for a container
+  // Start streaming for a container.
+  // Uses refs instead of state to avoid stale-closure races when multiple
+  // calls arrive before the first setActiveStreams re-render (Bug 25/28).
   const startStream = useCallback(async (containerId: string) => {
-    if (activeStreams.has(containerId)) return;
+    if (activeStreamsRef.current.has(containerId)) return;
+    if (pendingStreamsRef.current.has(containerId)) return;
     if (!window.electronAPI?.startContainerLogs) return;
 
+    pendingStreamsRef.current.add(containerId);
     try {
       const result = await window.electronAPI.startContainerLogs(containerId, {
         tail: 50,
@@ -261,12 +270,14 @@ export function ContainerLogsTab({ containers, initialSelectedId }: ContainerLog
       }
     } catch (err) {
       console.error('Failed to start stream:', err);
+    } finally {
+      pendingStreamsRef.current.delete(containerId);
     }
-  }, [activeStreams]);
+  }, []);
 
-  // Stop streaming for a container
+  // Stop streaming for a container — reads from ref to avoid stale closure.
   const stopStream = useCallback(async (containerId: string) => {
-    const streamId = activeStreams.get(containerId);
+    const streamId = activeStreamsRef.current.get(containerId);
     if (!streamId) return;
     if (!window.electronAPI?.stopContainerLogs) return;
 
@@ -280,7 +291,7 @@ export function ContainerLogsTab({ containers, initialSelectedId }: ContainerLog
     } catch (err) {
       console.error('Failed to stop stream:', err);
     }
-  }, [activeStreams]);
+  }, []);
 
   // Toggle container selection
   const toggleContainer = useCallback((containerId: string) => {
@@ -297,15 +308,21 @@ export function ContainerLogsTab({ containers, initialSelectedId }: ContainerLog
     });
   }, [startStream, stopStream]);
 
-  // Select all containers
+  // Select all containers — single batched state update
   const selectAll = useCallback(() => {
-    containers.forEach(c => {
-      if (c.containerId && !selectedContainerIds.has(c.containerId)) {
-        setSelectedContainerIds(prev => new Set(prev).add(c.containerId!));
-        startStream(c.containerId);
-      }
+    const toStart: string[] = [];
+    setSelectedContainerIds(prev => {
+      const next = new Set(prev);
+      containers.forEach(c => {
+        if (c.containerId && !next.has(c.containerId)) {
+          next.add(c.containerId);
+          toStart.push(c.containerId);
+        }
+      });
+      return next;
     });
-  }, [containers, selectedContainerIds, startStream]);
+    toStart.forEach(id => startStream(id));
+  }, [containers, startStream]);
 
   // Deselect all containers
   const deselectAll = useCallback(() => {
@@ -492,7 +509,13 @@ export function ContainerLogsTab({ containers, initialSelectedId }: ContainerLog
             <div className="unified-logs-toolbar-section">
               <button
                 className={`unified-logs-btn ${isPaused ? 'active' : ''}`}
-            onClick={() => setIsPaused(!isPaused)}
+            onClick={() => {
+              const newPaused = !isPaused;
+              setIsPaused(newPaused);
+              // Pause disables auto-scroll; resume re-enables it
+              if (newPaused) setFollow(false);
+              else setFollow(true);
+            }}
             title={isPaused ? 'Resume' : 'Pause'}
           >
             {isPaused ? (
@@ -569,11 +592,12 @@ export function ContainerLogsTab({ containers, initialSelectedId }: ContainerLog
           </div>
 
           <input
-            className="unified-logs-search"
+            className={`unified-logs-search${searchRegexError ? ' unified-logs-search-error' : ''}`}
             type="text"
             placeholder="Search (regex)..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
+            title={searchRegexError ? 'Invalid regex pattern' : undefined}
           />
         </div>
 
