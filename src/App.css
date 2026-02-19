@@ -65,7 +65,7 @@ textarea {
 .app-title {
   font-family: var(--font-display);
   font-size: 55px;
-  font-weight: 500;
+  font-weight: 400;
   letter-spacing: -0.02em;
   color: var(--text-primary);
   user-select: text;
@@ -1732,7 +1732,7 @@ textarea {
   align-items: center;
   gap: 8px;
   font-size: 16px;
-  font-weight: 600;
+  font-weight: 500;
   letter-spacing: -0.01em;
   color: var(--text-primary);
   margin-bottom: 4px;
@@ -2206,7 +2206,7 @@ textarea {
 
 .node-detail-section-title {
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--text-muted);
@@ -6088,9 +6088,388 @@ textarea {
   opacity: 0.9;
 }
 
+.welcome-icon-service-map {
+  width: 100%;
+  max-width: 440px;
+}
+
+.welcome-icon-intro {
+  margin-bottom: 20px;
+}
+
+.welcome-intro-preview {
+  position: relative;
+  width: 100%;
+  height: 220px;
+  border-radius: 20px;
+  border: 1px solid rgba(147, 197, 253, 0.55);
+  background:
+    radial-gradient(circle at 10% 14%, rgba(255, 255, 255, 0.48), transparent 20%),
+    radial-gradient(circle at 26% 70%, rgba(255, 255, 255, 0.34), transparent 24%),
+    radial-gradient(circle at 62% 12%, rgba(255, 255, 255, 0.28), transparent 22%),
+    radial-gradient(circle at 90% 72%, rgba(255, 255, 255, 0.3), transparent 24%),
+    radial-gradient(circle at 14% 16%, rgba(255, 255, 255, 0.55), transparent 36%),
+    radial-gradient(circle at 84% 20%, rgba(56, 189, 248, 0.32), transparent 48%),
+    radial-gradient(circle at 72% 88%, rgba(59, 130, 246, 0.28), transparent 46%),
+    linear-gradient(155deg, #dbeafe 0%, #93c5fd 42%, #60a5fa 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.welcome-intro-logo {
+  width: 84px;
+  height: 84px;
+  object-fit: contain;
+  filter: drop-shadow(0 10px 20px rgba(30, 64, 175, 0.25));
+}
+
+.service-map-preview {
+  position: relative;
+  width: 100%;
+  height: 220px;
+  border-radius: 20px;
+  border: 1px solid rgba(147, 197, 253, 0.55);
+  background:
+    radial-gradient(circle at 14% 16%, rgba(255, 255, 255, 0.55), transparent 36%),
+    radial-gradient(circle at 84% 20%, rgba(56, 189, 248, 0.32), transparent 48%),
+    radial-gradient(circle at 72% 88%, rgba(59, 130, 246, 0.28), transparent 46%),
+    linear-gradient(155deg, #dbeafe 0%, #93c5fd 42%, #60a5fa 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+.service-map-streams {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.service-map-stream {
+  stroke: #737373;
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  stroke-dasharray: 4 7;
+  animation: serviceMapFlow 8s linear infinite;
+  opacity: 0.72;
+}
+
+.service-map-stream.stream-b {
+  animation-delay: -1.3s;
+}
+
+.service-map-stream.stream-c {
+  animation-delay: -3.1s;
+}
+
+.service-map-stream.stream-d {
+  animation-delay: -4.2s;
+}
+
+@keyframes serviceMapFlow {
+  from {
+    stroke-dashoffset: 0;
+  }
+  to {
+    stroke-dashoffset: -70;
+  }
+}
+
+.service-map-node {
+  position: absolute;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 11px;
+  border-radius: 999px;
+  border: 1px solid #d4d4d4;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 10px 24px -18px rgba(0, 0, 0, 0.5);
+}
+
+.service-map-node-mark {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: #ffffff;
+  font-family: var(--font-mono);
+  overflow: hidden;
+  background: #f5f5f5;
+  border: 1px solid #e5e5e5;
+}
+
+.service-map-node-logo {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+.service-map-node:not(.service-map-core) .service-map-node-mark {
+  border-radius: 0;
+  background: transparent;
+  border: none;
+  width: 20px;
+  height: 20px;
+}
+
+.service-map-node:not(.service-map-core) .service-map-node-logo {
+  border-radius: 5px;
+}
+
+.service-map-node-name {
+  font-size: 12px;
+  color: #262626;
+  letter-spacing: 0.01em;
+  font-family: var(--font-ui);
+}
+
+.service-map-core {
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  padding: 0;
+}
+
+.service-map-core .service-map-node-mark {
+  width: 40px;
+  height: 40px;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+}
+
+.service-map-core-logo {
+  object-fit: contain;
+  transform: none;
+}
+
+.service-map-node-web {
+  left: 28px;
+  top: 20px;
+}
+
+.service-map-node-pay {
+  right: 24px;
+  top: 20px;
+}
+
+.service-map-node-db {
+  right: 26px;
+  bottom: 22px;
+}
+
+
+.service-map-node-cache {
+  left: 28px;
+  bottom: 22px;
+}
+
+.multi-views-preview {
+  position: relative;
+  width: 100%;
+  height: 220px;
+  border-radius: 20px;
+  border: 1px solid rgba(147, 197, 253, 0.55);
+  background:
+    radial-gradient(circle at 14% 16%, rgba(255, 255, 255, 0.55), transparent 36%),
+    radial-gradient(circle at 84% 20%, rgba(56, 189, 248, 0.32), transparent 48%),
+    radial-gradient(circle at 72% 88%, rgba(59, 130, 246, 0.28), transparent 46%),
+    linear-gradient(155deg, #dbeafe 0%, #93c5fd 42%, #60a5fa 100%);
+  overflow: hidden;
+}
+
+.multi-views-streams {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.multi-views-stream {
+  stroke: #111111;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-dasharray: 5 8;
+  opacity: 0.65;
+  animation: multiViewsFlow 7.5s linear infinite;
+}
+
+.multi-views-stream.stream-2 {
+  animation-delay: -1.2s;
+}
+
+.multi-views-stream.stream-3 {
+  animation-delay: -2.8s;
+}
+
+.multi-views-stream.stream-4 {
+  animation-delay: -4.1s;
+}
+
+@keyframes multiViewsFlow {
+  from {
+    stroke-dashoffset: 0;
+  }
+  to {
+    stroke-dashoffset: -75;
+  }
+}
+
+.multi-views-code-block {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 292px;
+  border-radius: 0;
+  border: none;
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  box-shadow: none;
+  padding: 0;
+  height: 120px;
+  overflow: hidden;
+  z-index: 3;
+}
+
+.multi-views-code-scroll {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.multi-views-code-line {
+  color: #000000;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  width: 0;
+  max-width: calc(var(--chars, 40) * 1ch);
+  opacity: 0;
+  animation: multiViewsGenerate 9.2s steps(44, end) infinite;
+  animation-delay: var(--line-delay, 0s);
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+.multi-views-code-line::after {
+  content: "";
+  display: inline-block;
+  width: 1px;
+  height: 0.95em;
+  margin-left: 2px;
+  vertical-align: -0.1em;
+  background: currentColor;
+  animation: multiViewsCaret 1s steps(1, end) infinite;
+}
+
+.multi-views-token-time {
+  color: #000000;
+  margin-right: 6px;
+}
+
+.multi-views-token-node {
+  color: #000000;
+  margin-right: 6px;
+}
+
+.multi-views-code-line.tone-nvidia-green {
+  color: #000000;
+}
+
+.multi-views-code-line.tone-ms-blue {
+  color: #000000;
+}
+
+.multi-views-code-line.tone-light-orange {
+  color: #000000;
+}
+
+.multi-views-code-line.tone-pink {
+  color: #000000;
+}
+
+@keyframes multiViewsGenerate {
+  0% {
+    width: 0;
+    opacity: 0;
+  }
+  6% {
+    opacity: 1;
+  }
+  24% {
+    width: calc(var(--chars, 40) * 1ch);
+    opacity: 1;
+  }
+  86% {
+    width: calc(var(--chars, 40) * 1ch);
+    opacity: 1;
+  }
+  94% {
+    width: 0;
+    opacity: 0;
+  }
+  100% {
+    width: 0;
+    opacity: 0;
+  }
+}
+
+@keyframes multiViewsCaret {
+  0%,
+  49% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+
+
+@media (max-width: 640px) {
+  .service-map-preview {
+    height: 200px;
+  }
+
+  .service-map-node {
+    padding: 6px 9px;
+    gap: 7px;
+  }
+
+  .service-map-node-name {
+    font-size: 11px;
+  }
+
+  .multi-views-preview {
+    height: 200px;
+  }
+
+  .multi-views-code-block {
+    width: 238px;
+    height: 106px;
+  }
+
+  .multi-views-code-line {
+    font-size: 10px;
+  }
+}
+
 .welcome-title {
   font-size: 24px;
-  font-weight: 600;
+  font-weight: 500;
   color: #171717;
   margin: 0 0 12px 0;
   font-family: var(--font-display);
@@ -6128,14 +6507,21 @@ textarea {
   color: #525252;
 }
 
-.welcome-details li svg {
-  flex-shrink: 0;
-  margin-top: 2px;
-  color: #22c55e;
+.welcome-details li > span:not(.welcome-detail-bullet) {
+  flex: 1;
 }
 
-.welcome-details li span {
-  flex: 1;
+.welcome-detail-bullet {
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  margin-top: 8px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: linear-gradient(145deg, rgba(64, 64, 64, 0.96), rgba(10, 10, 10, 0.98));
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
 }
 
 .welcome-progress {
@@ -6198,7 +6584,7 @@ textarea {
 
 .modal-title {
   font-size: 18px;
-  font-weight: 600;
+  font-weight: 500;
   color: #171717;
   margin: 0;
 }
