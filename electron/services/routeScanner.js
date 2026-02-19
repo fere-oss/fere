@@ -303,6 +303,8 @@ function matchRoutesToService(routes, service) {
 
   if (command.includes('fastapi') || command.includes('uvicorn')) serviceFrameworks.add('fastapi');
   if (command.includes('flask')) serviceFrameworks.add('flask');
+  // uwsgi/gunicorn are Python WSGI servers — treat as Flask/Python API
+  if (command.includes('uwsgi') || command.includes('gunicorn')) serviceFrameworks.add('flask');
   if (command.includes('express')) serviceFrameworks.add('express');
   if (command.includes('koa')) serviceFrameworks.add('koa');
   if (command.includes('hono')) serviceFrameworks.add('hono');

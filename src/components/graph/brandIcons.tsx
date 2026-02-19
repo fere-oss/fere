@@ -69,6 +69,15 @@ const BRAND_DOMAIN_BY_KEY: Record<string, string> = {
   "node.js": "nodejs.org",
   node: "nodejs.org",
   python: "python.org",
+  uwsgi: "python.org",
+  gunicorn: "python.org",
+  flask: "python.org",
+  django: "python.org",
+  fastapi: "fastapi.tiangolo.com",
+  go: "go.dev",
+  golang: "go.dev",
+  java: "java.com",
+  php: "php.net",
 };
 
 const RAW_LOGO_DEV_TOKEN = (process.env.REACT_APP_LOGO_DEV_TOKEN || "").trim();
@@ -100,9 +109,12 @@ export function inferServiceBrand(
   // Extract the runtime command after "|" so the runtime tech (e.g. "node") is
   // matched instead of "docker" from the prefix.
   const command = node.command || "";
-  const runtimeCommand = command.includes(" | ")
+  let runtimeCommand = command.includes(" | ")
     ? command.split(" | ").slice(1).join(" | ")
     : command;
+  // Strip docker infrastructure wrappers (e.g. docker-entrypoint.sh) so the
+  // actual runtime tech (node, python, etc.) is matched instead of "docker".
+  runtimeCommand = runtimeCommand.replace(/^docker-entrypoint\.sh\s+/i, "").trim();
 
   // Prefer service name and image over command to avoid
   // "docker: ..." strings forcing a Docker logo.

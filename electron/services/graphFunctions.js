@@ -203,7 +203,7 @@ function categorizeContainerImage(image) {
   if (imageLower.includes('traefik')) return 'webserver';
   if (imageLower.includes('haproxy')) return 'webserver';
   if (imageLower.includes('node') && (imageLower.includes('react') || imageLower.includes('vue') || imageLower.includes('angular'))) return 'frontend';
-  if (imageLower.includes('python') || imageLower.includes('django') || imageLower.includes('flask') || imageLower.includes('fastapi')) return 'backend';
+  if (imageLower.includes('python') || imageLower.includes('django') || imageLower.includes('flask') || imageLower.includes('fastapi')) return 'python';
   if (imageLower.includes('node') || imageLower.includes('express') || imageLower.includes('nestjs')) return 'nodejs';
   if (imageLower.includes('worker') || imageLower.includes('celery') || imageLower.includes('sidekiq')) return 'worker';
   return 'container';
