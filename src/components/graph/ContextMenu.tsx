@@ -10,17 +10,27 @@ interface ContextMenuProps {
 }
 
 export function ContextMenu({ node, x, y, width, height, onClose }: ContextMenuProps) {
-  const hasPort = node.ports.length > 0;
+  const isNotRunning =
+    !!node.isGhost ||
+    node.healthStatus === "red" ||
+    (node.isDockerContainer && node.containerState !== "running");
+  const hasPort = !isNotRunning && node.ports.length > 0;
   const hasProjectPath = !!node.projectPath;
   const isExternal = node.type === 'external';
   const isDockerContainerNode = Boolean(node.isDockerContainer && node.containerId);
-  const canKillProcess = !isExternal && (isDockerContainerNode || node.pid > 0);
+  const canStartService = Boolean(
+    isNotRunning &&
+      (isDockerContainerNode || ((node.startCommand || node.command) && (node.startProjectPath || node.projectPath))),
+  );
+  const canKillProcess =
+    !isExternal && !isNotRunning && (isDockerContainerNode || node.pid > 0);
   const mainPort = node.ports[0]?.port;
 
   const menuWidth = 200;
   let menuItems = 1; // copy pid
   if (hasPort) menuItems += 2; // open browser + copy port
   if (hasProjectPath) menuItems += 1; // open terminal
+  if (canStartService) menuItems += 1; // start service
   if (canKillProcess) menuItems += 1; // kill
   const menuHeight = 32 + menuItems * 34;
   const menuStyle: React.CSSProperties = {
@@ -66,13 +76,30 @@ export function ContextMenu({ node, x, y, width, height, onClose }: ContextMenuP
               needsRefresh = ensureSuccess(result, 'Kill Process');
             }
             break;
+          case 'start-service':
+            if (isDockerContainerNode && node.containerId) {
+              const result = await window.electronAPI.startContainer(node.containerId);
+              needsRefresh = ensureSuccess(result, 'Start Service');
+            } else {
+              const command = node.startCommand || node.command;
+              const cwd = node.startProjectPath || node.projectPath;
+              if (command && cwd) {
+                const result = await window.electronAPI.startProcess(command, cwd);
+                needsRefresh = ensureSuccess(result, 'Start Service');
+              }
+            }
+            break;
           case 'copy-port':
             if (hasPort) {
               await navigator.clipboard.writeText(String(mainPort));
             }
             break;
           case 'copy-pid':
-            await navigator.clipboard.writeText(String(node.pid));
+            if (isNotRunning) {
+              await navigator.clipboard.writeText(node.name);
+            } else {
+              await navigator.clipboard.writeText(String(node.pid));
+            }
             break;
         }
       } catch (error) {
@@ -131,6 +158,19 @@ export function ContextMenu({ node, x, y, width, height, onClose }: ContextMenuP
             <span>Open in Terminal</span>
           </div>
         )}
+        {canStartService && (
+          <div
+            className="context-menu-item"
+            onClick={handleAction('start-service')}
+          >
+            <span className="context-menu-icon" aria-hidden="true">
+              <svg viewBox="0 0 20 20" width="14" height="14">
+                <path d="M6 4l10 6-10 6V4z" fill="currentColor" />
+              </svg>
+            </span>
+            <span>Start Service</span>
+          </div>
+        )}
         {canKillProcess && (
           <div
             className="context-menu-item context-menu-item-danger"
@@ -172,7 +212,7 @@ export function ContextMenu({ node, x, y, width, height, onClose }: ContextMenuP
               <rect x="3" y="3" width="10" height="12" rx="2" fill="none" stroke="currentColor" strokeWidth="1.4" />
             </svg>
           </span>
-          <span>Copy PID ({node.pid})</span>
+          <span>{isNotRunning ? `Copy Service Name (${node.name})` : `Copy PID (${node.pid})`}</span>
         </div>
       </div>
     </>
