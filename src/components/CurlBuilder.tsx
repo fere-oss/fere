@@ -8,10 +8,12 @@ import type {
 
 interface CurlBuilderProps {
   nodes: GraphNode[];
-  initialServiceId?: string;
 }
 
+let headerIdCounter = 0;
+
 interface Header {
+  id: number;
   key: string;
   value: string;
   enabled: boolean;
@@ -28,9 +30,9 @@ type HttpMethod =
 type OutputTab = "curl" | "response" | "history";
 
 const DEFAULT_HEADERS: Header[] = [
-  { key: "Content-Type", value: "application/json", enabled: true },
-  { key: "Accept", value: "application/json", enabled: true },
-  { key: "Authorization", value: "Bearer ", enabled: false },
+  { id: ++headerIdCounter, key: "Content-Type", value: "application/json", enabled: true },
+  { id: ++headerIdCounter, key: "Accept", value: "application/json", enabled: true },
+  { id: ++headerIdCounter, key: "Authorization", value: "Bearer ", enabled: false },
 ];
 
 // Syntax highlight a curl command for display
@@ -808,7 +810,7 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
   );
 
   const addHeader = useCallback(() => {
-    setHeaders((prev) => [...prev, { key: "", value: "", enabled: true }]);
+    setHeaders((prev) => [...prev, { id: ++headerIdCounter, key: "", value: "", enabled: true }]);
   }, []);
 
   const removeHeader = useCallback((index: number) => {
@@ -1216,7 +1218,7 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
               </div>
               <div className="curl-headers-list">
                 {headers.map((header, index) => (
-                  <div key={index} className="curl-header-row">
+                  <div key={header.id} className="curl-header-row">
                     <input
                       type="checkbox"
                       checked={header.enabled}

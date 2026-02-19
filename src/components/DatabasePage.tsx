@@ -125,6 +125,9 @@ export function DatabasePage({ node, onBack }: DatabasePageProps) {
     formatCellValue,
     getDbTypeLabel,
     getQueryPlaceholder,
+    actionError,
+    clearActionError,
+    refreshTables,
   } = useDatabasePage(node);
 
   const filteredRecentUris = useMemo(() => {
@@ -269,8 +272,15 @@ export function DatabasePage({ node, onBack }: DatabasePageProps) {
         </div>
       )}
 
+      {actionError && (
+        <div className="db-action-error">
+          <span>{actionError}</span>
+          <button onClick={clearActionError}>&times;</button>
+        </div>
+      )}
+
       {error ? (
-        <DatabaseErrorState error={error} onRetry={() => window.location.reload()} />
+        <DatabaseErrorState error={error} onRetry={refreshTables} />
       ) : (
         <div className="db-content">
           {activeTab === 'data' ? (
