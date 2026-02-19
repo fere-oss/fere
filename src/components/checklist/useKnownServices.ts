@@ -109,12 +109,19 @@ export function nodeServiceKey(node: GraphNode): string {
   });
 }
 
-function looseServiceIdentity(service: {
+// Loose identity used for deduplication and fallback matching.  Includes
+// projectPath so distinct service instances (e.g. two "redis" in /project-a
+// vs /project-b) are NOT collapsed into one entry (Bug 33).  containerId is
+// intentionally omitted because it changes on every container restart.
+export function looseServiceIdentity(service: {
   name: string;
   type: string;
   isDockerContainer?: boolean;
+  projectPath?: string;
 }) {
-  return `${service.name}::${service.type}::${service.isDockerContainer ? "docker" : "native"}`;
+  const base = `${service.name}::${service.type}::${service.isDockerContainer ? "docker" : "native"}`;
+  if (service.projectPath) return `${base}::${service.projectPath}`;
+  return base;
 }
 
 function dedupeServices(services: KnownService[]): KnownService[] {
@@ -135,7 +142,7 @@ function dedupeServices(services: KnownService[]): KnownService[] {
       (!existing.projectPath && !!service.projectPath);
 
     if (preferCurrent) {
-      byLooseId.set(key, { ...existing, ...service, dismissed: existing.dismissed && service.dismissed });
+      byLooseId.set(key, { ...existing, ...service, dismissed: existing.dismissed || service.dismissed });
     }
   }
   return Array.from(byLooseId.values());
@@ -145,21 +152,27 @@ function findServiceIndexByNode(services: KnownService[], node: GraphNode): numb
   const exactKey = nodeServiceKey(node);
   let idx = services.findIndex((s) => serviceKey(s) === exactKey);
   if (idx !== -1) return idx;
+  // Loose fallback — include projectPath to avoid matching the wrong service
+  // when multiple share name/type/isDocker (Bug 35).
   idx = services.findIndex(
     (s) =>
       s.name === node.name &&
       s.type === node.type &&
-      !!s.isDockerContainer === !!node.isDockerContainer,
+      !!s.isDockerContainer === !!node.isDockerContainer &&
+      (s.projectPath || "") === (node.projectPath || ""),
   );
   return idx;
 }
 
 function matchesServiceNodeLoose(service: KnownService, node: GraphNode): boolean {
-  return (
-    service.name === node.name &&
-    service.type === node.type &&
-    !!service.isDockerContainer === !!node.isDockerContainer
-  );
+  if (service.name !== node.name || service.type !== node.type) return false;
+  if (!!service.isDockerContainer !== !!node.isDockerContainer) return false;
+  // Discriminate by projectPath when both have one, so two "redis" containers
+  // in different projects don't cross-match (Bug 36).
+  if (service.projectPath && node.projectPath && service.projectPath !== node.projectPath) {
+    return false;
+  }
+  return true;
 }
 
 type TabGrouping = "repo" | "subproject";
@@ -478,13 +491,15 @@ export function useKnownServices(
 
   const removeService = useCallback(
     (tabId: string, key: string) => {
-      // Add to removed blocklist so auto-learn won't re-add
-      const tabRemoved = removedKeys.get(tabId) || new Set<string>();
-      tabRemoved.add(key);
-      removedKeys.set(tabId, tabRemoved);
-      persistRemovedKeys(tabId, tabRemoved);
-
+      // Blocklist update + service removal happen inside the same functional
+      // updater so rapid calls can't interleave and leave gaps (Bug 37).
       setServiceMap((prev) => {
+        // Update blocklist atomically with the state change
+        const tabRemoved = removedKeys.get(tabId) || new Set<string>();
+        tabRemoved.add(key);
+        removedKeys.set(tabId, tabRemoved);
+        persistRemovedKeys(tabId, tabRemoved);
+
         const newMap = new Map(prev);
         const services = [...(newMap.get(tabId) || [])];
         const filtered = services.filter(
