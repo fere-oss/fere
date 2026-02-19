@@ -109,6 +109,59 @@ export function nodeServiceKey(node: GraphNode): string {
   });
 }
 
+function looseServiceIdentity(service: {
+  name: string;
+  type: string;
+  isDockerContainer?: boolean;
+}) {
+  return `${service.name}::${service.type}::${service.isDockerContainer ? "docker" : "native"}`;
+}
+
+function dedupeServices(services: KnownService[]): KnownService[] {
+  const byLooseId = new Map<string, KnownService>();
+  for (const service of services) {
+    const key = looseServiceIdentity(service);
+    const existing = byLooseId.get(key);
+    if (!existing) {
+      byLooseId.set(key, service);
+      continue;
+    }
+
+    // Prefer active entries and entries with richer restart metadata.
+    const preferCurrent =
+      (!service.dismissed && existing.dismissed) ||
+      (!existing.containerId && !!service.containerId) ||
+      (!existing.lastCommand && !!service.lastCommand) ||
+      (!existing.projectPath && !!service.projectPath);
+
+    if (preferCurrent) {
+      byLooseId.set(key, { ...existing, ...service, dismissed: existing.dismissed && service.dismissed });
+    }
+  }
+  return Array.from(byLooseId.values());
+}
+
+function findServiceIndexByNode(services: KnownService[], node: GraphNode): number {
+  const exactKey = nodeServiceKey(node);
+  let idx = services.findIndex((s) => serviceKey(s) === exactKey);
+  if (idx !== -1) return idx;
+  idx = services.findIndex(
+    (s) =>
+      s.name === node.name &&
+      s.type === node.type &&
+      !!s.isDockerContainer === !!node.isDockerContainer,
+  );
+  return idx;
+}
+
+function matchesServiceNodeLoose(service: KnownService, node: GraphNode): boolean {
+  return (
+    service.name === node.name &&
+    service.type === node.type &&
+    !!service.isDockerContainer === !!node.isDockerContainer
+  );
+}
+
 type TabGrouping = "repo" | "subproject";
 
 function getNodeTabPath(
@@ -139,7 +192,7 @@ export function useKnownServices(
       const map = new Map<string, KnownService[]>();
       tabs.forEach((tab) => {
         if (tab.id !== SYSTEM_TAB_ID) {
-          map.set(tab.id, loadServices(tab.id));
+          map.set(tab.id, dedupeServices(loadServices(tab.id)));
         }
       });
       return map;
@@ -187,7 +240,7 @@ export function useKnownServices(
       let changed = false;
       for (const id of newTabIds) {
         if (!newMap.has(id)) {
-          newMap.set(id, loadServices(id));
+          newMap.set(id, dedupeServices(loadServices(id)));
           changed = true;
         }
       }
@@ -210,9 +263,7 @@ export function useKnownServices(
         if (tabNodes.length === 0) continue;
 
         const existing = newMap.get(tab.id) || [];
-        const existingKeys = new Set(
-          existing.map((s) => serviceKey(s)),
-        );
+        const existingKeys = new Set(existing.map((s) => serviceKey(s)));
 
         let tabChanged = false;
         const updated = [...existing];
@@ -222,46 +273,52 @@ export function useKnownServices(
         for (const node of tabNodes) {
           const key = nodeServiceKey(node);
           const legacy = legacyServiceKey(node.name, node.type);
-          if (!existingKeys.has(key) && (!tabRemoved || (!tabRemoved.has(key) && !tabRemoved.has(legacy)))) {
-            updated.push({
-              name: node.name,
-              type: node.type,
-              dismissed: false,
-              addedManually: false,
+          const idx = findServiceIndexByNode(updated, node);
+
+          if (idx === -1) {
+            if (!existingKeys.has(key) && (!tabRemoved || (!tabRemoved.has(key) && !tabRemoved.has(legacy)))) {
+              updated.push({
+                name: node.name,
+                type: node.type,
+                dismissed: false,
+                addedManually: false,
+                lastCommand: node.command || undefined,
+                projectPath: node.projectPath || undefined,
+                isDockerContainer: node.isDockerContainer || false,
+                containerId: node.containerId || undefined,
+              });
+              existingKeys.add(key);
+              tabChanged = true;
+            }
+            continue;
+          }
+
+          const prev = updated[idx];
+          if (
+            prev.containerId !== (node.containerId || undefined) ||
+            prev.lastCommand !== (node.command || undefined) ||
+            prev.projectPath !== (node.projectPath || undefined) ||
+            prev.isDockerContainer !== (node.isDockerContainer || false)
+          ) {
+            updated[idx] = {
+              ...prev,
+              containerId: node.containerId || undefined,
               lastCommand: node.command || undefined,
               projectPath: node.projectPath || undefined,
               isDockerContainer: node.isDockerContainer || false,
-              containerId: node.containerId || undefined,
-            });
-            existingKeys.add(key);
+            };
             tabChanged = true;
-          } else {
-            // Update start metadata for existing services (containerId may change)
-            const idx = updated.findIndex(
-              (s) => serviceKey(s) === key,
-            );
-            if (idx !== -1) {
-              const prev = updated[idx];
-              if (
-                prev.containerId !== (node.containerId || undefined) ||
-                prev.lastCommand !== (node.command || undefined)
-              ) {
-                updated[idx] = {
-                  ...prev,
-                  containerId: node.containerId || undefined,
-                  lastCommand: node.command || undefined,
-                  projectPath: node.projectPath || undefined,
-                  isDockerContainer: node.isDockerContainer || false,
-                };
-                tabChanged = true;
-              }
-            }
           }
         }
 
+        const deduped = dedupeServices(updated);
+        if (deduped.length !== updated.length) {
+          tabChanged = true;
+        }
+
         if (tabChanged) {
-          newMap.set(tab.id, updated);
-          persistServices(tab.id, updated);
+          newMap.set(tab.id, deduped);
+          persistServices(tab.id, deduped);
           changed = true;
         }
       }
@@ -292,9 +349,8 @@ export function useKnownServices(
       const evaluated: ServiceStatus[] = activeServices.map(
         (svc: KnownService) => {
           const svcKey = serviceKey(svc);
-          const matchingNode = tabNodes.find(
-            (n) => nodeServiceKey(n) === svcKey,
-          );
+          const matchingNode = tabNodes.find((n) => nodeServiceKey(n) === svcKey)
+            || tabNodes.find((n) => matchesServiceNodeLoose(svc, n));
           return {
             service: svc,
             running: matchingNode ? isNodeRunning(matchingNode) : false,
