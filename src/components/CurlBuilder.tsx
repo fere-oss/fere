@@ -419,6 +419,7 @@ function parseCurlCommand(curlStr: string): {
   let url = "";
   const headers: Record<string, string> = {};
   let body: string | undefined;
+  const bodyParts: string[] = [];
 
   for (let i = 1; i < tokens.length; i += 1) {
     const token = tokens[i];
@@ -480,7 +481,7 @@ function parseCurlCommand(curlStr: string): {
       if (!next) {
         return null;
       }
-      body = body ? `${body}&${next}` : next;
+      bodyParts.push(next);
       i += 1;
       continue;
     }
@@ -494,7 +495,7 @@ function parseCurlCommand(curlStr: string): {
       if (nextBody.startsWith("=")) {
         nextBody = nextBody.slice(1);
       }
-      body = body ? `${body}&${nextBody}` : nextBody;
+      bodyParts.push(nextBody);
       continue;
     }
 
@@ -546,6 +547,15 @@ function parseCurlCommand(curlStr: string): {
     return null;
   }
 
+  // Merge multiple -d parts: use & only for form-encoded data, otherwise
+  // keep parts as-is (first part wins for JSON, just like real curl).
+  if (bodyParts.length > 0) {
+    const looksLikeJson = bodyParts.some(
+      (p) => p.trimStart().startsWith("{") || p.trimStart().startsWith("["),
+    );
+    body = looksLikeJson ? bodyParts[0] : bodyParts.join("&");
+  }
+
   // curl sends POST by default when data is present and no explicit method was set.
   if (body && method === "GET") {
     method = "POST";
@@ -555,13 +565,16 @@ function parseCurlCommand(curlStr: string): {
 }
 
 // Generate unique ID for history entries
+let historyIdCounter = 0;
 function generateHistoryId(): string {
-  return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  historyIdCounter += 1;
+  return `${Date.now()}-${historyIdCounter}-${Math.random().toString(36).substr(2, 9)}`;
 }
 
 export function CurlBuilder({ nodes }: CurlBuilderProps) {
   // State for request configuration
   const [selectedNodeId, setSelectedNodeId] = useState<string>("");
+  const [selectedPortIndex, setSelectedPortIndex] = useState<number>(0);
   const [selectedRouteIndex, setSelectedRouteIndex] = useState<number>(-1);
   const [method, setMethod] = useState<HttpMethod>("GET");
   const [customPath, setCustomPath] = useState<string>("");
@@ -579,6 +592,7 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [response, setResponse] = useState<HttpResponse | null>(null);
   const [requestError, setRequestError] = useState<string | null>(null);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
   // State for editable curl
   const [isCurlEditing, setIsCurlEditing] = useState(false);
@@ -620,6 +634,18 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
     loadHistory();
   }, []);
 
+  // Track elapsed time during request execution for timeout indication
+  useEffect(() => {
+    if (!isLoading) {
+      setElapsedSeconds(0);
+      return;
+    }
+    const interval = setInterval(() => {
+      setElapsedSeconds((s) => s + 1);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [isLoading]);
+
   // Get nodes that have ports AND discovered routes (actually testable with curl)
   const httpNodes = useMemo(() => {
     return nodes.filter(
@@ -641,25 +667,27 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
     return selectedNode?.routes || [];
   }, [selectedNode]);
 
-  // Filter routes based on search
+  // Filter routes based on search, preserving original index for stable selection
   const filteredRoutes = useMemo(() => {
-    if (!routeSearch.trim()) return routes;
+    const tagged = routes.map((route, idx) => ({ ...route, _originalIndex: idx }));
+    if (!routeSearch.trim()) return tagged;
     const search = routeSearch.toLowerCase();
-    return routes.filter(
+    return tagged.filter(
       (route) =>
         route.path.toLowerCase().includes(search) ||
         route.method.toLowerCase().includes(search),
     );
   }, [routes, routeSearch]);
 
-  // Get base URL for selected node
+  // Get base URL for selected node using selected port
   const baseUrl = useMemo(() => {
     if (!selectedNode || selectedNode.ports.length === 0) return "";
-    const port = selectedNode.ports[0];
+    const portIdx = Math.min(selectedPortIndex, selectedNode.ports.length - 1);
+    const port = selectedNode.ports[portIdx];
     const host =
       port.host === "0.0.0.0" || port.host === "*" ? "localhost" : port.host;
     return `http://${host}:${port.port}`;
-  }, [selectedNode]);
+  }, [selectedNode, selectedPortIndex]);
 
   // Get current path (from route or custom)
   const currentPath = useMemo(() => {
@@ -669,10 +697,16 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
     return customPath || "/";
   }, [selectedRouteIndex, routes, customPath]);
 
-  // Full URL
+  // Full URL (encode path segments to handle spaces/special chars)
   const fullUrl = useMemo(() => {
     if (!baseUrl) return "";
-    return `${baseUrl}${currentPath}`;
+    try {
+      const url = new URL(currentPath, baseUrl);
+      return url.href;
+    } catch {
+      // Fallback for malformed paths
+      return `${baseUrl}${currentPath}`;
+    }
   }, [baseUrl, currentPath]);
 
   // Generate curl command
@@ -689,11 +723,12 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
     // URL
     parts.push(`'${fullUrl}'`);
 
-    // Headers
+    // Headers (escape single quotes in values to produce valid shell)
     headers
       .filter((h) => h.enabled && h.key && h.value)
       .forEach((h) => {
-        parts.push(`-H '${h.key}: ${h.value}'`);
+        const escapedVal = h.value.replace(/'/g, "'\\''");
+        parts.push(`-H '${h.key}: ${escapedVal}'`);
       });
 
     // Body (for POST, PUT, PATCH)
@@ -714,13 +749,15 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
   const prevCurlCommand = useRef(curlCommand);
 
   // Sync edited curl with generated curl only when the generated command changes
-  // (not when toggling edit mode - that would lose user edits)
+  // and the user is not actively editing (otherwise their edits would be lost)
   useEffect(() => {
     if (curlCommand !== prevCurlCommand.current) {
-      setEditedCurl(curlCommand);
+      if (!isCurlEditing) {
+        setEditedCurl(curlCommand);
+      }
       prevCurlCommand.current = curlCommand;
     }
-  }, [curlCommand]);
+  }, [curlCommand, isCurlEditing]);
 
   // Check if curl has been modified
   const isCurlModified = editedCurl !== curlCommand;
@@ -731,6 +768,7 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
   // Handle node selection
   const handleNodeSelect = useCallback((nodeId: string) => {
     setSelectedNodeId(nodeId);
+    setSelectedPortIndex(0);
     setSelectedRouteIndex(-1);
     setCustomPath("");
     setRouteSearch("");
@@ -809,9 +847,12 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
 
   // Load a request from history into the builder
   const loadFromHistory = useCallback((entry: HistoryEntry) => {
-    // Build curl command from history entry
+    // Build curl command from history entry (escape single quotes in values)
     const headerParts = Object.entries(entry.headers || {})
-      .map(([key, value]) => `-H '${key}: ${value}'`)
+      .map(([key, value]) => {
+        const escapedVal = String(value).replace(/'/g, "'\\''");
+        return `-H '${key}: ${escapedVal}'`;
+      })
       .join(" \\\n  ");
 
     let curlParts = [`curl -X ${entry.method}`, `'${entry.url}'`];
@@ -1009,6 +1050,24 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
             </div>
           </div>
 
+          {/* Port Selector - only show when multiple ports */}
+          {selectedNode && selectedNode.ports.length > 1 && (
+            <div className="curl-section">
+              <label className="curl-section-title">Port</label>
+              <div className="curl-port-selector">
+                {selectedNode.ports.map((p, idx) => (
+                  <button
+                    key={`${p.host}-${p.port}`}
+                    className={`curl-port-option ${selectedPortIndex === idx ? "selected" : ""}`}
+                    onClick={() => setSelectedPortIndex(idx)}
+                  >
+                    :{p.port}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Route Selector with Search */}
           {selectedNode && (
             <div className="curl-section">
@@ -1085,14 +1144,12 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
                       <span className="route-path">Custom path</span>
                     </button>
                   )}
-                  {filteredRoutes.map((route, index) => {
-                    // Find original index in routes array
-                    const originalIndex = routes.findIndex(
-                      (r) => r.path === route.path && r.method === route.method,
-                    );
+                  {filteredRoutes.map((route) => {
+                    // Use the stable original index stored during filtering
+                    const originalIndex = route._originalIndex as number;
                     return (
                       <button
-                        key={`${route.method}-${route.path}`}
+                        key={`${originalIndex}-${route.method}-${route.path}`}
                         className={`curl-route-option ${selectedRouteIndex === originalIndex ? "selected" : ""}`}
                         onClick={() => handleRouteSelect(originalIndex)}
                       >
@@ -1395,7 +1452,10 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
                 {isLoading ? (
                   <div className="curl-response-loading">
                     <span className="curl-loading-spinner" />
-                    <span>Sending request...</span>
+                    <span>
+                      Sending request...{elapsedSeconds > 0 ? ` (${elapsedSeconds}s)` : ""}
+                      {elapsedSeconds >= 25 && " — timeout at 30s"}
+                    </span>
                   </div>
                 ) : requestError ? (
                   <div className="curl-response-error">

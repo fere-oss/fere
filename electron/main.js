@@ -672,16 +672,19 @@ ipcMain.handle("execute-http-request", async (event, options) => {
           const duration = Date.now() - startTime;
           const responseBody = Buffer.concat(chunks).toString("utf8");
 
-          // Try to parse as JSON for pretty display
+          // Try to parse as JSON for pretty display (skip for large bodies to avoid OOM)
           let parsedBody = responseBody;
           let isJson = false;
           const contentType = res.headers["content-type"] || "";
+          const JSON_PRETTY_PRINT_LIMIT = 2 * 1024 * 1024; // 2MB
           if (contentType.includes("application/json")) {
-            try {
-              parsedBody = JSON.stringify(JSON.parse(responseBody), null, 2);
-              isJson = true;
-            } catch (e) {
-              // Keep as string
+            isJson = true;
+            if (responseBody.length <= JSON_PRETTY_PRINT_LIMIT) {
+              try {
+                parsedBody = JSON.stringify(JSON.parse(responseBody), null, 2);
+              } catch (e) {
+                // Keep as raw string
+              }
             }
           }
 
