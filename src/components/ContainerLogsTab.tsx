@@ -277,6 +277,7 @@ export function ContainerLogsTab({ containers, initialSelectedId }: ContainerLog
 
   // Stop streaming for a container — reads from ref to avoid stale closure.
   const stopStream = useCallback(async (containerId: string) => {
+    pendingStreamsRef.current.delete(containerId);
     const streamId = activeStreamsRef.current.get(containerId);
     if (!streamId) return;
     if (!window.electronAPI?.stopContainerLogs) return;

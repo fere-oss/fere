@@ -68,6 +68,8 @@ const {
   evaluateAlerts,
   getAlertPreferences,
   setAlertPreferences,
+  markIntentionalStopForPid,
+  markIntentionalStopForContainer,
 } = require("./services/alertManager");
 
 app.setName("Fere");
@@ -364,6 +366,7 @@ ipcMain.handle("kill-process", async (event, pid) => {
     // The graph only shows dev-related processes and processes with network activity
     const result = await killProcess(pid);
     if (result.success) {
+      markIntentionalStopForPid(pid);
       // Force next snapshot to bypass stale 5s caches.
       clearProcessCache();
       clearPortCache();
@@ -386,6 +389,7 @@ ipcMain.handle("stop-container", async (event, containerId) => {
     }
     const result = await stopContainer(containerId);
     if (result.success) {
+      markIntentionalStopForContainer(containerId);
       clearProcessCache();
       clearPortCache();
       if (snapshotScheduler) {
@@ -429,7 +433,7 @@ const ALLOWED_BINARIES = new Set([
   // Ruby
   "ruby", "rails", "bundle", "bundler", "rake", "puma",
   // Java / JVM
-  "java", "javac", "mvn", "gradle", "gradlew", "./gradlew",
+  "java", "javac", "mvn", "mvnw", "gradle", "gradlew", "./gradlew", "./mvnw",
   // Go
   "go", "air",
   // Rust
@@ -496,6 +500,10 @@ function parseCommand(command) {
     args.push(current);
   }
 
+  if (inSingle || inDouble || escaped) {
+    return null;
+  }
+
   return args;
 }
 
@@ -525,18 +533,46 @@ ipcMain.handle("start-process", async (event, command, cwd) => {
     }
 
     const parts = parseCommand(command);
+    if (!parts) {
+      return { success: false, error: "Malformed command (unmatched quote or escape)" };
+    }
     if (parts.length === 0) {
       return { success: false, error: "Empty command" };
     }
 
-    const binary = path.basename(parts[0]);
+    const requestedBinary = parts[0];
+    const binary = path.basename(requestedBinary);
+
+    // Prevent allowlist bypass via arbitrary absolute/relative paths.
+    // Allow explicit wrapper scripts only from the selected cwd.
+    const usesPath = requestedBinary.includes("/") || requestedBinary.includes("\\");
+    const isAllowedWrapper = requestedBinary === "./gradlew" || requestedBinary === "./mvnw";
+    if (usesPath && !isAllowedWrapper) {
+      return { success: false, error: "Binary path must be a known wrapper or bare command" };
+    }
+
     if (!ALLOWED_BINARIES.has(binary)) {
-      console.warn(`start-process: blocked disallowed binary "${binary}"`);
+      console.warn(`start-process: blocked disallowed binary "${requestedBinary}"`);
       return { success: false, error: `Binary "${binary}" is not in the allowlist` };
     }
 
+    let spawnBinary = requestedBinary;
+    if (isAllowedWrapper) {
+      const fs = require("fs");
+      const wrapperPath = path.resolve(cwd, requestedBinary);
+      if (!wrapperPath.startsWith(path.resolve(cwd) + path.sep)) {
+        return { success: false, error: "Invalid wrapper path" };
+      }
+      try {
+        fs.accessSync(wrapperPath, fs.constants.X_OK);
+      } catch {
+        return { success: false, error: `Wrapper script not executable: ${requestedBinary}` };
+      }
+      spawnBinary = wrapperPath;
+    }
+
     const { spawn } = require("child_process");
-    const child = spawn(parts[0], parts.slice(1), {
+    const child = spawn(spawnBinary, parts.slice(1), {
       cwd,
       detached: true,
       stdio: "ignore",
