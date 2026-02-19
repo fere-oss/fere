@@ -180,7 +180,7 @@ function MultipleViewsPreview() {
                 style={
                   {
                     "--chars": chars,
-                    "--line-delay": `${index * 1.15}s`,
+                    "--line-delay": `${index * 1.2}s`,
                   } as CSSProperties
                 }
               >

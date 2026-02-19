@@ -763,18 +763,6 @@ function App() {
       <div className="app-header">
         <h1 className="app-title">fere</h1>
         <button
-          className="alert-toggle"
-          onClick={() => setShowWelcome(true)}
-          title="Show onboarding"
-          style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-        >
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-            <circle cx="8" cy="8" r="6.5" />
-            <path d="M8 11V8" strokeLinecap="round" />
-            <circle cx="8" cy="5.5" r="0.75" fill="currentColor" stroke="none" />
-          </svg>
-        </button>
-        <button
           className={`alert-toggle${alertsEnabled ? "" : " alert-toggle-off"}`}
           onClick={handleToggleAlerts}
           title={alertsEnabled ? "Notifications on" : "Notifications off"}
