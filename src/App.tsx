@@ -207,6 +207,7 @@ function App() {
     new Map(),
   );
   const lastNodeIdByServiceRef = useRef<Map<string, string>>(new Map());
+  const inferredEdgesCacheRef = useRef<Map<string, typeof graph.edges>>(new Map());
 
   // Welcome modal state
   const [showWelcome, setShowWelcome] = useState(false);
@@ -383,6 +384,22 @@ function App() {
     };
   }, [visibleGraphNodes, tabGrouping]);
 
+  const edgeIndex = useMemo(() => {
+    const byNodeId = new Map<string, typeof graph.edges>();
+    graph.edges.forEach((edge) => {
+      const sourceList = byNodeId.get(edge.source);
+      if (sourceList) sourceList.push(edge);
+      else byNodeId.set(edge.source, [edge]);
+
+      if (edge.target !== edge.source) {
+        const targetList = byNodeId.get(edge.target);
+        if (targetList) targetList.push(edge);
+        else byNodeId.set(edge.target, [edge]);
+      }
+    });
+    return { byNodeId };
+  }, [graph.edges]);
+
   useEffect(() => {
     const next = new Map(lastNodeIdByServiceRef.current);
     visibleGraphNodes.forEach((node) => {
@@ -516,17 +533,19 @@ function App() {
 
     // Find external nodes connected to primary nodes
     const connectedExternalIds = new Set<string>();
-    graph.edges.forEach((edge) => {
-      if (primaryNodeIds.has(edge.source) || primaryNodeIds.has(edge.target)) {
-        // Check if either end is an external node
+    const inspectedEdgeIds = new Set<string>();
+    primaryNodeIds.forEach((nodeId) => {
+      const connectedEdges = edgeIndex.byNodeId.get(nodeId);
+      if (!connectedEdges) return;
+      connectedEdges.forEach((edge) => {
+        if (inspectedEdgeIds.has(edge.id)) return;
+        inspectedEdgeIds.add(edge.id);
         const sourceNode = graphIndex.nodeById.get(edge.source);
         const targetNode = graphIndex.nodeById.get(edge.target);
 
-        if (sourceNode?.type === "external")
-          connectedExternalIds.add(sourceNode.id);
-        if (targetNode?.type === "external")
-          connectedExternalIds.add(targetNode.id);
-      }
+        if (sourceNode?.type === "external") connectedExternalIds.add(sourceNode.id);
+        if (targetNode?.type === "external") connectedExternalIds.add(targetNode.id);
+      });
     });
 
     // Include external nodes that are connected
@@ -585,12 +604,31 @@ function App() {
         filteredNodeIds.has(edge.source) && filteredNodeIds.has(edge.target),
     );
 
-    const expandedEdges = [...filteredEdges];
-    if (edgeMode === "expanded") {
+    const expandedEdges = (() => {
+      if (edgeMode !== "expanded") return filteredEdges;
+
+      const inferable = primaryNodes.filter((node) => node.ports.length > 0);
+      const inferredKey = [
+        selectedTab,
+        inferable
+          .map((node) => `${node.id}:${node.ports[0]?.port || 0}`)
+          .sort()
+          .join(","),
+        filteredEdges
+          .map((edge) => `${edge.source}->${edge.target}`)
+          .sort()
+          .join(","),
+      ].join("|");
+
+      const cached = inferredEdgesCacheRef.current.get(inferredKey);
+      if (cached) {
+        return cached;
+      }
+
+      const next = [...filteredEdges];
       const existing = new Set(
         filteredEdges.map((edge) => `${edge.source}->${edge.target}`),
       );
-      const inferable = primaryNodes.filter((node) => node.ports.length > 0);
       const MAX_INFERRED_EDGES = 300;
       let inferredCount = 0;
 
@@ -602,7 +640,7 @@ function App() {
           const key = `${source.id}->${target.id}`;
           if (existing.has(key)) continue;
           existing.add(key);
-          expandedEdges.push({
+          next.push({
             id: `inferred-${source.id}-${target.id}`,
             source: source.id,
             target: target.id,
@@ -615,7 +653,14 @@ function App() {
         }
         if (inferredCount >= MAX_INFERRED_EDGES) break;
       }
-    }
+
+      inferredEdgesCacheRef.current.set(inferredKey, next);
+      if (inferredEdgesCacheRef.current.size > 24) {
+        const oldestKey = inferredEdgesCacheRef.current.keys().next().value;
+        if (oldestKey) inferredEdgesCacheRef.current.delete(oldestKey);
+      }
+      return next;
+    })();
 
     // Filter ports to only include those from primary nodes (not external)
     const primaryPorts = new Set<number>();
@@ -629,7 +674,7 @@ function App() {
       edges: expandedEdges,
       ports: filteredPorts,
     };
-  }, [graphIndex, graph.edges, ports, selectedTab, edgeMode, getProjectStatus]);
+  }, [graphIndex, edgeIndex, graph.edges, ports, selectedTab, edgeMode, getProjectStatus]);
 
   // Filter to show only running Docker containers
   const dockerContainerData = useMemo(() => {
@@ -640,10 +685,18 @@ function App() {
     const containerNodeIds = new Set(containerNodes.map((n) => n.id));
 
     // Filter edges to only include those between Docker containers
-    const containerEdges = graph.edges.filter(
-      (edge) =>
-        containerNodeIds.has(edge.source) && containerNodeIds.has(edge.target),
-    );
+    const edgeIds = new Set<string>();
+    const containerEdges: typeof graph.edges = [];
+    containerNodeIds.forEach((nodeId) => {
+      const connectedEdges = edgeIndex.byNodeId.get(nodeId);
+      if (!connectedEdges) return;
+      connectedEdges.forEach((edge) => {
+        if (edgeIds.has(edge.id)) return;
+        if (!containerNodeIds.has(edge.source) || !containerNodeIds.has(edge.target)) return;
+        edgeIds.add(edge.id);
+        containerEdges.push(edge);
+      });
+    });
 
     // Get ports from containers
     const containerPorts = new Set<number>();
@@ -657,7 +710,7 @@ function App() {
       edges: containerEdges,
       ports: filteredPorts,
     };
-  }, [graphIndex.nonExternalNodes, graph.edges, ports]);
+  }, [graphIndex.nonExternalNodes, edgeIndex, graph.edges, ports]);
 
   // Running database containers for the database list view
   const databaseNodes = useMemo(() => {
