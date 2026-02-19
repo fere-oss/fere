@@ -59,7 +59,8 @@ export function ContainerLogsTab({ containers, initialSelectedId }: ContainerLog
   const [showTimestamps, setShowTimestamps] = useState(false);
   const [filterLevel, setFilterLevel] = useState<'all' | 'error' | 'warn' | 'info' | 'debug'>('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchRegex, setSearchRegex] = useState<RegExp | null>(null);
+  const [searchTestRegex, setSearchTestRegex] = useState<RegExp | null>(null);
+  const [searchHighlightRegex, setSearchHighlightRegex] = useState<RegExp | null>(null);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
 
   const logsContainerRef = useRef<HTMLDivElement>(null);
@@ -113,15 +114,63 @@ export function ContainerLogsTab({ containers, initialSelectedId }: ContainerLog
   // Process search query into regex
   useEffect(() => {
     if (!searchQuery.trim()) {
-      setSearchRegex(null);
+      setSearchTestRegex(null);
+      setSearchHighlightRegex(null);
       return;
     }
     try {
-      setSearchRegex(new RegExp(searchQuery, 'gi'));
+      // Filtering must use a non-global regex; global regexes mutate lastIndex
+      // on .test() and can cause intermittent false negatives.
+      setSearchTestRegex(new RegExp(searchQuery, 'i'));
+      setSearchHighlightRegex(new RegExp(searchQuery, 'gi'));
     } catch {
-      setSearchRegex(null);
+      setSearchTestRegex(null);
+      setSearchHighlightRegex(null);
     }
   }, [searchQuery]);
+
+  // Keep selection/streams in sync with currently available containers.
+  useEffect(() => {
+    const availableIds = new Set(
+      containers
+        .map((c) => c.containerId)
+        .filter((id): id is string => Boolean(id)),
+    );
+
+    setSelectedContainerIds((prev) => {
+      let changed = false;
+      const next = new Set<string>();
+      prev.forEach((id) => {
+        if (availableIds.has(id)) {
+          next.add(id);
+        } else {
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+
+    if (!window.electronAPI?.stopContainerLogs) return;
+
+    const staleStreams: Array<{ containerId: string; streamId: string }> = [];
+    activeStreamsRef.current.forEach((streamId, containerId) => {
+      if (!availableIds.has(containerId)) {
+        staleStreams.push({ containerId, streamId });
+      }
+    });
+
+    if (staleStreams.length === 0) return;
+
+    staleStreams.forEach(({ streamId }) => {
+      window.electronAPI.stopContainerLogs(streamId).catch(console.error);
+    });
+
+    setActiveStreams((prev) => {
+      const next = new Map(prev);
+      staleStreams.forEach(({ containerId }) => next.delete(containerId));
+      return next;
+    });
+  }, [containers]);
 
   // Auto-scroll when follow is enabled
   useEffect(() => {
@@ -295,12 +344,12 @@ export function ContainerLogsTab({ containers, initialSelectedId }: ContainerLog
       filtered = filtered.filter(log => log.level === filterLevel);
     }
 
-    if (searchRegex) {
-      filtered = filtered.filter(log => searchRegex.test(log.line));
+    if (searchTestRegex) {
+      filtered = filtered.filter(log => searchTestRegex.test(log.line));
     }
 
     return filtered;
-  }, [logs, selectedContainerIds, filterLevel, searchRegex]);
+  }, [logs, selectedContainerIds, filterLevel, searchTestRegex]);
 
   // Clear logs
   const handleClear = useCallback(() => {
@@ -313,19 +362,20 @@ export function ContainerLogsTab({ containers, initialSelectedId }: ContainerLog
     const text = filteredLogs.map(log =>
       `[${log.formattedTime}] [${log.containerName}] ${log.line}`
     ).join('\n');
+    if (!navigator.clipboard?.writeText) return;
     navigator.clipboard.writeText(text).catch(console.error);
   }, [filteredLogs]);
 
   // Highlight search matches
   const highlightMatches = useCallback((line: string) => {
-    if (!searchRegex) return line;
+    if (!searchHighlightRegex) return line;
 
     const parts: { text: string; match: boolean }[] = [];
     let lastIndex = 0;
     let match;
-    searchRegex.lastIndex = 0;
+    searchHighlightRegex.lastIndex = 0;
 
-    while ((match = searchRegex.exec(line)) !== null) {
+    while ((match = searchHighlightRegex.exec(line)) !== null) {
       if (match.index > lastIndex) {
         parts.push({ text: line.substring(lastIndex, match.index), match: false });
       }
@@ -338,7 +388,7 @@ export function ContainerLogsTab({ containers, initialSelectedId }: ContainerLog
     }
 
     return parts.length === 0 ? line : parts;
-  }, [searchRegex]);
+  }, [searchHighlightRegex]);
 
   const getStatusLabel = useCallback((container: GraphNode) => {
     if (container.containerHealth?.status && container.containerHealth.status !== 'unknown') {

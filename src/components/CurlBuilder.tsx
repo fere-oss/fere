@@ -489,7 +489,11 @@ function parseCurlCommand(curlStr: string): {
       (flag) => token.startsWith(flag) && token.length > flag.length,
     );
     if (inlineDataFlag) {
-      const nextBody = token.slice(inlineDataFlag.length);
+      let nextBody = token.slice(inlineDataFlag.length);
+      // Support --data=<value> and -d<value> forms.
+      if (nextBody.startsWith("=")) {
+        nextBody = nextBody.slice(1);
+      }
       body = body ? `${body}&${nextBody}` : nextBody;
       continue;
     }

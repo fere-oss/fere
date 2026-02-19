@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import type { DatabaseTablesResult, TableDataResult } from '../types/electron';
 
 interface DatabaseViewerProps {
@@ -14,40 +14,61 @@ export function DatabaseViewer({ containerId, containerImage }: DatabaseViewerPr
   const [loading, setLoading] = useState(true);
   const [loadingData, setLoadingData] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const tableDataRequestIdRef = useRef(0);
 
   // Load tables on mount
   useEffect(() => {
+    let cancelled = false;
+
     const loadTables = async () => {
       if (!window.electronAPI?.getDatabaseTables) {
-        setError('Database queries not available');
-        setLoading(false);
+        if (!cancelled) {
+          setError('Database queries not available');
+          setLoading(false);
+        }
         return;
       }
 
       try {
         setLoading(true);
         setError(null);
+        setSelectedTable(null);
+        setTableData(null);
         const result: DatabaseTablesResult = await window.electronAPI.getDatabaseTables(containerId, containerImage);
+        if (cancelled) return;
 
         if (result.error) {
           setError(result.error);
+          setTables([]);
+          setDbType(null);
         } else {
           setTables(result.tables);
           setDbType(result.dbType || null);
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load tables');
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : 'Failed to load tables');
+          setTables([]);
+          setDbType(null);
+        }
       } finally {
-        setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
     };
 
     loadTables();
+    return () => {
+      cancelled = true;
+      tableDataRequestIdRef.current += 1;
+    };
   }, [containerId, containerImage]);
 
   // Load table data when a table is selected
   const loadTableData = useCallback(async (tableName: string) => {
     if (!window.electronAPI?.getTableData) return;
+    const requestId = ++tableDataRequestIdRef.current;
 
     try {
       setLoadingData(true);
@@ -60,6 +81,7 @@ export function DatabaseViewer({ containerId, containerImage }: DatabaseViewerPr
         tableName,
         100
       );
+      if (requestId !== tableDataRequestIdRef.current) return;
 
       if (result.error) {
         setTableData({ columns: [], rows: [], error: result.error });
@@ -67,13 +89,16 @@ export function DatabaseViewer({ containerId, containerImage }: DatabaseViewerPr
         setTableData(result);
       }
     } catch (err) {
+      if (requestId !== tableDataRequestIdRef.current) return;
       setTableData({
         columns: [],
         rows: [],
         error: err instanceof Error ? err.message : 'Failed to load data',
       });
     } finally {
-      setLoadingData(false);
+      if (requestId === tableDataRequestIdRef.current) {
+        setLoadingData(false);
+      }
     }
   }, [containerId, containerImage]);
 
