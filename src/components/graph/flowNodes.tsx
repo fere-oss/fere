@@ -1,17 +1,12 @@
-import { createContext, memo, useEffect, useRef } from "react";
+import { memo, useEffect, useRef } from "react";
 import type { GraphNode } from "../../types/electron";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import { Handle, Position } from "reactflow";
 import { ServiceNode } from "./ServiceNodes";
 import { useHoverState } from "./hoverContext";
 
-export type HoverState = {
-  hoveredNodeId: string | null;
-  connectedNodeIds: Set<string>;
-};
-
-const defaultHoverState: HoverState = { hoveredNodeId: null, connectedNodeIds: new Set() };
-export const HoverContext = createContext<HoverState>(defaultHoverState);
+export type { HoverState } from "./hoverContext";
+export { HoverContext } from "./hoverContext";
 
 export type FlowServiceNodeData = {
   node: GraphNode;
