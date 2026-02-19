@@ -5,7 +5,7 @@ import { CurlBuilder } from "./components/CurlBuilder";
 import { DatabaseListView } from "./components/DatabaseListView";
 import { ContainerLogsTab } from "./components/ContainerLogsTab";
 import { WelcomeModal } from "./components/WelcomeModal";
-import { useKnownServices, serviceKey, nodeServiceKey } from "./components/checklist/useKnownServices";
+import { useKnownServices, serviceKey, nodeServiceKey, looseServiceIdentity } from "./components/checklist/useKnownServices";
 import { ServiceDropdown } from "./components/checklist/ServiceDropdown";
 import { HEALTH_COLORS } from "./components/graph/constants";
 import type { GraphNode } from "./types/electron";
@@ -348,6 +348,9 @@ function App() {
     const systemNodes: GraphNode[] = [];
     const nodesByTabPath = new Map<string, GraphNode[]>();
     const nodeByService = new Map<string, GraphNode>();
+    // Loose-keyed map for fallback when exact serviceKey doesn't match
+    // (e.g. stale containerId in KnownService vs new containerId in node) (Bug 31/32).
+    const nodeByServiceLoose = new Map<string, GraphNode>();
 
     visibleGraphNodes.forEach((node) => {
       nodeById.set(node.id, node);
@@ -360,6 +363,12 @@ function App() {
       // Prefer a concrete running node over a ghost/down fallback.
       if (!existing || (existing.isGhost && !node.isGhost)) {
         nodeByService.set(serviceKeyValue, node);
+      }
+
+      const looseKey = looseServiceIdentity({ ...node, projectPath: node.projectPath || undefined });
+      const existingLoose = nodeByServiceLoose.get(looseKey);
+      if (!existingLoose || (existingLoose.isGhost && !node.isGhost)) {
+        nodeByServiceLoose.set(looseKey, node);
       }
 
       const tabPath = getNodeTabPath(node, tabGrouping);
@@ -381,6 +390,7 @@ function App() {
       systemNodes,
       nodesByTabPath,
       nodeByService,
+      nodeByServiceLoose,
     };
   }, [visibleGraphNodes, tabGrouping]);
 
@@ -555,20 +565,26 @@ function App() {
       if (node) externalNodes.push(node);
     });
 
-    // Inject tracked service nodes not already in the primary view
+    // Inject tracked service nodes not already in the primary view.
+    // Use both exact and loose keys so stale containerId in KnownService
+    // doesn't cause duplicates or missed lookups (Bug 31/32).
     const trackedExtra: GraphNode[] = [];
     if (!isSystemTab) {
       const status = getProjectStatus(selectedTab);
-      const primaryKeys = new Set(
+      const primaryKeysExact = new Set(
         primaryNodes.map((n) => nodeServiceKey(n)),
+      );
+      const primaryKeysLoose = new Set(
+        primaryNodes.map((n) => looseServiceIdentity({ ...n, projectPath: n.projectPath || undefined })),
       );
       for (const svc of status.services) {
         const key = serviceKey(svc.service);
-        if (primaryKeys.has(key)) continue;
+        const loose = looseServiceIdentity(svc.service);
+        if (primaryKeysExact.has(key) || primaryKeysLoose.has(loose)) continue;
 
-        // Look for a live node anywhere in the system
-        const svcKey = serviceKey(svc.service);
-        const liveNode = graphIndex.nodeByService.get(svcKey);
+        // Look for a live node anywhere in the system — try exact then loose
+        const liveNode = graphIndex.nodeByService.get(key)
+          || graphIndex.nodeByServiceLoose.get(loose);
         if (liveNode) {
           trackedExtra.push(liveNode);
         } else {
