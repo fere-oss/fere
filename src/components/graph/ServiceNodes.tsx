@@ -261,7 +261,12 @@ export function ServiceNode({
   const projectLabel = node.projectPath
     ? node.projectPath.split("/").pop()
     : null;
-  const serviceBrand = inferServiceBrand(node);
+  // Container-type Docker nodes show the Docker logo by default — they are
+  // generic containers without a specific recognized runtime brand.
+  const serviceBrand =
+    node.isDockerContainer && node.type === "container"
+      ? "docker"
+      : inferServiceBrand(node);
 
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
