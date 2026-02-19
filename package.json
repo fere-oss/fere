@@ -16,6 +16,8 @@
     "@types/react": "^19.2.9",
     "@types/react-dom": "^19.2.3",
     "pg": "^8.18.0",
+    "posthog-js": "^1.351.4",
+    "posthog-node": "^5.24.17",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
     "react-flow": "^1.0.3",

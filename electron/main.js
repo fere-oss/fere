@@ -71,6 +71,7 @@ const {
   markIntentionalStopForPid,
   markIntentionalStopForContainer,
 } = require("./services/alertManager");
+const analytics = require("./analytics");
 
 app.setName("Fere");
 app.name = "Fere";
@@ -144,6 +145,10 @@ app.whenReady().then(() => {
   // Initialize alert manager (loads preferences from disk)
   initAlertManager();
 
+  // Initialize analytics
+  analytics.init();
+  analytics.capture("app_launched", { is_dev: isDev });
+
   if (process.platform === "darwin") {
     const icon = nativeImage.createFromPath(
       path.join(__dirname, "../assets/icon.png")
@@ -159,6 +164,10 @@ app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {
     app.quit();
   }
+});
+
+app.on("will-quit", async () => {
+  await analytics.shutdown();
 });
 
 app.on("activate", () => {
@@ -365,6 +374,7 @@ ipcMain.handle("kill-process", async (event, pid) => {
     // Allow killing any process shown in the graph (they all have listening ports)
     // The graph only shows dev-related processes and processes with network activity
     const result = await killProcess(pid);
+    analytics.capture("process_killed", { success: result.success });
     if (result.success) {
       markIntentionalStopForPid(pid);
       // Force next snapshot to bypass stale 5s caches.
@@ -727,6 +737,13 @@ ipcMain.handle("execute-http-request", async (event, options) => {
             }
           }
 
+          analytics.capture("http_request_executed", {
+            method: normalizedMethod,
+            status: res.statusCode,
+            duration,
+            success: true,
+          });
+
           resolve({
             success: true,
             response: {
@@ -743,6 +760,11 @@ ipcMain.handle("execute-http-request", async (event, options) => {
       });
 
       req.on("error", (error) => {
+        analytics.capture("http_request_executed", {
+          method: normalizedMethod,
+          success: false,
+          error_type: error.code || "unknown",
+        });
         resolve({
           success: false,
           error: error.message,
@@ -944,7 +966,12 @@ ipcMain.handle("get-table-data", async (_, containerId, containerImage, tableNam
 // Execute a query on a database container
 ipcMain.handle("execute-database-query", async (_, containerId, containerImage, query) => {
   try {
-    return await executeQuery(containerId, containerImage, query);
+    const result = await executeQuery(containerId, containerImage, query);
+    analytics.capture("database_query_executed", {
+      db_type: (containerImage || "").includes("mongo") ? "mongodb" : "sql",
+      success: !result.error,
+    });
+    return result;
   } catch (error) {
     console.error("Error executing database query:", error);
     return { error: error.message, result: null };
@@ -964,7 +991,9 @@ ipcMain.handle("create-database-table", async (_, containerId, containerImage, t
 // Connect directly to remote MongoDB via URI
 ipcMain.handle("connect-mongo-uri", async (_, uri) => {
   try {
-    return await connectMongoUri(uri);
+    const result = await connectMongoUri(uri);
+    analytics.capture("database_connected", { db_type: "mongodb", mode: "remote_uri", success: !result.error });
+    return result;
   } catch (error) {
     console.error("Error connecting Mongo URI:", error);
     return { error: error.message, tables: [], dbType: "mongodb" };
@@ -994,7 +1023,9 @@ ipcMain.handle("execute-mongo-uri-query", async (_, uri, command) => {
 // Connect directly to remote PostgreSQL via URI
 ipcMain.handle("connect-postgres-uri", async (_, uri) => {
   try {
-    return await connectPostgresUri(uri);
+    const result = await connectPostgresUri(uri);
+    analytics.capture("database_connected", { db_type: "postgresql", mode: "remote_uri", success: !result.error });
+    return result;
   } catch (error) {
     console.error("Error connecting PostgreSQL URI:", error);
     return { error: error.message, tables: [], dbType: "postgresql" };
@@ -1086,6 +1117,7 @@ ipcMain.handle("start-container-logs", async (event, containerId, options = {}) 
       });
     }
 
+    analytics.capture("container_logs_started");
     return { success: true, streamId };
   } catch (error) {
     console.error("Error starting container logs:", error);
@@ -1124,4 +1156,12 @@ ipcMain.handle("stop-all-container-logs", async () => {
     console.error("Error stopping all container logs:", error);
     return { success: false, error: error.message };
   }
+});
+
+// ============================================
+// IPC Handlers - Analytics
+// ============================================
+
+ipcMain.handle("get-analytics-id", () => {
+  return analytics.getDistinctId();
 });

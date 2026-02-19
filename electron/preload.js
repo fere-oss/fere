@@ -86,6 +86,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('snapshot-delta', listener);
   },
 
+  // Analytics
+  getAnalyticsId: () => ipcRenderer.invoke('get-analytics-id'),
+
   // Platform info
   platform: process.platform,
 });
