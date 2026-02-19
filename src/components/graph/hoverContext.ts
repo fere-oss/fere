@@ -1,6 +1,6 @@
 import { createContext, useContext } from "react";
 
-type HoverState = {
+export type HoverState = {
   hoveredNodeId: string | null;
   connectedNodeIds: Set<string>;
 };

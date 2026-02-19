@@ -82,6 +82,27 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
   const containerId = node.containerId || '';
   const containerImage = node.containerImage || '';
   const queryRequestIdRef = useRef(0);
+  const nodeId = node.id;
+
+  // Reset accumulated state when switching to a different database node
+  const prevNodeIdRef = useRef(nodeId);
+  useEffect(() => {
+    if (prevNodeIdRef.current === nodeId) return;
+    prevNodeIdRef.current = nodeId;
+    setSelectedTable(null);
+    setTableData(null);
+    setQuery('');
+    setQueryResult(null);
+    setError(null);
+    setLoading(true);
+    setRemoteMongoMode(false);
+    setRemoteMongoUri(null);
+    setRemoteUriDbType(null);
+    setMongoUriStatus('idle');
+    setMongoUriStatusMessage(null);
+    setSelectedRemoteDb('');
+    setSelectedRemoteCollection('');
+  }, [nodeId]);
 
   const detectUriDbType = useCallback((uri: string): 'mongodb' | 'postgresql' | null => {
     const lower = uri.trim().toLowerCase();
@@ -289,7 +310,7 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
     return () => {
       isCancelled = true;
     };
-  }, [containerId, containerImage, remoteMongoMode, savedUri]);
+  }, [nodeId, containerId, containerImage, remoteMongoMode, savedUri]);
 
   const loadTableData = useCallback(async (tableName: string) => {
     if (!window.electronAPI?.getTableData) return;

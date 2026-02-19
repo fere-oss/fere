@@ -160,7 +160,10 @@ function setupNavigationBlocking(webContents, allowedOrigins) {
     }
 
     const origin = parsed.origin;
-    if (!allowedOrigins.includes(origin)) {
+    // file:// URLs have origin "null" (the string), so check protocol as fallback
+    const isAllowed = allowedOrigins.includes(origin) ||
+      (parsed.protocol === "file:" && allowedOrigins.includes("file://"));
+    if (!isAllowed) {
       event.preventDefault();
       console.warn("[Security] Blocked navigation to disallowed origin:", origin);
     }

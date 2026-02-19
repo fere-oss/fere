@@ -31,10 +31,10 @@ const isElectron = () => {
 function applyDelta(current: SystemSnapshot, delta: SnapshotDelta): SystemSnapshot {
   if (delta.type === 'full') {
     return {
-      processes: delta.processes as Process[] || current.processes,
-      ports: delta.ports as Port[] || current.ports,
-      connections: delta.connections as Connection[] || current.connections,
-      graph: delta.graph as ConnectionGraph || current.graph,
+      processes: (delta.processes as Process[]) ?? current.processes,
+      ports: (delta.ports as Port[]) ?? current.ports,
+      connections: (delta.connections as Connection[]) ?? current.connections,
+      graph: (delta.graph as ConnectionGraph) ?? current.graph,
       docker: delta.docker ?? current.docker,
       meta: delta.meta ?? current.meta,
     };

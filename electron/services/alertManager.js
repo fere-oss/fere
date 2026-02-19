@@ -18,6 +18,9 @@ const SETTINGS_FILE_PATH = path.join(os.homedir(), '.fere', 'settings.json');
 // --- Alert state per node ---
 // Map<nodeId, { previousHealth, redEnteredAt, lastNotifiedAt, name }>
 const nodeStates = new Map();
+const intentionalStopByPid = new Map();
+const intentionalStopByContainerId = new Map();
+const INTENTIONAL_STOP_TTL_MS = 30000;
 
 // --- Preferences ---
 let cachedPreferences = null;
@@ -95,11 +98,30 @@ function setAlertPreferences(prefs) {
  * Check if a node was intentionally stopped (best-effort heuristic).
  * Docker containers with state 'exited' or 'dead' are considered intentional.
  */
-function isIntentionalStop(node) {
-  if (node.isDockerContainer && (node.containerState === 'exited' || node.containerState === 'dead')) {
-    return true;
+function pruneIntentionalStops(now) {
+  for (const [pid, until] of intentionalStopByPid.entries()) {
+    if (until <= now) intentionalStopByPid.delete(pid);
   }
+  for (const [containerId, until] of intentionalStopByContainerId.entries()) {
+    if (until <= now) intentionalStopByContainerId.delete(containerId);
+  }
+}
+
+function isIntentionalStop(node, now) {
+  pruneIntentionalStops(now);
+  if (node.pid && intentionalStopByPid.has(node.pid)) return true;
+  if (node.containerId && intentionalStopByContainerId.has(node.containerId)) return true;
   return false;
+}
+
+function markIntentionalStopForPid(pid, ttlMs = INTENTIONAL_STOP_TTL_MS) {
+  if (!Number.isInteger(pid) || pid <= 0) return;
+  intentionalStopByPid.set(pid, Date.now() + ttlMs);
+}
+
+function markIntentionalStopForContainer(containerId, ttlMs = INTENTIONAL_STOP_TTL_MS) {
+  if (!containerId || typeof containerId !== 'string') return;
+  intentionalStopByContainerId.set(containerId, Date.now() + ttlMs);
 }
 
 /**
@@ -163,7 +185,7 @@ function evaluateAlerts(nodes) {
       const timeSinceLastNotified = now - prev.lastNotifiedAt;
 
       if (timeSinceRedEntered >= DEBOUNCE_MS && timeSinceLastNotified >= COOLDOWN_MS) {
-        if (prefs.alertsEnabled && !isIntentionalStop(node)) {
+        if (prefs.alertsEnabled && !isIntentionalStop(node, now)) {
           fireNotification('crash', node.name);
           prev.lastNotifiedAt = now;
         }
@@ -204,4 +226,6 @@ module.exports = {
   evaluateAlerts,
   getAlertPreferences,
   setAlertPreferences,
+  markIntentionalStopForPid,
+  markIntentionalStopForContainer,
 };

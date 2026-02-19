@@ -76,10 +76,14 @@ async function execDockerWithInput(containerId, commandArgs, input, timeout = 30
     let stdout = '';
     let stderr = '';
     let timedOut = false;
+    let killTimer = null;
 
     const timer = setTimeout(() => {
       timedOut = true;
       child.kill('SIGTERM');
+      killTimer = setTimeout(() => {
+        if (!child.killed) child.kill('SIGKILL');
+      }, 2000);
     }, timeout);
 
     child.stdout.on('data', (chunk) => {
@@ -92,11 +96,13 @@ async function execDockerWithInput(containerId, commandArgs, input, timeout = 30
 
     child.on('error', (error) => {
       clearTimeout(timer);
+      if (killTimer) clearTimeout(killTimer);
       reject(error);
     });
 
     child.on('close', (code) => {
       clearTimeout(timer);
+      if (killTimer) clearTimeout(killTimer);
       if (timedOut) {
         reject(new Error('Database command timed out'));
         return;
@@ -127,10 +133,14 @@ async function execDocker(containerId, commandArgs, timeout = 10000) {
     let stdout = '';
     let stderr = '';
     let timedOut = false;
+    let killTimer = null;
 
     const timer = setTimeout(() => {
       timedOut = true;
       child.kill('SIGTERM');
+      killTimer = setTimeout(() => {
+        if (!child.killed) child.kill('SIGKILL');
+      }, 2000);
     }, timeout);
 
     child.stdout.on('data', (chunk) => {
@@ -143,11 +153,13 @@ async function execDocker(containerId, commandArgs, timeout = 10000) {
 
     child.on('error', (error) => {
       clearTimeout(timer);
+      if (killTimer) clearTimeout(killTimer);
       reject(error);
     });
 
     child.on('close', (code) => {
       clearTimeout(timer);
+      if (killTimer) clearTimeout(killTimer);
       if (timedOut) {
         reject(new Error('Docker command timed out'));
         return;
@@ -175,9 +187,16 @@ async function execMongoUriEval(uri, command, timeout = 30000) {
     let stderr = '';
     let timedOut = false;
 
+    let killTimer = null;
     const timer = setTimeout(() => {
       timedOut = true;
       child.kill('SIGTERM');
+      // Escalate to SIGKILL if SIGTERM doesn't work after 2s
+      killTimer = setTimeout(() => {
+        if (!child.killed) {
+          child.kill('SIGKILL');
+        }
+      }, 2000);
     }, timeout);
 
     child.stdout.on('data', (chunk) => {
@@ -190,11 +209,13 @@ async function execMongoUriEval(uri, command, timeout = 30000) {
 
     child.on('error', (error) => {
       clearTimeout(timer);
+      if (killTimer) clearTimeout(killTimer);
       reject(error);
     });
 
     child.on('close', (code) => {
       clearTimeout(timer);
+      if (killTimer) clearTimeout(killTimer);
       if (timedOut) {
         reject(new Error('Remote MongoDB command timed out'));
         return;
@@ -419,9 +440,13 @@ async function getPostgresTableData(containerId, tableName, limit) {
   const safeIdent = escapePostgresIdent(tableName);
   const safeLiteral = escapePostgresLiteral(tableName);
 
+  // Resolve the PostgreSQL user the same way getPostgresTables does
+  const envUser = await resolvePostgresUser(containerId);
+  const userArgs = envUser ? ['-U', envUser] : ['-U', 'postgres'];
+
   // Get columns first
   const { stdout: colOut } = await execDocker(containerId, [
-    'psql', '-U', 'postgres', '-t', '-c',
+    'psql', ...userArgs, '-t', '-c',
     `SELECT column_name FROM information_schema.columns WHERE table_name = '${safeLiteral}' ORDER BY ordinal_position;`
   ], 10000);
   const columns = colOut
@@ -431,7 +456,7 @@ async function getPostgresTableData(containerId, tableName, limit) {
 
   // Get data as JSON
   const { stdout: dataOut } = await execDocker(containerId, [
-    'psql', '-U', 'postgres', '-t', '-c',
+    'psql', ...userArgs, '-t', '-c',
     `SELECT row_to_json(t) FROM (SELECT * FROM ${safeIdent} LIMIT ${limit}) t;`
   ], 15000);
 
@@ -453,8 +478,9 @@ async function getPostgresTableData(containerId, tableName, limit) {
 
 // MySQL functions
 async function getMySQLTables(containerId) {
+  const authArgs = await resolveMySQLAuth(containerId);
   try {
-    const { stdout } = await execDocker(containerId, ['mysql', '-u', 'root', '-e', 'SHOW TABLES;', '--skip-column-names'], 10000);
+    const { stdout } = await execDocker(containerId, ['mysql', ...authArgs, '-e', 'SHOW TABLES;', '--skip-column-names'], 10000);
     const tables = stdout
       .split('\n')
       .map(line => line.trim())
@@ -464,11 +490,11 @@ async function getMySQLTables(containerId) {
   } catch (error) {
     // Try to find the database name first
     try {
-      const { stdout: dbOut } = await execDocker(containerId, ['mysql', '-u', 'root', '-e', 'SHOW DATABASES;', '--skip-column-names'], 10000);
+      const { stdout: dbOut } = await execDocker(containerId, ['mysql', ...authArgs, '-e', 'SHOW DATABASES;', '--skip-column-names'], 10000);
       const databases = dbOut.split('\n').map(l => l.trim()).filter(l => l && !['information_schema', 'performance_schema', 'mysql', 'sys'].includes(l));
 
       if (databases.length > 0) {
-        const { stdout } = await execDocker(containerId, ['mysql', '-u', 'root', '-D', databases[0], '-e', 'SHOW TABLES;', '--skip-column-names'], 10000);
+        const { stdout } = await execDocker(containerId, ['mysql', ...authArgs, '-D', databases[0], '-e', 'SHOW TABLES;', '--skip-column-names'], 10000);
         const tables = stdout.split('\n').map(line => line.trim()).filter(line => line.length > 0);
         return { tables, dbType: 'mysql', database: databases[0] };
       }
@@ -486,10 +512,11 @@ function escapeMySQLIdent(name) {
 
 async function getMySQLTableData(containerId, tableName, limit) {
   const safeIdent = escapeMySQLIdent(tableName);
+  const authArgs = await resolveMySQLAuth(containerId);
 
   // Get columns
   const { stdout: colOut } = await execDocker(containerId, [
-    'mysql', '-u', 'root', '-e', `DESCRIBE ${safeIdent};`, '--skip-column-names'
+    'mysql', ...authArgs, '-e', `DESCRIBE ${safeIdent};`, '--skip-column-names'
   ], 10000);
   const columns = colOut
     .split('\n')
@@ -498,7 +525,7 @@ async function getMySQLTableData(containerId, tableName, limit) {
 
   // Get data as JSON
   const { stdout: dataOut } = await execDocker(containerId, [
-    'mysql', '-u', 'root', '-e', `SELECT * FROM ${safeIdent} LIMIT ${limit};`, '--batch'
+    'mysql', ...authArgs, '-e', `SELECT * FROM ${safeIdent} LIMIT ${limit};`, '--batch'
   ], 15000);
 
   const lines = dataOut.split('\n').filter(l => l.trim().length > 0);
@@ -532,6 +559,26 @@ async function getMongoAuthArgs(containerId) {
     return [];
   } catch {
     return [];
+  }
+}
+
+// MySQL auth helper — extract credentials from container environment variables
+async function resolveMySQLAuth(containerId) {
+  try {
+    const { stdout } = await execDocker(containerId, ['env'], 5000);
+    const env = {};
+    for (const line of stdout.split('\n')) {
+      const eq = line.indexOf('=');
+      if (eq > 0) env[line.slice(0, eq)] = line.slice(eq + 1).trim();
+    }
+    const user = env.MYSQL_USER || 'root';
+    const pass = env.MYSQL_ROOT_PASSWORD || env.MYSQL_PASSWORD || '';
+    if (pass) {
+      return ['-u', user, `-p${pass}`];
+    }
+    return ['-u', user];
+  } catch {
+    return ['-u', 'root'];
   }
 }
 
@@ -658,7 +705,9 @@ async function executeQuery(containerId, containerImage, query) {
 
 async function executePostgresQuery(containerId, query) {
   try {
-    const { stdout, stderr } = await execDockerWithInput(containerId, ['psql', '-U', 'postgres'], query, 30000);
+    const envUser = await resolvePostgresUser(containerId);
+    const userArgs = envUser ? ['-U', envUser] : ['-U', 'postgres'];
+    const { stdout, stderr } = await execDockerWithInput(containerId, ['psql', ...userArgs], query, 30000);
     const output = stdout || stderr;
 
     // Check if there's an error in the output
@@ -670,7 +719,7 @@ async function executePostgresQuery(containerId, query) {
     if (query.trim().toLowerCase().startsWith('select')) {
       const jsonQuery = `SELECT json_agg(t) FROM (${query}) t;`;
       try {
-        const { stdout: jsonOut } = await execDockerWithInput(containerId, ['psql', '-U', 'postgres', '-t'], jsonQuery, 30000);
+        const { stdout: jsonOut } = await execDockerWithInput(containerId, ['psql', ...userArgs, '-t'], jsonQuery, 30000);
         const trimmed = jsonOut.trim();
         if (trimmed && trimmed !== 'null' && !trimmed.toLowerCase().includes('error:')) {
           const rows = JSON.parse(trimmed);
@@ -693,7 +742,8 @@ async function executePostgresQuery(containerId, query) {
 
 async function executeMySQLQuery(containerId, query) {
   try {
-    const { stdout, stderr } = await execDockerWithInput(containerId, ['mysql', '-u', 'root', '--batch'], query, 30000);
+    const authArgs = await resolveMySQLAuth(containerId);
+    const { stdout, stderr } = await execDockerWithInput(containerId, ['mysql', ...authArgs, '--batch'], query, 30000);
     const output = stdout || stderr;
 
     // Check if there's an error in the output

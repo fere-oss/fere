@@ -8,7 +8,7 @@ import { WelcomeModal } from "./components/WelcomeModal";
 import { useKnownServices, serviceKey, nodeServiceKey, looseServiceIdentity } from "./components/checklist/useKnownServices";
 import { ServiceDropdown } from "./components/checklist/ServiceDropdown";
 import { HEALTH_COLORS } from "./components/graph/constants";
-import type { GraphNode } from "./types/electron";
+import type { GraphEdge, GraphNode } from "./types/electron";
 import "./App.css";
 
 // Detect platform for default tab label
@@ -277,13 +277,14 @@ function App() {
       "fere:optimistic-mark-down",
       handleOptimisticDown as EventListener,
     );
+    const timersRef = optimisticDownTimersRef.current;
     return () => {
       window.removeEventListener(
         "fere:optimistic-mark-down",
         handleOptimisticDown as EventListener,
       );
-      optimisticDownTimersRef.current.forEach((timer) => clearTimeout(timer));
-      optimisticDownTimersRef.current.clear();
+      timersRef.forEach((timer) => clearTimeout(timer));
+      timersRef.clear();
     };
   }, []);
 
@@ -395,7 +396,7 @@ function App() {
   }, [visibleGraphNodes, tabGrouping]);
 
   const edgeIndex = useMemo(() => {
-    const byNodeId = new Map<string, typeof graph.edges>();
+    const byNodeId = new Map<string, GraphEdge[]>();
     graph.edges.forEach((edge) => {
       const sourceList = byNodeId.get(edge.source);
       if (sourceList) sourceList.push(edge);
@@ -442,6 +443,23 @@ function App() {
     setViewMode("database");
   }, []);
 
+  // Reconcile databaseNode with live data when containers change
+  // (e.g., container restarts get a new containerId)
+  useEffect(() => {
+    if (!databaseNode || databaseNode.id.startsWith("__saved_")) return;
+    const live = graphIndex.nonExternalNodes.find(
+      (n) => n.id === databaseNode.id,
+    );
+    if (live) {
+      // Update with fresh data (new containerId, ports, state, etc.)
+      if (
+        live.containerId !== databaseNode.containerId ||
+        live.containerState !== databaseNode.containerState
+      ) {
+        setDatabaseNode(live);
+      }
+    }
+  }, [graphIndex.nonExternalNodes, databaseNode]);
 
   // Open database view directly from top tabs (show database list)
   const handleOpenDatabaseView = useCallback(() => {
@@ -514,6 +532,7 @@ function App() {
   const [serviceDropdownTab, setServiceDropdownTab] = useState<string | null>(
     null,
   );
+  const [serviceActionError, setServiceActionError] = useState<string | null>(null);
   const nodesForTab = useCallback(
     (tabId: string) => {
       if (tabId === SYSTEM_TAB_ID) return graphIndex.systemNodes;
@@ -702,7 +721,7 @@ function App() {
 
     // Filter edges to only include those between Docker containers
     const edgeIds = new Set<string>();
-    const containerEdges: typeof graph.edges = [];
+    const containerEdges: GraphEdge[] = [];
     containerNodeIds.forEach((nodeId) => {
       const connectedEdges = edgeIndex.byNodeId.get(nodeId);
       if (!connectedEdges) return;
@@ -726,7 +745,7 @@ function App() {
       edges: containerEdges,
       ports: filteredPorts,
     };
-  }, [graphIndex.nonExternalNodes, edgeIndex, graph.edges, ports]);
+  }, [graphIndex.nonExternalNodes, edgeIndex, ports]);
 
   // Running database containers for the database list view
   const databaseNodes = useMemo(() => {
@@ -774,6 +793,12 @@ function App() {
         <div className="error-banner">
           <span className="error-title">Error:</span>
           <span className="error-message">{error}</span>
+        </div>
+      )}
+      {serviceActionError && (
+        <div className="error-banner">
+          <span className="error-title">Action Error:</span>
+          <span className="error-message">{serviceActionError}</span>
         </div>
       )}
 
@@ -935,22 +960,32 @@ function App() {
                     onStart={async (service) => {
                       try {
                         let started = false;
+                        let failureReason: string | undefined;
                         if (service.isDockerContainer) {
                           const id = service.containerId || service.name;
                           const result = await window.electronAPI.startContainer(id);
                           started = !!result?.success;
+                          failureReason = result?.error;
                         } else if (service.lastCommand && service.projectPath) {
                           const result = await window.electronAPI.startProcess(
                             service.lastCommand,
                             service.projectPath,
                           );
                           started = !!result?.success;
+                          failureReason = result?.error;
+                        } else {
+                          failureReason = "Missing start command or project path";
                         }
                         if (started) {
+                          setServiceActionError(null);
                           window.dispatchEvent(new CustomEvent("fere:refresh-snapshot"));
+                        } else if (failureReason) {
+                          setServiceActionError(failureReason);
                         }
-                      } catch {
-                        // silently fail
+                      } catch (err) {
+                        setServiceActionError(
+                          err instanceof Error ? err.message : "Failed to start service",
+                        );
                       }
                     }}
                     allNodes={nodesForTab(tab.id)}
