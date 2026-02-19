@@ -3,7 +3,7 @@ const fs = require('fs');
 const { promisify } = require('util');
 
 const execFileAsync = promisify(execFile);
-const DOCKER_EXEC_TIMEOUT_MS = 15000;
+const DOCKER_EXEC_TIMEOUT_MS = 3000;
 const DOCKER_BIN_CANDIDATES = [
   process.env.FERE_DOCKER_BIN,
   '/opt/homebrew/bin/docker',
@@ -30,25 +30,27 @@ function getDockerBinaries() {
   return bins.length > 0 ? bins : ['docker'];
 }
 
+// Probe all candidates in parallel so worst-case time = one timeout (3s)
+// instead of N × timeout (Bug 29).
 async function resolveDockerBinary() {
   if (resolvedDockerBin) return resolvedDockerBin;
 
   const candidates = getDockerBinaries();
-  for (const candidate of candidates) {
-    try {
-      await execFileAsync(candidate, ['version', '--format', '{{.Client.Version}}'], {
-        timeout: DOCKER_EXEC_TIMEOUT_MS,
-        maxBuffer: 1024 * 1024,
-      });
-      resolvedDockerBin = candidate;
-      return candidate;
-    } catch {
-      // Try next candidate
-    }
+  try {
+    resolvedDockerBin = await Promise.any(
+      candidates.map(async (candidate) => {
+        await execFileAsync(candidate, ['version', '--format', '{{.Client.Version}}'], {
+          timeout: DOCKER_EXEC_TIMEOUT_MS,
+          maxBuffer: 1024 * 1024,
+        });
+        return candidate;
+      })
+    );
+    return resolvedDockerBin;
+  } catch {
+    resolvedDockerBin = null;
+    return null;
   }
-
-  resolvedDockerBin = null;
-  return null;
 }
 
 /**
@@ -105,6 +107,7 @@ async function startLogStream(containerId, options = {}, onData, onError, onClos
   // Buffer for partial lines
   let stdoutBuffer = '';
   let stderrBuffer = '';
+  const MAX_BUFFER_SIZE = 1024 * 1024; // 1 MB — prevent unbounded growth (Bug 26)
 
   // Helper to process buffered data
   const processBuffer = (buffer, stream) => {
@@ -141,21 +144,32 @@ async function startLogStream(containerId, options = {}, onData, onError, onClos
     return incompleteLine;
   };
 
-  // Handle stdout data
+  // Handle stdout data — cap buffer to prevent memory exhaustion (Bug 26)
   dockerProcess.stdout.on('data', (data) => {
     stdoutBuffer += data.toString();
-    stdoutBuffer = processBuffer(stdoutBuffer, 'stdout');
+    if (stdoutBuffer.length > MAX_BUFFER_SIZE) {
+      processBuffer(stdoutBuffer + '\n', 'stdout');
+      stdoutBuffer = '';
+    } else {
+      stdoutBuffer = processBuffer(stdoutBuffer, 'stdout');
+    }
   });
 
   // Handle stderr data
   dockerProcess.stderr.on('data', (data) => {
     stderrBuffer += data.toString();
-    stderrBuffer = processBuffer(stderrBuffer, 'stderr');
+    if (stderrBuffer.length > MAX_BUFFER_SIZE) {
+      processBuffer(stderrBuffer + '\n', 'stderr');
+      stderrBuffer = '';
+    } else {
+      stderrBuffer = processBuffer(stderrBuffer, 'stderr');
+    }
   });
 
-  // Handle process errors
+  // Handle process errors — pass streamId so callers don't rely on a closure
+  // that may not yet be assigned (Bug 24).
   dockerProcess.on('error', (error) => {
-    onError(new Error(`Docker logs process error: ${error.message}`));
+    onError(new Error(`Docker logs process error: ${error.message}`), streamId);
   });
 
   // Handle process close
@@ -169,7 +183,7 @@ async function startLogStream(containerId, options = {}, onData, onError, onClos
     }
 
     activeStreams.delete(streamId);
-    onClose(code);
+    onClose(code, streamId);
   });
 
   // Store the stream

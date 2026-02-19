@@ -1008,27 +1008,31 @@ ipcMain.handle("start-container-logs", async (event, containerId, options = {}) 
     streamId = await startLogStream(
       containerId,
       options,
-      // onData callback - send log data to renderer
+      // onData callback — use logData.streamId (always valid) instead of the
+      // outer `streamId` variable which may still be "" if data arrives before
+      // the await resolves (Bug 24).
       (logData) => {
-        if (!safeSend("container-log-data", logData) && streamId) {
-          stopLogStream(streamId);
+        if (!safeSend("container-log-data", logData)) {
+          const sid = logData.streamId || streamId;
+          if (sid) stopLogStream(sid);
         }
       },
-      // onError callback - send error to renderer
-      (error) => {
+      // onError callback — streamId passed as second arg from startLogStream
+      (error, sid) => {
         const delivered = safeSend("container-log-error", {
-          streamId,
+          streamId: sid || streamId,
           containerId,
           error: error.message,
         });
-        if (!delivered && streamId) {
-          stopLogStream(streamId);
+        if (!delivered) {
+          const id = sid || streamId;
+          if (id) stopLogStream(id);
         }
       },
-      // onClose callback - notify renderer that stream closed
-      (code) => {
+      // onClose callback — streamId passed as second arg from startLogStream
+      (code, sid) => {
         safeSend("container-log-close", {
-          streamId,
+          streamId: sid || streamId,
           containerId,
           exitCode: code,
         });
