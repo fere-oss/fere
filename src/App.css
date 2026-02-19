@@ -3197,6 +3197,39 @@ textarea {
   font-size: 13px;
 }
 
+/* Port Selector */
+.curl-port-selector {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.curl-port-option {
+  padding: 6px 14px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 500;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-white);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.curl-port-option:hover {
+  border-color: var(--border-hover);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+.curl-port-option.selected {
+  border-color: var(--text-primary);
+  background: var(--bg-white);
+  color: var(--text-primary);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
 /* Route Search */
 .curl-route-search {
   display: flex;
