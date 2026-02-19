@@ -1,6 +1,7 @@
 const { execFile } = require('child_process');
 const { promisify } = require('util');
 const fs = require('fs');
+const path = require('path');
 
 const execFileAsync = promisify(execFile);
 
@@ -93,6 +94,121 @@ async function isDockerAvailable() {
   }
 }
 
+// Cache compose service name lookups keyed by compose file path.
+// Entries are invalidated when the file's mtime changes.
+const composeServicesCache = new Map();
+
+/**
+ * Returns the set of service names currently defined in a docker-compose.yml, or
+ * null if the file cannot be read.  Results are cached by file mtime.
+ */
+function getServiceNamesFromCompose(configFilePath) {
+  try {
+    const mtime = fs.statSync(configFilePath).mtimeMs;
+    const cached = composeServicesCache.get(configFilePath);
+    if (cached && cached.mtime === mtime) return cached.services;
+
+    const content = fs.readFileSync(configFilePath, 'utf8');
+    // Extract top-level keys under the `services:` block (2-space-indented names).
+    const servicesBlockMatch = content.match(/^services:\s*\n([\s\S]*?)(?=\n\S|$)/m);
+    const services = new Set();
+    if (servicesBlockMatch) {
+      for (const m of servicesBlockMatch[1].matchAll(/^  ([A-Za-z0-9][A-Za-z0-9_-]*):/gm)) {
+        services.add(m[1]);
+      }
+    }
+    composeServicesCache.set(configFilePath, { mtime, services });
+    return services;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Returns true if a stopped container's service is still defined in its compose file.
+ * Orphaned containers (from renamed/removed services) return false.
+ */
+function isCurrentComposeService(labels) {
+  const configFiles = labels?.['com.docker.compose.project.config_files'];
+  const serviceName = labels?.['com.docker.compose.service'];
+  if (!configFiles || !serviceName) return true; // not a compose container, keep it
+  const composePath = configFiles.split(',')[0].trim();
+  const services = getServiceNamesFromCompose(composePath);
+  if (!services) return true; // can't read file, keep it to be safe
+  return services.has(serviceName);
+}
+
+/**
+ * Shared helper: parses the docker-compose.yml for the service block referenced by
+ * the container's labels.  Returns { composePath, composeDir, serviceBlock } or null.
+ */
+function resolveComposeServiceBlock(labels) {
+  const configFiles = labels?.['com.docker.compose.project.config_files'];
+  const serviceName = labels?.['com.docker.compose.service'];
+  if (!configFiles || !serviceName) return null;
+  try {
+    const composePath = configFiles.split(',')[0].trim();
+    const composeDir = path.dirname(composePath);
+    const composeContent = fs.readFileSync(composePath, 'utf8');
+    const serviceNameEscaped = serviceName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const serviceBlockMatch = composeContent.match(
+      new RegExp(`(?:^|\\n)  ${serviceNameEscaped}[ \\t]*:[ \\t]*\\n([\\s\\S]*?)(?=\\n[ \\t]*\\n  \\S|\\n  \\S|$)`)
+    );
+    if (!serviceBlockMatch) return null;
+    return { composePath, composeDir, serviceBlock: serviceBlockMatch[1] };
+  } catch { return null; }
+}
+
+/**
+ * Resolve the build context directory from a service block.
+ * Handles both short form (build: ./dir) and long form (build:\n  context: ./dir).
+ */
+function resolveServiceBuildContext(composeDir, serviceBlock) {
+  let buildContext = null;
+  // Short form: "build: ./path" — use [ \t]* to avoid crossing newlines with \s*.
+  const shortBuildMatch = serviceBlock.match(/build:[ \t]*([^\n\r{][^\n\r]*)/);
+  if (shortBuildMatch && shortBuildMatch[1].trim()) {
+    buildContext = shortBuildMatch[1].trim();
+  } else {
+    // Long form: build:\n  context: ./path
+    const contextMatch = serviceBlock.match(/context:[ \t]*([^\n\r]+)/);
+    if (contextMatch) buildContext = contextMatch[1].trim();
+  }
+  if (!buildContext) return null;
+  return path.resolve(composeDir, buildContext);
+}
+
+/**
+ * Returns the resolved build context directory for a compose service, or null.
+ * Useful for route scanning when the source is baked into the image (no bind mounts).
+ */
+function getBuildContextPath(labels) {
+  const parsed = resolveComposeServiceBlock(labels);
+  if (!parsed) return null;
+  const contextPath = resolveServiceBuildContext(parsed.composeDir, parsed.serviceBlock);
+  if (!contextPath || !fs.existsSync(contextPath)) return null;
+  return contextPath;
+}
+
+/**
+ * Reads the Dockerfile from a docker-compose build context to extract the base image.
+ * Uses compose labels (config_files + service) already present in docker inspect output.
+ * Returns the FROM image string (e.g. "node:20-alpine") or null if unavailable.
+ */
+function getBaseImageFromCompose(labels) {
+  const parsed = resolveComposeServiceBlock(labels);
+  if (!parsed) return null;
+  const contextPath = resolveServiceBuildContext(parsed.composeDir, parsed.serviceBlock);
+  if (!contextPath) return null;
+  try {
+    const dockerfilePath = path.join(contextPath, 'Dockerfile');
+    if (!fs.existsSync(dockerfilePath)) return null;
+    const dockerfileContent = fs.readFileSync(dockerfilePath, 'utf8');
+    const fromMatch = dockerfileContent.match(/^FROM\s+([^\s\n]+)/im);
+    return fromMatch ? fromMatch[1] : null;
+  } catch { return null; }
+}
+
 /**
  * Parse docker ps output with JSON format for reliable parsing
  * Uses: docker ps --format '{{json .}}'
@@ -136,6 +252,17 @@ async function getDockerContainers() {
           // Get detailed inspect data for this container
           const inspectData = await inspectContainer(container.ID);
 
+          const containerLabels = inspectData?.Config?.Labels || {};
+          const containerState = container.State;
+
+          // Skip stopped containers that no longer belong to the current compose config.
+          // This filters out orphaned containers left behind by service renames/removals
+          // without affecting intentionally-stopped compose services.
+          const isStopped = containerState !== 'running' && containerState !== 'paused' && containerState !== 'restarting';
+          if (isStopped && !isCurrentComposeService(containerLabels)) {
+            continue;
+          }
+
           containers.push({
             id: container.ID,
             name: container.Names,
@@ -144,12 +271,14 @@ async function getDockerContainers() {
             fullCommand: buildFullCommand(inspectData, container.Command),
             created: container.CreatedAt,
             status: container.Status,
-            state: container.State, // running, exited, paused, etc.
+            state: containerState, // running, exited, paused, etc.
             ports: parsePorts(container.Ports),
             networks: parseNetworks(inspectData),
             mounts: parseMounts(inspectData),
             health: parseHealth(inspectData),
-            labels: inspectData?.Config?.Labels || {},
+            labels: containerLabels,
+            baseImage: getBaseImageFromCompose(containerLabels),
+            buildContextPath: getBuildContextPath(containerLabels),
             // Resource usage (if available)
             cpu: 0,
             memory: 0,
@@ -158,6 +287,30 @@ async function getDockerContainers() {
           console.error('Error parsing container JSON:', parseError);
         }
       }
+
+      // Deduplicate: for the same compose project+service, prefer the running
+      // container over any stopped one. This handles cases where a service was
+      // recreated and the old stopped instance hasn't been pruned yet.
+      const composeServiceWinner = new Map();
+      for (const c of containers) {
+        const project = c.labels?.['com.docker.compose.project'];
+        const service = c.labels?.['com.docker.compose.service'];
+        if (!project || !service) continue;
+        const key = `${project}:${service}`;
+        const prev = composeServiceWinner.get(key);
+        if (!prev || (c.state === 'running' && prev.state !== 'running')) {
+          composeServiceWinner.set(key, c);
+        }
+      }
+      const winnersSet = new Set(composeServiceWinner.values());
+      const dedupedContainers = containers.filter(c => {
+        const project = c.labels?.['com.docker.compose.project'];
+        const service = c.labels?.['com.docker.compose.service'];
+        if (!project || !service) return true; // non-compose: always keep
+        return winnersSet.has(c);
+      });
+      containers.length = 0;
+      containers.push(...dedupedContainers);
 
       // Get resource stats for running containers
       await attachContainerStats(containers);
