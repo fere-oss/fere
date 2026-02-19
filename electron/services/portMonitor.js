@@ -129,11 +129,14 @@ async function runCached(cache, fetcher) {
   }
 
   cache.promise = (async () => {
-    const data = await fetcher();
-    cache.data = data;
-    cache.timestamp = Date.now();
-    cache.promise = null;
-    return data;
+    try {
+      const data = await fetcher();
+      cache.data = data;
+      cache.timestamp = Date.now();
+      return data;
+    } finally {
+      cache.promise = null;
+    }
   })();
 
   return cache.promise;

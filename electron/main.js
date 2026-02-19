@@ -689,11 +689,13 @@ ipcMain.handle("execute-http-request", async (event, options) => {
       const req = httpModule.request(requestOptions, (res) => {
         const chunks = [];
         let totalSize = 0;
+        let resolved = false;
 
         res.on("data", (chunk) => {
           totalSize += chunk.length;
           // Security: Cap response size to prevent memory abuse
           if (totalSize > MAX_RESPONSE_SIZE) {
+            resolved = true;
             req.destroy();
             resolve({
               success: false,
@@ -705,6 +707,7 @@ ipcMain.handle("execute-http-request", async (event, options) => {
         });
 
         res.on("end", () => {
+          if (resolved) return;
           const duration = Date.now() - startTime;
           const responseBody = Buffer.concat(chunks).toString("utf8");
 

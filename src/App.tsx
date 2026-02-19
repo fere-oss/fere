@@ -443,6 +443,23 @@ function App() {
     setViewMode("database");
   }, []);
 
+  // Reconcile databaseNode with live data when containers change
+  // (e.g., container restarts get a new containerId)
+  useEffect(() => {
+    if (!databaseNode || databaseNode.id.startsWith("__saved_")) return;
+    const live = graphIndex.nonExternalNodes.find(
+      (n) => n.id === databaseNode.id,
+    );
+    if (live) {
+      // Update with fresh data (new containerId, ports, state, etc.)
+      if (
+        live.containerId !== databaseNode.containerId ||
+        live.containerState !== databaseNode.containerState
+      ) {
+        setDatabaseNode(live);
+      }
+    }
+  }, [graphIndex.nonExternalNodes, databaseNode]);
 
   // Open database view directly from top tabs (show database list)
   const handleOpenDatabaseView = useCallback(() => {

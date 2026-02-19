@@ -53,6 +53,8 @@ class SnapshotScheduler extends EventEmitter {
     // Worker thread
     this.worker = null;
     this.workerReady = false;
+    this._workerRestartCount = 0;
+    this._workerRestartTimer = null;
   }
 
   start() {
@@ -98,6 +100,10 @@ class SnapshotScheduler extends EventEmitter {
       clearInterval(this.fastProbeTimer);
       this.fastProbeTimer = null;
     }
+    if (this._workerRestartTimer) {
+      clearTimeout(this._workerRestartTimer);
+      this._workerRestartTimer = null;
+    }
     if (this.worker) {
       this.worker.terminate();
       this.worker = null;
@@ -107,27 +113,47 @@ class SnapshotScheduler extends EventEmitter {
 
   _restartWorker() {
     if (!this.running) return;
-    try {
-      this.worker = new Worker(path.join(__dirname, '../workers/graphBuilder.worker.js'));
-      this.worker.on('message', (msg) => this._handleWorkerMessage(msg));
-      this.worker.on('error', (err) => {
-        console.error('[SnapshotScheduler] Worker error after restart:', err);
-        this.workerReady = false;
-        this._restartWorker();
-      });
-      this.worker.on('exit', (code) => {
-        if (code !== 0 && this.running) {
-          console.error(`[SnapshotScheduler] Worker exited with code ${code}, restarting...`);
-          this._restartWorker();
-        }
-      });
-      this.workerReady = true;
-      this.workerBusy = false;
-    } catch (error) {
-      console.error('[SnapshotScheduler] Failed to restart Worker:', error);
+
+    const MAX_RESTART_ATTEMPTS = 5;
+    this._workerRestartCount++;
+
+    if (this._workerRestartCount > MAX_RESTART_ATTEMPTS) {
+      console.error(`[SnapshotScheduler] Worker failed ${MAX_RESTART_ATTEMPTS} times, giving up. Falling back to main thread.`);
       this.workerReady = false;
       this.workerBusy = false;
+      return;
     }
+
+    // Exponential backoff: 1s, 2s, 4s, 8s, 16s
+    const delay = Math.min(1000 * Math.pow(2, this._workerRestartCount - 1), 16000);
+    console.warn(`[SnapshotScheduler] Restarting worker in ${delay}ms (attempt ${this._workerRestartCount}/${MAX_RESTART_ATTEMPTS})...`);
+
+    this._workerRestartTimer = setTimeout(() => {
+      this._workerRestartTimer = null;
+      if (!this.running) return;
+      try {
+        this.worker = new Worker(path.join(__dirname, '../workers/graphBuilder.worker.js'));
+        this.worker.on('message', (msg) => this._handleWorkerMessage(msg));
+        this.worker.on('error', (err) => {
+          console.error('[SnapshotScheduler] Worker error after restart:', err);
+          this.workerReady = false;
+          this._restartWorker();
+        });
+        this.worker.on('exit', (code) => {
+          if (code !== 0 && this.running) {
+            console.error(`[SnapshotScheduler] Worker exited with code ${code}, restarting...`);
+            this._restartWorker();
+          }
+        });
+        this.workerReady = true;
+        this.workerBusy = false;
+        this._workerRestartCount = 0; // Reset on successful start
+      } catch (error) {
+        console.error('[SnapshotScheduler] Failed to restart Worker:', error);
+        this.workerReady = false;
+        this.workerBusy = false;
+      }
+    }, delay);
   }
 
   /**

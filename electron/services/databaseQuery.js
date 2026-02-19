@@ -76,10 +76,14 @@ async function execDockerWithInput(containerId, commandArgs, input, timeout = 30
     let stdout = '';
     let stderr = '';
     let timedOut = false;
+    let killTimer = null;
 
     const timer = setTimeout(() => {
       timedOut = true;
       child.kill('SIGTERM');
+      killTimer = setTimeout(() => {
+        if (!child.killed) child.kill('SIGKILL');
+      }, 2000);
     }, timeout);
 
     child.stdout.on('data', (chunk) => {
@@ -92,11 +96,13 @@ async function execDockerWithInput(containerId, commandArgs, input, timeout = 30
 
     child.on('error', (error) => {
       clearTimeout(timer);
+      if (killTimer) clearTimeout(killTimer);
       reject(error);
     });
 
     child.on('close', (code) => {
       clearTimeout(timer);
+      if (killTimer) clearTimeout(killTimer);
       if (timedOut) {
         reject(new Error('Database command timed out'));
         return;
@@ -127,10 +133,14 @@ async function execDocker(containerId, commandArgs, timeout = 10000) {
     let stdout = '';
     let stderr = '';
     let timedOut = false;
+    let killTimer = null;
 
     const timer = setTimeout(() => {
       timedOut = true;
       child.kill('SIGTERM');
+      killTimer = setTimeout(() => {
+        if (!child.killed) child.kill('SIGKILL');
+      }, 2000);
     }, timeout);
 
     child.stdout.on('data', (chunk) => {
@@ -143,11 +153,13 @@ async function execDocker(containerId, commandArgs, timeout = 10000) {
 
     child.on('error', (error) => {
       clearTimeout(timer);
+      if (killTimer) clearTimeout(killTimer);
       reject(error);
     });
 
     child.on('close', (code) => {
       clearTimeout(timer);
+      if (killTimer) clearTimeout(killTimer);
       if (timedOut) {
         reject(new Error('Docker command timed out'));
         return;
@@ -175,9 +187,16 @@ async function execMongoUriEval(uri, command, timeout = 30000) {
     let stderr = '';
     let timedOut = false;
 
+    let killTimer = null;
     const timer = setTimeout(() => {
       timedOut = true;
       child.kill('SIGTERM');
+      // Escalate to SIGKILL if SIGTERM doesn't work after 2s
+      killTimer = setTimeout(() => {
+        if (!child.killed) {
+          child.kill('SIGKILL');
+        }
+      }, 2000);
     }, timeout);
 
     child.stdout.on('data', (chunk) => {
@@ -190,11 +209,13 @@ async function execMongoUriEval(uri, command, timeout = 30000) {
 
     child.on('error', (error) => {
       clearTimeout(timer);
+      if (killTimer) clearTimeout(killTimer);
       reject(error);
     });
 
     child.on('close', (code) => {
       clearTimeout(timer);
+      if (killTimer) clearTimeout(killTimer);
       if (timedOut) {
         reject(new Error('Remote MongoDB command timed out'));
         return;

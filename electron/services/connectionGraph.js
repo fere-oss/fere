@@ -369,10 +369,11 @@ async function getEnvironmentSummary() {
       ports: n.ports.map(p => p.port),
       type: n.type,
     })),
-    portRange: nodes.length > 0 ? {
-      min: Math.min(...nodes.flatMap(n => n.ports.map(p => p.port))),
-      max: Math.max(...nodes.flatMap(n => n.ports.map(p => p.port))),
-    } : null,
+    portRange: (() => {
+      const allPorts = nodes.flatMap(n => n.ports.map(p => p.port));
+      if (allPorts.length === 0) return null;
+      return { min: Math.min(...allPorts), max: Math.max(...allPorts) };
+    })(),
   };
 }
 

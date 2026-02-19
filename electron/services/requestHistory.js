@@ -63,27 +63,23 @@ function loadHistory() {
  */
 function saveHistoryEntry(entry) {
   writeQueue = writeQueue.then(() => {
-    try {
-      ensureConfigDir();
+    ensureConfigDir();
 
-      let history = readHistoryFile();
+    let history = readHistoryFile();
 
-      history.unshift(entry);
+    history.unshift(entry);
 
-      if (history.length > MAX_HISTORY_ENTRIES) {
-        history = history.slice(0, MAX_HISTORY_ENTRIES);
-      }
-
-      writeHistoryFile(history);
-    } catch (error) {
-      console.error('Error saving history entry:', error);
+    if (history.length > MAX_HISTORY_ENTRIES) {
+      history = history.slice(0, MAX_HISTORY_ENTRIES);
     }
+
+    writeHistoryFile(history);
   });
 
-  return writeQueue.then(() => ({ success: true })).catch((error) => ({
-    success: false,
-    error: error.message,
-  }));
+  return writeQueue.then(() => ({ success: true })).catch((error) => {
+    console.error('Error saving history entry:', error);
+    return { success: false, error: error.message };
+  });
 }
 
 /**
@@ -92,19 +88,15 @@ function saveHistoryEntry(entry) {
  */
 function clearHistory() {
   writeQueue = writeQueue.then(() => {
-    try {
-      if (fs.existsSync(HISTORY_FILE_PATH)) {
-        writeHistoryFile([]);
-      }
-    } catch (error) {
-      console.error('Error clearing history:', error);
+    if (fs.existsSync(HISTORY_FILE_PATH)) {
+      writeHistoryFile([]);
     }
   });
 
-  return writeQueue.then(() => ({ success: true })).catch((error) => ({
-    success: false,
-    error: error.message,
-  }));
+  return writeQueue.then(() => ({ success: true })).catch((error) => {
+    console.error('Error clearing history:', error);
+    return { success: false, error: error.message };
+  });
 }
 
 module.exports = {
