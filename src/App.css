@@ -118,6 +118,9 @@ textarea {
   z-index: 200;
   padding: 0;
   animation: alertPanelIn 0.12s ease;
+  -webkit-app-region: no-drag;
+  -webkit-user-select: auto;
+  user-select: auto;
 }
 
 .alert-panel::-webkit-scrollbar {
@@ -192,7 +195,7 @@ textarea {
 
 .alert-panel-checkbox {
   margin-top: 2px;
-  accent-color: var(--green);
+  accent-color: var(--text-primary);
 }
 
 .alert-panel-category-text {
