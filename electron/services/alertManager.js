@@ -1,7 +1,7 @@
 /**
  * Alert Manager Service
- * Evaluates health transitions and fires native macOS notifications
- * for service crashes (non-red → red) and recoveries (red → green).
+ * Evaluates service and container state transitions and fires native
+ * macOS notifications for meaningful status changes.
  */
 
 const { Notification } = require('electron');
@@ -16,7 +16,7 @@ const COOLDOWN_MS = 60000;  // 60s per-service cooldown between notifications
 const SETTINGS_FILE_PATH = path.join(os.homedir(), '.fere', 'settings.json');
 
 // --- Alert state per node ---
-// Map<nodeId, { previousHealth, redEnteredAt, lastNotifiedAt, name }>
+// Map<nodeId, { previousHealth, previousContainerState, redEnteredAt, redNotified, lastNotifiedAt, name }>
 const nodeStates = new Map();
 const intentionalStopByPid = new Map();
 const intentionalStopByContainerId = new Map();
@@ -132,19 +132,57 @@ function markIntentionalStopForContainer(containerId, ttlMs = INTENTIONAL_STOP_T
  * @param {'crash'|'recovery'} type
  * @param {string} serviceName
  */
-function fireNotification(type, serviceName) {
-  if (!Notification.isSupported()) return;
+function serviceKindLabel(node) {
+  switch (node.type) {
+    case 'database': return 'Database';
+    case 'cache': return 'Cache';
+    case 'broker': return 'Broker';
+    default: return 'Service';
+  }
+}
 
-  if (type === 'crash') {
+function shouldIgnoreNode(node) {
+  return node.isGhost || node.type === 'external';
+}
+
+function canNotify(prev, now) {
+  return now - prev.lastNotifiedAt >= COOLDOWN_MS;
+}
+
+function fireNotification(type, node, details = '') {
+  if (!Notification.isSupported()) return;
+  const serviceName = node.name || 'Service';
+  const kind = serviceKindLabel(node);
+  const suffix = details ? ` (${details})` : '';
+
+  if (type === 'down') {
     new Notification({
-      title: 'Service Down',
-      body: `${serviceName} has become unresponsive`,
+      title: `${kind} Down`,
+      body: `${serviceName} is down${suffix}`,
       silent: false,
     }).show();
   } else if (type === 'recovery') {
     new Notification({
-      title: 'Service Recovered',
-      body: `${serviceName} is back online`,
+      title: `${kind} Recovered`,
+      body: `${serviceName} is back online${suffix}`,
+      silent: false,
+    }).show();
+  } else if (type === 'degraded') {
+    new Notification({
+      title: `${kind} Degraded`,
+      body: `${serviceName} is responding slowly or idle${suffix}`,
+      silent: false,
+    }).show();
+  } else if (type === 'container-stopped') {
+    new Notification({
+      title: 'Container Stopped',
+      body: `${serviceName} changed state to ${details || 'stopped'}`,
+      silent: false,
+    }).show();
+  } else if (type === 'container-running') {
+    new Notification({
+      title: 'Container Running',
+      body: `${serviceName} is running again`,
       silent: false,
     }).show();
   }
@@ -161,13 +199,17 @@ function evaluateAlerts(nodes) {
   const currentNodeIds = new Set(nodes.map(n => n.id));
 
   for (const node of nodes) {
+    if (shouldIgnoreNode(node)) continue;
+
     const prev = nodeStates.get(node.id);
 
     if (!prev) {
       // First time seeing this node — initialize, no alert
       nodeStates.set(node.id, {
         previousHealth: node.healthStatus,
+        previousContainerState: node.containerState || null,
         redEnteredAt: node.healthStatus === 'red' ? now : 0,
+        redNotified: false,
         lastNotifiedAt: 0,
         name: node.name,
       });
@@ -180,38 +222,78 @@ function evaluateAlerts(nodes) {
     if (currentHealth === 'red' && previousHealth !== 'red') {
       // Just entered red — record timestamp, start debounce
       prev.redEnteredAt = now;
+      prev.redNotified = false;
       prev.previousHealth = 'red';
 
     } else if (currentHealth === 'red' && previousHealth === 'red') {
-      // Still in red — check debounce and cooldown
+      // Still in red — notify once after debounce
       const timeSinceRedEntered = now - prev.redEnteredAt;
-      const timeSinceLastNotified = now - prev.lastNotifiedAt;
-
-      if (timeSinceRedEntered >= DEBOUNCE_MS && timeSinceLastNotified >= COOLDOWN_MS) {
+      if (!prev.redNotified && timeSinceRedEntered >= DEBOUNCE_MS && canNotify(prev, now)) {
         if (prefs.alertsEnabled && !isIntentionalStop(node, now)) {
-          fireNotification('crash', node.name);
+          fireNotification('down', node, node.type === 'database' ? 'check DB process/container' : '');
           prev.lastNotifiedAt = now;
+          prev.redNotified = true;
         }
       }
 
     } else if (currentHealth === 'green' && previousHealth === 'red') {
       // Recovered — notify only if was red long enough
       const timeSinceRedEntered = now - prev.redEnteredAt;
-      if (timeSinceRedEntered >= DEBOUNCE_MS && prefs.alertsEnabled) {
-        fireNotification('recovery', node.name);
+      if (timeSinceRedEntered >= DEBOUNCE_MS && prefs.alertsEnabled && canNotify(prev, now)) {
+        fireNotification('recovery', node);
         prev.lastNotifiedAt = now;
       }
       prev.redEnteredAt = 0;
+      prev.redNotified = false;
       prev.previousHealth = 'green';
 
     } else {
+      // Green -> yellow is often an early indicator that something is off.
+      if (
+        prefs.alertsEnabled &&
+        previousHealth === 'green' &&
+        currentHealth === 'yellow' &&
+        canNotify(prev, now)
+      ) {
+        fireNotification('degraded', node);
+        prev.lastNotifiedAt = now;
+      }
+
       // Any other transition
       prev.previousHealth = currentHealth;
       if (currentHealth !== 'red') {
         prev.redEnteredAt = 0;
+        prev.redNotified = false;
       }
     }
 
+    const previousContainerState = prev.previousContainerState || null;
+    const currentContainerState = node.containerState || null;
+    if (
+      prefs.alertsEnabled &&
+      node.isDockerContainer &&
+      previousContainerState &&
+      currentContainerState &&
+      previousContainerState !== currentContainerState &&
+      canNotify(prev, now)
+    ) {
+      if (
+        previousContainerState === 'running' &&
+        ['exited', 'dead', 'paused', 'restarting'].includes(currentContainerState) &&
+        !isIntentionalStop(node, now)
+      ) {
+        fireNotification('container-stopped', node, currentContainerState);
+        prev.lastNotifiedAt = now;
+      } else if (
+        previousContainerState !== 'running' &&
+        currentContainerState === 'running'
+      ) {
+        fireNotification('container-running', node);
+        prev.lastNotifiedAt = now;
+      }
+    }
+
+    prev.previousContainerState = currentContainerState;
     // Keep name in sync
     prev.name = node.name;
   }
