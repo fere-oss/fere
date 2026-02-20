@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "description": "Visualize your local development environment in real-time",
   "author": "Rahul Thennarasu",
+  "license": "MIT",
   "private": true,
   "main": "electron/main.js",
   "homepage": "./",
