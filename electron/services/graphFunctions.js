@@ -767,6 +767,65 @@ function addDockerContainerNodes(nodes, edges, dockerSnapshot, nodesByPid, portT
     }
   }
 
+  // Redirect edges that target Docker proxy/backend process nodes to the
+  // actual container nodes.  When a native process connects to a Docker-mapped
+  // host port (e.g. localhost:9200), the initial edge-building pass resolves
+  // that port to the Docker proxy PID — not the container.  Now that container
+  // nodes exist, retarget those edges so the graph shows the real connection.
+  const hostPortToContainerNode = new Map();
+  for (const [, node] of containerNodesById) {
+    for (const port of node.ports) {
+      hostPortToContainerNode.set(port.port, node);
+    }
+  }
+
+  const retargetedEdgeIds = new Set();
+  const nodesToRemove = new Set();
+  for (let i = 0; i < edges.length; i++) {
+    const edge = edges[i];
+    const containerNode = hostPortToContainerNode.get(edge.targetPort);
+    if (!containerNode || edge.target === containerNode.id) continue;
+
+    const targetNode = nodes.find(n => n.id === edge.target);
+    if (!targetNode) continue;
+
+    // Only retarget if the current target looks like a Docker proxy/backend
+    const tName = String(targetNode.name || '').toLowerCase();
+    const tCmd = String(targetNode.command || '').toLowerCase();
+    const isProxyNode =
+      targetNode.type === 'container' ||
+      tName.includes('docker') ||
+      tCmd.includes('docker') ||
+      tCmd.includes('com.docker');
+    if (!isProxyNode) continue;
+
+    const newEdgeId = `${edge.source}->${containerNode.id}:${edge.targetPort}`;
+    if (retargetedEdgeIds.has(newEdgeId)) {
+      // Duplicate after retargeting — mark for removal
+      edges.splice(i, 1);
+      i--;
+      continue;
+    }
+    retargetedEdgeIds.add(newEdgeId);
+    edge.target = containerNode.id;
+    edge.id = newEdgeId;
+    nodesToRemove.add(targetNode.id);
+  }
+
+  // Remove orphaned Docker proxy nodes that no longer have any edges
+  if (nodesToRemove.size > 0) {
+    const nodesWithEdges = new Set();
+    for (const edge of edges) {
+      nodesWithEdges.add(edge.source);
+      nodesWithEdges.add(edge.target);
+    }
+    for (let i = nodes.length - 1; i >= 0; i--) {
+      if (nodesToRemove.has(nodes[i].id) && !nodesWithEdges.has(nodes[i].id)) {
+        nodes.splice(i, 1);
+      }
+    }
+  }
+
   const edgeSet = new Set(edges.map(e => e.id));
   for (const conn of containerConnections) {
     const sourceNode = containerNodesById.get(conn.sourceContainerId);

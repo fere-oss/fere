@@ -50,6 +50,9 @@ const {
   connectPostgresUri,
   getPostgresUriTableData,
   executePostgresUriQuery,
+  connectElasticsearchUri,
+  getElasticsearchUriIndexData,
+  executeElasticsearchUriQuery,
 } = require("./services/databaseQuery");
 const {
   isDockerAvailable,
@@ -1077,6 +1080,36 @@ ipcMain.handle("execute-postgres-uri-query", async (_, uri, query) => {
   } catch (error) {
     console.error("Error executing PostgreSQL URI query:", error);
     return { error: error.message, dbType: "postgresql" };
+  }
+});
+
+// Connect to Elasticsearch via HTTP URL
+ipcMain.handle("connect-elasticsearch-uri", async (_, baseUrl) => {
+  try {
+    return await connectElasticsearchUri(baseUrl);
+  } catch (error) {
+    console.error("Error connecting to Elasticsearch:", error);
+    return { error: error.message, tables: [], dbType: "elasticsearch" };
+  }
+});
+
+// Fetch index data from Elasticsearch
+ipcMain.handle("get-elasticsearch-uri-index-data", async (_, baseUrl, indexName, limit) => {
+  try {
+    return await getElasticsearchUriIndexData(baseUrl, indexName, limit);
+  } catch (error) {
+    console.error("Error fetching Elasticsearch index data:", error);
+    return { columns: [], rows: [], error: error.message, dbType: "elasticsearch" };
+  }
+});
+
+// Execute search query against Elasticsearch
+ipcMain.handle("execute-elasticsearch-uri-query", async (_, baseUrl, query) => {
+  try {
+    return await executeElasticsearchUriQuery(baseUrl, query);
+  } catch (error) {
+    console.error("Error executing Elasticsearch query:", error);
+    return { error: error.message, dbType: "elasticsearch" };
   }
 });
 
