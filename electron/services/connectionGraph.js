@@ -26,6 +26,7 @@ const {
   inferProjectPathFromCommand,
   inferProjectPathFromContainer,
   findProjectRoot,
+  findNearestProjectMarkerRoot,
   buildGraphStructure,
   overlayMetrics,
   hasTopologyChanged,
@@ -256,12 +257,15 @@ async function attachRoutesToNodes(nodes) {
     cwdLookupCount++;
     const cwd = await getProcessCwd(node.pid, cwdByPid);
     if (!cwd) continue;
-    const projectRoot = findProjectRoot(cwd);
-    if (!projectRoot) continue;
+    // repoPath = enclosing git root — drives "repo" tab grouping in the UI
+    const repoRoot = findProjectRoot(cwd);
+    if (!repoRoot) continue;
+    // projectPath = nearest manifest root — drives "subproject" tabs + route scanning
+    // Falls back to the git root when no manifest file is found above the CWD.
+    const projectRoot = findNearestProjectMarkerRoot(cwd) || repoRoot;
 
-    if (node.projectPath !== projectRoot) {
-      node.projectPath = projectRoot;
-    }
+    node.projectPath = projectRoot;
+    node.repoPath = repoRoot;
     node.project = path.basename(projectRoot);
     projects.set(projectRoot, null);
   }

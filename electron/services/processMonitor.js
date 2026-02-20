@@ -72,7 +72,7 @@ function extractProcessName(command) {
   let name = parts[parts.length - 1];
 
   // Handle common wrappers
-  if (name === 'node' || name === 'python' || name === 'python3') {
+  if (name === 'node' || name === 'python' || name === 'python3' || name === 'ruby') {
     const args = command.split(' ');
     if (args.length > 1) {
       const script = args[1].split('/').pop();
