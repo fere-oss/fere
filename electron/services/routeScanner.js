@@ -46,10 +46,16 @@ const ROUTE_PATTERNS = {
     /\w+\.(Get|Post|Put|Delete|Patch)\s*\(\s*["`]([^"`]+)["`]/g,
     /\w+\.MethodFunc\s*\(\s*["`](GET|POST|PUT|DELETE|PATCH)["`]\s*,\s*["`]([^"`]+)["`]/g,
   ],
+  // Rails: get '/path', post '/path', etc. in config/routes.rb
+  rails: [
+    /(get|post|put|patch|delete)\s+['"]([^'"]+)['"]/gi,
+  ],
+  // Django: path('route/', view) — handled separately (no HTTP methods in URL patterns)
+  django: null,
 };
 
 // File extensions to scan
-const SCAN_EXTENSIONS = ['.py', '.js', '.ts', '.jsx', '.tsx', '.mjs', '.go'];
+const SCAN_EXTENSIONS = ['.py', '.js', '.ts', '.jsx', '.tsx', '.mjs', '.go', '.rb'];
 
 // Directories to skip
 const SKIP_DIRS = [
@@ -67,6 +73,8 @@ const SKIP_DIRS = [
   '.yarn',
   '.pnpm-store',
   'vendor',
+  'tmp',
+  'log',
 ];
 const MAX_FILES = 2000;
 // OPTIMIZATION: Extended cache TTL from 10s to 2min
@@ -119,6 +127,16 @@ function detectFramework(filePath, content) {
     if (content.includes('from flask') || content.includes('import flask')) {
       return 'flask';
     }
+    if (content.includes('from django.urls') || content.includes('from django.conf.urls')) {
+      return 'django';
+    }
+  }
+
+  // Ruby files
+  if (ext === '.rb') {
+    if (content.includes('routes.draw')) {
+      return 'rails';
+    }
   }
 
   // Go files
@@ -157,6 +175,29 @@ function detectFramework(filePath, content) {
  */
 function extractRoutes(filePath, content, framework) {
   const routes = [];
+
+  // Handle Django URL patterns (no HTTP methods in urlpatterns)
+  if (framework === 'django') {
+    const pathPattern = /path\s*\(\s*['"]([^'"]*)['"]/g;
+    const rePathPattern = /re_path\s*\(\s*r?['"]([^'"]*)['"]/g;
+
+    let match;
+    while ((match = pathPattern.exec(content)) !== null) {
+      let routePath = match[1];
+      // Clean up regex anchors for display
+      routePath = routePath.replace(/^\^/, '').replace(/\$$/, '');
+      const normalizedPath = routePath.startsWith('/') ? routePath : '/' + routePath;
+      routes.push({ method: 'ALL', path: normalizedPath, file: filePath, framework });
+    }
+    while ((match = rePathPattern.exec(content)) !== null) {
+      let routePath = match[1];
+      // Clean up regex anchors for display
+      routePath = routePath.replace(/^\^/, '').replace(/\$$/, '');
+      const normalizedPath = routePath.startsWith('/') ? routePath : '/' + routePath;
+      routes.push({ method: 'ALL', path: normalizedPath, file: filePath, framework });
+    }
+    return routes;
+  }
 
   // Handle Next.js file-based routing
   if (framework === 'nextjs') {
@@ -223,6 +264,51 @@ function extractRoutes(filePath, content, framework) {
         // For @app.get(), @app.post(), etc. or other frameworks
         const method = decoratorType === 'ROUTE' || decoratorType === 'ALL' ? 'ALL' : decoratorType;
         routes.push({ method, path: routePath, file: filePath, framework });
+      }
+    }
+  }
+
+  // Handle Rails root and resources directives (after regex extraction of explicit routes)
+  if (framework === 'rails') {
+    // root 'controller#action' or root to: 'controller#action'
+    if (/root\s+(?:to:\s*)?['"][^'"]+['"]/.test(content)) {
+      routes.push({ method: 'GET', path: '/', file: filePath, framework });
+    }
+
+    // resources :name generates standard CRUD routes
+    const resourcesPattern = /resources\s+:(\w+)(?:\s*,\s*only:\s*\[([^\]]*)\])?/g;
+    let resMatch;
+    while ((resMatch = resourcesPattern.exec(content)) !== null) {
+      const name = resMatch[1];
+      const onlyParam = resMatch[2];
+      const actions = onlyParam
+        ? onlyParam.match(/:(\w+)/g)?.map(a => a.slice(1)) || []
+        : ['index', 'show', 'create', 'update', 'destroy'];
+
+      for (const action of actions) {
+        if (action === 'index') routes.push({ method: 'GET', path: `/${name}`, file: filePath, framework });
+        if (action === 'show') routes.push({ method: 'GET', path: `/${name}/:id`, file: filePath, framework });
+        if (action === 'create') routes.push({ method: 'POST', path: `/${name}`, file: filePath, framework });
+        if (action === 'update') routes.push({ method: 'PATCH', path: `/${name}/:id`, file: filePath, framework });
+        if (action === 'destroy') routes.push({ method: 'DELETE', path: `/${name}/:id`, file: filePath, framework });
+      }
+    }
+
+    // resource :name (singular) generates routes without :id
+    const resourcePattern = /resource\s+:(\w+)(?:\s*,\s*only:\s*\[([^\]]*)\])?/g;
+    let singMatch;
+    while ((singMatch = resourcePattern.exec(content)) !== null) {
+      const name = singMatch[1];
+      const onlyParam = singMatch[2];
+      const actions = onlyParam
+        ? onlyParam.match(/:(\w+)/g)?.map(a => a.slice(1)) || []
+        : ['show', 'create', 'update', 'destroy'];
+
+      for (const action of actions) {
+        if (action === 'show') routes.push({ method: 'GET', path: `/${name}`, file: filePath, framework });
+        if (action === 'create') routes.push({ method: 'POST', path: `/${name}`, file: filePath, framework });
+        if (action === 'update') routes.push({ method: 'PATCH', path: `/${name}`, file: filePath, framework });
+        if (action === 'destroy') routes.push({ method: 'DELETE', path: `/${name}`, file: filePath, framework });
       }
     }
   }
@@ -348,6 +434,13 @@ function matchRoutesToService(routes, service) {
     serviceFrameworks.add('echo');
     serviceFrameworks.add('chi');
   }
+  // Django
+  if (command.includes('django') || command.includes('manage.py')) serviceFrameworks.add('django');
+  // uwsgi/gunicorn can also serve Django — add django alongside flask
+  if (command.includes('uwsgi') || command.includes('gunicorn')) serviceFrameworks.add('django');
+  // Rails
+  if (command.includes('rails') || command.includes('puma') || command.includes('unicorn') ||
+      command.includes('passenger')) serviceFrameworks.add('rails');
 
   const serviceRoutes = [];
 

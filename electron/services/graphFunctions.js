@@ -181,6 +181,8 @@ function categorizeProcess(processName, command = '') {
   if (cmd.includes('express') || cmd.includes('nestjs') || cmd.includes('fastify')) return 'backend';
   if (cmd.includes('go run') || cmd.includes('gin') || cmd.includes('echo') ||
       cmd.includes('chi')) return 'backend';
+  if (cmd.includes('rails') || cmd.includes('puma') || cmd.includes('unicorn') ||
+      cmd.includes('passenger')) return 'backend';
 
   if (name.includes('node')) return 'nodejs';
   if (name.includes('python')) return 'python';
