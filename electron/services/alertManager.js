@@ -10,8 +10,9 @@ const path = require('path');
 const os = require('os');
 
 // --- Configuration ---
-const DEBOUNCE_MS = 5000;   // Must be red for 5s before alerting
-const COOLDOWN_MS = 60000;  // 60s per-service cooldown between notifications
+const DEBOUNCE_MS = 5000;           // Must be red for 5s before alerting
+const DEGRADED_DEBOUNCE_MS = 15000; // Must be yellow for 15s before alerting
+const COOLDOWN_MS = 300000;         // 5min per-service cooldown between notifications
 
 const SETTINGS_FILE_PATH = path.join(os.homedir(), '.fere', 'settings.json');
 
@@ -210,6 +211,8 @@ function evaluateAlerts(nodes) {
         previousContainerState: node.containerState || null,
         redEnteredAt: node.healthStatus === 'red' ? now : 0,
         redNotified: false,
+        yellowEnteredAt: node.healthStatus === 'yellow' ? now : 0,
+        yellowNotified: false,
         lastNotifiedAt: 0,
         name: node.name,
       });
@@ -248,15 +251,29 @@ function evaluateAlerts(nodes) {
       prev.previousHealth = 'green';
 
     } else {
-      // Green -> yellow is often an early indicator that something is off.
-      if (
-        prefs.alertsEnabled &&
-        previousHealth === 'green' &&
-        currentHealth === 'yellow' &&
-        canNotify(prev, now)
-      ) {
-        fireNotification('degraded', node);
-        prev.lastNotifiedAt = now;
+      // Yellow (degraded) handling with debounce
+      if (currentHealth === 'yellow' && previousHealth !== 'yellow') {
+        // Just entered yellow — start debounce
+        prev.yellowEnteredAt = now;
+        prev.yellowNotified = false;
+      } else if (currentHealth === 'yellow' && previousHealth === 'yellow') {
+        // Still yellow — notify once after debounce
+        const timeSinceYellowEntered = now - prev.yellowEnteredAt;
+        if (
+          !prev.yellowNotified &&
+          timeSinceYellowEntered >= DEGRADED_DEBOUNCE_MS &&
+          canNotify(prev, now) &&
+          prefs.alertsEnabled
+        ) {
+          fireNotification('degraded', node);
+          prev.lastNotifiedAt = now;
+          prev.yellowNotified = true;
+        }
+      }
+
+      if (currentHealth !== 'yellow') {
+        prev.yellowEnteredAt = 0;
+        prev.yellowNotified = false;
       }
 
       // Any other transition
