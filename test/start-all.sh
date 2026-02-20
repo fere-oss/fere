@@ -48,6 +48,7 @@ cleanup() {
     # Also clean up any orphaned processes
     pkill -f "python.*server.py" 2>/dev/null || true
     pkill -f "node.*node-server.js" 2>/dev/null || true
+    pkill -f "go-server" 2>/dev/null || true
     echo -e "${GREEN}All services stopped.${NC}"
     exit 0
 }
@@ -72,6 +73,14 @@ if ! command -v ruby &> /dev/null; then
     HAS_RUBY=false
 else
     HAS_RUBY=true
+fi
+
+# Check for Go (optional)
+if ! command -v go &> /dev/null; then
+    echo -e "${YELLOW}Warning: go not found, skipping Go server${NC}"
+    HAS_GO=false
+else
+    HAS_GO=true
 fi
 
 # Install Flask if needed
@@ -154,6 +163,14 @@ node worker-mock.js &
 PIDS+=($!)
 sleep 1
 
+# Start Go server (Gin)
+if [ "$HAS_GO" = true ]; then
+    echo -e "${GREEN}Starting Go API server (Gin) on port 8082...${NC}"
+    (cd "$SCRIPT_DIR/go-server" && go mod tidy -e 2>/dev/null; go run .) &
+    PIDS+=($!)
+    sleep 2
+fi
+
 echo -e "\n${GREEN}All services started!${NC}"
 echo -e "  Flask API:  http://localhost:5001"
 echo -e "  Node.js:    http://localhost:3001"
@@ -168,6 +185,9 @@ echo -e "  WS mock: tcp://localhost:8081"
 echo -e "  HTTP client mock: outbound"
 echo -e "  Postgres client mock: outbound"
 echo -e "  Worker mock: background"
+if [ "$HAS_GO" = true ]; then
+    echo -e "  Go API (Gin): http://localhost:8082"
+fi
 echo -e "\n${YELLOW}Press Ctrl+C to stop all services${NC}\n"
 
 # Wait for all background processes

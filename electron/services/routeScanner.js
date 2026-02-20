@@ -491,7 +491,8 @@ function matchRoutesToService(routes, service) {
   }
   // Go services: framework names rarely appear in command line (compiles to binary),
   // so add all Go frameworks and let route-level framework tags handle filtering.
-  if (command.includes('go run') || command.includes('go build')) {
+  // `go run .` exec-replaces itself with a temp binary under a /go-build/ path.
+  if (command.includes('go run') || command.includes('go build') || command.includes('/go-build')) {
     serviceFrameworks.add('gin');
     serviceFrameworks.add('echo');
     serviceFrameworks.add('chi');
