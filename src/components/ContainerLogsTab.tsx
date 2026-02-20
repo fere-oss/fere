@@ -19,6 +19,13 @@ interface UnifiedLogEntry {
   formattedTime: string;
 }
 
+const LOG_TIME_FORMATTER = new Intl.DateTimeFormat('en-US', {
+  hour12: true,
+  hour: 'numeric',
+  minute: '2-digit',
+  second: '2-digit',
+});
+
 // Color palette for containers - visually distinct colors
 const CONTAINER_COLORS = [
   '#3b82f6', // blue
@@ -216,9 +223,9 @@ export function ContainerLogsTab({ containers, initialSelectedId }: ContainerLog
       timestamp: data.timestamp || null,
       stream: data.stream,
       level: detectLogLevel(data.line),
-      formattedTime: data.timestamp
-        ? new Date(data.timestamp).toLocaleTimeString('en-US', { hour12: false, fractionalSecondDigits: 3 })
-        : new Date().toLocaleTimeString('en-US', { hour12: false, fractionalSecondDigits: 3 }),
+      formattedTime: LOG_TIME_FORMATTER.format(
+        data.timestamp ? new Date(data.timestamp) : new Date()
+      ),
     };
 
     bufferRef.current.push(entry);

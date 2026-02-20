@@ -41,31 +41,32 @@ Integration tests live in `test/` — run `sh test/start-all.sh` or `cd test/doc
 
 ### Key Source Locations
 
-| Area | Files |
-|------|-------|
-| App shell, view modes, tabs | `src/App.tsx` |
-| Snapshot delta patching | `src/hooks/useSystemMonitor.ts` |
-| Graph rendering + layout | `src/components/GraphView.tsx`, `src/components/graph/*` |
-| API tester / cURL builder | `src/components/CurlBuilder.tsx` |
-| Container logs UI | `src/components/ContainerLogsTab.tsx` |
-| Database UI | `src/components/DatabaseListView.tsx`, `src/components/DatabasePage.tsx`, `src/components/database/*` |
-| Main process + IPC handlers | `electron/main.js` |
-| Preload bridge (renderer API) | `electron/preload.js` |
-| Security (URL validation, CSP, SSRF) | `electron/security.js` |
-| Snapshot collection | `electron/services/systemSnapshot.js` |
-| Event-driven scheduler | `electron/services/snapshotScheduler.js` |
-| Graph construction | `electron/services/connectionGraph.js`, `electron/services/graphFunctions.js` |
-| Route discovery | `electron/services/routeScanner.js` |
-| External API detection | `electron/services/externalApiScanner.js` |
-| Docker monitoring | `electron/services/dockerMonitor.js` |
-| Container log streaming | `electron/services/containerLogs.js` |
-| Database queries | `electron/services/databaseQuery.js` |
-| Shared type contracts | `src/types/electron.d.ts` |
-| API provider catalog | `config/api-providers.json` |
+| Area                                 | Files                                                                                                 |
+| ------------------------------------ | ----------------------------------------------------------------------------------------------------- |
+| App shell, view modes, tabs          | `src/App.tsx`                                                                                         |
+| Snapshot delta patching              | `src/hooks/useSystemMonitor.ts`                                                                       |
+| Graph rendering + layout             | `src/components/GraphView.tsx`, `src/components/graph/*`                                              |
+| API tester / cURL builder            | `src/components/CurlBuilder.tsx`                                                                      |
+| Container logs UI                    | `src/components/ContainerLogsTab.tsx`                                                                 |
+| Database UI                          | `src/components/DatabaseListView.tsx`, `src/components/DatabasePage.tsx`, `src/components/database/*` |
+| Main process + IPC handlers          | `electron/main.js`                                                                                    |
+| Preload bridge (renderer API)        | `electron/preload.js`                                                                                 |
+| Security (URL validation, CSP, SSRF) | `electron/security.js`                                                                                |
+| Snapshot collection                  | `electron/services/systemSnapshot.js`                                                                 |
+| Event-driven scheduler               | `electron/services/snapshotScheduler.js`                                                              |
+| Graph construction                   | `electron/services/connectionGraph.js`, `electron/services/graphFunctions.js`                         |
+| Route discovery                      | `electron/services/routeScanner.js`                                                                   |
+| External API detection               | `electron/services/externalApiScanner.js`                                                             |
+| Docker monitoring                    | `electron/services/dockerMonitor.js`                                                                  |
+| Container log streaming              | `electron/services/containerLogs.js`                                                                  |
+| Database queries                     | `electron/services/databaseQuery.js`                                                                  |
+| Shared type contracts                | `src/types/electron.d.ts`                                                                             |
+| API provider catalog                 | `config/api-providers.json`                                                                           |
 
 ### IPC Communication Pattern
 
 The renderer never accesses Node/OS APIs directly. All privileged operations go through:
+
 - `electron/preload.js` — exposes `window.electronAPI` via Electron's contextBridge
 - `electron/main.js` — registers `ipcMain.handle()` handlers for each operation
 - `src/types/electron.d.ts` — defines the TypeScript contracts shared between both sides
@@ -73,6 +74,7 @@ The renderer never accesses Node/OS APIs directly. All privileged operations go 
 ### Monitoring Services
 
 Each service in `electron/services/` has a focused responsibility with TTL caching:
+
 - `portMonitor.js` / `processMonitor.js` — enumerate ports and processes via OS commands
 - `healthTracker.js` — derive service health states (active/idle/down)
 - `routeScanner.js` — scan source trees for API routes (FastAPI, Flask, Express, Next.js, Koa, Hono)
