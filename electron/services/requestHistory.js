@@ -40,21 +40,55 @@ const SENSITIVE_BODY_FIELDS = new Set([
 ]);
 
 /**
- * Redact sensitive values from an object's keys (case-insensitive match).
+ * Redact sensitive values from an object/array tree (case-insensitive key match).
  */
 function redactObject(obj, sensitiveKeys) {
   if (!obj || typeof obj !== 'object') return obj;
+
+  if (Array.isArray(obj)) {
+    return obj.map((item) => redactObject(item, sensitiveKeys));
+  }
+
   const result = {};
   for (const [key, value] of Object.entries(obj)) {
     if (sensitiveKeys.has(key.toLowerCase())) {
       result[key] = REDACTED;
-    } else if (value && typeof value === 'object' && !Array.isArray(value)) {
+    } else if (value && typeof value === 'object') {
       result[key] = redactObject(value, sensitiveKeys);
     } else {
       result[key] = value;
     }
   }
   return result;
+}
+
+/**
+ * Build a regex that matches key=value pairs for any sensitive field name.
+ * Handles both `key=value&` (form-encoded) and `key=value\n` (multipart-like) patterns.
+ */
+function buildFormRedactPattern(sensitiveKeys) {
+  const escaped = [...sensitiveKeys].map((k) => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  // Match: key=<value> where value runs until & or end-of-string
+  return new RegExp(`((?:^|&)(?:${escaped.join('|')})=)([^&]*)`, 'gi');
+}
+
+const FORM_REDACT_RE = buildFormRedactPattern(SENSITIVE_BODY_FIELDS);
+
+/**
+ * Redact sensitive key=value pairs in a URL-encoded / form-encoded string.
+ */
+function redactFormEncoded(str) {
+  // Reset lastIndex since the regex is global
+  FORM_REDACT_RE.lastIndex = 0;
+  return str.replace(FORM_REDACT_RE, `$1${REDACTED}`);
+}
+
+/**
+ * Detect whether a string looks like URL-encoded form data.
+ * Must contain at least one key=value pair with only form-safe characters.
+ */
+function looksLikeFormEncoded(str) {
+  return /^[^=&]+=[^&]*(&[^=&]+=[^&]*)*$/.test(str);
 }
 
 /**
@@ -69,15 +103,21 @@ function redactEntry(entry) {
     redacted.headers = redactObject(redacted.headers, SENSITIVE_HEADERS);
   }
 
-  // Redact sensitive fields inside JSON bodies
+  // Redact sensitive fields inside request bodies
   if (redacted.body && typeof redacted.body === 'string') {
     try {
       const parsed = JSON.parse(redacted.body);
       if (parsed && typeof parsed === 'object') {
         redacted.body = JSON.stringify(redactObject(parsed, SENSITIVE_BODY_FIELDS));
+        return redacted;
       }
     } catch {
-      // Not JSON — leave as-is
+      // Not JSON — fall through to other formats
+    }
+
+    // Form-encoded: password=secret&user=foo
+    if (looksLikeFormEncoded(redacted.body)) {
+      redacted.body = redactFormEncoded(redacted.body);
     }
   }
 
@@ -191,4 +231,11 @@ module.exports = {
   loadHistory,
   saveHistoryEntry,
   clearHistory,
+  // Exported for testing
+  redactEntry,
+  redactObject,
+  redactFormEncoded,
+  looksLikeFormEncoded,
+  SENSITIVE_HEADERS,
+  SENSITIVE_BODY_FIELDS,
 };
