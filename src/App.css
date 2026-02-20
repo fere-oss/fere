@@ -2917,41 +2917,50 @@ textarea {
   -webkit-app-region: no-drag;
   align-items: center;
   min-height: 42px;
+  position: relative;
+}
+
+.view-mode-indicator {
+  position: absolute;
+  top: 0;
+  height: 40px;
+  background: var(--text-primary);
+  border-radius: 10px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+              width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  pointer-events: none;
+  z-index: 0;
 }
 
 .view-mode-tab {
+  position: relative;
+  z-index: 1;
   display: flex;
   align-items: center;
   gap: 8px;
   min-height: 40px;
   padding: 10px 20px;
   background: transparent;
-  border: 1px solid var(--border-color);
+  border: 1px solid transparent;
   border-radius: 10px;
   font-family: inherit;
   font-size: 14px;
   font-weight: 500;
   color: var(--text-secondary);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: color 0.25s ease;
 }
 
 .view-mode-tab:hover {
-  background: var(--bg-white);
-  border-color: var(--border-hover);
   color: var(--text-primary);
 }
 
 .view-mode-tab-active {
-  background: var(--text-primary);
-  border-color: var(--text-primary);
   color: var(--bg-white);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 }
 
 .view-mode-tab-active:hover {
-  background: var(--text-primary);
-  border-color: var(--text-primary);
   color: var(--bg-white);
 }
 

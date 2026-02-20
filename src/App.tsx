@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback, useRef } from "react";
+import { useState, useMemo, useEffect, useLayoutEffect, useCallback, useRef } from "react";
 import { useSystemSnapshot } from "./hooks/useSystemMonitor";
 import { GraphView } from "./components/GraphView";
 import { CurlBuilder } from "./components/CurlBuilder";
@@ -208,6 +208,21 @@ function App() {
   );
   const lastNodeIdByServiceRef = useRef<Map<string, string>>(new Map());
   const inferredEdgesCacheRef = useRef<Map<string, typeof graph.edges>>(new Map());
+
+  // Sliding indicator for view-mode tabs
+  const viewModeTabsRef = useRef<HTMLDivElement>(null);
+  const [indicatorStyle, setIndicatorStyle] = useState<{ left: number; width: number } | null>(null);
+
+  useLayoutEffect(() => {
+    const container = viewModeTabsRef.current;
+    if (!container) return;
+    const activeBtn = container.querySelector<HTMLButtonElement>(".view-mode-tab-active");
+    if (!activeBtn) return;
+    setIndicatorStyle({
+      left: activeBtn.offsetLeft,
+      width: activeBtn.offsetWidth,
+    });
+  }, [viewMode]);
 
   // Welcome modal state
   const [showWelcome, setShowWelcome] = useState(false);
@@ -816,7 +831,13 @@ function App() {
       )}
 
       {/* View Mode Tabs */}
-      <div className="view-mode-tabs">
+      <div className="view-mode-tabs" ref={viewModeTabsRef}>
+        {indicatorStyle && (
+          <div
+            className="view-mode-indicator"
+            style={{ left: indicatorStyle.left, width: indicatorStyle.width }}
+          />
+        )}
         <button
           className={`view-mode-tab ${viewMode === "graph" ? "view-mode-tab-active" : ""}`}
           onClick={() => { setViewMode("graph"); capture("tab_switched", { to: "graph" }); }}
