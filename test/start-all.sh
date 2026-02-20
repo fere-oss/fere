@@ -193,7 +193,7 @@ if [ "$HAS_GO" = true ]; then
 fi
 
 # Start Django server
-echo -e "${GREEN}Starting Django API server on port 8083...${NC}"
+echo -e "${GREEN}Starting Django API server on port 8091...${NC}"
 (cd "$SCRIPT_DIR/django-server" && python3 manage.py runserver 0.0.0.0:8091 --noreload) &
 PIDS+=($!)
 sleep 2

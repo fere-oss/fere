@@ -64,6 +64,7 @@ const BRAND_DOMAIN_BY_KEY: Record<string, string> = {
   nats: "nats.io",
   nginx: "nginx.org",
   apache: "apache.org",
+  electron: "electronjs.org",
   docker: "docker.com",
   podman: "podman.io",
   "node.js": "nodejs.org",
@@ -72,12 +73,17 @@ const BRAND_DOMAIN_BY_KEY: Record<string, string> = {
   uwsgi: "python.org",
   gunicorn: "python.org",
   flask: "python.org",
-  django: "python.org",
+  django: "djangoproject.com",
   fastapi: "fastapi.tiangolo.com",
   go: "go.dev",
   golang: "go.dev",
+  gin: "gin-gonic.com",
+  fiber: "gofiber.io",
   java: "java.com",
   php: "php.net",
+  ruby: "ruby-lang.org",
+  rails: "rubyonrails.org",
+  "ruby on rails": "rubyonrails.org",
 };
 
 const RAW_LOGO_DEV_TOKEN = (process.env.REACT_APP_LOGO_DEV_TOKEN || "").trim();
@@ -137,9 +143,15 @@ export function inferServiceBrand(
   ) as string[];
   for (const sample of samples) {
     const key = normalize(sample);
-    if (BRAND_DOMAIN_BY_KEY[key]) return sample;
-    for (const lookup of Object.keys(BRAND_DOMAIN_BY_KEY)) {
-      if (matchesBrandKey(key, lookup)) return sample;
+    // Skip the brand-key loop for path-like strings (absolute paths starting
+    // with "/" or "~") — directory names in paths (e.g. "/GitHub/", "/node/")
+    // can accidentally match brand keys and produce wrong logos.
+    const isPathLike = key.startsWith("/") || key.startsWith("~");
+    if (!isPathLike) {
+      if (BRAND_DOMAIN_BY_KEY[key]) return sample;
+      for (const lookup of Object.keys(BRAND_DOMAIN_BY_KEY)) {
+        if (matchesBrandKey(key, lookup)) return sample;
+      }
     }
     const host = extractDomainLike(sample);
     if (host) return host;

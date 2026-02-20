@@ -328,6 +328,7 @@ function findProjectRoot(startPath) {
   // commonly used for dotfile management, not as a real project.
   const homeDir = os.homedir();
 
+  // First pass: find the enclosing .git root (canonical repo identity).
   let probe = current;
   let probePrev = null;
   while (probe && probe !== probePrev) {
@@ -337,6 +338,7 @@ function findProjectRoot(startPath) {
     probe = path.dirname(probe);
   }
 
+  // Fallback: nearest PROJECT_MARKER when no .git is present.
   let previous = null;
   while (current && current !== previous) {
     if (current === homeDir) break;
@@ -875,6 +877,7 @@ module.exports = {
   inferProjectPathFromCommand,
   PROJECT_MARKERS,
   findProjectRoot,
+  findNearestProjectMarkerRoot,
   extractProjectFromContainerName,
   inferProjectPathFromContainer,
   // Docker helpers
