@@ -273,6 +273,7 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
       if (remoteMongoMode || savedUri) return;
 
       const image = (containerImage || '').toLowerCase();
+      const nodeName = (node.name || '').toLowerCase();
       const isRemoteMongoLauncher = !containerId && image.includes('mongo');
       if (isRemoteMongoLauncher) {
         if (!isCancelled) {
@@ -281,6 +282,43 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
           setQuery('db.getCollectionNames()');
           setError(null);
           setLoading(false);
+        }
+        return;
+      }
+
+      // Elasticsearch is HTTP-based — auto-connect via URI using the container's exposed port
+      const isElasticsearch = image.includes('elasticsearch') || image.includes('opensearch')
+        || nodeName.includes('elasticsearch') || nodeName.includes('opensearch');
+      if (isElasticsearch) {
+        const esPort = node.ports.find(p => p.port === 9200 || p.port === 9201)?.port
+          || node.ports[0]?.port
+          || 9200;
+        const esUrl = `http://localhost:${esPort}`;
+        try {
+          if (!isCancelled) {
+            setLoading(true);
+            setError(null);
+          }
+          const result = await window.electronAPI.connectElasticsearchUri(esUrl);
+          if (isCancelled) return;
+          if (result.error) {
+            setError(result.error);
+          } else {
+            setRemoteMongoUri(esUrl);
+            setRemoteMongoMode(true);
+            setRemoteUriDbType('elasticsearch');
+            setDbType('elasticsearch');
+            setTables(result.tables || []);
+            setQuery('{"query": {"match_all": {}}, "size": 10}');
+            setSelectedRemoteDb('');
+            setSelectedRemoteCollection('');
+          }
+        } catch (err) {
+          if (!isCancelled) {
+            setError(err instanceof Error ? err.message : 'Failed to connect to Elasticsearch');
+          }
+        } finally {
+          if (!isCancelled) setLoading(false);
         }
         return;
       }
