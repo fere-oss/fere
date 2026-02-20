@@ -53,6 +53,40 @@ test('categorizeProcess detects common service types', () => {
   assert.equal(categorizeProcess('python', 'uvicorn app:app'), 'backend');
 });
 
+test('categorizeProcess detects framework backends', () => {
+  assert.equal(categorizeProcess('go', 'go run main.go'), 'backend');
+  assert.equal(categorizeProcess('ruby', 'rails server'), 'backend');
+  assert.equal(categorizeProcess('ruby', 'puma -C config/puma.rb'), 'backend');
+  assert.equal(categorizeProcess('java', 'java -jar spring-app.jar'), 'backend');
+  assert.equal(categorizeProcess('php', 'php artisan serve'), 'backend');
+});
+
+test('categorizeProcess detects infrastructure services', () => {
+  // Message brokers
+  assert.equal(categorizeProcess('rabbitmq', 'rabbitmq-server'), 'broker');
+  assert.equal(categorizeProcess('kafka', 'kafka-server-start'), 'broker');
+  assert.equal(categorizeProcess('zookeeper', 'zookeeper'), 'broker');
+  assert.equal(categorizeProcess('activemq', 'activemq start'), 'broker');
+
+  // Caching
+  assert.equal(categorizeProcess('memcached', 'memcached -m 64'), 'cache');
+
+  // Search engines
+  assert.equal(categorizeProcess('elasticsearch', 'elasticsearch'), 'database');
+  assert.equal(categorizeProcess('opensearch', 'opensearch'), 'database');
+  assert.equal(categorizeProcess('meilisearch', 'meilisearch'), 'database');
+  assert.equal(categorizeProcess('solr', 'solr start'), 'database');
+
+  // Workers
+  assert.equal(categorizeProcess('python', 'celery -A app worker'), 'worker');
+  assert.equal(categorizeProcess('ruby', 'sidekiq'), 'worker');
+
+  // Proxy / load balancer
+  assert.equal(categorizeProcess('traefik', 'traefik'), 'webserver');
+  assert.equal(categorizeProcess('haproxy', 'haproxy'), 'webserver');
+  assert.equal(categorizeProcess('envoy', 'envoy'), 'webserver');
+});
+
 test('inferProjectPathFromCommand prefers git root', () => {
   const root = makeTempDir();
   const nested = path.join(root, 'src', 'server');
