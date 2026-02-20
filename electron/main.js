@@ -73,6 +73,8 @@ const {
   evaluateAlerts,
   getAlertPreferences,
   setAlertPreferences,
+  getAlertHistory,
+  clearAlertHistory,
   markIntentionalStopForPid,
   markIntentionalStopForContainer,
 } = require("./services/alertManager");
@@ -878,6 +880,28 @@ ipcMain.handle("set-alert-preferences", async (event, prefs) => {
     return setAlertPreferences(prefs);
   } catch (error) {
     console.error("Error setting alert preferences:", error);
+    return { success: false, error: error.message };
+  }
+});
+
+// ============================================
+// IPC Handlers - Alert History
+// ============================================
+
+ipcMain.handle("get-alert-history", async () => {
+  try {
+    return { success: true, events: getAlertHistory() };
+  } catch (error) {
+    console.error("Error getting alert history:", error);
+    return { success: false, events: [], error: error.message };
+  }
+});
+
+ipcMain.handle("clear-alert-history", async () => {
+  try {
+    return await clearAlertHistory();
+  } catch (error) {
+    console.error("Error clearing alert history:", error);
     return { success: false, error: error.message };
   }
 });

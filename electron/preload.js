@@ -61,6 +61,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getAlertPreferences: () => ipcRenderer.invoke('get-alert-preferences'),
   setAlertPreferences: (prefs) => ipcRenderer.invoke('set-alert-preferences', prefs),
 
+  // Alert History
+  getAlertHistory: () => ipcRenderer.invoke('get-alert-history'),
+  clearAlertHistory: () => ipcRenderer.invoke('clear-alert-history'),
+
   // Container Logs Streaming
   startContainerLogs: (containerId, options) => ipcRenderer.invoke('start-container-logs', containerId, options),
   stopContainerLogs: (streamId) => ipcRenderer.invoke('stop-container-logs', streamId),

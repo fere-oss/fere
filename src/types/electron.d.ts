@@ -398,6 +398,31 @@ export interface NetworkPolicyResult {
 // Alert preferences
 export interface AlertPreferences {
   alertsEnabled: boolean;
+  categoryToggles: {
+    down: boolean;
+    recovery: boolean;
+    degraded: boolean;
+    container: boolean;
+  };
+}
+
+// Alert event (in-app history)
+export interface AlertEvent {
+  id: string;
+  timestamp: number;
+  type: 'down' | 'recovery' | 'degraded' | 'container-stopped' | 'container-running';
+  category: 'down' | 'recovery' | 'degraded' | 'container';
+  serviceName: string;
+  serviceType: string;
+  nodeId: string;
+  details: string;
+  notified: boolean;
+}
+
+export interface AlertHistoryResult {
+  success: boolean;
+  events: AlertEvent[];
+  error?: string;
 }
 
 // Snapshot delta types (event-driven pipeline)
@@ -499,6 +524,10 @@ export interface ElectronAPI {
   // Alert Preferences
   getAlertPreferences: () => Promise<AlertPreferences>;
   setAlertPreferences: (prefs: Partial<AlertPreferences>) => Promise<{ success: boolean; error?: string }>;
+
+  // Alert History
+  getAlertHistory: () => Promise<AlertHistoryResult>;
+  clearAlertHistory: () => Promise<{ success: boolean; error?: string }>;
 
   // Container Logs Streaming
   startContainerLogs: (containerId: string, options?: ContainerLogOptions) => Promise<ContainerLogStreamResult>;
