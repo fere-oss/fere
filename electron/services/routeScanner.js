@@ -52,10 +52,23 @@ const ROUTE_PATTERNS = {
   ],
   // Django: path('route/', view) — handled separately (no HTTP methods in URL patterns)
   django: null,
+  // Spring Boot: @GetMapping("/path"), @PostMapping("/path"), etc.
+  // @RequestMapping is handled separately in extractRoutes()
+  spring: [
+    /@(Get|Post|Put|Delete|Patch)Mapping\s*\(\s*(?:value\s*=\s*)?["']([^"']+)["']/gi,
+  ],
+  // Laravel: Route::get('/path', ...), Route::post('/path', ...), etc.
+  laravel: [
+    /Route::(get|post|put|patch|delete)\s*\(\s*['"]([^'"]+)['"]/gi,
+  ],
+  // Fiber: app.Get("/path", handler), app.Post("/path", handler)
+  fiber: [
+    /\w+\.(Get|Post|Put|Delete|Patch)\s*\(\s*["`]([^"`]+)["`]/g,
+  ],
 };
 
 // File extensions to scan
-const SCAN_EXTENSIONS = ['.py', '.js', '.ts', '.jsx', '.tsx', '.mjs', '.go', '.rb'];
+const SCAN_EXTENSIONS = ['.py', '.js', '.ts', '.jsx', '.tsx', '.mjs', '.go', '.rb', '.java', '.php'];
 
 // Directories to skip
 const SKIP_DIRS = [
@@ -75,6 +88,8 @@ const SKIP_DIRS = [
   'vendor',
   'tmp',
   'log',
+  'target',
+  'storage',
 ];
 const MAX_FILES = 2000;
 // OPTIMIZATION: Extended cache TTL from 10s to 2min
@@ -144,6 +159,19 @@ function detectFramework(filePath, content) {
     if (content.includes('github.com/gin-gonic/gin')) return 'gin';
     if (content.includes('github.com/labstack/echo')) return 'echo';
     if (content.includes('github.com/go-chi/chi')) return 'chi';
+    if (content.includes('github.com/gofiber/fiber')) return 'fiber';
+  }
+
+  // Java files
+  if (ext === '.java') {
+    if (content.includes('org.springframework.web') || content.includes('Mapping')) {
+      if (/@(?:Get|Post|Put|Delete|Patch|Request)Mapping/.test(content)) return 'spring';
+    }
+  }
+
+  // PHP files
+  if (ext === '.php') {
+    if (content.includes('Route::')) return 'laravel';
   }
 
   // JavaScript/TypeScript files
@@ -264,6 +292,40 @@ function extractRoutes(filePath, content, framework) {
         // For @app.get(), @app.post(), etc. or other frameworks
         const method = decoratorType === 'ROUTE' || decoratorType === 'ALL' ? 'ALL' : decoratorType;
         routes.push({ method, path: routePath, file: filePath, framework });
+      }
+    }
+  }
+
+  // Handle Spring Boot @RequestMapping (method is optional, defaults to ALL)
+  if (framework === 'spring') {
+    const rmPattern = /@RequestMapping\s*\(\s*(?:value\s*=\s*)?["']([^"']+)["'](?:[^)]*method\s*=\s*RequestMethod\.(\w+))?/g;
+    let rmMatch;
+    while ((rmMatch = rmPattern.exec(content)) !== null) {
+      const routePath = rmMatch[1];
+      const method = rmMatch[2] ? rmMatch[2].toUpperCase() : 'ALL';
+      if (routePath && !routePath.startsWith('{') && !routePath.includes('${')) {
+        routes.push({ method, path: routePath, file: filePath, framework });
+      }
+    }
+  }
+
+  // Handle Laravel Route::resource and Route::apiResource
+  if (framework === 'laravel') {
+    const resourcePattern = /Route::(?:api)?[Rr]esource\s*\(\s*['"]([^'"]+)['"]/g;
+    let resMatch;
+    while ((resMatch = resourcePattern.exec(content)) !== null) {
+      const name = resMatch[0].includes('apiResource') || resMatch[0].includes('apiR')
+        ? resMatch[1] : resMatch[1];
+      const basePath = name.startsWith('/') ? name : '/' + name;
+      const isApi = resMatch[0].includes('api');
+      routes.push({ method: 'GET', path: basePath, file: filePath, framework });
+      routes.push({ method: 'POST', path: basePath, file: filePath, framework });
+      routes.push({ method: 'GET', path: `${basePath}/{id}`, file: filePath, framework });
+      routes.push({ method: 'PUT', path: `${basePath}/{id}`, file: filePath, framework });
+      routes.push({ method: 'DELETE', path: `${basePath}/{id}`, file: filePath, framework });
+      if (!isApi) {
+        routes.push({ method: 'GET', path: `${basePath}/create`, file: filePath, framework });
+        routes.push({ method: 'GET', path: `${basePath}/{id}/edit`, file: filePath, framework });
       }
     }
   }
@@ -433,6 +495,7 @@ function matchRoutesToService(routes, service) {
     serviceFrameworks.add('gin');
     serviceFrameworks.add('echo');
     serviceFrameworks.add('chi');
+    serviceFrameworks.add('fiber');
   }
   // Django
   if (command.includes('django') || command.includes('manage.py')) serviceFrameworks.add('django');
@@ -441,6 +504,11 @@ function matchRoutesToService(routes, service) {
   // Rails
   if (command.includes('rails') || command.includes('puma') || command.includes('unicorn') ||
       command.includes('passenger')) serviceFrameworks.add('rails');
+  // Spring Boot
+  if (command.includes('spring') || command.includes('java') || command.includes('mvn') ||
+      command.includes('gradle')) serviceFrameworks.add('spring');
+  // Laravel
+  if (command.includes('artisan') || command.includes('laravel') || command.includes('php')) serviceFrameworks.add('laravel');
 
   const serviceRoutes = [];
 

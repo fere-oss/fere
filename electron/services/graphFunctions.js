@@ -183,9 +183,34 @@ function categorizeProcess(processName, command = '') {
       cmd.includes('chi')) return 'backend';
   if (cmd.includes('rails') || cmd.includes('puma') || cmd.includes('unicorn') ||
       cmd.includes('passenger')) return 'backend';
+  if (cmd.includes('spring') || cmd.includes('tomcat') || cmd.includes('jetty')) return 'backend';
+  if (cmd.includes('artisan serve') || cmd.includes('laravel')) return 'backend';
+
+  // Message brokers
+  if (name.includes('rabbitmq') || cmd.includes('rabbitmq') || cmd.includes('rabbit')) return 'broker';
+  if (name.includes('kafka') || cmd.includes('kafka')) return 'broker';
+  if (name.includes('zookeeper') || cmd.includes('zookeeper')) return 'broker';
+  if (name.includes('activemq') || cmd.includes('activemq')) return 'broker';
+
+  // Caching
+  if (name.includes('memcached') || cmd.includes('memcached')) return 'cache';
+
+  // Search engines (data stores — categorized as database)
+  if (name.includes('elasticsearch') || cmd.includes('elasticsearch')) return 'database';
+  if (name.includes('opensearch') || cmd.includes('opensearch')) return 'database';
+  if (name.includes('meilisearch') || cmd.includes('meilisearch')) return 'database';
+  if (name.includes('solr') || cmd.includes('solr')) return 'database';
+
+  // Workers / background jobs
+  if (cmd.includes('celery') || cmd.includes('sidekiq') || cmd.includes('resque')) return 'worker';
+
+  // Proxy / load balancer
+  if (name.includes('traefik') || name.includes('haproxy') || name.includes('envoy')) return 'webserver';
 
   if (name.includes('node')) return 'nodejs';
   if (name.includes('python')) return 'python';
+  if (name.includes('java') || name.includes('java')) return 'backend';
+  if (name.includes('ruby') || name.includes('php')) return 'backend';
 
   return 'service';
 }
@@ -209,7 +234,34 @@ function categorizeContainerImage(image) {
   if (imageLower.includes('node') && (imageLower.includes('react') || imageLower.includes('vue') || imageLower.includes('angular'))) return 'frontend';
   if (imageLower.includes('python') || imageLower.includes('django') || imageLower.includes('flask') || imageLower.includes('fastapi')) return 'python';
   if (imageLower.includes('node') || imageLower.includes('express') || imageLower.includes('nestjs')) return 'nodejs';
-  if (imageLower.includes('worker') || imageLower.includes('celery') || imageLower.includes('sidekiq')) return 'worker';
+  if (imageLower.includes('worker') || imageLower.includes('celery') || imageLower.includes('sidekiq') ||
+      imageLower.includes('resque')) return 'worker';
+
+  // Search engines (data stores)
+  if (imageLower.includes('elasticsearch') || imageLower.includes('opensearch')) return 'database';
+  if (imageLower.includes('meilisearch') || imageLower.includes('solr') || imageLower.includes('typesense')) return 'database';
+
+  // Additional brokers
+  if (imageLower.includes('activemq') || imageLower.includes('pulsar') || imageLower.includes('mosquitto')) return 'broker';
+
+  // Object storage
+  if (imageLower.includes('minio') || imageLower.includes('localstack')) return 'database';
+
+  // Proxy / load balancer
+  if (imageLower.includes('envoy') || imageLower.includes('caddy')) return 'webserver';
+
+  // Infrastructure services
+  if (imageLower.includes('vault') || imageLower.includes('consul') || imageLower.includes('etcd')) return 'service';
+  if (imageLower.includes('keycloak') || imageLower.includes('authelia')) return 'service';
+  if (imageLower.includes('prometheus') || imageLower.includes('grafana') || imageLower.includes('jaeger')) return 'service';
+  if (imageLower.includes('mailhog') || imageLower.includes('mailpit') || imageLower.includes('mailtrap')) return 'service';
+
+  // Language runtimes
+  if (imageLower.includes('ruby') || imageLower.includes('rails')) return 'backend';
+  if (imageLower.includes('php') || imageLower.includes('laravel')) return 'backend';
+  if (imageLower.includes('golang') || imageLower.includes('go:')) return 'backend';
+  if (imageLower.includes('openjdk') || imageLower.includes('java') || imageLower.includes('spring')) return 'backend';
+
   return 'container';
 }
 
