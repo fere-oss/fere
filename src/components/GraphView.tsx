@@ -6,10 +6,7 @@ import ReactFlow, {
   ControlButton,
   Position,
   type ReactFlowInstance,
-  getNodesBounds,
-  getViewportForBounds,
 } from "reactflow";
-import { toPng } from "html-to-image";
 import "reactflow/dist/style.css";
 import type { GraphEdge, GraphNode } from "../types/electron";
 import { ContextMenu } from "./graph/ContextMenu";
@@ -611,62 +608,6 @@ export function GraphView({
       ref={containerRef}
     >
       <ActivePorts nodes={layoutNodes} reactFlowInstance={reactFlowInstance} />
-
-      <button
-        className="graph-export-btn"
-        title="Export as PNG"
-        onClick={() => {
-          const viewport = containerRef.current?.querySelector(
-            ".react-flow__viewport",
-          ) as HTMLElement | null;
-          if (!viewport || flowLayout.nodes.length === 0) return;
-
-          const IMAGE_WIDTH = 2048;
-          const IMAGE_HEIGHT = 1536;
-
-          const nodesBounds = getNodesBounds(flowLayout.nodes);
-          const { x, y, zoom } = getViewportForBounds(
-            nodesBounds,
-            IMAGE_WIDTH,
-            IMAGE_HEIGHT,
-            0.5,
-            2,
-            0.15,
-          );
-
-          toPng(viewport, {
-            backgroundColor: "#f8f9fa",
-            width: IMAGE_WIDTH,
-            height: IMAGE_HEIGHT,
-            style: {
-              width: `${IMAGE_WIDTH}px`,
-              height: `${IMAGE_HEIGHT}px`,
-              transform: `translate(${x}px, ${y}px) scale(${zoom})`,
-            },
-          }).then((dataUrl) => {
-            const link = document.createElement("a");
-            link.download = `fere-service-map-${new Date().toISOString().slice(0, 10)}.png`;
-            link.href = dataUrl;
-            link.click();
-          });
-        }}
-      >
-        <svg
-          width="14"
-          height="14"
-          viewBox="0 0 16 16"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <path d="M2 10v3a1 1 0 001 1h10a1 1 0 001-1v-3" />
-          <polyline points="5 6 8 9 11 6" />
-          <line x1="8" y1="2" x2="8" y2="9" />
-        </svg>
-        Export PNG
-      </button>
 
       <div className={`graph-flow${viewportReady ? "" : " graph-flow-hidden"}`}>
         <HoverContext.Provider value={hoverState}>

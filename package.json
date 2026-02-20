@@ -16,7 +16,6 @@
     "@types/node": "^16.18.126",
     "@types/react": "^19.2.9",
     "@types/react-dom": "^19.2.3",
-    "html-to-image": "^1.11.13",
     "pg": "^8.18.0",
     "posthog-js": "^1.351.4",
     "posthog-node": "^5.24.17",
