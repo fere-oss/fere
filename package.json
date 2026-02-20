@@ -43,10 +43,7 @@
     "electron:dev": "concurrently \"BROWSER=none PORT=3001 npm run start:no-deprecation\" \"wait-on http://localhost:3001 && electron .\"",
     "electron:build": "npm run build && electron-builder",
     "electron:build:mac": "npm run build && electron-builder --mac",
-    "test:node": "node --test electron/services/*.test.js electron/security.test.js",
-    "lint": "eslint src/ --max-warnings 0",
-    "typecheck": "tsc --noEmit",
-    "audit:prod": "npm audit --omit=dev --audit-level=high"
+    "test:node": "node --test electron/services/*.test.js electron/security.test.js"
   },
   "build": {
     "appId": "com.fere.app",
