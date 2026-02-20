@@ -49,6 +49,9 @@ interface UseDatabasePageResult {
   formatCellValue: (value: unknown) => string;
   getDbTypeLabel: () => string;
   getQueryPlaceholder: () => string;
+  actionError: string | null;
+  clearActionError: () => void;
+  refreshTables: () => Promise<void>;
 }
 
 export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
@@ -63,6 +66,7 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
   const [loadingTable, setLoadingTable] = useState(false);
   const [executingQuery, setExecutingQuery] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'data' | 'query'>('data');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [deletingRow, setDeletingRow] = useState<number | null>(null);
@@ -624,7 +628,7 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
     } else if (dbType === 'mongodb') {
       dropQuery = `db.getCollection("${escapeMongo(selectedTable)}").drop()`;
     } else {
-      alert('Unsupported database type for deleting tables.');
+      setActionError('Unsupported database type for deleting tables.');
       return;
     }
 
@@ -647,7 +651,7 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
       await refreshTables();
     } catch (deleteError) {
       console.error('Error deleting table:', deleteError);
-      alert(`Failed to delete ${dbType === 'mongodb' ? 'collection' : 'table'}: ${deleteError instanceof Error ? deleteError.message : 'Unknown error'}`);
+      setActionError(`Failed to delete ${dbType === 'mongodb' ? 'collection' : 'table'}: ${deleteError instanceof Error ? deleteError.message : 'Unknown error'}`);
     } finally {
       setDeletingTable(false);
     }
@@ -699,7 +703,7 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
       setShowDeleteConfirm(null);
     } catch (deleteError) {
       console.error('Error deleting row:', deleteError);
-      alert(`Failed to delete row: ${deleteError instanceof Error ? deleteError.message : 'Unknown error'}`);
+      setActionError(`Failed to delete row: ${deleteError instanceof Error ? deleteError.message : 'Unknown error'}`);
     } finally {
       setDeletingRow(null);
     }
@@ -826,5 +830,8 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
     formatCellValue,
     getDbTypeLabel,
     getQueryPlaceholder,
+    actionError,
+    clearActionError: useCallback(() => setActionError(null), []),
+    refreshTables,
   };
 }

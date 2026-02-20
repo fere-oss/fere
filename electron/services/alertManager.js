@@ -58,7 +58,10 @@ function savePreferences(prefs) {
     }
   } catch (e) { /* start fresh */ }
   const merged = { ...existing, ...prefs };
-  fs.writeFileSync(SETTINGS_FILE_PATH, JSON.stringify(merged, null, 2), 'utf-8');
+  // Atomic write: write to temp file then rename
+  const tmp = SETTINGS_FILE_PATH + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify(merged, null, 2), 'utf-8');
+  fs.renameSync(tmp, SETTINGS_FILE_PATH);
   cachedPreferences = { ...cachedPreferences, ...prefs };
 }
 

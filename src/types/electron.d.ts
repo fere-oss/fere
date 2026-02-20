@@ -498,6 +498,9 @@ export interface ElectronAPI {
   stopSnapshotStream: () => Promise<{ success: boolean }>;
   onSnapshotDelta: (callback: (delta: SnapshotDelta) => void) => () => void;
 
+  // Analytics
+  getAnalyticsId: () => Promise<string>;
+
   // Platform info
   platform: string;
 }

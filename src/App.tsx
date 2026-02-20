@@ -8,6 +8,7 @@ import { WelcomeModal } from "./components/WelcomeModal";
 import { useKnownServices, serviceKey, nodeServiceKey, looseServiceIdentity } from "./components/checklist/useKnownServices";
 import { ServiceDropdown } from "./components/checklist/ServiceDropdown";
 import { HEALTH_COLORS } from "./components/graph/constants";
+import { initAnalytics, capture, identifyWithMainProcess } from "./analytics";
 import type { GraphEdge, GraphNode } from "./types/electron";
 import "./App.css";
 
@@ -216,6 +217,17 @@ function App() {
     if (window.electronAPI?.getAlertPreferences) {
       window.electronAPI.getAlertPreferences().then((prefs) => {
         setAlertsEnabled(prefs.alertsEnabled);
+      });
+    }
+  }, []);
+
+  // Initialize analytics and link to main process ID
+  useEffect(() => {
+    initAnalytics();
+    capture("app_opened");
+    if (window.electronAPI?.getAnalyticsId) {
+      window.electronAPI.getAnalyticsId().then((id) => {
+        if (id) identifyWithMainProcess(id);
       });
     }
   }, []);
@@ -464,6 +476,7 @@ function App() {
   // Open database view directly from top tabs (show database list)
   const handleOpenDatabaseView = useCallback(() => {
     setViewMode("database");
+    capture("tab_switched", { to: "database" });
   }, []);
 
   useEffect(() => {
@@ -794,7 +807,7 @@ function App() {
       <div className="view-mode-tabs">
         <button
           className={`view-mode-tab ${viewMode === "graph" ? "view-mode-tab-active" : ""}`}
-          onClick={() => setViewMode("graph")}
+          onClick={() => { setViewMode("graph"); capture("tab_switched", { to: "graph" }); }}
         >
           <span className="view-mode-icon">
             <svg
@@ -818,7 +831,7 @@ function App() {
         </button>
         <button
           className={`view-mode-tab ${viewMode === "containers" ? "view-mode-tab-active" : ""}`}
-          onClick={() => setViewMode("containers")}
+          onClick={() => { setViewMode("containers"); capture("tab_switched", { to: "containers" }); }}
         >
           <span className="view-mode-icon">
             <svg
@@ -835,7 +848,7 @@ function App() {
         </button>
         <button
           className={`view-mode-tab ${viewMode === "api-tester" ? "view-mode-tab-active" : ""}`}
-          onClick={() => setViewMode("api-tester")}
+          onClick={() => { setViewMode("api-tester"); capture("tab_switched", { to: "api-tester" }); }}
         >
           <span className="view-mode-icon">
             <svg
