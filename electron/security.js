@@ -4,6 +4,11 @@
  */
 
 const { shell, session } = require("electron");
+const fs = require("fs");
+const path = require("path");
+const os = require("os");
+
+const SETTINGS_FILE_PATH = path.join(os.homedir(), ".fere", "settings.json");
 
 // ============================================
 // URL Validation
@@ -271,6 +276,57 @@ function setupCSP(isDev) {
 }
 
 // ============================================
+// Network Policy
+// ============================================
+
+/**
+ * Read the current network policy from settings.json.
+ * Returns "local" (allow private networks) or "public" (block them).
+ * Default: "local" — this is a local dev tool.
+ */
+function getNetworkPolicy() {
+  try {
+    if (fs.existsSync(SETTINGS_FILE_PATH)) {
+      const raw = fs.readFileSync(SETTINGS_FILE_PATH, "utf-8");
+      const parsed = JSON.parse(raw);
+      if (parsed.networkPolicy === "public") return "public";
+    }
+  } catch {
+    // Corrupt/missing — fall through to default
+  }
+  return "local";
+}
+
+/**
+ * Persist the network policy to settings.json.
+ * @param {"local"|"public"} policy
+ */
+function setNetworkPolicy(policy) {
+  if (policy !== "local" && policy !== "public") {
+    return { success: false, error: "Policy must be 'local' or 'public'" };
+  }
+
+  const configDir = path.join(os.homedir(), ".fere");
+  if (!fs.existsSync(configDir)) {
+    fs.mkdirSync(configDir, { recursive: true });
+  }
+
+  let existing = {};
+  try {
+    if (fs.existsSync(SETTINGS_FILE_PATH)) {
+      existing = JSON.parse(fs.readFileSync(SETTINGS_FILE_PATH, "utf-8"));
+    }
+  } catch {
+    // start fresh
+  }
+  const merged = { ...existing, networkPolicy: policy };
+  const tmp = SETTINGS_FILE_PATH + ".tmp";
+  fs.writeFileSync(tmp, JSON.stringify(merged, null, 2), "utf-8");
+  fs.renameSync(tmp, SETTINGS_FILE_PATH);
+  return { success: true };
+}
+
+// ============================================
 // Exports
 // ============================================
 
@@ -282,6 +338,10 @@ module.exports = {
   ALLOWED_EXTERNAL_PROTOCOLS,
   DANGEROUS_PROTOCOLS,
   MAX_RESPONSE_SIZE,
+
+  // Network policy
+  getNetworkPolicy,
+  setNetworkPolicy,
 
   // Security setup
   setupNavigationBlocking,

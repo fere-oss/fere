@@ -4,6 +4,7 @@ import type {
   ApiRoute,
   HttpResponse,
   HistoryEntry,
+  NetworkPolicy,
 } from "../types/electron";
 
 interface CurlBuilderProps {
@@ -604,6 +605,9 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
 
+  // State for network policy
+  const [networkPolicy, setNetworkPolicyState] = useState<NetworkPolicy>("local");
+
   // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -635,6 +639,23 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
     };
     loadHistory();
   }, []);
+
+  // Load network policy on mount
+  useEffect(() => {
+    window.electronAPI.getNetworkPolicy().then((result) => {
+      if (result.success && result.policy) {
+        setNetworkPolicyState(result.policy);
+      }
+    }).catch(() => {});
+  }, []);
+
+  const toggleNetworkPolicy = useCallback(async () => {
+    const next = networkPolicy === "local" ? "public" : "local";
+    const result = await window.electronAPI.setNetworkPolicy(next);
+    if (result.success) {
+      setNetworkPolicyState(next);
+    }
+  }, [networkPolicy]);
 
   // Track elapsed time during request execution for timeout indication
   useEffect(() => {
@@ -1270,6 +1291,32 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
               />
             </div>
           )}
+
+          {/* Network Policy Toggle */}
+          <div className="curl-section curl-network-policy">
+            <label className="curl-section-title">Network Access</label>
+            <button
+              className={`curl-policy-toggle ${networkPolicy}`}
+              onClick={toggleNetworkPolicy}
+              title={
+                networkPolicy === "local"
+                  ? "Private networks allowed — click to restrict to public only"
+                  : "Public only — click to allow private/local networks"
+              }
+            >
+              <span className="curl-policy-indicator" />
+              <span className="curl-policy-label">
+                {networkPolicy === "local"
+                  ? "Local + Public"
+                  : "Public Only"}
+              </span>
+            </button>
+            {networkPolicy === "local" && (
+              <span className="curl-policy-hint">
+                Requests to localhost and private IPs are allowed
+              </span>
+            )}
+          </div>
 
           {/* Run Button */}
           {selectedNode && (

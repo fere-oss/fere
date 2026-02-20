@@ -386,6 +386,15 @@ export interface HistoryResult {
   error?: string;
 }
 
+// Network policy
+export type NetworkPolicy = 'local' | 'public';
+
+export interface NetworkPolicyResult {
+  success: boolean;
+  policy?: NetworkPolicy;
+  error?: string;
+}
+
 // Alert preferences
 export interface AlertPreferences {
   alertsEnabled: boolean;
@@ -479,6 +488,10 @@ export interface ElectronAPI {
   loadRequestHistory: () => Promise<HistoryResult>;
   saveRequestHistory: (entry: HistoryEntry) => Promise<{ success: boolean; error?: string }>;
   clearRequestHistory: () => Promise<{ success: boolean; error?: string }>;
+
+  // Network Policy
+  getNetworkPolicy: () => Promise<NetworkPolicyResult>;
+  setNetworkPolicy: (policy: NetworkPolicy) => Promise<{ success: boolean; error?: string }>;
 
   // Alert Preferences
   getAlertPreferences: () => Promise<AlertPreferences>;

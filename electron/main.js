@@ -10,6 +10,8 @@ const {
   setupPermissionHandlers,
   setupCSP,
   MAX_RESPONSE_SIZE,
+  getNetworkPolicy,
+  setNetworkPolicy,
 } = require("./security");
 
 // Import services
@@ -663,8 +665,9 @@ ipcMain.handle("execute-http-request", async (event, options) => {
   try {
     const { method, url, headers, body } = options;
 
-    // Security: Validate URL (allow localhost since this is a local dev tool)
-    const validation = validateHttpRequestUrl(url, true /* allowPrivate for local dev testing */);
+    // Security: Validate URL — respect the user's network policy setting
+    const allowPrivate = getNetworkPolicy() === "local";
+    const validation = validateHttpRequestUrl(url, allowPrivate);
     if (!validation.valid) {
       console.warn("[Security] Blocked HTTP request:", url, "-", validation.reason);
       return { success: false, error: validation.reason };
@@ -822,6 +825,31 @@ ipcMain.handle("clear-request-history", async () => {
     return clearHistory();
   } catch (error) {
     console.error("Error clearing request history:", error);
+    return { success: false, error: error.message };
+  }
+});
+
+// ============================================
+// IPC Handlers - Network Policy
+// ============================================
+
+ipcMain.handle("get-network-policy", async () => {
+  try {
+    return { success: true, policy: getNetworkPolicy() };
+  } catch (error) {
+    console.error("Error getting network policy:", error);
+    return { success: true, policy: "local" };
+  }
+});
+
+ipcMain.handle("set-network-policy", async (event, policy) => {
+  try {
+    if (policy !== "local" && policy !== "public") {
+      return { success: false, error: "Policy must be 'local' or 'public'" };
+    }
+    return setNetworkPolicy(policy);
+  } catch (error) {
+    console.error("Error setting network policy:", error);
     return { success: false, error: error.message };
   }
 });

@@ -3761,6 +3761,56 @@ textarea {
   color: var(--text-muted) !important;
 }
 
+/* Network Policy Toggle */
+.curl-network-policy {
+  margin-top: 4px;
+}
+
+.curl-policy-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: var(--bg-white);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.curl-policy-toggle:hover {
+  background: var(--bg-muted);
+}
+
+.curl-policy-indicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+
+.curl-policy-toggle.local .curl-policy-indicator {
+  background: #f59e0b;
+}
+
+.curl-policy-toggle.public .curl-policy-indicator {
+  background: #22c55e;
+}
+
+.curl-policy-hint {
+  display: block;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 4px;
+  line-height: 1.3;
+}
+
 /* Run Button */
 .curl-run-btn {
   display: flex;

@@ -50,6 +50,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   saveRequestHistory: (entry) => ipcRenderer.invoke('save-request-history', entry),
   clearRequestHistory: () => ipcRenderer.invoke('clear-request-history'),
 
+  // Network Policy
+  getNetworkPolicy: () => ipcRenderer.invoke('get-network-policy'),
+  setNetworkPolicy: (policy) => ipcRenderer.invoke('set-network-policy', policy),
+
   // Alert Preferences
   getAlertPreferences: () => ipcRenderer.invoke('get-alert-preferences'),
   setAlertPreferences: (prefs) => ipcRenderer.invoke('set-alert-preferences', prefs),
