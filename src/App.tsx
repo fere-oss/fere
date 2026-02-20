@@ -193,9 +193,8 @@ function App() {
   const [containerSubTab, setContainerSubTab] =
     useState<ContainerSubTab>("overview");
 
-  // Initial container ID to select in logs view (when navigating from freshness click)
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [initialLogContainerId, _setInitialLogContainerId] = useState<
+  // Initial container ID to select in logs view (when navigating from context menu)
+  const [initialLogContainerId, setInitialLogContainerId] = useState<
     string | undefined
   >();
 
@@ -298,6 +297,19 @@ function App() {
       timersRef.forEach((timer) => clearTimeout(timer));
       timersRef.clear();
     };
+  }, []);
+
+  // Navigate to container logs when triggered from the graph context menu
+  useEffect(() => {
+    const handleViewLogs = (e: Event) => {
+      const { containerId } = (e as CustomEvent).detail;
+      setViewMode("containers");
+      setContainerSubTab("logs");
+      setInitialLogContainerId(containerId);
+    };
+    window.addEventListener("fere:view-container-logs", handleViewLogs);
+    return () =>
+      window.removeEventListener("fere:view-container-logs", handleViewLogs);
   }, []);
 
   useEffect(() => {
