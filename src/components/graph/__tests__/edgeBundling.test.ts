@@ -10,7 +10,6 @@
 
 import { makeEdge, resetCounters } from "../testHelpers";
 import type { GraphEdge } from "../../../types/electron";
-import type { LayoutNode } from "../types";
 
 const BUNDLE_THRESHOLD = 3;
 

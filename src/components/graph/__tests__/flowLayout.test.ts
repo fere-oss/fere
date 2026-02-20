@@ -1,7 +1,6 @@
 import { buildStableConnectedLayout, FLOW_LAYOUT } from "../flowLayout";
 import { computeHierarchicalLayout } from "../layout";
 import { makeNode, makeEdge, resetCounters } from "../testHelpers";
-import type { LayoutNode } from "../types";
 
 beforeEach(() => resetCounters());
 
