@@ -32,10 +32,24 @@ const ROUTE_PATTERNS = {
   'node-http': [
     /["'](GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS|ALL)\s+(\/[^"']*)["']\s*:/gi,
   ],
+  // Gin: r.GET("/path", handler), router.POST("/path", handler)
+  gin: [
+    /\w+\.(GET|POST|PUT|DELETE|PATCH)\s*\(\s*["`]([^"`]+)["`]/g,
+  ],
+  // Echo: e.GET("/path", handler), echo.POST("/path", handler)
+  echo: [
+    /\w+\.(GET|POST|PUT|DELETE|PATCH)\s*\(\s*["`]([^"`]+)["`]/g,
+  ],
+  // Chi: r.Get("/path", handler), r.Post("/path", handler)
+  // Chi also supports r.MethodFunc("GET", "/path", handler)
+  chi: [
+    /\w+\.(Get|Post|Put|Delete|Patch)\s*\(\s*["`]([^"`]+)["`]/g,
+    /\w+\.MethodFunc\s*\(\s*["`](GET|POST|PUT|DELETE|PATCH)["`]\s*,\s*["`]([^"`]+)["`]/g,
+  ],
 };
 
 // File extensions to scan
-const SCAN_EXTENSIONS = ['.py', '.js', '.ts', '.jsx', '.tsx', '.mjs'];
+const SCAN_EXTENSIONS = ['.py', '.js', '.ts', '.jsx', '.tsx', '.mjs', '.go'];
 
 // Directories to skip
 const SKIP_DIRS = [
@@ -52,6 +66,7 @@ const SKIP_DIRS = [
   '.npm',
   '.yarn',
   '.pnpm-store',
+  'vendor',
 ];
 const MAX_FILES = 2000;
 // OPTIMIZATION: Extended cache TTL from 10s to 2min
@@ -104,6 +119,13 @@ function detectFramework(filePath, content) {
     if (content.includes('from flask') || content.includes('import flask')) {
       return 'flask';
     }
+  }
+
+  // Go files
+  if (ext === '.go') {
+    if (content.includes('github.com/gin-gonic/gin')) return 'gin';
+    if (content.includes('github.com/labstack/echo')) return 'echo';
+    if (content.includes('github.com/go-chi/chi')) return 'chi';
   }
 
   // JavaScript/TypeScript files
@@ -318,6 +340,13 @@ function matchRoutesToService(routes, service) {
     // Most Node API services are Express-based even when command line
     // does not include the framework name explicitly.
     serviceFrameworks.add('express');
+  }
+  // Go services: framework names rarely appear in command line (compiles to binary),
+  // so add all Go frameworks and let route-level framework tags handle filtering.
+  if (command.includes('go run') || command.includes('go build')) {
+    serviceFrameworks.add('gin');
+    serviceFrameworks.add('echo');
+    serviceFrameworks.add('chi');
   }
 
   const serviceRoutes = [];
