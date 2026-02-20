@@ -179,7 +179,8 @@ function categorizeProcess(processName, command = '') {
   if (cmd.includes('uvicorn') || cmd.includes('gunicorn') || cmd.includes('flask') ||
       cmd.includes('django') || cmd.includes('fastapi')) return 'backend';
   if (cmd.includes('express') || cmd.includes('nestjs') || cmd.includes('fastify')) return 'backend';
-  if (cmd.includes('go run') || cmd.includes('gin') || cmd.includes('echo') ||
+  if (cmd.includes('go run') || cmd.includes('/go-build') ||
+      cmd.includes('gin') || cmd.includes('echo') ||
       cmd.includes('chi')) return 'backend';
 
   if (name.includes('node')) return 'nodejs';

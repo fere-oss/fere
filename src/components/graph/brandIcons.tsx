@@ -102,6 +102,11 @@ function normalize(value: string): string {
   return value.trim().toLowerCase();
 }
 
+function matchesBrandKey(haystack: string, lookup: string): boolean {
+  const escaped = lookup.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(?<![a-z0-9])${escaped}(?![a-z0-9])`, "i").test(haystack);
+}
+
 export function inferServiceBrand(
   node: Pick<GraphNode, "name" | "command" | "containerImage">,
 ): string | null {
@@ -116,16 +121,25 @@ export function inferServiceBrand(
   // actual runtime tech (node, python, etc.) is matched instead of "docker".
   runtimeCommand = runtimeCommand.replace(/^docker-entrypoint\.sh\s+/i, "").trim();
 
+  // Extract language hint from docker-{lang}-entrypoint patterns
+  // (e.g. "docker-php-entrypoint apache2-foreground" → lang hint "php").
+  // This preserves the tech signal before the entrypoint wrapper is discarded.
+  const dockerLangMatch = runtimeCommand.match(/^docker-([\w]+)-entrypoint\b/i);
+  const dockerLangHint = dockerLangMatch ? dockerLangMatch[1] : null;
+  if (dockerLangHint) {
+    runtimeCommand = runtimeCommand.replace(/^docker-[\w]+-entrypoint\s*/i, "").trim();
+  }
+
   // Prefer service name and image over command to avoid
   // "docker: ..." strings forcing a Docker logo.
-  const samples = [node.name, node.containerImage, runtimeCommand].filter(
+  const samples = [node.name, node.containerImage, dockerLangHint, runtimeCommand].filter(
     Boolean,
   ) as string[];
   for (const sample of samples) {
     const key = normalize(sample);
     if (BRAND_DOMAIN_BY_KEY[key]) return sample;
     for (const lookup of Object.keys(BRAND_DOMAIN_BY_KEY)) {
-      if (key.includes(lookup)) return sample;
+      if (matchesBrandKey(key, lookup)) return sample;
     }
     const host = extractDomainLike(sample);
     if (host) return host;
@@ -179,7 +193,7 @@ function getBrandImageUrl(value?: string | null): string | null {
     return toLogoDevUrl(BRAND_DOMAIN_BY_KEY[key]);
   }
   for (const [lookup, domain] of Object.entries(BRAND_DOMAIN_BY_KEY)) {
-    if (key.includes(lookup)) return toLogoDevUrl(domain);
+    if (matchesBrandKey(key, lookup)) return toLogoDevUrl(domain);
   }
   const extracted = extractDomainLike(key);
   if (extracted && isHostLike(extracted) && !isReverseDnsBundleId(extracted)) {
