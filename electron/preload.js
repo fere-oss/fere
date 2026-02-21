@@ -93,6 +93,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Analytics
   getAnalyticsId: () => ipcRenderer.invoke('get-analytics-id'),
 
+  // Share (GitHub Gist)
+  getShareSettings: () => ipcRenderer.invoke('get-share-settings'),
+  saveGithubToken: (token) => ipcRenderer.invoke('save-github-token', token),
+  publishGraph: (options) => ipcRenderer.invoke('publish-graph', options),
+  updateSharedGraph: (options) => ipcRenderer.invoke('update-shared-graph', options),
+
   // Platform info
   platform: process.platform,
 });

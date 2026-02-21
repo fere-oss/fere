@@ -439,6 +439,32 @@ export interface SnapshotDelta {
   };
 }
 
+// Share / Gist publishing types
+export interface ShareMetadata {
+  tabName: string;
+  timestamp: number;
+  nodeCount: number;
+  edgeCount: number;
+}
+
+export interface PublishGraphOptions {
+  graphData: ConnectionGraph;
+  metadata: ShareMetadata;
+}
+
+export interface PublishGraphResult {
+  url?: string;
+  gistId?: string;
+  publishedAt?: number;
+  error?: string;
+}
+
+export interface ShareSettings {
+  hasToken: boolean;
+  shareUrl: string | null;
+  publishedAt: number | null;
+}
+
 // Electron API interface
 export interface ElectronAPI {
   // Process monitoring
@@ -513,6 +539,12 @@ export interface ElectronAPI {
 
   // Analytics
   getAnalyticsId: () => Promise<string>;
+
+  // Share (GitHub Gist)
+  getShareSettings: () => Promise<ShareSettings>;
+  saveGithubToken: (token: string) => Promise<{ success: boolean; error?: string }>;
+  publishGraph: (options: PublishGraphOptions) => Promise<PublishGraphResult>;
+  updateSharedGraph: (options: PublishGraphOptions) => Promise<PublishGraphResult>;
 
   // Platform info
   platform: string;

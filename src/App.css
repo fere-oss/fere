@@ -6930,8 +6930,8 @@ textarea {
   align-items: center;
   justify-content: flex-end;
   gap: 12px;
-  padding-top: 24px;
-  margin-top: 24px;
+  padding: 20px 28px 28px;
+  margin-top: 0;
   border-top: 1px solid #e5e5e5;
 }
 
@@ -8732,4 +8732,259 @@ textarea {
 
 .add-services-brand-icon {
   opacity: 0.95;
+}
+
+/* ============================================
+   Header Actions (share + alert toggle group)
+   ============================================ */
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  -webkit-app-region: no-drag;
+}
+
+/* ============================================
+   Share Modal
+   ============================================ */
+
+.share-modal {
+  max-width: 480px;
+}
+
+/* Setup state */
+.share-setup {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.share-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #171717;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.share-link:hover {
+  color: #525252;
+}
+
+.share-token-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.share-token-input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.share-token-input {
+  width: 100%;
+  padding: 10px 40px 10px 12px;
+  font-size: 14px;
+  font-family: 'SF Mono', 'Menlo', monospace;
+  background: #fafafa;
+  border: 1px solid #e5e5e5;
+  border-radius: 8px;
+  color: #171717;
+  outline: none;
+  transition: border-color 0.15s;
+  letter-spacing: 0.03em;
+}
+
+.share-token-input:focus {
+  border-color: #a3a3a3;
+  background: #fff;
+}
+
+.share-token-eye {
+  position: absolute;
+  right: 10px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #a3a3a3;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+}
+
+.share-token-eye:hover {
+  color: #525252;
+}
+
+.share-desc {
+  font-size: 14px;
+  color: #525252;
+  line-height: 1.6;
+}
+
+.share-desc-center {
+  text-align: center;
+}
+
+.share-desc strong {
+  color: #171717;
+  font-weight: 600;
+}
+
+.share-desc code {
+  font-family: 'SF Mono', 'Menlo', monospace;
+  font-size: 12px;
+  background: #f5f5f5;
+  border: 1px solid #e5e5e5;
+  border-radius: 4px;
+  padding: 1px 5px;
+  color: #525252;
+}
+
+/* Idle state */
+.share-idle {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.share-stats {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #737373;
+}
+
+.share-stat {
+  font-weight: 500;
+}
+
+.share-stat-sep {
+  color: #d4d4d4;
+}
+
+/* Busy state */
+.share-busy {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 0;
+}
+
+.share-spinner {
+  width: 28px;
+  height: 28px;
+  border: 2.5px solid #e5e5e5;
+  border-top-color: #171717;
+  border-radius: 50%;
+  animation: dbSpin 0.7s linear infinite;
+}
+
+.share-busy-text {
+  font-size: 14px;
+  color: #525252;
+}
+
+/* Done state */
+.share-done {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+.share-success-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: #f0fdf4;
+  border: 1.5px solid #bbf7d0;
+}
+
+.share-url-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.share-url-input {
+  flex: 1;
+  min-width: 0;
+  padding: 9px 12px;
+  font-size: 12px;
+  font-family: 'SF Mono', 'Menlo', monospace;
+  background: #fafafa;
+  border: 1px solid #e5e5e5;
+  border-radius: 8px;
+  color: #525252;
+  outline: none;
+  cursor: text;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.share-url-input:focus {
+  border-color: #a3a3a3;
+}
+
+.share-copy-btn {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  background: #f5f5f5;
+  border: 1px solid #e5e5e5;
+  border-radius: 8px;
+  color: #525252;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.share-copy-btn:hover {
+  background: #e5e5e5;
+  color: #171717;
+}
+
+.share-copy-btn-copied {
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+  color: #16a34a;
+}
+
+.share-published-meta {
+  font-size: 12px;
+  color: #a3a3a3;
+  text-align: center;
+}
+
+/* Error state */
+.share-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+}
+
+.share-error-text {
+  font-size: 13px;
+  color: #ef4444;
+  text-align: center;
+  line-height: 1.5;
 }

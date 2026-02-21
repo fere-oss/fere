@@ -5,6 +5,7 @@ import { CurlBuilder } from "./components/CurlBuilder";
 import { DatabaseListView } from "./components/DatabaseListView";
 import { ContainerLogsTab } from "./components/ContainerLogsTab";
 import { WelcomeModal } from "./components/WelcomeModal";
+import { ShareModal } from "./components/ShareModal";
 import { useKnownServices, serviceKey, nodeServiceKey, looseServiceIdentity } from "./components/checklist/useKnownServices";
 import { ServiceDropdown } from "./components/checklist/ServiceDropdown";
 import { HEALTH_COLORS } from "./components/graph/constants";
@@ -212,6 +213,9 @@ function App() {
 
   // Welcome modal state
   const [showWelcome, setShowWelcome] = useState(false);
+
+  // Share modal state
+  const [showShare, setShowShare] = useState(false);
 
   useEffect(() => {
     if (window.electronAPI?.getAlertPreferences) {
@@ -775,18 +779,34 @@ function App() {
       {/* App Title */}
       <div className="app-header">
         <h1 className="app-title">fere</h1>
-        <button
-          className={`alert-toggle${alertsEnabled ? "" : " alert-toggle-off"}`}
-          onClick={handleToggleAlerts}
-          title={alertsEnabled ? "Notifications on" : "Notifications off"}
-          style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-        >
+        <div className="header-actions">
+          <button
+            className="alert-toggle"
+            onClick={() => setShowShare(true)}
+            title="Share service map"
+            style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="13" cy="3" r="1.5" />
+              <circle cx="3" cy="8" r="1.5" />
+              <circle cx="13" cy="13" r="1.5" />
+              <line x1="4.5" y1="7.2" x2="11.5" y2="4" />
+              <line x1="4.5" y1="8.8" x2="11.5" y2="12" />
+            </svg>
+          </button>
+          <button
+            className={`alert-toggle${alertsEnabled ? "" : " alert-toggle-off"}`}
+            onClick={handleToggleAlerts}
+            title={alertsEnabled ? "Notifications on" : "Notifications off"}
+            style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+          >
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2">
             <path d="M8 1.5C5.5 1.5 4 3.5 4 5.5V8L2.5 10.5V11.5H13.5V10.5L12 8V5.5C12 3.5 10.5 1.5 8 1.5Z" />
             <path d="M6 12.5C6 13.6 6.9 14.5 8 14.5C9.1 14.5 10 13.6 10 12.5" />
             {!alertsEnabled && <line x1="2" y1="14" x2="14" y2="2" />}
           </svg>
-        </button>
+          </button>
+        </div>
       </div>
 
       {/* Error Banner */}
@@ -1162,6 +1182,16 @@ function App() {
 
       {/* Welcome Modal */}
       {showWelcome && <WelcomeModal onClose={handleCloseWelcome} />}
+
+      {/* Share Modal */}
+      {showShare && (
+        <ShareModal
+          onClose={() => setShowShare(false)}
+          graphNodes={filteredData.nodes}
+          graphEdges={filteredData.edges}
+          activeTabLabel={tabs.find((t) => t.id === selectedTab)?.label ?? SYSTEM_TAB_LABEL}
+        />
+      )}
     </div>
   );
 }

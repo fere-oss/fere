@@ -74,6 +74,8 @@ const {
   markIntentionalStopForContainer,
 } = require("./services/alertManager");
 const analytics = require("./analytics");
+const { generateHTML } = require("./services/graphExporter");
+const { createGist, updateGist, buildPreviewUrl } = require("./services/gistPublisher");
 
 app.setName("Fere");
 app.name = "Fere";
@@ -1192,4 +1194,105 @@ ipcMain.handle("stop-all-container-logs", async () => {
 
 ipcMain.handle("get-analytics-id", () => {
   return analytics.getDistinctId();
+});
+
+// ============================================
+// IPC Handlers - Share (GitHub Gist)
+// ============================================
+
+const fs = require("fs");
+const os = require("os");
+
+const SHARE_SETTINGS_FILE = path.join(os.homedir(), ".fere", "settings.json");
+
+function readShareSettings() {
+  try {
+    if (fs.existsSync(SHARE_SETTINGS_FILE)) {
+      return JSON.parse(fs.readFileSync(SHARE_SETTINGS_FILE, "utf-8"));
+    }
+  } catch {}
+  return {};
+}
+
+function writeShareSettings(patch) {
+  const dir = path.join(os.homedir(), ".fere");
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  const existing = readShareSettings();
+  const merged = { ...existing, ...patch };
+  const tmp = SHARE_SETTINGS_FILE + ".tmp";
+  fs.writeFileSync(tmp, JSON.stringify(merged, null, 2), "utf-8");
+  fs.renameSync(tmp, SHARE_SETTINGS_FILE);
+}
+
+ipcMain.handle("get-share-settings", () => {
+  const settings = readShareSettings();
+  return {
+    hasToken: !!settings.githubToken,
+    shareUrl: settings.shareUrl || null,
+    publishedAt: settings.sharePublishedAt || null,
+  };
+});
+
+ipcMain.handle("save-github-token", async (_, token) => {
+  try {
+    if (!token || typeof token !== "string") throw new Error("Invalid token");
+    writeShareSettings({ githubToken: token.trim() });
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+async function doPublish({ graphData, metadata }, isUpdate) {
+  const settings = readShareSettings();
+  const token = settings.githubToken;
+  if (!token) throw new Error("No GitHub token configured. Please add one in the Share settings.");
+
+  // REACT_APP_ vars aren't loaded into Electron main by CRA — read .env directly
+  let logoDevToken = process.env.REACT_APP_LOGO_DEV_TOKEN || "";
+  if (!logoDevToken) {
+    try {
+      const envPath = path.join(__dirname, '../.env');
+      const envContent = require('fs').readFileSync(envPath, 'utf8');
+      const m = envContent.match(/^REACT_APP_LOGO_DEV_TOKEN=(.+)$/m);
+      if (m) logoDevToken = m[1].trim();
+    } catch {}
+  }
+  const html = await generateHTML({ graphData, metadata, logoDevToken });
+
+  let result;
+  if (isUpdate && settings.shareGistId) {
+    result = await updateGist(settings.shareGistId, html, token);
+  } else {
+    result = await createGist(html, token);
+  }
+
+  const previewUrl = buildPreviewUrl(result.rawUrl);
+  const publishedAt = Date.now();
+
+  writeShareSettings({
+    shareGistId: result.gistId,
+    shareUrl: previewUrl,
+    sharePublishedAt: publishedAt,
+  });
+
+  return { url: previewUrl, publishedAt };
+}
+
+ipcMain.handle("publish-graph", async (_, options) => {
+  try {
+    return await doPublish(options, false);
+  } catch (err) {
+    console.error("publish-graph error:", err);
+    return { error: err.message };
+  }
+});
+
+ipcMain.handle("update-shared-graph", async (_, options) => {
+  try {
+    return await doPublish(options, true);
+  } catch (err) {
+    console.error("update-shared-graph error:", err);
+    return { error: err.message };
+  }
 });

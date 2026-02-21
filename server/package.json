@@ -1,0 +1,17 @@
+{
+  "name": "fere-share-server",
+  "version": "1.0.0",
+  "description": "Fere share backend — stores graph snapshots and serves them via URL",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^9.4.3",
+    "express": "^4.18.3"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
