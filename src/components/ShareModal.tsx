@@ -61,7 +61,7 @@ export function ShareModal({ onClose, graphNodes, graphEdges, activeTabLabel }: 
     }
   }
 
-  async function handlePublish(isUpdate: boolean) {
+  async function handlePublish(isUpdate?: boolean) {
     setModalState("busy");
     setErrorMsg("");
     try {
@@ -74,7 +74,9 @@ export function ShareModal({ onClose, graphNodes, graphEdges, activeTabLabel }: 
           edgeCount: graphEdges.length,
         },
       };
-      const result = isUpdate
+      // If we already have a published gist, always update it
+      const shouldUpdate = isUpdate ?? !!shareUrl;
+      const result = shouldUpdate
         ? await window.electronAPI.updateSharedGraph(options)
         : await window.electronAPI.publishGraph(options);
 
@@ -279,37 +281,24 @@ export function ShareModal({ onClose, graphNodes, graphEdges, activeTabLabel }: 
             </>
           )}
 
-          {modalState === "idle" && (
+          {(modalState === "idle" || modalState === "done") && (
             <>
               <button className="modal-btn modal-btn-secondary" onClick={onClose}>Cancel</button>
-              <button className="modal-btn modal-btn-primary" onClick={() => handlePublish(false)}>
+              {shareUrl && (
+                <button className="modal-btn modal-btn-secondary" onClick={handleOpenUrl}>Open</button>
+              )}
+              <button className="modal-btn modal-btn-primary" onClick={() => handlePublish()}>
                 <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M7 1v8M4 5l3-4 3 4" />
                   <path d="M2 10v2a1 1 0 001 1h8a1 1 0 001-1v-2" />
                 </svg>
-                Publish
+                {shareUrl ? "Re-publish" : "Publish"}
               </button>
             </>
           )}
 
           {modalState === "busy" && (
             <button className="modal-btn modal-btn-secondary" disabled>Publishing…</button>
-          )}
-
-          {modalState === "done" && (
-            <>
-              <button className="modal-btn modal-btn-secondary" onClick={() => setModalState("idle")}>
-                Change Token
-              </button>
-              <button className="modal-btn modal-btn-secondary" onClick={handleOpenUrl}>Open</button>
-              <button className="modal-btn modal-btn-primary" onClick={() => handlePublish(true)}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="23 4 23 10 17 10" />
-                  <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
-                </svg>
-                Update
-              </button>
-            </>
           )}
 
           {modalState === "error" && (

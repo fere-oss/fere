@@ -883,7 +883,21 @@ function App() {
       {/* App Title */}
       <div className="app-header">
         <h1 className="app-title">fere</h1>
-        <div style={{ position: "relative", WebkitAppRegion: "no-drag" } as React.CSSProperties}>
+        <div style={{ display: "flex", alignItems: "center", gap: "4px", WebkitAppRegion: "no-drag" } as React.CSSProperties}>
+          <button
+            className="alert-toggle"
+            onClick={() => setShowShare(true)}
+            title="Share service map"
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="3" r="1.5" />
+              <circle cx="3" cy="8" r="1.5" />
+              <circle cx="12" cy="13" r="1.5" />
+              <line x1="4.4" y1="7.1" x2="10.6" y2="4.4" />
+              <line x1="4.4" y1="8.9" x2="10.6" y2="11.6" />
+            </svg>
+          </button>
+        <div style={{ position: "relative" } as React.CSSProperties}>
           <button
             className={`alert-toggle${alertsEnabled ? "" : " alert-toggle-off"}`}
             onClick={() => setAlertPanelOpen((v) => !v)}
@@ -968,6 +982,7 @@ function App() {
               </div>
             </div>
           )}
+        </div>
         </div>
       </div>
 
