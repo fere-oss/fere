@@ -883,18 +883,92 @@ function App() {
       {/* App Title */}
       <div className="app-header">
         <h1 className="app-title">fere</h1>
-        <button
-          className={`alert-toggle${alertsEnabled ? "" : " alert-toggle-off"}`}
-          onClick={handleToggleAlerts}
-          title={alertsEnabled ? "Notifications on" : "Notifications off"}
-          style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-        >
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2">
-            <path d="M8 1.5C5.5 1.5 4 3.5 4 5.5V8L2.5 10.5V11.5H13.5V10.5L12 8V5.5C12 3.5 10.5 1.5 8 1.5Z" />
-            <path d="M6 12.5C6 13.6 6.9 14.5 8 14.5C9.1 14.5 10 13.6 10 12.5" />
-            {!alertsEnabled && <line x1="2" y1="14" x2="14" y2="2" />}
-          </svg>
-        </button>
+        <div style={{ position: "relative", WebkitAppRegion: "no-drag" } as React.CSSProperties}>
+          <button
+            className={`alert-toggle${alertsEnabled ? "" : " alert-toggle-off"}`}
+            onClick={() => setAlertPanelOpen((v) => !v)}
+            title={alertsEnabled ? "Notifications on" : "Notifications off"}
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2">
+              <path d="M8 1.5C5.5 1.5 4 3.5 4 5.5V8L2.5 10.5V11.5H13.5V10.5L12 8V5.5C12 3.5 10.5 1.5 8 1.5Z" />
+              <path d="M6 12.5C6 13.6 6.9 14.5 8 14.5C9.1 14.5 10 13.6 10 12.5" />
+              {!alertsEnabled && <line x1="2" y1="14" x2="14" y2="2" />}
+            </svg>
+          </button>
+
+          {alertPanelOpen && (
+            <div className="alert-panel" ref={alertPanelRef}>
+              {/* Master toggle */}
+              <div className="alert-panel-master">
+                <span className="alert-panel-label">Notifications</span>
+                <button
+                  className={`alert-panel-master-toggle${alertsEnabled ? " alert-panel-master-on" : ""}`}
+                  onClick={handleToggleAlerts}
+                >
+                  <span className="alert-panel-master-knob" />
+                </button>
+              </div>
+
+              {/* Category toggles */}
+              <div className="alert-panel-categories">
+                {ALERT_CATEGORIES.map((cat) => (
+                  <label className="alert-panel-category" key={cat.key}>
+                    <input
+                      type="checkbox"
+                      checked={categoryToggles[cat.key]}
+                      onChange={() => handleToggleCategory(cat.key)}
+                      disabled={!alertsEnabled}
+                      className="alert-panel-checkbox"
+                    />
+                    <div className="alert-panel-category-text">
+                      <span className="alert-panel-category-label">{cat.label}</span>
+                      <span className="alert-panel-category-desc">{cat.desc}</span>
+                    </div>
+                  </label>
+                ))}
+              </div>
+
+              <div className="alert-panel-divider" />
+
+              {/* Event history */}
+              <div className="alert-panel-history-header">
+                <span className="alert-panel-label">Recent Events</span>
+                {alertHistory.length > 0 && (
+                  <button className="alert-panel-clear" onClick={handleClearHistory}>
+                    Clear
+                  </button>
+                )}
+              </div>
+              <div className="alert-panel-history">
+                {alertHistory.length === 0 ? (
+                  <div className="alert-panel-history-empty">No events yet</div>
+                ) : (
+                  alertHistory.slice(0, 50).map((event) => (
+                    <div className="alert-panel-event" key={event.id}>
+                      <span className={`alert-panel-event-dot alert-panel-event-dot-${event.category}`} />
+                      <div className="alert-panel-event-content">
+                        <span className="alert-panel-event-title">
+                          {event.serviceName}
+                          {!event.notified && (
+                            <span className="alert-panel-event-muted"> (muted)</span>
+                          )}
+                        </span>
+                        <span className="alert-panel-event-desc">
+                          {event.type === "container-stopped" && event.details
+                            ? `stopped (${event.details})`
+                            : ALERT_EVENT_LABELS[event.type] || event.type}
+                        </span>
+                      </div>
+                      <span className="alert-panel-event-time">
+                        {formatRelativeTime(event.timestamp)}
+                      </span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Error Banner */}
