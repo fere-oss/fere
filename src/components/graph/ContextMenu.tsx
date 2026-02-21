@@ -24,12 +24,15 @@ export function ContextMenu({ node, x, y, width, height, onClose }: ContextMenuP
   );
   const canKillProcess =
     !isExternal && !isNotRunning && (isDockerContainerNode || node.pid > 0);
+  const canViewLogs =
+    isDockerContainerNode && node.containerState === 'running';
   const mainPort = node.ports[0]?.port;
 
   const menuWidth = 200;
   let menuItems = 1; // copy pid
   if (hasPort) menuItems += 2; // open browser + copy port
   if (hasProjectPath) menuItems += 1; // open terminal
+  if (canViewLogs) menuItems += 1; // view logs
   if (canStartService) menuItems += 1; // start service
   if (canKillProcess) menuItems += 1; // kill
   const menuHeight = 32 + menuItems * 34;
@@ -88,6 +91,13 @@ export function ContextMenu({ node, x, y, width, height, onClose }: ContextMenuP
                 needsRefresh = ensureSuccess(result, 'Start Service');
               }
             }
+            break;
+          case 'view-logs':
+            window.dispatchEvent(
+              new CustomEvent('fere:view-container-logs', {
+                detail: { containerId: node.containerId },
+              }),
+            );
             break;
           case 'copy-port':
             if (hasPort) {
@@ -156,6 +166,20 @@ export function ContextMenu({ node, x, y, width, height, onClose }: ContextMenuP
               </svg>
             </span>
             <span>Open in Terminal</span>
+          </div>
+        )}
+        {canViewLogs && (
+          <div
+            className="context-menu-item"
+            onClick={handleAction('view-logs')}
+          >
+            <span className="context-menu-icon" aria-hidden="true">
+              <svg viewBox="0 0 20 20" width="14" height="14">
+                <rect x="3" y="3" width="14" height="14" rx="2" fill="none" stroke="currentColor" strokeWidth="1.4" />
+                <path d="M6 7h8M6 10h6M6 13h4" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+              </svg>
+            </span>
+            <span>View Logs</span>
           </div>
         )}
         {canStartService && (

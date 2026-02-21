@@ -10,10 +10,14 @@ const path = require('path');
 const os = require('os');
 
 // --- Configuration ---
-const DEBOUNCE_MS = 5000;   // Must be red for 5s before alerting
-const COOLDOWN_MS = 60000;  // 60s per-service cooldown between notifications
+const DEBOUNCE_MS = 5000;           // Must be red for 5s before alerting
+const DEGRADED_DEBOUNCE_MS = 15000; // Must be yellow for 15s before alerting
+const COOLDOWN_MS = 300000;         // 5min per-service cooldown between notifications
 
 const SETTINGS_FILE_PATH = path.join(os.homedir(), '.fere', 'settings.json');
+const ALERT_HISTORY_FILE_PATH = path.join(os.homedir(), '.fere', 'alert-history.json');
+const MAX_ALERT_HISTORY = 200;
+const MAX_ALERT_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 // --- Alert state per node ---
 // Map<nodeId, { previousHealth, previousContainerState, redEnteredAt, redNotified, lastNotifiedAt, name }>
@@ -25,6 +29,12 @@ const INTENTIONAL_STOP_TTL_MS = 30000;
 // --- Preferences ---
 let cachedPreferences = null;
 
+const DEFAULT_CATEGORY_TOGGLES = { down: true, recovery: true, degraded: true, container: true };
+
+// --- Alert history ---
+let alertHistoryWriteQueue = Promise.resolve();
+let eventCounter = 0;
+
 function ensureConfigDir() {
   const configDir = path.join(os.homedir(), '.fere');
   if (!fs.existsSync(configDir)) {
@@ -33,18 +43,25 @@ function ensureConfigDir() {
 }
 
 function loadPreferences() {
+  const defaults = { alertsEnabled: true, categoryToggles: { ...DEFAULT_CATEGORY_TOGGLES } };
   try {
     if (fs.existsSync(SETTINGS_FILE_PATH)) {
       const raw = fs.readFileSync(SETTINGS_FILE_PATH, 'utf-8');
       const parsed = JSON.parse(raw);
       cachedPreferences = {
-        alertsEnabled: parsed.alertsEnabled !== false, // default true
+        alertsEnabled: parsed.alertsEnabled !== false,
+        categoryToggles: {
+          down: parsed.categoryToggles?.down !== false,
+          recovery: parsed.categoryToggles?.recovery !== false,
+          degraded: parsed.categoryToggles?.degraded !== false,
+          container: parsed.categoryToggles?.container !== false,
+        },
       };
     } else {
-      cachedPreferences = { alertsEnabled: true };
+      cachedPreferences = defaults;
     }
   } catch (e) {
-    cachedPreferences = { alertsEnabled: true };
+    cachedPreferences = defaults;
   }
   return cachedPreferences;
 }
@@ -76,16 +93,19 @@ function initAlertManager() {
 
 /**
  * Get current alert preferences.
- * @returns {{ alertsEnabled: boolean }}
+ * @returns {{ alertsEnabled: boolean, categoryToggles: { down: boolean, recovery: boolean, degraded: boolean, container: boolean } }}
  */
 function getAlertPreferences() {
   if (!cachedPreferences) loadPreferences();
-  return { alertsEnabled: cachedPreferences.alertsEnabled };
+  return {
+    alertsEnabled: cachedPreferences.alertsEnabled,
+    categoryToggles: { ...cachedPreferences.categoryToggles },
+  };
 }
 
 /**
  * Set alert preferences and persist to disk.
- * @param {{ alertsEnabled?: boolean }} prefs
+ * @param {{ alertsEnabled?: boolean, categoryToggles?: object }} prefs
  * @returns {{ success: boolean }}
  */
 function setAlertPreferences(prefs) {
@@ -93,8 +113,95 @@ function setAlertPreferences(prefs) {
   if (typeof prefs.alertsEnabled === 'boolean') {
     update.alertsEnabled = prefs.alertsEnabled;
   }
+  if (prefs.categoryToggles && typeof prefs.categoryToggles === 'object') {
+    const existing = cachedPreferences?.categoryToggles || { ...DEFAULT_CATEGORY_TOGGLES };
+    const merged = { ...existing };
+    for (const key of ['down', 'recovery', 'degraded', 'container']) {
+      if (typeof prefs.categoryToggles[key] === 'boolean') {
+        merged[key] = prefs.categoryToggles[key];
+      }
+    }
+    update.categoryToggles = merged;
+  }
   savePreferences(update);
   return { success: true };
+}
+
+// --- Category helpers ---
+
+function typeToCategory(type) {
+  if (type === 'container-stopped' || type === 'container-running') return 'container';
+  return type;
+}
+
+function isCategoryEnabled(prefs, type) {
+  if (!prefs.alertsEnabled) return false;
+  const category = typeToCategory(type);
+  return prefs.categoryToggles?.[category] !== false;
+}
+
+// --- Alert history ---
+
+function readAlertHistory() {
+  if (!fs.existsSync(ALERT_HISTORY_FILE_PATH)) return [];
+  try {
+    const raw = fs.readFileSync(ALERT_HISTORY_FILE_PATH, 'utf-8');
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeAlertHistory(history) {
+  ensureConfigDir();
+  const tmp = ALERT_HISTORY_FILE_PATH + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify(history, null, 2), 'utf-8');
+  fs.renameSync(tmp, ALERT_HISTORY_FILE_PATH);
+}
+
+function recordAlertEvent(type, node, details, notified) {
+  alertHistoryWriteQueue = alertHistoryWriteQueue.then(() => {
+    let history = readAlertHistory();
+    const cutoff = Date.now() - MAX_ALERT_AGE_MS;
+    history = history.filter(e => e.timestamp >= cutoff);
+
+    history.unshift({
+      id: `${Date.now()}-${++eventCounter}`,
+      timestamp: Date.now(),
+      type,
+      category: typeToCategory(type),
+      serviceName: node.name || 'Service',
+      serviceType: node.type || 'service',
+      nodeId: node.id,
+      details: details || '',
+      notified,
+    });
+
+    if (history.length > MAX_ALERT_HISTORY) {
+      history = history.slice(0, MAX_ALERT_HISTORY);
+    }
+
+    writeAlertHistory(history);
+  }).catch(err => {
+    console.error('[AlertManager] Error recording alert event:', err);
+  });
+}
+
+function getAlertHistory() {
+  try {
+    const cutoff = Date.now() - MAX_ALERT_AGE_MS;
+    return readAlertHistory().filter(e => e.timestamp >= cutoff);
+  } catch {
+    return [];
+  }
+}
+
+function clearAlertHistory() {
+  return (alertHistoryWriteQueue = alertHistoryWriteQueue.then(() => {
+    writeAlertHistory([]);
+    return { success: true };
+  }).catch(err => ({ success: false, error: err.message })));
 }
 
 /**
@@ -210,6 +317,8 @@ function evaluateAlerts(nodes) {
         previousContainerState: node.containerState || null,
         redEnteredAt: node.healthStatus === 'red' ? now : 0,
         redNotified: false,
+        yellowEnteredAt: node.healthStatus === 'yellow' ? now : 0,
+        yellowNotified: false,
         lastNotifiedAt: 0,
         name: node.name,
       });
@@ -229,8 +338,11 @@ function evaluateAlerts(nodes) {
       // Still in red — notify once after debounce
       const timeSinceRedEntered = now - prev.redEnteredAt;
       if (!prev.redNotified && timeSinceRedEntered >= DEBOUNCE_MS && canNotify(prev, now)) {
-        if (prefs.alertsEnabled && !isIntentionalStop(node, now)) {
-          fireNotification('down', node, node.type === 'database' ? 'check DB process/container' : '');
+        if (!isIntentionalStop(node, now)) {
+          const details = node.type === 'database' ? 'check DB process/container' : '';
+          const shouldNotify = isCategoryEnabled(prefs, 'down');
+          if (shouldNotify) fireNotification('down', node, details);
+          recordAlertEvent('down', node, details, shouldNotify);
           prev.lastNotifiedAt = now;
           prev.redNotified = true;
         }
@@ -239,8 +351,10 @@ function evaluateAlerts(nodes) {
     } else if (currentHealth === 'green' && previousHealth === 'red') {
       // Recovered — notify only if was red long enough
       const timeSinceRedEntered = now - prev.redEnteredAt;
-      if (timeSinceRedEntered >= DEBOUNCE_MS && prefs.alertsEnabled && canNotify(prev, now)) {
-        fireNotification('recovery', node);
+      if (timeSinceRedEntered >= DEBOUNCE_MS && canNotify(prev, now)) {
+        const shouldNotify = isCategoryEnabled(prefs, 'recovery');
+        if (shouldNotify) fireNotification('recovery', node);
+        recordAlertEvent('recovery', node, '', shouldNotify);
         prev.lastNotifiedAt = now;
       }
       prev.redEnteredAt = 0;
@@ -248,15 +362,30 @@ function evaluateAlerts(nodes) {
       prev.previousHealth = 'green';
 
     } else {
-      // Green -> yellow is often an early indicator that something is off.
-      if (
-        prefs.alertsEnabled &&
-        previousHealth === 'green' &&
-        currentHealth === 'yellow' &&
-        canNotify(prev, now)
-      ) {
-        fireNotification('degraded', node);
-        prev.lastNotifiedAt = now;
+      // Yellow (degraded) handling with debounce
+      if (currentHealth === 'yellow' && previousHealth !== 'yellow') {
+        // Just entered yellow — start debounce
+        prev.yellowEnteredAt = now;
+        prev.yellowNotified = false;
+      } else if (currentHealth === 'yellow' && previousHealth === 'yellow') {
+        // Still yellow — notify once after debounce
+        const timeSinceYellowEntered = now - prev.yellowEnteredAt;
+        if (
+          !prev.yellowNotified &&
+          timeSinceYellowEntered >= DEGRADED_DEBOUNCE_MS &&
+          canNotify(prev, now)
+        ) {
+          const shouldNotify = isCategoryEnabled(prefs, 'degraded');
+          if (shouldNotify) fireNotification('degraded', node);
+          recordAlertEvent('degraded', node, '', shouldNotify);
+          prev.lastNotifiedAt = now;
+          prev.yellowNotified = true;
+        }
+      }
+
+      if (currentHealth !== 'yellow') {
+        prev.yellowEnteredAt = 0;
+        prev.yellowNotified = false;
       }
 
       // Any other transition
@@ -270,7 +399,6 @@ function evaluateAlerts(nodes) {
     const previousContainerState = prev.previousContainerState || null;
     const currentContainerState = node.containerState || null;
     if (
-      prefs.alertsEnabled &&
       node.isDockerContainer &&
       previousContainerState &&
       currentContainerState &&
@@ -282,13 +410,17 @@ function evaluateAlerts(nodes) {
         ['exited', 'dead', 'paused', 'restarting'].includes(currentContainerState) &&
         !isIntentionalStop(node, now)
       ) {
-        fireNotification('container-stopped', node, currentContainerState);
+        const shouldNotify = isCategoryEnabled(prefs, 'container-stopped');
+        if (shouldNotify) fireNotification('container-stopped', node, currentContainerState);
+        recordAlertEvent('container-stopped', node, currentContainerState, shouldNotify);
         prev.lastNotifiedAt = now;
       } else if (
         previousContainerState !== 'running' &&
         currentContainerState === 'running'
       ) {
-        fireNotification('container-running', node);
+        const shouldNotify = isCategoryEnabled(prefs, 'container-running');
+        if (shouldNotify) fireNotification('container-running', node);
+        recordAlertEvent('container-running', node, '', shouldNotify);
         prev.lastNotifiedAt = now;
       }
     }
@@ -311,6 +443,8 @@ module.exports = {
   evaluateAlerts,
   getAlertPreferences,
   setAlertPreferences,
+  getAlertHistory,
+  clearAlertHistory,
   markIntentionalStopForPid,
   markIntentionalStopForContainer,
 };

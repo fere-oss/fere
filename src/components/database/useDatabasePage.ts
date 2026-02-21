@@ -20,7 +20,7 @@ interface UseDatabasePageResult {
   showDeleteTableConfirm: boolean;
   mongoUriInput: string;
   remoteMongoMode: boolean;
-  remoteUriDbType: 'mongodb' | 'postgresql' | null;
+  remoteUriDbType: 'mongodb' | 'postgresql' | 'elasticsearch' | null;
   remoteMongoConnecting: boolean;
   mongoUriStatus: 'idle' | 'testing' | 'ok' | 'error';
   mongoUriStatusMessage: string | null;
@@ -76,7 +76,7 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
   const [mongoUriInput, setMongoUriInput] = useState('');
   const [remoteMongoMode, setRemoteMongoMode] = useState(false);
   const [remoteMongoUri, setRemoteMongoUri] = useState<string | null>(null);
-  const [remoteUriDbType, setRemoteUriDbType] = useState<'mongodb' | 'postgresql' | null>(null);
+  const [remoteUriDbType, setRemoteUriDbType] = useState<'mongodb' | 'postgresql' | 'elasticsearch' | null>(null);
   const [remoteMongoConnecting, setRemoteMongoConnecting] = useState(false);
   const [mongoUriStatus, setMongoUriStatus] = useState<'idle' | 'testing' | 'ok' | 'error'>('idle');
   const [mongoUriStatusMessage, setMongoUriStatusMessage] = useState<string | null>(null);
@@ -108,10 +108,11 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
     setSelectedRemoteCollection('');
   }, [nodeId]);
 
-  const detectUriDbType = useCallback((uri: string): 'mongodb' | 'postgresql' | null => {
+  const detectUriDbType = useCallback((uri: string): 'mongodb' | 'postgresql' | 'elasticsearch' | null => {
     const lower = uri.trim().toLowerCase();
     if (lower.startsWith('mongodb://') || lower.startsWith('mongodb+srv://')) return 'mongodb';
     if (lower.startsWith('postgresql://') || lower.startsWith('postgres://')) return 'postgresql';
+    if (lower.startsWith('http://') || lower.startsWith('https://')) return 'elasticsearch';
     return null;
   }, []);
 
@@ -122,6 +123,10 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
     }
     if (trimmed.toLowerCase().startsWith('postgres')) {
       return trimmed.replace(/(postgres(?:ql)?:\/\/[^:/?#]+:)([^@]+)(@)/i, '$1<password>$3');
+    }
+    // Elasticsearch HTTP URLs may have basic auth (http://user:pass@host)
+    if (trimmed.toLowerCase().startsWith('http')) {
+      return trimmed.replace(/(https?:\/\/[^:/?#]+:)([^@]+)(@)/i, '$1<password>$3');
     }
     return trimmed;
   }, []);
@@ -209,7 +214,9 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
 
         const result = uriType === 'mongodb'
           ? await window.electronAPI.connectMongoUri(savedUri)
-          : await window.electronAPI.connectPostgresUri(savedUri);
+          : uriType === 'elasticsearch'
+            ? await window.electronAPI.connectElasticsearchUri(savedUri)
+            : await window.electronAPI.connectPostgresUri(savedUri);
 
         if (isCancelled) return;
 
@@ -235,7 +242,13 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
 
         setSelectedTable(null);
         setTableData(null);
-        setQuery(uriType === 'mongodb' ? 'db.getCollectionNames()' : 'SELECT * FROM ');
+        setQuery(
+          uriType === 'mongodb'
+            ? 'db.getCollectionNames()'
+            : uriType === 'elasticsearch'
+              ? '{"query": {"match_all": {}}, "size": 10}'
+              : 'SELECT * FROM ',
+        );
         setMongoUriStatus('ok');
         setMongoUriStatusMessage('Connected');
       } catch (err) {
@@ -260,6 +273,7 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
       if (remoteMongoMode || savedUri) return;
 
       const image = (containerImage || '').toLowerCase();
+      const nodeName = (node.name || '').toLowerCase();
       const isRemoteMongoLauncher = !containerId && image.includes('mongo');
       if (isRemoteMongoLauncher) {
         if (!isCancelled) {
@@ -268,6 +282,43 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
           setQuery('db.getCollectionNames()');
           setError(null);
           setLoading(false);
+        }
+        return;
+      }
+
+      // Elasticsearch is HTTP-based — auto-connect via URI using the container's exposed port
+      const isElasticsearch = image.includes('elasticsearch') || image.includes('opensearch')
+        || nodeName.includes('elasticsearch') || nodeName.includes('opensearch');
+      if (isElasticsearch) {
+        const esPort = node.ports.find(p => p.port === 9200 || p.port === 9201)?.port
+          || node.ports[0]?.port
+          || 9200;
+        const esUrl = `http://localhost:${esPort}`;
+        try {
+          if (!isCancelled) {
+            setLoading(true);
+            setError(null);
+          }
+          const result = await window.electronAPI.connectElasticsearchUri(esUrl);
+          if (isCancelled) return;
+          if (result.error) {
+            setError(result.error);
+          } else {
+            setRemoteMongoUri(esUrl);
+            setRemoteMongoMode(true);
+            setRemoteUriDbType('elasticsearch');
+            setDbType('elasticsearch');
+            setTables(result.tables || []);
+            setQuery('{"query": {"match_all": {}}, "size": 10}');
+            setSelectedRemoteDb('');
+            setSelectedRemoteCollection('');
+          }
+        } catch (err) {
+          if (!isCancelled) {
+            setError(err instanceof Error ? err.message : 'Failed to connect to Elasticsearch');
+          }
+        } finally {
+          if (!isCancelled) setLoading(false);
         }
         return;
       }
@@ -329,7 +380,9 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
             ? await window.electronAPI.getMongoUriCollectionData(remoteMongoUri, tableName, 100)
             : remoteUriDbType === 'postgresql' && window.electronAPI.getPostgresUriTableData
               ? await window.electronAPI.getPostgresUriTableData(remoteMongoUri, tableName, 100)
-              : { error: 'Remote database mode is not available for this URI type', columns: [], rows: [] })
+              : remoteUriDbType === 'elasticsearch' && window.electronAPI.getElasticsearchUriIndexData
+                ? await window.electronAPI.getElasticsearchUriIndexData(remoteMongoUri, tableName, 100)
+                : { error: 'Remote database mode is not available for this URI type', columns: [], rows: [] })
         : await window.electronAPI.getTableData(containerId, containerImage, tableName, 100);
 
       setTableData(result);
@@ -352,6 +405,8 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
           result = await window.electronAPI.connectMongoUri(remoteMongoUri);
         } else if (remoteUriDbType === 'postgresql' && window.electronAPI?.connectPostgresUri) {
           result = await window.electronAPI.connectPostgresUri(remoteMongoUri);
+        } else if (remoteUriDbType === 'elasticsearch' && window.electronAPI?.connectElasticsearchUri) {
+          result = await window.electronAPI.connectElasticsearchUri(remoteMongoUri);
         }
 
         if (result && !result.error) {
@@ -389,13 +444,15 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
       const uriType = detectUriDbType(mongoUriInput);
       if (!uriType) {
         setMongoUriStatus('error');
-        setMongoUriStatusMessage('Unsupported URI. Use mongodb:// or postgresql://');
+        setMongoUriStatusMessage('Unsupported URI. Use mongodb://, postgresql://, or http://');
         return;
       }
 
       const result = uriType === 'mongodb'
         ? await window.electronAPI.connectMongoUri(mongoUriInput.trim())
-        : await window.electronAPI.connectPostgresUri(mongoUriInput.trim());
+        : uriType === 'elasticsearch'
+          ? await window.electronAPI.connectElasticsearchUri(mongoUriInput.trim())
+          : await window.electronAPI.connectPostgresUri(mongoUriInput.trim());
 
       if (result.error) {
         setMongoUriStatus('error');
@@ -403,8 +460,9 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
         return;
       }
 
+      const itemLabel = uriType === 'mongodb' ? 'collections' : uriType === 'elasticsearch' ? 'indices' : 'tables';
       setMongoUriStatus('ok');
-      setMongoUriStatusMessage(`Connected (${result.tables?.length || 0} ${uriType === 'mongodb' ? 'collections' : 'tables'} found)`);
+      setMongoUriStatusMessage(`Connected (${result.tables?.length || 0} ${itemLabel} found)`);
       saveRecentMongoUri(mongoUriInput.trim());
     } catch (err) {
       setMongoUriStatus('error');
@@ -426,7 +484,7 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
 
       const uriType = detectUriDbType(mongoUriInput);
       if (!uriType) {
-        const msg = 'Unsupported URI. Use mongodb:// or postgresql://';
+        const msg = 'Unsupported URI. Use mongodb://, postgresql://, or http://';
         setError(msg);
         setMongoUriStatus('error');
         setMongoUriStatusMessage(msg);
@@ -435,7 +493,9 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
 
       const result = uriType === 'mongodb'
         ? await window.electronAPI.connectMongoUri(mongoUriInput.trim())
-        : await window.electronAPI.connectPostgresUri(mongoUriInput.trim());
+        : uriType === 'elasticsearch'
+          ? await window.electronAPI.connectElasticsearchUri(mongoUriInput.trim())
+          : await window.electronAPI.connectPostgresUri(mongoUriInput.trim());
 
       if (result.error) {
         setError(result.error);
@@ -459,7 +519,13 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
 
       setSelectedTable(null);
       setTableData(null);
-      setQuery(uriType === 'mongodb' ? 'db.getCollectionNames()' : 'SELECT * FROM ');
+      setQuery(
+        uriType === 'mongodb'
+          ? 'db.getCollectionNames()'
+          : uriType === 'elasticsearch'
+            ? '{"query": {"match_all": {}}, "size": 10}'
+            : 'SELECT * FROM ',
+      );
       setLoading(false);
       setMongoUriStatus('ok');
       setMongoUriStatusMessage('Connected');
@@ -540,7 +606,9 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
             ? await window.electronAPI.executeMongoUriQuery(remoteMongoUri, executableQuery)
             : remoteUriDbType === 'postgresql' && window.electronAPI.executePostgresUriQuery
               ? await window.electronAPI.executePostgresUriQuery(remoteMongoUri, executableQuery)
-              : { error: 'Remote database mode is not available for this URI type' })
+              : remoteUriDbType === 'elasticsearch' && window.electronAPI.executeElasticsearchUriQuery
+                ? await window.electronAPI.executeElasticsearchUriQuery(remoteMongoUri, executableQuery)
+                : { error: 'Remote database mode is not available for this URI type' })
         : await window.electronAPI.executeDatabaseQuery(containerId, containerImage, executableQuery);
 
       // Discard stale results if a newer query was launched
@@ -720,6 +788,7 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
       case 'postgresql': return 'PostgreSQL';
       case 'mysql': return 'MySQL';
       case 'mongodb': return 'MongoDB';
+      case 'elasticsearch': return 'Elasticsearch';
       default: return 'Database';
     }
   };
@@ -732,6 +801,8 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
         return `-- MySQL Query Editor\n-- Press Cmd/Ctrl + Enter to execute\n\nSELECT * FROM users LIMIT 10;\n\n-- More examples:\n-- INSERT INTO users (name, email) VALUES ('John', 'john@example.com');\n-- CREATE TABLE products (id INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(100));`;
       case 'mongodb':
         return `// MongoDB Shell\n// Press Cmd/Ctrl + Enter to execute\n\ndb.users.find().limit(10)\n\n// More examples:\n// db.users.insertOne({name: "John", email: "john@example.com"})\n// db.createCollection("products")`;
+      case 'elasticsearch':
+        return `// Elasticsearch Query DSL (JSON)\n// Press Cmd/Ctrl + Enter to execute\n\n{"query": {"match_all": {}}, "size": 10}\n\n// More examples:\n// {"query": {"match": {"title": "search term"}}}\n// {"query": {"range": {"date": {"gte": "2024-01-01"}}}}`;
       default:
         return 'Enter your query here...';
     }

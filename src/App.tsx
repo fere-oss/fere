@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback, useRef } from "react";
+import { useState, useMemo, useEffect, useLayoutEffect, useCallback, useRef } from "react";
 import { useSystemSnapshot } from "./hooks/useSystemMonitor";
 import { GraphView } from "./components/GraphView";
 import { CurlBuilder } from "./components/CurlBuilder";
@@ -10,7 +10,7 @@ import { useKnownServices, serviceKey, nodeServiceKey, looseServiceIdentity } fr
 import { ServiceDropdown } from "./components/checklist/ServiceDropdown";
 import { HEALTH_COLORS } from "./components/graph/constants";
 import { initAnalytics, capture, identifyWithMainProcess } from "./analytics";
-import type { GraphEdge, GraphNode } from "./types/electron";
+import type { AlertEvent, GraphEdge, GraphNode } from "./types/electron";
 import "./App.css";
 
 // Detect platform for default tab label
@@ -43,6 +43,29 @@ const BACKEND_FRAMEWORK_ORDER = [
   "hono",
   "node-http",
 ];
+
+function formatRelativeTime(ts: number): string {
+  const diff = Date.now() - ts;
+  if (diff < 60_000) return "just now";
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
+  return `${Math.floor(diff / 86_400_000)}d ago`;
+}
+
+const ALERT_CATEGORIES = [
+  { key: "down" as const, label: "Down", desc: "Service crashes" },
+  { key: "recovery" as const, label: "Recovery", desc: "Service comes back" },
+  { key: "degraded" as const, label: "Degraded", desc: "Slow / idle" },
+  { key: "container" as const, label: "Container", desc: "State changes" },
+] as const;
+
+const ALERT_EVENT_LABELS: Record<string, string> = {
+  down: "went down",
+  recovery: "recovered",
+  degraded: "degraded",
+  "container-stopped": "stopped",
+  "container-running": "started running",
+};
 
 function normalizeProjectTabPath(projectPath: string): string {
   if (!projectPath) return projectPath;
@@ -194,14 +217,19 @@ function App() {
   const [containerSubTab, setContainerSubTab] =
     useState<ContainerSubTab>("overview");
 
-  // Initial container ID to select in logs view (when navigating from freshness click)
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [initialLogContainerId, _setInitialLogContainerId] = useState<
+  // Initial container ID to select in logs view (when navigating from context menu)
+  const [initialLogContainerId, setInitialLogContainerId] = useState<
     string | undefined
   >();
 
   // Alert preferences state
   const [alertsEnabled, setAlertsEnabled] = useState(true);
+  const [categoryToggles, setCategoryToggles] = useState({
+    down: true, recovery: true, degraded: true, container: true,
+  });
+  const [alertPanelOpen, setAlertPanelOpen] = useState(false);
+  const [alertHistory, setAlertHistory] = useState<AlertEvent[]>([]);
+  const alertPanelRef = useRef<HTMLDivElement>(null);
   const [optimisticDownNodes, setOptimisticDownNodes] = useState<Map<string, GraphNode>>(
     () => new Map(),
   );
@@ -210,6 +238,21 @@ function App() {
   );
   const lastNodeIdByServiceRef = useRef<Map<string, string>>(new Map());
   const inferredEdgesCacheRef = useRef<Map<string, typeof graph.edges>>(new Map());
+
+  // Sliding indicator for view-mode tabs
+  const viewModeTabsRef = useRef<HTMLDivElement>(null);
+  const [indicatorStyle, setIndicatorStyle] = useState<{ left: number; width: number } | null>(null);
+
+  useLayoutEffect(() => {
+    const container = viewModeTabsRef.current;
+    if (!container) return;
+    const activeBtn = container.querySelector<HTMLButtonElement>(".view-mode-tab-active");
+    if (!activeBtn) return;
+    setIndicatorStyle({
+      left: activeBtn.offsetLeft,
+      width: activeBtn.offsetWidth,
+    });
+  }, [viewMode]);
 
   // Welcome modal state
   const [showWelcome, setShowWelcome] = useState(false);
@@ -221,6 +264,9 @@ function App() {
     if (window.electronAPI?.getAlertPreferences) {
       window.electronAPI.getAlertPreferences().then((prefs) => {
         setAlertsEnabled(prefs.alertsEnabled);
+        if (prefs.categoryToggles) {
+          setCategoryToggles(prefs.categoryToggles);
+        }
       });
     }
   }, []);
@@ -302,6 +348,19 @@ function App() {
       timersRef.forEach((timer) => clearTimeout(timer));
       timersRef.clear();
     };
+  }, []);
+
+  // Navigate to container logs when triggered from the graph context menu
+  useEffect(() => {
+    const handleViewLogs = (e: Event) => {
+      const { containerId } = (e as CustomEvent).detail;
+      setViewMode("containers");
+      setContainerSubTab("logs");
+      setInitialLogContainerId(containerId);
+    };
+    window.addEventListener("fere:view-container-logs", handleViewLogs);
+    return () =>
+      window.removeEventListener("fere:view-container-logs", handleViewLogs);
   }, []);
 
   useEffect(() => {
@@ -443,6 +502,51 @@ function App() {
       await window.electronAPI.setAlertPreferences({ alertsEnabled: newValue });
     }
   }, [alertsEnabled]);
+
+  const handleToggleCategory = useCallback(async (category: keyof typeof categoryToggles) => {
+    const newToggles = { ...categoryToggles, [category]: !categoryToggles[category] };
+    setCategoryToggles(newToggles);
+    if (window.electronAPI?.setAlertPreferences) {
+      await window.electronAPI.setAlertPreferences({ categoryToggles: newToggles });
+    }
+  }, [categoryToggles]);
+
+  const loadAlertHistory = useCallback(async () => {
+    if (window.electronAPI?.getAlertHistory) {
+      const result = await window.electronAPI.getAlertHistory();
+      if (result.success) {
+        setAlertHistory(result.events);
+      }
+    }
+  }, []);
+
+  const handleClearHistory = useCallback(async () => {
+    if (window.electronAPI?.clearAlertHistory) {
+      await window.electronAPI.clearAlertHistory();
+      setAlertHistory([]);
+    }
+  }, []);
+
+  // Load history when alert panel opens
+  useEffect(() => {
+    if (alertPanelOpen) {
+      loadAlertHistory();
+    }
+  }, [alertPanelOpen, loadAlertHistory]);
+
+  // Click-outside to close alert panel
+  useEffect(() => {
+    if (!alertPanelOpen) return;
+    function handleClick(e: MouseEvent) {
+      if (alertPanelRef.current && !alertPanelRef.current.contains(e.target as Node)) {
+        const target = e.target as HTMLElement;
+        if (target.closest(".alert-toggle")) return;
+        setAlertPanelOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick, true);
+    return () => document.removeEventListener("mousedown", handleClick, true);
+  }, [alertPanelOpen]);
 
   const handleCloseWelcome = useCallback(() => {
     setShowWelcome(false);
@@ -779,34 +883,18 @@ function App() {
       {/* App Title */}
       <div className="app-header">
         <h1 className="app-title">fere</h1>
-        <div className="header-actions">
-          <button
-            className="alert-toggle"
-            onClick={() => setShowShare(true)}
-            title="Share service map"
-            style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-          >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="13" cy="3" r="1.5" />
-              <circle cx="3" cy="8" r="1.5" />
-              <circle cx="13" cy="13" r="1.5" />
-              <line x1="4.5" y1="7.2" x2="11.5" y2="4" />
-              <line x1="4.5" y1="8.8" x2="11.5" y2="12" />
-            </svg>
-          </button>
-          <button
-            className={`alert-toggle${alertsEnabled ? "" : " alert-toggle-off"}`}
-            onClick={handleToggleAlerts}
-            title={alertsEnabled ? "Notifications on" : "Notifications off"}
-            style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-          >
+        <button
+          className={`alert-toggle${alertsEnabled ? "" : " alert-toggle-off"}`}
+          onClick={handleToggleAlerts}
+          title={alertsEnabled ? "Notifications on" : "Notifications off"}
+          style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+        >
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2">
             <path d="M8 1.5C5.5 1.5 4 3.5 4 5.5V8L2.5 10.5V11.5H13.5V10.5L12 8V5.5C12 3.5 10.5 1.5 8 1.5Z" />
             <path d="M6 12.5C6 13.6 6.9 14.5 8 14.5C9.1 14.5 10 13.6 10 12.5" />
             {!alertsEnabled && <line x1="2" y1="14" x2="14" y2="2" />}
           </svg>
-          </button>
-        </div>
+        </button>
       </div>
 
       {/* Error Banner */}
@@ -824,7 +912,13 @@ function App() {
       )}
 
       {/* View Mode Tabs */}
-      <div className="view-mode-tabs">
+      <div className="view-mode-tabs" ref={viewModeTabsRef}>
+        {indicatorStyle && (
+          <div
+            className="view-mode-indicator"
+            style={{ left: indicatorStyle.left, width: indicatorStyle.width }}
+          />
+        )}
         <button
           className={`view-mode-tab ${viewMode === "graph" ? "view-mode-tab-active" : ""}`}
           onClick={() => { setViewMode("graph"); capture("tab_switched", { to: "graph" }); }}

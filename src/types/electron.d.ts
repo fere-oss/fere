@@ -144,7 +144,7 @@ export interface DockerSnapshot {
 
 export interface DatabaseTablesResult {
   tables: string[];
-  dbType?: 'postgresql' | 'mysql' | 'mongodb';
+  dbType?: 'postgresql' | 'mysql' | 'mongodb' | 'elasticsearch';
   database?: string;
   error?: string;
 }
@@ -152,7 +152,7 @@ export interface DatabaseTablesResult {
 export interface TableDataResult {
   columns: string[];
   rows: Record<string, unknown>[];
-  dbType?: 'postgresql' | 'mysql' | 'mongodb';
+  dbType?: 'postgresql' | 'mysql' | 'mongodb' | 'elasticsearch';
   tableName?: string;
   error?: string;
 }
@@ -162,7 +162,7 @@ export interface QueryResult {
   rows?: Record<string, unknown>[];
   rowCount?: number;
   output?: string;
-  dbType?: 'postgresql' | 'mysql' | 'mongodb';
+  dbType?: 'postgresql' | 'mysql' | 'mongodb' | 'elasticsearch';
   error?: string;
 }
 
@@ -398,6 +398,31 @@ export interface NetworkPolicyResult {
 // Alert preferences
 export interface AlertPreferences {
   alertsEnabled: boolean;
+  categoryToggles: {
+    down: boolean;
+    recovery: boolean;
+    degraded: boolean;
+    container: boolean;
+  };
+}
+
+// Alert event (in-app history)
+export interface AlertEvent {
+  id: string;
+  timestamp: number;
+  type: 'down' | 'recovery' | 'degraded' | 'container-stopped' | 'container-running';
+  category: 'down' | 'recovery' | 'degraded' | 'container';
+  serviceName: string;
+  serviceType: string;
+  nodeId: string;
+  details: string;
+  notified: boolean;
+}
+
+export interface AlertHistoryResult {
+  success: boolean;
+  events: AlertEvent[];
+  error?: string;
 }
 
 // Snapshot delta types (event-driven pipeline)
@@ -496,6 +521,9 @@ export interface ElectronAPI {
   connectPostgresUri: (uri: string) => Promise<DatabaseTablesResult>;
   getPostgresUriTableData: (uri: string, tableName: string, limit?: number) => Promise<TableDataResult>;
   executePostgresUriQuery: (uri: string, query: string) => Promise<QueryResult>;
+  connectElasticsearchUri: (baseUrl: string) => Promise<DatabaseTablesResult>;
+  getElasticsearchUriIndexData: (baseUrl: string, indexName: string, limit?: number) => Promise<TableDataResult>;
+  executeElasticsearchUriQuery: (baseUrl: string, query: string) => Promise<QueryResult>;
 
   // Process control
   killProcess: (pid: number) => Promise<KillResult>;
@@ -522,6 +550,10 @@ export interface ElectronAPI {
   // Alert Preferences
   getAlertPreferences: () => Promise<AlertPreferences>;
   setAlertPreferences: (prefs: Partial<AlertPreferences>) => Promise<{ success: boolean; error?: string }>;
+
+  // Alert History
+  getAlertHistory: () => Promise<AlertHistoryResult>;
+  clearAlertHistory: () => Promise<{ success: boolean; error?: string }>;
 
   // Container Logs Streaming
   startContainerLogs: (containerId: string, options?: ContainerLogOptions) => Promise<ContainerLogStreamResult>;

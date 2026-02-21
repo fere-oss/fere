@@ -6,7 +6,7 @@ interface SavedDatabaseConnection {
   id: string;
   uri: string;
   name: string;
-  dbType: 'mongodb' | 'postgresql';
+  dbType: 'mongodb' | 'postgresql' | 'elasticsearch';
   createdAt: number;
 }
 
@@ -24,15 +24,17 @@ function detectDbLabelFromNode(node: GraphNode): string {
   if (image.includes('postgres') || name.includes('postgres')) return 'PostgreSQL';
   if (image.includes('mysql') || name.includes('mysql') || image.includes('mariadb')) return 'MySQL';
   if (image.includes('mongo') || name.includes('mongo')) return 'MongoDB';
+  if (image.includes('elasticsearch') || name.includes('elasticsearch') || image.includes('opensearch') || name.includes('opensearch')) return 'Elasticsearch';
   if (image.includes('redis') || name.includes('redis')) return 'Redis';
   if (image.includes('sqlite') || name.includes('sqlite')) return 'SQLite';
   return 'Database';
 }
 
-function detectUriDbType(uri: string): 'mongodb' | 'postgresql' | null {
+function detectUriDbType(uri: string): 'mongodb' | 'postgresql' | 'elasticsearch' | null {
   const lower = uri.trim().toLowerCase();
   if (lower.startsWith('mongodb://') || lower.startsWith('mongodb+srv://')) return 'mongodb';
   if (lower.startsWith('postgresql://') || lower.startsWith('postgres://')) return 'postgresql';
+  if (lower.startsWith('http://') || lower.startsWith('https://')) return 'elasticsearch';
   return null;
 }
 
@@ -50,11 +52,13 @@ function deriveNameFromUri(uri: string): string {
 }
 
 function savedConnectionToGraphNode(conn: SavedDatabaseConnection): GraphNode {
+  const commandMap = { mongodb: 'remote-mongo', postgresql: 'remote-postgres', elasticsearch: 'remote-elasticsearch' };
+  const imageMap = { mongodb: 'mongo:remote', postgresql: 'postgres:remote', elasticsearch: 'elasticsearch:remote' };
   return {
     id: `__saved_${conn.id}__`,
     pid: 0,
     name: conn.name,
-    command: conn.dbType === 'mongodb' ? 'remote-mongo' : 'remote-postgres',
+    command: commandMap[conn.dbType] || 'remote-database',
     type: 'database',
     cpu: 0,
     memory: 0,
@@ -63,7 +67,7 @@ function savedConnectionToGraphNode(conn: SavedDatabaseConnection): GraphNode {
     healthStatus: 'green',
     lastSeen: conn.createdAt,
     isDockerContainer: false,
-    containerImage: conn.dbType === 'mongodb' ? 'mongo:remote' : 'postgres:remote',
+    containerImage: imageMap[conn.dbType] || 'database:remote',
     containerStatus: `saved-uri:${conn.uri}`,
   };
 }
@@ -106,7 +110,7 @@ export function DatabaseListView({
 
     const dbType = detectUriDbType(trimmedUri);
     if (!dbType) {
-      setAddError('URI must start with mongodb:// or postgresql://');
+      setAddError('URI must start with mongodb://, postgresql://, or http://');
       return;
     }
 
@@ -121,7 +125,9 @@ export function DatabaseListView({
     try {
       const result = dbType === 'mongodb'
         ? await window.electronAPI.connectMongoUri(trimmedUri)
-        : await window.electronAPI.connectPostgresUri(trimmedUri);
+        : dbType === 'elasticsearch'
+          ? await window.electronAPI.connectElasticsearchUri(trimmedUri)
+          : await window.electronAPI.connectPostgresUri(trimmedUri);
 
       if (result.error) {
         setAddError(result.error);
@@ -214,7 +220,7 @@ export function DatabaseListView({
                 <div className="db-list-item-info">
                   <span className="db-list-item-name">{conn.name}</span>
                   <span className="db-list-item-type">
-                    {conn.dbType === 'mongodb' ? 'MongoDB' : 'PostgreSQL'}
+                    {conn.dbType === 'mongodb' ? 'MongoDB' : conn.dbType === 'elasticsearch' ? 'Elasticsearch' : 'PostgreSQL'}
                   </span>
                 </div>
                 <button
@@ -251,7 +257,7 @@ export function DatabaseListView({
               <input
                 className="db-add-form-input"
                 type="text"
-                placeholder="mongodb:// or postgresql://"
+                placeholder="mongodb://, postgresql://, or http://"
                 value={addUri}
                 onChange={(e) => { setAddUri(e.target.value); setAddError(null); }}
                 onKeyDown={(e) => {

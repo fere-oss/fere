@@ -54,7 +54,7 @@ export function ContainerLogsTab({ containers, initialSelectedId }: ContainerLog
   // Track which containers are selected for logging
   const [selectedContainerIds, setSelectedContainerIds] = useState<Set<string>>(new Set());
   // Track if initial selection has been applied
-  const initialSelectionAppliedRef = useRef(false);
+  const initialSelectionAppliedRef = useRef<string | null>(null);
   // Track which containers are actively streaming
   const [activeStreams, setActiveStreams] = useState<Map<string, string>>(new Map()); // containerId -> streamId
   const activeStreamsRef = useRef(activeStreams);
@@ -350,11 +350,11 @@ export function ContainerLogsTab({ containers, initialSelectedId }: ContainerLog
 
   // Handle initial container selection from navigation
   useEffect(() => {
-    if (initialSelectedId && !initialSelectionAppliedRef.current) {
+    if (initialSelectedId && initialSelectionAppliedRef.current !== initialSelectedId) {
       // Find container with matching containerId
       const container = containers.find(c => c.containerId === initialSelectedId);
       if (container?.containerId) {
-        initialSelectionAppliedRef.current = true;
+        initialSelectionAppliedRef.current = initialSelectedId;
         setSelectedContainerIds(new Set([container.containerId]));
         startStream(container.containerId);
       }

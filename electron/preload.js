@@ -31,6 +31,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   connectPostgresUri: (uri) => ipcRenderer.invoke('connect-postgres-uri', uri),
   getPostgresUriTableData: (uri, tableName, limit) => ipcRenderer.invoke('get-postgres-uri-table-data', uri, tableName, limit),
   executePostgresUriQuery: (uri, query) => ipcRenderer.invoke('execute-postgres-uri-query', uri, query),
+  connectElasticsearchUri: (baseUrl) => ipcRenderer.invoke('connect-elasticsearch-uri', baseUrl),
+  getElasticsearchUriIndexData: (baseUrl, indexName, limit) => ipcRenderer.invoke('get-elasticsearch-uri-index-data', baseUrl, indexName, limit),
+  executeElasticsearchUriQuery: (baseUrl, query) => ipcRenderer.invoke('execute-elasticsearch-uri-query', baseUrl, query),
 
   // Process control
   killProcess: (pid) => ipcRenderer.invoke('kill-process', pid),
@@ -57,6 +60,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Alert Preferences
   getAlertPreferences: () => ipcRenderer.invoke('get-alert-preferences'),
   setAlertPreferences: (prefs) => ipcRenderer.invoke('set-alert-preferences', prefs),
+
+  // Alert History
+  getAlertHistory: () => ipcRenderer.invoke('get-alert-history'),
+  clearAlertHistory: () => ipcRenderer.invoke('clear-alert-history'),
 
   // Container Logs Streaming
   startContainerLogs: (containerId, options) => ipcRenderer.invoke('start-container-logs', containerId, options),

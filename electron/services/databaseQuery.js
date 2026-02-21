@@ -1,5 +1,7 @@
 const { spawn, execFile } = require('child_process');
 const fs = require('fs');
+const http = require('http');
+const https = require('https');
 const { promisify } = require('util');
 const execFileAsync = promisify(execFile);
 
@@ -1063,6 +1065,202 @@ async function executePostgresUriQuery(uri, query) {
   }
 }
 
+// ============================================
+// Elasticsearch URI Mode
+// ============================================
+
+function sanitizeEsBaseUrl(url) {
+  return url.trim().replace(/\/+$/, '');
+}
+
+/**
+ * Try an ES request; if the URL is http:// and it fails, retry with https://
+ * (Elasticsearch 8.x defaults to HTTPS with self-signed certs).
+ */
+async function esFetchWithFallback(url, options = {}) {
+  try {
+    return await esFetch(url, options);
+  } catch (httpErr) {
+    if (url.startsWith('http://')) {
+      const httpsUrl = url.replace(/^http:\/\//, 'https://');
+      try {
+        return await esFetch(httpsUrl, options);
+      } catch {
+        throw httpErr;
+      }
+    }
+    throw httpErr;
+  }
+}
+
+/**
+ * HTTP(S) request helper for Elasticsearch.
+ * Uses Node http/https modules directly so we can accept self-signed certs
+ * (Elasticsearch 8.x defaults to HTTPS with a self-signed certificate).
+ */
+function esFetch(url, options = {}) {
+  return new Promise((resolve, reject) => {
+    const parsed = new URL(url);
+    const isHttps = parsed.protocol === 'https:';
+    const transport = isHttps ? https : http;
+    const reqOptions = {
+      hostname: parsed.hostname,
+      port: parsed.port || (isHttps ? 443 : 9200),
+      path: parsed.pathname + parsed.search,
+      method: options.method || 'GET',
+      headers: { 'Content-Type': 'application/json', ...options.headers },
+      // Accept self-signed certs for local ES instances
+      ...(isHttps ? { rejectUnauthorized: false } : {}),
+      timeout: 10000,
+    };
+    // Forward basic auth from URL if present
+    if (parsed.username) {
+      reqOptions.auth = `${decodeURIComponent(parsed.username)}:${decodeURIComponent(parsed.password || '')}`;
+    }
+
+    const req = transport.request(reqOptions, (res) => {
+      const chunks = [];
+      res.on('data', (chunk) => chunks.push(chunk));
+      res.on('end', () => {
+        const body = Buffer.concat(chunks).toString('utf-8');
+        if (res.statusCode >= 400) {
+          let message = `Elasticsearch returned ${res.statusCode}`;
+          try { message = JSON.parse(body)?.error?.reason || message; } catch {}
+          reject(new Error(message));
+          return;
+        }
+        try {
+          resolve(JSON.parse(body));
+        } catch {
+          reject(new Error(`Invalid JSON response from Elasticsearch`));
+        }
+      });
+    });
+
+    req.on('error', (err) => reject(new Error(`Connection failed: ${err.message}`)));
+    req.on('timeout', () => { req.destroy(); reject(new Error('Connection timed out')); });
+
+    if (options.body) req.write(options.body);
+    req.end();
+  });
+}
+
+/**
+ * Connect to an Elasticsearch instance via HTTP URL and list indices.
+ * @param {string} baseUrl - e.g. "http://localhost:9200"
+ * @returns {Promise<Object>} { tables, dbType, error? }
+ */
+async function connectElasticsearchUri(baseUrl) {
+  try {
+    const url = sanitizeEsBaseUrl(baseUrl);
+
+    // Verify this is actually Elasticsearch (auto-fallback HTTP → HTTPS)
+    const root = await esFetchWithFallback(url);
+    if (!root.tagline || !root.tagline.includes('You Know, for Search')) {
+      return { error: 'URL does not appear to be an Elasticsearch instance', tables: [] };
+    }
+
+    // List indices (exclude system indices starting with ".")
+    const indices = await esFetchWithFallback(`${url}/_cat/indices?format=json&h=index,health,status,docs.count,store.size`);
+    const tables = (Array.isArray(indices) ? indices : [])
+      .filter(idx => idx.index && !idx.index.startsWith('.'))
+      .map(idx => idx.index)
+      .sort();
+
+    return { tables, dbType: 'elasticsearch', database: root.cluster_name || 'elasticsearch' };
+  } catch (error) {
+    return { error: error.message || 'Failed to connect to Elasticsearch', tables: [] };
+  }
+}
+
+/**
+ * Fetch documents from an Elasticsearch index.
+ * @param {string} baseUrl - e.g. "http://localhost:9200"
+ * @param {string} indexName - Index name
+ * @param {number} limit - Max documents to return
+ * @returns {Promise<Object>} { columns, rows, dbType, error? }
+ */
+async function getElasticsearchUriIndexData(baseUrl, indexName, limit = 100) {
+  try {
+    const url = sanitizeEsBaseUrl(baseUrl);
+    const safeName = encodeURIComponent(indexName);
+    const result = await esFetchWithFallback(`${url}/${safeName}/_search?size=${limit}`);
+
+    const hits = result.hits?.hits || [];
+    if (hits.length === 0) {
+      return { columns: ['_id'], rows: [], dbType: 'elasticsearch', tableName: indexName };
+    }
+
+    // Collect all unique field names across documents
+    const columnSet = new Set(['_id']);
+    for (const hit of hits) {
+      if (hit._source) {
+        for (const key of Object.keys(hit._source)) columnSet.add(key);
+      }
+    }
+    const columns = Array.from(columnSet);
+
+    const rows = hits.map(hit => ({
+      _id: hit._id,
+      ...hit._source,
+    }));
+
+    return { columns, rows, dbType: 'elasticsearch', tableName: indexName };
+  } catch (error) {
+    return { columns: [], rows: [], error: error.message || 'Failed to fetch index data', dbType: 'elasticsearch' };
+  }
+}
+
+/**
+ * Execute a search query against Elasticsearch.
+ * @param {string} baseUrl - e.g. "http://localhost:9200"
+ * @param {string} query - JSON search DSL body
+ * @returns {Promise<Object>} { columns, rows, rowCount, dbType, error? }
+ */
+async function executeElasticsearchUriQuery(baseUrl, query) {
+  try {
+    const url = sanitizeEsBaseUrl(baseUrl);
+
+    let body;
+    try {
+      body = JSON.parse(query);
+    } catch {
+      return { error: 'Query must be valid JSON. Example: {"query": {"match_all": {}}}', dbType: 'elasticsearch' };
+    }
+
+    const result = await esFetchWithFallback(`${url}/_search`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+
+    const hits = result.hits?.hits || [];
+    if (hits.length === 0) {
+      return {
+        columns: ['_id'],
+        rows: [],
+        rowCount: result.hits?.total?.value ?? 0,
+        dbType: 'elasticsearch',
+      };
+    }
+
+    const columnSet = new Set(['_id']);
+    for (const hit of hits) {
+      if (hit._source) {
+        for (const key of Object.keys(hit._source)) columnSet.add(key);
+      }
+    }
+
+    return {
+      columns: Array.from(columnSet),
+      rows: hits.map(hit => ({ _id: hit._id, ...hit._source })),
+      rowCount: result.hits?.total?.value ?? hits.length,
+      dbType: 'elasticsearch',
+    };
+  } catch (error) {
+    return { error: error.message || 'Failed to execute Elasticsearch query', dbType: 'elasticsearch' };
+  }
+}
+
 /**
  * Create a new table in the database
  * @param {string} containerId - Docker container ID
@@ -1214,4 +1412,7 @@ module.exports = {
   connectPostgresUri,
   getPostgresUriTableData,
   executePostgresUriQuery,
+  connectElasticsearchUri,
+  getElasticsearchUriIndexData,
+  executeElasticsearchUriQuery,
 };

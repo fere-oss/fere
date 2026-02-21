@@ -50,6 +50,9 @@ const {
   connectPostgresUri,
   getPostgresUriTableData,
   executePostgresUriQuery,
+  connectElasticsearchUri,
+  getElasticsearchUriIndexData,
+  executeElasticsearchUriQuery,
 } = require("./services/databaseQuery");
 const {
   isDockerAvailable,
@@ -70,6 +73,8 @@ const {
   evaluateAlerts,
   getAlertPreferences,
   setAlertPreferences,
+  getAlertHistory,
+  clearAlertHistory,
   markIntentionalStopForPid,
   markIntentionalStopForContainer,
 } = require("./services/alertManager");
@@ -881,6 +886,28 @@ ipcMain.handle("set-alert-preferences", async (event, prefs) => {
   }
 });
 
+// ============================================
+// IPC Handlers - Alert History
+// ============================================
+
+ipcMain.handle("get-alert-history", async () => {
+  try {
+    return { success: true, events: getAlertHistory() };
+  } catch (error) {
+    console.error("Error getting alert history:", error);
+    return { success: false, events: [], error: error.message };
+  }
+});
+
+ipcMain.handle("clear-alert-history", async () => {
+  try {
+    return await clearAlertHistory();
+  } catch (error) {
+    console.error("Error clearing alert history:", error);
+    return { success: false, error: error.message };
+  }
+});
+
 // Open Terminal at specified path (macOS)
 ipcMain.handle("open-terminal", async (event, dirPath) => {
   try {
@@ -1079,6 +1106,36 @@ ipcMain.handle("execute-postgres-uri-query", async (_, uri, query) => {
   } catch (error) {
     console.error("Error executing PostgreSQL URI query:", error);
     return { error: error.message, dbType: "postgresql" };
+  }
+});
+
+// Connect to Elasticsearch via HTTP URL
+ipcMain.handle("connect-elasticsearch-uri", async (_, baseUrl) => {
+  try {
+    return await connectElasticsearchUri(baseUrl);
+  } catch (error) {
+    console.error("Error connecting to Elasticsearch:", error);
+    return { error: error.message, tables: [], dbType: "elasticsearch" };
+  }
+});
+
+// Fetch index data from Elasticsearch
+ipcMain.handle("get-elasticsearch-uri-index-data", async (_, baseUrl, indexName, limit) => {
+  try {
+    return await getElasticsearchUriIndexData(baseUrl, indexName, limit);
+  } catch (error) {
+    console.error("Error fetching Elasticsearch index data:", error);
+    return { columns: [], rows: [], error: error.message, dbType: "elasticsearch" };
+  }
+});
+
+// Execute search query against Elasticsearch
+ipcMain.handle("execute-elasticsearch-uri-query", async (_, baseUrl, query) => {
+  try {
+    return await executeElasticsearchUriQuery(baseUrl, query);
+  } catch (error) {
+    console.error("Error executing Elasticsearch query:", error);
+    return { error: error.message, dbType: "elasticsearch" };
   }
 });
 
