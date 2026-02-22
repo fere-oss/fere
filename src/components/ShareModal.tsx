@@ -93,10 +93,19 @@ export function ShareModal({ onClose, graphNodes, graphEdges, activeTabLabel }: 
   async function handleCopy() {
     if (!shareUrl) return;
     try {
-      await navigator.clipboard.writeText(shareUrl);
+      if (window.electronAPI?.copyText) {
+        const result = await window.electronAPI.copyText(shareUrl);
+        if (!result.success) {
+          throw new Error(result.error || "Copy failed");
+        }
+      } else {
+        await navigator.clipboard.writeText(shareUrl);
+      }
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    } catch {}
+    } catch {
+      // No-op: keep UI stable if clipboard write fails.
+    }
   }
 
   function handleOpenUrl() {

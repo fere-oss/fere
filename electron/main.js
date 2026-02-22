@@ -1,5 +1,6 @@
-const { app, BrowserWindow, ipcMain, shell, nativeImage, Notification } = require("electron");
+const { app, BrowserWindow, ipcMain, shell, nativeImage, Notification, clipboard } = require("electron");
 const path = require("path");
+const fs = require("fs");
 
 // Import security utilities
 const {
@@ -94,13 +95,25 @@ let alertNodeMap = new Map();
 
 const isDev = process.env.NODE_ENV === "development" || !app.isPackaged;
 
+function resolveAppIconPath() {
+  const devIconPath = path.join(__dirname, "../public/icon.png");
+  const prodIconPath = path.join(__dirname, "../build/icon.png");
+  const legacyIconPath = path.join(__dirname, "../assets/icon.png");
+
+  if (isDev) return devIconPath;
+  if (fs.existsSync(prodIconPath)) return prodIconPath;
+  return legacyIconPath;
+}
+
 function createWindow() {
+  const appIconPath = resolveAppIconPath();
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
     minWidth: 800,
     minHeight: 600,
     title: "Fere",
+    icon: appIconPath,
     titleBarStyle: "hiddenInset",
     trafficLightPosition: { x: 15, y: 15 },
     webPreferences: {
@@ -160,7 +173,7 @@ app.whenReady().then(() => {
 
   if (process.platform === "darwin") {
     const icon = nativeImage.createFromPath(
-      path.join(__dirname, "../assets/icon.png")
+      resolveAppIconPath()
     );
     if (!icon.isEmpty()) {
       app.dock.setIcon(icon);
@@ -665,6 +678,16 @@ ipcMain.handle("open-url", async (event, url) => {
   }
 });
 
+ipcMain.handle("copy-text", async (_, text) => {
+  try {
+    clipboard.writeText(typeof text === "string" ? text : "");
+    return { success: true };
+  } catch (error) {
+    console.error("Error copying text:", error);
+    return { success: false, error: error.message };
+  }
+});
+
 // Execute HTTP request (for API testing)
 // Note: This app is designed to test local dev services, so localhost is allowed here.
 // For apps that should block SSRF entirely, set allowPrivate to false.
@@ -912,7 +935,6 @@ ipcMain.handle("clear-alert-history", async () => {
 ipcMain.handle("open-terminal", async (event, dirPath) => {
   try {
     // Validate the path exists and is a directory
-    const fs = require("fs");
     if (!dirPath || typeof dirPath !== "string") {
       return { success: false, error: "Invalid path" };
     }
@@ -1257,7 +1279,6 @@ ipcMain.handle("get-analytics-id", () => {
 // IPC Handlers - Share (GitHub Gist)
 // ============================================
 
-const fs = require("fs");
 const os = require("os");
 
 const SHARE_SETTINGS_FILE = path.join(os.homedir(), ".fere", "settings.json");

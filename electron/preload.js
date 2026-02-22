@@ -44,6 +44,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Quick actions
   openUrl: (url) => ipcRenderer.invoke('open-url', url),
   openTerminal: (path) => ipcRenderer.invoke('open-terminal', path),
+  copyText: (text) => ipcRenderer.invoke('copy-text', text),
 
   // API testing
   executeHttpRequest: (options) => ipcRenderer.invoke('execute-http-request', options),
