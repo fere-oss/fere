@@ -160,6 +160,7 @@ export function GraphView({
   const wasVisibleRef = useRef(false);
   const [viewportReady, setViewportReady] = useState(false);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
+  const contextMenuOpenRef = useRef(false);
   const handleNodeClick = useCallback(
     (node: GraphNode) => {
       if (
@@ -182,6 +183,8 @@ export function GraphView({
       const container = containerRef.current;
       if (!container) return;
       const rect = container.getBoundingClientRect();
+      contextMenuOpenRef.current = true;
+      setHoveredNodeId(node.id);
       setContextMenu({
         node,
         x: event.clientX - rect.left,
@@ -558,6 +561,7 @@ export function GraphView({
   );
 
   const handleNodeMouseLeave = useCallback(() => {
+    if (contextMenuOpenRef.current) return;
     clearTimeout(hoverTimer.current);
     pendingHover.current = null;
     hoverTimer.current = setTimeout(() => {
@@ -574,12 +578,20 @@ export function GraphView({
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
+      contextMenuOpenRef.current = false;
       setContextMenu(null);
       setSelectedNode(null);
       setHoveredNodeId(null);
     };
-    const closeContextMenu = () => setContextMenu(null);
-    const closeOnWheel = () => setContextMenu((current) => (current ? null : current));
+    const closeContextMenu = () => {
+      contextMenuOpenRef.current = false;
+      setContextMenu(null);
+    };
+    const closeOnWheel = () =>
+      setContextMenu((current) => {
+        if (current) contextMenuOpenRef.current = false;
+        return current ? null : current;
+      });
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("resize", closeContextMenu);
     window.addEventListener("blur", closeContextMenu);
@@ -642,10 +654,12 @@ export function GraphView({
             onNodeMouseLeave={handleNodeMouseLeave}
             onPaneClick={() => {
               setSelectedNode(null);
+              contextMenuOpenRef.current = false;
               setContextMenu(null);
             }}
             onPaneContextMenu={(event) => {
               event.preventDefault();
+              contextMenuOpenRef.current = false;
               setContextMenu(null);
             }}
           >
@@ -710,7 +724,10 @@ export function GraphView({
           y={contextMenu.y}
           width={contextMenu.width}
           height={contextMenu.height}
-          onClose={() => setContextMenu(null)}
+          onClose={() => {
+            contextMenuOpenRef.current = false;
+            setContextMenu(null);
+          }}
         />
       )}
 

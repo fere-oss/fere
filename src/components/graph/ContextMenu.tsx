@@ -101,14 +101,17 @@ export function ContextMenu({ node, x, y, width, height, onClose }: ContextMenuP
             break;
           case 'copy-port':
             if (hasPort) {
-              await navigator.clipboard.writeText(String(mainPort));
+              const result = await window.electronAPI.copyText(String(mainPort));
+              ensureSuccess(result, 'Copy Port');
             }
             break;
           case 'copy-pid':
             if (isNotRunning) {
-              await navigator.clipboard.writeText(node.name);
+              const result = await window.electronAPI.copyText(node.name);
+              ensureSuccess(result, 'Copy Service Name');
             } else {
-              await navigator.clipboard.writeText(String(node.pid));
+              const result = await window.electronAPI.copyText(String(node.pid));
+              ensureSuccess(result, 'Copy PID');
             }
             break;
         }
