@@ -754,11 +754,20 @@ function App() {
     const filteredNodes = [...primaryNodes, ...externalNodes, ...trackedExtra];
     const filteredNodeIds = new Set(filteredNodes.map((n) => n.id));
 
-    // Filter edges to only include those between filtered nodes
-    const filteredEdges = graph.edges.filter(
-      (edge) =>
-        filteredNodeIds.has(edge.source) && filteredNodeIds.has(edge.target),
-    );
+    // Filter edges to only include those between filtered nodes.
+    // Build from adjacency index to avoid scanning the entire edge list each update.
+    const filteredEdges: GraphEdge[] = [];
+    const seenEdgeIds = new Set<string>();
+    filteredNodeIds.forEach((nodeId) => {
+      const connectedEdges = edgeIndex.byNodeId.get(nodeId);
+      if (!connectedEdges) return;
+      connectedEdges.forEach((edge) => {
+        if (seenEdgeIds.has(edge.id)) return;
+        if (!filteredNodeIds.has(edge.source) || !filteredNodeIds.has(edge.target)) return;
+        seenEdgeIds.add(edge.id);
+        filteredEdges.push(edge);
+      });
+    });
 
     const expandedEdges = (() => {
       if (edgeMode !== "expanded") return filteredEdges;
@@ -785,7 +794,7 @@ function App() {
       const existing = new Set(
         filteredEdges.map((edge) => `${edge.source}->${edge.target}`),
       );
-      const MAX_INFERRED_EDGES = 300;
+      const MAX_INFERRED_EDGES = 180;
       let inferredCount = 0;
 
       for (let i = 0; i < inferable.length; i++) {

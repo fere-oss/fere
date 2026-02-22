@@ -253,16 +253,6 @@ export function GraphView({
 
     return () => clearTimeout(timer);
   }, [nodesKey]);
-  const connectedNodeIds = useMemo(() => {
-    if (!hoveredNodeId) return new Set<string>();
-    const connected = new Set<string>();
-    connected.add(hoveredNodeId);
-    layoutEdges.forEach((edge) => {
-      if (edge.source === hoveredNodeId) connected.add(edge.target);
-    });
-    return connected;
-  }, [hoveredNodeId, layoutEdges]);
-
   const flowLayout = useMemo(() => {
     // Keeps memo recalculation tied to measurement and external API updates.
     void layoutVersion;
@@ -292,12 +282,7 @@ export function GraphView({
     nodeHeightsRef,
   ]);
 
-  const hoverState = useMemo(
-    () => ({ hoveredNodeId, connectedNodeIds }),
-    [hoveredNodeId, connectedNodeIds],
-  );
-
-  const hoverEdgesBySource = useMemo(() => {
+  const hoverEdgeGeometry = useMemo(() => {
     const W = FLOW_LAYOUT.NODE_WIDTH;
     const posMap = new Map<string, { x: number; y: number }>();
     const heightMap = new Map<string, number>();
@@ -342,126 +327,15 @@ export function GraphView({
       if (list) list.push(edge);
       else outgoingBySource.set(edge.source, [edge]);
     });
-
-    const result = new Map<string, Array<{
-      id: string;
-      source: string;
-      target: string;
-      type: "arrowBezier" | "arrowStep";
-      data: ArrowEdgeData;
-    }>>();
-
-    outgoingBySource.forEach((sourceEdges, sourceId) => {
-      const seen = new Set<string>();
-      const dedupedEdges = sourceEdges.filter((edge) => {
-        const key = `${edge.source}->${edge.target}`;
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      });
-
-      // Edge bundling — group edges whose targets share the same layout group.
-      // When 3+ edges target the same group, bundle into a single edge to reduce clutter.
-      const BUNDLE_THRESHOLD = 3;
-      const edgesByGroup = new Map<string, GraphEdge[]>();
-      dedupedEdges.forEach((edge) => {
-        const tgt = layoutLookup.get(edge.target);
-        const groupKey = tgt ? `layer-${tgt.layer}-${tgt.groupId}` : edge.target;
-        if (!edgesByGroup.has(groupKey)) edgesByGroup.set(groupKey, []);
-        edgesByGroup.get(groupKey)!.push(edge);
-      });
-
-      const bundled: Array<GraphEdge & { _bundleCount?: number }> = [];
-      edgesByGroup.forEach((groupEdges) => {
-        if (groupEdges.length < BUNDLE_THRESHOLD) {
-          bundled.push(...groupEdges);
-        } else {
-          // Pick the middle target as the bundle representative
-          const rep = groupEdges[Math.floor(groupEdges.length / 2)];
-          bundled.push({
-            ...rep,
-            id: `bundle-${rep.id}`,
-            _bundleCount: groupEdges.length,
-          });
-        }
-      });
-
-      const flowForSource = bundled.map((edge) => {
-        const srcPos = posMap.get(edge.source);
-        const tgtPos = posMap.get(edge.target);
-        const srcH = heightMap.get(edge.source) ?? FLOW_LAYOUT.NODE_MIN_HEIGHT;
-        const tgtH = heightMap.get(edge.target) ?? FLOW_LAYOUT.NODE_MIN_HEIGHT;
-        let srcSide: "top" | "bottom" | "left" | "right" = "bottom";
-        let tgtSide: "top" | "bottom" | "left" | "right" = "top";
-        let edgeType: "arrowBezier" | "arrowStep" = "arrowBezier";
-        if (srcPos && tgtPos) {
-          const dx = tgtPos.x - srcPos.x;
-          const dy = tgtPos.y - srcPos.y;
-          const sameLayer = Math.abs(dy) < 80;
-          if (sameLayer) {
-            const srcCenterX = srcPos.x + W / 2;
-            const tgtCenterX = tgtPos.x + W / 2;
-            const minX = Math.min(srcCenterX, tgtCenterX);
-            const maxX = Math.max(srcCenterX, tgtCenterX);
-            const hasIntermediate = serviceCenters.some((node) => {
-              if (node.id === edge.source || node.id === edge.target)
-                return false;
-              if (Math.abs(node.y - srcPos.y) > 60) return false;
-              return node.x > minX + 8 && node.x < maxX - 8;
-            });
-
-            if (hasIntermediate) {
-              edgeType = "arrowStep";
-              if (dx > 0) {
-                srcSide = "top";
-                tgtSide = "top";
-              } else {
-                srcSide = "bottom";
-                tgtSide = "bottom";
-              }
-            } else if (dx > 0) {
-              srcSide = "right";
-              tgtSide = "left";
-            } else {
-              srcSide = "left";
-              tgtSide = "right";
-            }
-          } else if (dy > 0) {
-            srcSide = "bottom";
-            tgtSide = "top";
-          } else {
-            srcSide = "top";
-            tgtSide = "bottom";
-          }
-        }
-        const src = srcPos
-          ? endpoint(srcPos, srcH, srcSide)
-          : { x: 0, y: 0, pos: Position.Bottom };
-        const tgt = tgtPos
-          ? endpoint(tgtPos, tgtH, tgtSide)
-          : { x: 0, y: 0, pos: Position.Top };
-        const data: ArrowEdgeData = {
-          sx: src.x,
-          sy: src.y,
-          tx: tgt.x,
-          ty: tgt.y,
-          sourcePos: src.pos,
-          targetPos: tgt.pos,
-          bundleCount: (edge as typeof edge & { _bundleCount?: number })
-            ._bundleCount,
-        };
-        return {
-          id: edge.id,
-          source: edge.source,
-          target: edge.target,
-          type: edgeType,
-          data,
-        };
-      });
-      result.set(sourceId, flowForSource);
-    });
-
-    return result;
+    return {
+      posMap,
+      heightMap,
+      serviceCenters,
+      layoutLookup,
+      outgoingBySource,
+      endpoint,
+      width: W,
+    };
   }, [
     layoutEdges,
     flowLayout.nodes,
@@ -469,10 +343,140 @@ export function GraphView({
     stableConnectedLayout,
   ]);
 
+  const connectedNodeIds = useMemo(() => {
+    if (!hoveredNodeId) return new Set<string>();
+    const connected = new Set<string>();
+    connected.add(hoveredNodeId);
+    const outgoing = hoverEdgeGeometry.outgoingBySource.get(hoveredNodeId);
+    if (!outgoing) return connected;
+    outgoing.forEach((edge) => connected.add(edge.target));
+    return connected;
+  }, [hoveredNodeId, hoverEdgeGeometry]);
+
+  const hoverState = useMemo(
+    () => ({ hoveredNodeId, connectedNodeIds }),
+    [hoveredNodeId, connectedNodeIds],
+  );
+
   const flowEdges = useMemo(() => {
     if (!hoveredNodeId) return [];
-    return hoverEdgesBySource.get(hoveredNodeId) || [];
-  }, [hoveredNodeId, hoverEdgesBySource]);
+    const {
+      posMap,
+      heightMap,
+      serviceCenters,
+      layoutLookup,
+      outgoingBySource,
+      endpoint,
+      width,
+    } = hoverEdgeGeometry;
+    const sourceEdges = outgoingBySource.get(hoveredNodeId);
+    if (!sourceEdges || sourceEdges.length === 0) return [];
+
+    const seen = new Set<string>();
+    const dedupedEdges = sourceEdges.filter((edge) => {
+      const key = `${edge.source}->${edge.target}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
+    // Grouped bundling for dense fan-out targets.
+    const BUNDLE_THRESHOLD = 3;
+    const edgesByGroup = new Map<string, GraphEdge[]>();
+    dedupedEdges.forEach((edge) => {
+      const tgt = layoutLookup.get(edge.target);
+      const groupKey = tgt ? `layer-${tgt.layer}-${tgt.groupId}` : edge.target;
+      const list = edgesByGroup.get(groupKey);
+      if (list) list.push(edge);
+      else edgesByGroup.set(groupKey, [edge]);
+    });
+
+    const bundled: Array<GraphEdge & { _bundleCount?: number }> = [];
+    edgesByGroup.forEach((groupEdges) => {
+      if (groupEdges.length < BUNDLE_THRESHOLD) {
+        bundled.push(...groupEdges);
+      } else {
+        const rep = groupEdges[Math.floor(groupEdges.length / 2)];
+        bundled.push({
+          ...rep,
+          id: `bundle-${rep.id}`,
+          _bundleCount: groupEdges.length,
+        });
+      }
+    });
+
+    return bundled.map((edge) => {
+      const srcPos = posMap.get(edge.source);
+      const tgtPos = posMap.get(edge.target);
+      const srcH = heightMap.get(edge.source) ?? FLOW_LAYOUT.NODE_MIN_HEIGHT;
+      const tgtH = heightMap.get(edge.target) ?? FLOW_LAYOUT.NODE_MIN_HEIGHT;
+      let srcSide: "top" | "bottom" | "left" | "right" = "bottom";
+      let tgtSide: "top" | "bottom" | "left" | "right" = "top";
+      let edgeType: "arrowBezier" | "arrowStep" = "arrowBezier";
+      if (srcPos && tgtPos) {
+        const dx = tgtPos.x - srcPos.x;
+        const dy = tgtPos.y - srcPos.y;
+        const sameLayer = Math.abs(dy) < 80;
+        if (sameLayer) {
+          const srcCenterX = srcPos.x + width / 2;
+          const tgtCenterX = tgtPos.x + width / 2;
+          const minX = Math.min(srcCenterX, tgtCenterX);
+          const maxX = Math.max(srcCenterX, tgtCenterX);
+          const hasIntermediate = serviceCenters.some((node) => {
+            if (node.id === edge.source || node.id === edge.target) return false;
+            if (Math.abs(node.y - srcPos.y) > 60) return false;
+            return node.x > minX + 8 && node.x < maxX - 8;
+          });
+
+          if (hasIntermediate) {
+            edgeType = "arrowStep";
+            if (dx > 0) {
+              srcSide = "top";
+              tgtSide = "top";
+            } else {
+              srcSide = "bottom";
+              tgtSide = "bottom";
+            }
+          } else if (dx > 0) {
+            srcSide = "right";
+            tgtSide = "left";
+          } else {
+            srcSide = "left";
+            tgtSide = "right";
+          }
+        } else if (dy > 0) {
+          srcSide = "bottom";
+          tgtSide = "top";
+        } else {
+          srcSide = "top";
+          tgtSide = "bottom";
+        }
+      }
+      const src = srcPos
+        ? endpoint(srcPos, srcH, srcSide)
+        : { x: 0, y: 0, pos: Position.Bottom };
+      const tgt = tgtPos
+        ? endpoint(tgtPos, tgtH, tgtSide)
+        : { x: 0, y: 0, pos: Position.Top };
+      const data: ArrowEdgeData = {
+        sx: src.x,
+        sy: src.y,
+        tx: tgt.x,
+        ty: tgt.y,
+        sourcePos: src.pos,
+        targetPos: tgt.pos,
+        bundleCount: (edge as typeof edge & { _bundleCount?: number })
+          ._bundleCount,
+      };
+      return {
+        id: edge.id,
+        source: edge.source,
+        target: edge.target,
+        type: edgeType,
+        data,
+      };
+    });
+  }, [hoveredNodeId, hoverEdgeGeometry]);
 
   const defaultEdgeOptions = useMemo(
     () => ({
@@ -543,7 +547,10 @@ export function GraphView({
       if (node.type === "service") {
         pendingHover.current = node.id;
         hoverTimer.current = setTimeout(() => {
-          setHoveredNodeId(pendingHover.current);
+          const nextHovered = pendingHover.current;
+          setHoveredNodeId((current) =>
+            current === nextHovered ? current : nextHovered,
+          );
         }, 16);
       }
     },
@@ -553,7 +560,9 @@ export function GraphView({
   const handleNodeMouseLeave = useCallback(() => {
     clearTimeout(hoverTimer.current);
     pendingHover.current = null;
-    hoverTimer.current = setTimeout(() => setHoveredNodeId(null), 40);
+    hoverTimer.current = setTimeout(() => {
+      setHoveredNodeId((current) => (current === null ? current : null));
+    }, 40);
   }, []);
 
   useEffect(() => {
