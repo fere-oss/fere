@@ -278,7 +278,7 @@ const ONBOARDING_STEPS: OnboardingStep[] = [
     details: [
       "Start any local server or run docker-compose up — Fere detects it automatically",
       "Right-click services for quick actions: open in browser, terminal, kill, or restart",
-      "Set up notifications to get alerted when services crash or recover",
+      "Share your service map as an interactive link — just add a GitHub token with gist scope",
     ],
   },
 ];

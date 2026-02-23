@@ -642,7 +642,7 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
 
   // Load network policy on mount
   useEffect(() => {
-    window.electronAPI.getNetworkPolicy().then((result) => {
+    window.electronAPI?.getNetworkPolicy?.().then((result) => {
       if (result.success && result.policy) {
         setNetworkPolicyState(result.policy);
       }
@@ -650,6 +650,7 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
   }, []);
 
   const toggleNetworkPolicy = useCallback(async () => {
+    if (!window.electronAPI?.setNetworkPolicy) return;
     const next = networkPolicy === "local" ? "public" : "local";
     const result = await window.electronAPI.setNetworkPolicy(next);
     if (result.success) {
