@@ -127,7 +127,7 @@ function WelcomeIntroPreview() {
   );
 }
 
-function MultipleViewsPreview() {
+function ContainerLogsPreview() {
   const logLines = [
     {
       tone: "ms-blue",
@@ -196,6 +196,34 @@ function MultipleViewsPreview() {
   );
 }
 
+function RequestsPreview() {
+  return (
+    <div className="requests-preview" aria-hidden="true">
+      <div className="requests-preview-card">
+        <div className="requests-preview-method">
+          <span className="requests-method-badge">GET</span>
+          <span className="requests-url">localhost:3000/api/users</span>
+        </div>
+        <div className="requests-preview-divider" />
+        <div className="requests-preview-response">
+          <span className="requests-status-badge">200</span>
+          <div className="requests-json">
+            <span className="requests-json-bracket">{"{"}</span>
+            <span className="requests-json-line">
+              <span className="requests-json-key">"users"</span>
+              <span className="requests-json-colon">: </span>
+              <span className="requests-json-bracket">[</span>
+              <span className="requests-json-value">...</span>
+              <span className="requests-json-bracket">]</span>
+            </span>
+            <span className="requests-json-bracket">{"}"}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const ONBOARDING_STEPS: OnboardingStep[] = [
   {
     title: "Welcome to Fere",
@@ -204,9 +232,9 @@ const ONBOARDING_STEPS: OnboardingStep[] = [
     icon: <WelcomeIntroPreview />,
     iconClassName: "welcome-icon-service-map welcome-icon-intro",
     details: [
-      "Automatically discovers running services on your machine",
-      "Visualizes connections between your microservices",
-      "Monitors Docker containers, databases, and APIs",
+      "Automatically discovers running services, ports, and connections",
+      "Monitors Docker containers with live health tracking",
+      "Built-in API tester, database explorer, and route discovery",
     ],
   },
   {
@@ -215,31 +243,42 @@ const ONBOARDING_STEPS: OnboardingStep[] = [
     icon: <ServiceMapPreview />,
     iconClassName: "welcome-icon-service-map",
     details: [
-      "Interactive graph showing all running services",
-      "Click nodes to view ports, health status, and routes",
-      "Organized by repository and project",
+      "Interactive graph with real-time health status and CPU/memory metrics",
+      "Auto-discovers API routes and external API usage from your source code",
+      "Organized into project tabs with stack detection (Next, Express, FastAPI, etc.)",
     ],
   },
   {
-    title: "Multiple Views",
-    description: "Explore your stack from different perspectives",
-    icon: <MultipleViewsPreview />,
+    title: "Docker & Containers",
+    description: "Full container lifecycle management in one place",
+    icon: <ContainerLogsPreview />,
     iconClassName: "welcome-icon-service-map",
     details: [
-      "Containers: Manage Docker containers and view logs",
-      "Requests: Build and test API calls instantly",
-      "Database: Query and explore database tables",
+      "Live container log streaming with unified multi-container view",
+      "Health checks, port mappings, volumes, and network details at a glance",
+      "Start, stop, and restart containers directly from the graph",
+    ],
+  },
+  {
+    title: "Requests & Database",
+    description: "Test APIs and explore databases without leaving the app",
+    icon: <RequestsPreview />,
+    iconClassName: "welcome-icon-service-map",
+    details: [
+      "Build and send HTTP requests with a visual cURL builder",
+      "Browse and query PostgreSQL, MongoDB, and Elasticsearch databases",
+      "Request history lets you save and replay past API calls",
     ],
   },
   {
     title: "Get Started",
-    description: "Ready to visualize your services",
+    description: "You're ready to go",
     icon: <WelcomeIntroPreview />,
     iconClassName: "welcome-icon-service-map welcome-icon-intro",
     details: [
-      "Start any local server: npm run dev, docker-compose up, etc.",
-      "Fere will automatically detect and display it",
-      "Right-click services for quick actions like stopping or restarting",
+      "Start any local server or run docker-compose up — Fere detects it automatically",
+      "Right-click services for quick actions: open in browser, terminal, kill, or restart",
+      "Set up notifications to get alerted when services crash or recover",
     ],
   },
 ];
