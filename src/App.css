@@ -389,6 +389,7 @@ textarea {
   padding: 0 0 16px 0;
   min-height: 36px;
   align-items: center;
+  gap: 6px;
 }
 
 .app-tab {
