@@ -224,6 +224,53 @@ function RequestsPreview() {
   );
 }
 
+function SharePreview() {
+  return (
+    <div className="share-preview" aria-hidden="true">
+      <div className="share-preview-card">
+        <div className="share-preview-header">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#171717" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="3" r="2" />
+            <circle cx="4" cy="8" r="2" />
+            <circle cx="12" cy="13" r="2" />
+            <line x1="5.7" y1="7" x2="10.3" y2="4" />
+            <line x1="5.7" y1="9" x2="10.3" y2="12" />
+          </svg>
+          <span className="share-preview-title">Share Service Map</span>
+        </div>
+        <div className="share-preview-url-row">
+          <div className="share-preview-url">
+            <span className="share-preview-url-text">https://gist.github.com/user/a1b2c3</span>
+          </div>
+          <div className="share-preview-copy">
+            <svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="5" y="5" width="7" height="7" rx="1" />
+              <path d="M9 5V3a1 1 0 00-1-1H3a1 1 0 00-1 1v5a1 1 0 001 1h2" />
+            </svg>
+          </div>
+        </div>
+        <div className="share-preview-status">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M20 6L9 17l-5-5" />
+          </svg>
+          <span>Published just now</span>
+        </div>
+      </div>
+      <div className="share-preview-nodes">
+        <div className="share-preview-node share-preview-node-1" />
+        <div className="share-preview-node share-preview-node-2" />
+        <div className="share-preview-node share-preview-node-3" />
+        <svg className="share-preview-edges" viewBox="0 0 200 60" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path className="share-preview-edge" d="M30 30 C60 30 70 12 100 12" />
+          <path className="share-preview-edge share-preview-edge-2" d="M30 30 C60 30 70 48 100 48" />
+          <path className="share-preview-edge share-preview-edge-3" d="M100 12 C130 12 140 30 170 30" />
+          <path className="share-preview-edge share-preview-edge-4" d="M100 48 C130 48 140 30 170 30" />
+        </svg>
+      </div>
+    </div>
+  );
+}
+
 const ONBOARDING_STEPS: OnboardingStep[] = [
   {
     title: "Welcome to Fere",
@@ -268,6 +315,17 @@ const ONBOARDING_STEPS: OnboardingStep[] = [
       "Build and send HTTP requests with a visual cURL builder",
       "Browse and query PostgreSQL, MongoDB, and Elasticsearch databases",
       "Request history lets you save and replay past API calls",
+    ],
+  },
+  {
+    title: "Share Your Stack",
+    description: "Publish an interactive service map anyone can explore",
+    icon: <SharePreview />,
+    iconClassName: "welcome-icon-service-map",
+    details: [
+      "One-click publish creates a shareable link via GitHub Gist",
+      "Add a GitHub Personal Access Token with gist scope to get started",
+      "Recipients can zoom, pan, and explore your architecture in their browser",
     ],
   },
   {
