@@ -889,10 +889,114 @@ function App() {
 
   return (
     <div className="app">
-      {/* App Title */}
+      {/* Unified App Header */}
       <div className="app-header">
         <h1 className="app-title">fere</h1>
-        <div style={{ display: "flex", alignItems: "center", gap: "4px", WebkitAppRegion: "no-drag" } as React.CSSProperties}>
+
+        {/* View Mode Tabs — inline in header */}
+        <div className="view-mode-tabs" ref={viewModeTabsRef}>
+          {indicatorStyle && (
+            <div
+              className="view-mode-indicator"
+              style={{ left: indicatorStyle.left, width: indicatorStyle.width }}
+            />
+          )}
+          <button
+            className={`view-mode-tab ${viewMode === "graph" ? "view-mode-tab-active" : ""}`}
+            onClick={() => { setViewMode("graph"); capture("tab_switched", { to: "graph" }); }}
+          >
+            <span className="view-mode-icon">
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 16 16"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <circle cx="3" cy="8" r="2" fill="currentColor" />
+                <circle cx="13" cy="4" r="2" fill="currentColor" />
+                <circle cx="13" cy="12" r="2" fill="currentColor" />
+                <path
+                  d="M5 8L11 5M5 8L11 11"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                />
+              </svg>
+            </span>
+            Service Map
+          </button>
+          <button
+            className={`view-mode-tab ${viewMode === "containers" ? "view-mode-tab-active" : ""}`}
+            onClick={() => { setViewMode("containers"); capture("tab_switched", { to: "containers" }); }}
+          >
+            <span className="view-mode-icon">
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path d="M13.983 11.078h2.119a.186.186 0 00.186-.185V9.006a.186.186 0 00-.186-.186h-2.119a.185.185 0 00-.185.185v1.888c0 .102.083.185.185.185m-2.954-5.43h2.118a.186.186 0 00.186-.186V3.574a.186.186 0 00-.186-.185h-2.118a.185.185 0 00-.185.185v1.888c0 .102.082.185.185.186m0 2.716h2.118a.187.187 0 00.186-.186V6.29a.186.186 0 00-.186-.185h-2.118a.185.185 0 00-.185.185v1.887c0 .102.082.185.185.186m-2.93 0h2.12a.186.186 0 00.184-.186V6.29a.185.185 0 00-.185-.185H8.1a.185.185 0 00-.185.185v1.887c0 .102.083.185.185.186m-2.964 0h2.119a.186.186 0 00.185-.186V6.29a.185.185 0 00-.185-.185H5.136a.186.186 0 00-.186.185v1.887c0 .102.084.185.186.186m5.893 2.715h2.118a.186.186 0 00.186-.185V9.006a.186.186 0 00-.186-.186h-2.118a.185.185 0 00-.185.185v1.888c0 .102.082.185.185.185m-2.93 0h2.12a.185.185 0 00.184-.185V9.006a.185.185 0 00-.184-.186h-2.12a.185.185 0 00-.184.185v1.888c0 .102.083.185.185.185m-2.964 0h2.119a.185.185 0 00.185-.185V9.006a.185.185 0 00-.185-.186h-2.119a.185.185 0 00-.186.185v1.888c0 .102.084.185.186.185m-2.92 0h2.12a.185.185 0 00.184-.185V9.006a.185.185 0 00-.184-.186h-2.12a.186.186 0 00-.186.186v1.887c0 .102.084.185.186.185m-2.929 0h2.119a.185.185 0 00.185-.185V9.006a.186.186 0 00-.185-.186h-2.12a.185.185 0 00-.184.185v1.888c0 .102.083.185.185.185M23.763 9.89c-.065-.051-.672-.51-1.954-.51-.338.001-.676.03-1.01.087-.248-1.7-1.653-2.53-1.716-2.566l-.344-.199-.226.327c-.284.438-.49.922-.612 1.43-.23.97-.09 1.882.403 2.661-.595.332-1.55.413-1.744.42H.751a.751.751 0 00-.75.748 11.376 11.376 0 00.692 4.062c.545 1.428 1.355 2.48 2.41 3.124 1.18.723 3.1 1.137 5.275 1.137.983.003 1.963-.086 2.93-.266a12.248 12.248 0 003.823-1.389c.98-.567 1.86-1.288 2.61-2.136 1.252-1.418 1.998-2.997 2.553-4.4h.221c1.372 0 2.215-.549 2.68-1.009.309-.293.55-.65.707-1.046l.098-.288Z" />
+              </svg>
+            </span>
+            Containers
+          </button>
+          <button
+            className={`view-mode-tab ${viewMode === "api-tester" ? "view-mode-tab-active" : ""}`}
+            onClick={() => { setViewMode("api-tester"); capture("tab_switched", { to: "api-tester" }); }}
+          >
+            <span className="view-mode-icon">
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 16 16"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path
+                  d="M2 4L6 8L2 12"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+                <path
+                  d="M8 12H14"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                />
+              </svg>
+            </span>
+            Requests
+          </button>
+          <button
+            className={`view-mode-tab ${viewMode === "database" ? "view-mode-tab-active" : ""}`}
+            onClick={handleOpenDatabaseView}
+          >
+            <span className="view-mode-icon">
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <ellipse cx="12" cy="5" rx="7" ry="3" />
+                <path d="M5 5v7c0 1.7 3.1 3 7 3s7-1.3 7-3V5" />
+                <path d="M5 12v7c0 1.7 3.1 3 7 3s7-1.3 7-3v-7" />
+              </svg>
+            </span>
+            Database
+          </button>
+        </div>
+
+        {/* Header Actions */}
+        <div className="app-header-actions">
           <button
             className="alert-toggle"
             onClick={() => setShowShare(true)}
@@ -906,92 +1010,92 @@ function App() {
               <line x1="4.4" y1="8.9" x2="10.6" y2="11.6" />
             </svg>
           </button>
-        <div style={{ position: "relative" } as React.CSSProperties}>
-          <button
-            className={`alert-toggle${alertsEnabled ? "" : " alert-toggle-off"}`}
-            onClick={() => setAlertPanelOpen((v) => !v)}
-            title={alertsEnabled ? "Notifications on" : "Notifications off"}
-          >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2">
-              <path d="M8 1.5C5.5 1.5 4 3.5 4 5.5V8L2.5 10.5V11.5H13.5V10.5L12 8V5.5C12 3.5 10.5 1.5 8 1.5Z" />
-              <path d="M6 12.5C6 13.6 6.9 14.5 8 14.5C9.1 14.5 10 13.6 10 12.5" />
-              {!alertsEnabled && <line x1="2" y1="14" x2="14" y2="2" />}
-            </svg>
-          </button>
+          <div style={{ position: "relative" } as React.CSSProperties}>
+            <button
+              className={`alert-toggle${alertsEnabled ? "" : " alert-toggle-off"}`}
+              onClick={() => setAlertPanelOpen((v) => !v)}
+              title={alertsEnabled ? "Notifications on" : "Notifications off"}
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2">
+                <path d="M8 1.5C5.5 1.5 4 3.5 4 5.5V8L2.5 10.5V11.5H13.5V10.5L12 8V5.5C12 3.5 10.5 1.5 8 1.5Z" />
+                <path d="M6 12.5C6 13.6 6.9 14.5 8 14.5C9.1 14.5 10 13.6 10 12.5" />
+                {!alertsEnabled && <line x1="2" y1="14" x2="14" y2="2" />}
+              </svg>
+            </button>
 
-          {alertPanelOpen && (
-            <div className="alert-panel" ref={alertPanelRef}>
-              {/* Master toggle */}
-              <div className="alert-panel-master">
-                <span className="alert-panel-label">Notifications</span>
-                <button
-                  className={`alert-panel-master-toggle${alertsEnabled ? " alert-panel-master-on" : ""}`}
-                  onClick={handleToggleAlerts}
-                >
-                  <span className="alert-panel-master-knob" />
-                </button>
-              </div>
-
-              {/* Category toggles */}
-              <div className="alert-panel-categories">
-                {ALERT_CATEGORIES.map((cat) => (
-                  <label className="alert-panel-category" key={cat.key}>
-                    <input
-                      type="checkbox"
-                      checked={categoryToggles[cat.key]}
-                      onChange={() => handleToggleCategory(cat.key)}
-                      disabled={!alertsEnabled}
-                      className="alert-panel-checkbox"
-                    />
-                    <div className="alert-panel-category-text">
-                      <span className="alert-panel-category-label">{cat.label}</span>
-                      <span className="alert-panel-category-desc">{cat.desc}</span>
-                    </div>
-                  </label>
-                ))}
-              </div>
-
-              <div className="alert-panel-divider" />
-
-              {/* Event history */}
-              <div className="alert-panel-history-header">
-                <span className="alert-panel-label">Recent Events</span>
-                {alertHistory.length > 0 && (
-                  <button className="alert-panel-clear" onClick={handleClearHistory}>
-                    Clear
+            {alertPanelOpen && (
+              <div className="alert-panel" ref={alertPanelRef}>
+                {/* Master toggle */}
+                <div className="alert-panel-master">
+                  <span className="alert-panel-label">Notifications</span>
+                  <button
+                    className={`alert-panel-master-toggle${alertsEnabled ? " alert-panel-master-on" : ""}`}
+                    onClick={handleToggleAlerts}
+                  >
+                    <span className="alert-panel-master-knob" />
                   </button>
-                )}
-              </div>
-              <div className="alert-panel-history">
-                {alertHistory.length === 0 ? (
-                  <div className="alert-panel-history-empty">No events yet</div>
-                ) : (
-                  alertHistory.slice(0, 50).map((event) => (
-                    <div className="alert-panel-event" key={event.id}>
-                      <span className={`alert-panel-event-dot alert-panel-event-dot-${event.category}`} />
-                      <div className="alert-panel-event-content">
-                        <span className="alert-panel-event-title">
-                          {event.serviceName}
-                          {!event.notified && (
-                            <span className="alert-panel-event-muted"> (muted)</span>
-                          )}
-                        </span>
-                        <span className="alert-panel-event-desc">
-                          {event.type === "container-stopped" && event.details
-                            ? `stopped (${event.details})`
-                            : ALERT_EVENT_LABELS[event.type] || event.type}
+                </div>
+
+                {/* Category toggles */}
+                <div className="alert-panel-categories">
+                  {ALERT_CATEGORIES.map((cat) => (
+                    <label className="alert-panel-category" key={cat.key}>
+                      <input
+                        type="checkbox"
+                        checked={categoryToggles[cat.key]}
+                        onChange={() => handleToggleCategory(cat.key)}
+                        disabled={!alertsEnabled}
+                        className="alert-panel-checkbox"
+                      />
+                      <div className="alert-panel-category-text">
+                        <span className="alert-panel-category-label">{cat.label}</span>
+                        <span className="alert-panel-category-desc">{cat.desc}</span>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+
+                <div className="alert-panel-divider" />
+
+                {/* Event history */}
+                <div className="alert-panel-history-header">
+                  <span className="alert-panel-label">Recent Events</span>
+                  {alertHistory.length > 0 && (
+                    <button className="alert-panel-clear" onClick={handleClearHistory}>
+                      Clear
+                    </button>
+                  )}
+                </div>
+                <div className="alert-panel-history">
+                  {alertHistory.length === 0 ? (
+                    <div className="alert-panel-history-empty">No events yet</div>
+                  ) : (
+                    alertHistory.slice(0, 50).map((event) => (
+                      <div className="alert-panel-event" key={event.id}>
+                        <span className={`alert-panel-event-dot alert-panel-event-dot-${event.category}`} />
+                        <div className="alert-panel-event-content">
+                          <span className="alert-panel-event-title">
+                            {event.serviceName}
+                            {!event.notified && (
+                              <span className="alert-panel-event-muted"> (muted)</span>
+                            )}
+                          </span>
+                          <span className="alert-panel-event-desc">
+                            {event.type === "container-stopped" && event.details
+                              ? `stopped (${event.details})`
+                              : ALERT_EVENT_LABELS[event.type] || event.type}
+                          </span>
+                        </div>
+                        <span className="alert-panel-event-time">
+                          {formatRelativeTime(event.timestamp)}
                         </span>
                       </div>
-                      <span className="alert-panel-event-time">
-                        {formatRelativeTime(event.timestamp)}
-                      </span>
-                    </div>
-                  ))
-                )}
+                    ))
+                  )}
+                </div>
               </div>
-            </div>
-          )}
-        </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -1009,111 +1113,10 @@ function App() {
         </div>
       )}
 
-      {/* View Mode Tabs */}
-      <div className="view-mode-tabs" ref={viewModeTabsRef}>
-        {indicatorStyle && (
-          <div
-            className="view-mode-indicator"
-            style={{ left: indicatorStyle.left, width: indicatorStyle.width }}
-          />
-        )}
-        <button
-          className={`view-mode-tab ${viewMode === "graph" ? "view-mode-tab-active" : ""}`}
-          onClick={() => { setViewMode("graph"); capture("tab_switched", { to: "graph" }); }}
-        >
-          <span className="view-mode-icon">
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 16 16"
-              fill="none"
-              xmlns="http://www.w3.org/2000/svg"
-            >
-              <circle cx="3" cy="8" r="2" fill="currentColor" />
-              <circle cx="13" cy="4" r="2" fill="currentColor" />
-              <circle cx="13" cy="12" r="2" fill="currentColor" />
-              <path
-                d="M5 8L11 5M5 8L11 11"
-                stroke="currentColor"
-                strokeWidth="1.5"
-              />
-            </svg>
-          </span>
-          Service Map
-        </button>
-        <button
-          className={`view-mode-tab ${viewMode === "containers" ? "view-mode-tab-active" : ""}`}
-          onClick={() => { setViewMode("containers"); capture("tab_switched", { to: "containers" }); }}
-        >
-          <span className="view-mode-icon">
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="currentColor"
-              xmlns="http://www.w3.org/2000/svg"
-            >
-              <path d="M13.983 11.078h2.119a.186.186 0 00.186-.185V9.006a.186.186 0 00-.186-.186h-2.119a.185.185 0 00-.185.185v1.888c0 .102.083.185.185.185m-2.954-5.43h2.118a.186.186 0 00.186-.186V3.574a.186.186 0 00-.186-.185h-2.118a.185.185 0 00-.185.185v1.888c0 .102.082.185.185.186m0 2.716h2.118a.187.187 0 00.186-.186V6.29a.186.186 0 00-.186-.185h-2.118a.185.185 0 00-.185.185v1.887c0 .102.082.185.185.186m-2.93 0h2.12a.186.186 0 00.184-.186V6.29a.185.185 0 00-.185-.185H8.1a.185.185 0 00-.185.185v1.887c0 .102.083.185.185.186m-2.964 0h2.119a.186.186 0 00.185-.186V6.29a.185.185 0 00-.185-.185H5.136a.186.186 0 00-.186.185v1.887c0 .102.084.185.186.186m5.893 2.715h2.118a.186.186 0 00.186-.185V9.006a.186.186 0 00-.186-.186h-2.118a.185.185 0 00-.185.185v1.888c0 .102.082.185.185.185m-2.93 0h2.12a.185.185 0 00.184-.185V9.006a.185.185 0 00-.184-.186h-2.12a.185.185 0 00-.184.185v1.888c0 .102.083.185.185.185m-2.964 0h2.119a.185.185 0 00.185-.185V9.006a.185.185 0 00-.185-.186h-2.119a.185.185 0 00-.186.185v1.888c0 .102.084.185.186.185m-2.92 0h2.12a.185.185 0 00.184-.185V9.006a.185.185 0 00-.184-.186h-2.12a.186.186 0 00-.186.186v1.887c0 .102.084.185.186.185m-2.929 0h2.119a.185.185 0 00.185-.185V9.006a.186.186 0 00-.185-.186h-2.12a.185.185 0 00-.184.185v1.888c0 .102.083.185.185.185M23.763 9.89c-.065-.051-.672-.51-1.954-.51-.338.001-.676.03-1.01.087-.248-1.7-1.653-2.53-1.716-2.566l-.344-.199-.226.327c-.284.438-.49.922-.612 1.43-.23.97-.09 1.882.403 2.661-.595.332-1.55.413-1.744.42H.751a.751.751 0 00-.75.748 11.376 11.376 0 00.692 4.062c.545 1.428 1.355 2.48 2.41 3.124 1.18.723 3.1 1.137 5.275 1.137.983.003 1.963-.086 2.93-.266a12.248 12.248 0 003.823-1.389c.98-.567 1.86-1.288 2.61-2.136 1.252-1.418 1.998-2.997 2.553-4.4h.221c1.372 0 2.215-.549 2.68-1.009.309-.293.55-.65.707-1.046l.098-.288Z" />
-            </svg>
-          </span>
-          Containers
-        </button>
-        <button
-          className={`view-mode-tab ${viewMode === "api-tester" ? "view-mode-tab-active" : ""}`}
-          onClick={() => { setViewMode("api-tester"); capture("tab_switched", { to: "api-tester" }); }}
-        >
-          <span className="view-mode-icon">
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 16 16"
-              fill="none"
-              xmlns="http://www.w3.org/2000/svg"
-            >
-              <path
-                d="M2 4L6 8L2 12"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-              <path
-                d="M8 12H14"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-              />
-            </svg>
-          </span>
-          Requests
-        </button>
-        <button
-          className={`view-mode-tab ${viewMode === "database" ? "view-mode-tab-active" : ""}`}
-          onClick={handleOpenDatabaseView}
-        >
-          <span className="view-mode-icon">
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <ellipse cx="12" cy="5" rx="7" ry="3" />
-              <path d="M5 5v7c0 1.7 3.1 3 7 3s7-1.3 7-3V5" />
-              <path d="M5 12v7c0 1.7 3.1 3 7 3s7-1.3 7-3v-7" />
-            </svg>
-          </span>
-          Database
-        </button>
-      </div>
-
       {/* Project Tabs - only show for graph view */}
       {viewMode === "graph" && tabs.length > 1 && (
         <div className="app-tabs">
+          <div className="app-tabs-scroll">
           {tabs.map((tab) => {
             const status = getProjectStatus(tab.id);
             const hasServices = status.total > 0;
@@ -1208,6 +1211,7 @@ function App() {
               </div>
             );
           })}
+          </div>
           <div className="app-tabs-controls">
             <div className="tab-grouping-toggle" role="group" aria-label="Tab grouping mode">
               <button

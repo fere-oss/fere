@@ -53,22 +53,36 @@ textarea {
 
 /* App Header */
 .app-header {
-  padding: 64px 40px 28px 40px;
+  padding: 58px 16px 20px 32px;
   -webkit-app-region: drag;
   -webkit-user-select: none;
   user-select: none;
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
+  align-items: center;
+  gap: 0;
+  flex-shrink: 0;
 }
 
 .app-title {
   font-family: var(--font-display);
-  font-size: 55px;
+  font-size: 46px;
   font-weight: 400;
   letter-spacing: -0.02em;
   color: var(--text-primary);
   user-select: text;
+  flex-shrink: 0;
+  margin-right: 40px;
+  line-height: 1;
+  align-self: center;
+  -webkit-app-region: no-drag;
+}
+
+.app-header-actions {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  -webkit-app-region: no-drag;
 }
 
 /* Alert Toggle Button */
@@ -84,7 +98,6 @@ textarea {
   align-items: center;
   justify-content: center;
   transition: color 0.15s, border-color 0.15s, background 0.15s;
-  margin-top: 12px;
 }
 
 .alert-toggle:hover {
@@ -349,11 +362,27 @@ textarea {
 /* App Tabs */
 .app-tabs {
   display: flex;
-  gap: 4px;
-  padding: 0 40px 16px 40px;
+  gap: 0;
+  padding: 0 16px 12px 16px;
   -webkit-app-region: no-drag;
   align-items: center;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  overflow: hidden;
+}
+
+.app-tabs-scroll {
+  display: flex;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  align-items: center;
+}
+
+.app-tabs-scroll::-webkit-scrollbar {
+  display: none;
 }
 
 .app-tabs-inline {
@@ -378,6 +407,8 @@ textarea {
   color: var(--text-secondary);
   cursor: pointer;
   transition: all 0.15s ease;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .app-tab:hover {
@@ -421,6 +452,7 @@ textarea {
   background: var(--bg-muted);
   padding: 2px 6px;
   border-radius: 10px;
+  white-space: nowrap;
 }
 
 .tab-grouping-toggle {
@@ -433,7 +465,8 @@ textarea {
 }
 
 .app-tabs-controls {
-  margin-left: auto;
+  flex-shrink: 0;
+  margin-left: 8px;
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -474,7 +507,7 @@ textarea {
 .main-content {
   flex: 1;
   display: flex;
-  padding: 0 40px 40px 40px;
+  padding: 0 16px 16px 16px;
   overflow: hidden;
   -webkit-app-region: no-drag;
   position: relative;
@@ -3124,20 +3157,21 @@ textarea {
 
 .view-mode-tabs {
   display: flex;
-  gap: 8px;
-  padding: 0 40px 16px 40px;
+  gap: 2px;
+  padding: 0;
   -webkit-app-region: no-drag;
   align-items: center;
-  min-height: 42px;
+  flex: 1;
   position: relative;
 }
 
 .view-mode-indicator {
   position: absolute;
-  top: 0;
-  height: 40px;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 34px;
   background: var(--text-primary);
-  border-radius: 10px;
+  border-radius: 8px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
   transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1),
               width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -3150,14 +3184,14 @@ textarea {
   z-index: 1;
   display: flex;
   align-items: center;
-  gap: 8px;
-  min-height: 40px;
-  padding: 10px 20px;
+  gap: 7px;
+  min-height: 34px;
+  padding: 6px 14px;
   background: transparent;
   border: 1px solid transparent;
-  border-radius: 10px;
+  border-radius: 8px;
   font-family: inherit;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
   color: var(--text-secondary);
   cursor: pointer;
