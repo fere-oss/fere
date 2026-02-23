@@ -367,7 +367,7 @@ textarea {
   -webkit-app-region: no-drag;
   align-items: center;
   flex-wrap: nowrap;
-  overflow: hidden;
+  position: relative;
 }
 
 .app-tabs-scroll {
