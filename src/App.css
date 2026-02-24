@@ -6689,20 +6689,9 @@ textarea {
   width: 0;
   max-width: calc(var(--chars, 40) * 1ch);
   opacity: 0;
-  animation: multiViewsGenerate 10s steps(44, end) infinite;
+  animation: multiViewsGenerate 10s ease-in-out infinite;
   animation-delay: var(--line-delay, 0s);
   text-shadow: 0 1px 0 rgba(255, 255, 255, 0.35);
-}
-
-.multi-views-code-line::after {
-  content: "";
-  display: inline-block;
-  width: 1px;
-  height: 0.95em;
-  margin-left: 2px;
-  vertical-align: -0.1em;
-  background: currentColor;
-  animation: multiViewsCaret 1s steps(1, end) infinite;
 }
 
 .multi-views-token-time {
