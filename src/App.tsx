@@ -271,7 +271,7 @@ function App() {
         if (prefs.categoryToggles) {
           setCategoryToggles(prefs.categoryToggles);
         }
-      });
+      }).catch(() => {});
     }
   }, []);
 
@@ -282,7 +282,7 @@ function App() {
     if (window.electronAPI?.getAnalyticsId) {
       window.electronAPI.getAnalyticsId().then((id) => {
         if (id) identifyWithMainProcess(id);
-      });
+      }).catch(() => {});
     }
   }, []);
 

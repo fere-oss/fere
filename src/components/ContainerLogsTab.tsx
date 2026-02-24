@@ -175,7 +175,7 @@ export function ContainerLogsTab({ containers, initialSelectedId }: ContainerLog
     if (staleStreams.length === 0) return;
 
     staleStreams.forEach(({ streamId }) => {
-      window.electronAPI.stopContainerLogs(streamId).catch(console.error);
+      window.electronAPI?.stopContainerLogs?.(streamId).catch(console.error);
     });
 
     setActiveStreams((prev) => {
@@ -237,10 +237,10 @@ export function ContainerLogsTab({ containers, initialSelectedId }: ContainerLog
     if (!window.electronAPI?.onContainerLogData) return;
 
     const removeDataListener = window.electronAPI.onContainerLogData(handleLogData);
-    const removeErrorListener = window.electronAPI.onContainerLogError((data) => {
+    const removeErrorListener = window.electronAPI.onContainerLogError?.((data) => {
       console.error('Log error:', data);
     });
-    const removeCloseListener = window.electronAPI.onContainerLogClose((data) => {
+    const removeCloseListener = window.electronAPI.onContainerLogClose?.((data) => {
       setActiveStreams(prev => {
         const next = new Map(prev);
         next.delete(data.containerId);
@@ -250,8 +250,8 @@ export function ContainerLogsTab({ containers, initialSelectedId }: ContainerLog
 
     return () => {
       removeDataListener();
-      removeErrorListener();
-      removeCloseListener();
+      removeErrorListener?.();
+      removeCloseListener?.();
     };
   }, [handleLogData]);
 

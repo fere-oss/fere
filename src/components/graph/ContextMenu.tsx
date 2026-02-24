@@ -48,9 +48,9 @@ export function ContextMenu({ node, x, y, width, height, onClose }: ContextMenuP
     e.stopPropagation();
 
     const ensureSuccess = (result: { success?: boolean; error?: string } | undefined, label: string): boolean => {
-      if (!result || result.success !== false) return true;
-      console.error(`${label} failed:`, result.error);
-      window.alert(result.error || `${label} failed`);
+      if (result?.success) return true;
+      console.error(`${label} failed:`, result?.error);
+      window.alert(result?.error || `${label} failed`);
       return false;
     };
 
