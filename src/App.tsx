@@ -239,6 +239,10 @@ function App() {
   const lastNodeIdByServiceRef = useRef<Map<string, string>>(new Map());
   const inferredEdgesCacheRef = useRef<Map<string, typeof graph.edges>>(new Map());
 
+  // Tab button refs for dropdown positioning
+  const tabButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const appTabsRef = useRef<HTMLDivElement | null>(null);
+
   // Sliding indicator for view-mode tabs
   const viewModeTabsRef = useRef<HTMLDivElement>(null);
   const [indicatorStyle, setIndicatorStyle] = useState<{ left: number; width: number } | null>(null);
@@ -1115,7 +1119,7 @@ function App() {
 
       {/* Project Tabs - only show for graph view */}
       {viewMode === "graph" && tabs.length > 1 && (
-        <div className="app-tabs">
+        <div className="app-tabs" ref={appTabsRef}>
           <div className="app-tabs-scroll">
           {tabs.map((tab) => {
             const status = getProjectStatus(tab.id);
@@ -1131,6 +1135,7 @@ function App() {
             return (
               <div key={tab.id} className="app-tab-wrapper">
                 <button
+                  ref={(el) => { tabButtonRefs.current[tab.id] = el; }}
                   className={`app-tab ${selectedTab === tab.id ? "app-tab-active" : ""}`}
                   onClick={() => {
                     if (selectedTab === tab.id) {
@@ -1158,60 +1163,75 @@ function App() {
                   )}
                   <span className="app-tab-count">{tab.count ?? 0}</span>
                 </button>
-                {serviceDropdownTab === tab.id && (
-                  <ServiceDropdown
-                    services={status.services}
-                    dismissedServices={getDismissedServices(tab.id)}
-                    onDismiss={(key) => dismissService(tab.id, key)}
-                    onRestore={(key) => restoreService(tab.id, key)}
-                    onRemove={(key) => removeService(tab.id, key)}
-                    onAdd={(node) => addService(tab.id, {
-                      name: node.name,
-                      type: node.type,
-                      containerId: node.containerId || undefined,
-                      projectPath: node.projectPath || undefined,
-                      isDockerContainer: node.isDockerContainer || false,
-                      command: node.command || undefined,
-                    })}
-                    onStart={async (service) => {
-                      try {
-                        let started = false;
-                        let failureReason: string | undefined;
-                        if (service.isDockerContainer) {
-                          const id = service.containerId || service.name;
-                          const result = await window.electronAPI.startContainer(id);
-                          started = !!result?.success;
-                          failureReason = result?.error;
-                        } else if (service.lastCommand && service.projectPath) {
-                          const result = await window.electronAPI.startProcess(
-                            service.lastCommand,
-                            service.projectPath,
-                          );
-                          started = !!result?.success;
-                          failureReason = result?.error;
-                        } else {
-                          failureReason = "Missing start command or project path";
-                        }
-                        if (started) {
-                          setServiceActionError(null);
-                          window.dispatchEvent(new CustomEvent("fere:refresh-snapshot"));
-                        } else if (failureReason) {
-                          setServiceActionError(failureReason);
-                        }
-                      } catch (err) {
-                        setServiceActionError(
-                          err instanceof Error ? err.message : "Failed to start service",
-                        );
-                      }
-                    }}
-                    allNodes={nodesForTab(tab.id)}
-                    onClose={() => setServiceDropdownTab(null)}
-                  />
-                )}
               </div>
             );
           })}
           </div>
+          {serviceDropdownTab !== null && (() => {
+            const activeTab = tabs.find(t => t.id === serviceDropdownTab);
+            if (!activeTab) return null;
+            const activeStatus = getProjectStatus(activeTab.id);
+            const btnEl = tabButtonRefs.current[activeTab.id];
+            const tabsEl = appTabsRef.current;
+            let dropdownLeft = 16;
+            if (btnEl && tabsEl) {
+              const btnRect = btnEl.getBoundingClientRect();
+              const tabsRect = tabsEl.getBoundingClientRect();
+              dropdownLeft = btnRect.left - tabsRect.left;
+            }
+            return (
+              <div style={{ position: "absolute", top: "100%", left: dropdownLeft, zIndex: 1000 }}>
+                <ServiceDropdown
+                  services={activeStatus.services}
+                  dismissedServices={getDismissedServices(activeTab.id)}
+                  onDismiss={(key) => dismissService(activeTab.id, key)}
+                  onRestore={(key) => restoreService(activeTab.id, key)}
+                  onRemove={(key) => removeService(activeTab.id, key)}
+                  onAdd={(node) => addService(activeTab.id, {
+                    name: node.name,
+                    type: node.type,
+                    containerId: node.containerId || undefined,
+                    projectPath: node.projectPath || undefined,
+                    isDockerContainer: node.isDockerContainer || false,
+                    command: node.command || undefined,
+                  })}
+                  onStart={async (service) => {
+                    try {
+                      let started = false;
+                      let failureReason: string | undefined;
+                      if (service.isDockerContainer) {
+                        const id = service.containerId || service.name;
+                        const result = await window.electronAPI.startContainer(id);
+                        started = !!result?.success;
+                        failureReason = result?.error;
+                      } else if (service.lastCommand && service.projectPath) {
+                        const result = await window.electronAPI.startProcess(
+                          service.lastCommand,
+                          service.projectPath,
+                        );
+                        started = !!result?.success;
+                        failureReason = result?.error;
+                      } else {
+                        failureReason = "Missing start command or project path";
+                      }
+                      if (started) {
+                        setServiceActionError(null);
+                        window.dispatchEvent(new CustomEvent("fere:refresh-snapshot"));
+                      } else if (failureReason) {
+                        setServiceActionError(failureReason);
+                      }
+                    } catch (err) {
+                      setServiceActionError(
+                        err instanceof Error ? err.message : "Failed to start service",
+                      );
+                    }
+                  }}
+                  allNodes={nodesForTab(activeTab.id)}
+                  onClose={() => setServiceDropdownTab(null)}
+                />
+              </div>
+            );
+          })()}
           <div className="app-tabs-controls">
             <div className="tab-grouping-toggle" role="group" aria-label="Tab grouping mode">
               <button
