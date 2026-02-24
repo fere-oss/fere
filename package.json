@@ -48,11 +48,13 @@
   "build": {
     "appId": "com.fere.app",
     "productName": "Fere",
+    "icon": "assets/icon.icns",
     "extends": null,
     "extraMetadata": {
       "main": "electron/main.js"
     },
     "mac": {
+      "icon": "assets/icon.icns",
       "category": "public.app-category.developer-tools",
       "target": [
         "dmg",

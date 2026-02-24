@@ -171,7 +171,7 @@ app.whenReady().then(() => {
   analytics.init();
   analytics.capture("app_launched", { is_dev: isDev });
 
-  if (process.platform === "darwin") {
+  if (process.platform === "darwin" && isDev) {
     const icon = nativeImage.createFromPath(
       resolveAppIconPath()
     );
