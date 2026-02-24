@@ -5,7 +5,6 @@ import {
   type CSSProperties,
   type ReactElement,
 } from "react";
-import fereLogo from "../assets/fere.png";
 
 interface WelcomeModalProps {
   onClose: () => void;
@@ -23,6 +22,7 @@ const RAW_LOGO_DEV_TOKEN = (process.env.REACT_APP_LOGO_DEV_TOKEN || "").trim();
 const LOGO_DEV_TOKEN = RAW_LOGO_DEV_TOKEN.startsWith("pk_")
   ? RAW_LOGO_DEV_TOKEN
   : "";
+const APP_LOGO_SRC = `${process.env.PUBLIC_URL || ""}/icon.png`;
 
 function getLogoDevUrl(domain: string): string {
   const params = new URLSearchParams({
@@ -80,7 +80,7 @@ function ServiceMapPreview() {
       <div className="service-map-node service-map-core">
         <span className="service-map-node-mark">
           <img
-            src={fereLogo}
+            src={APP_LOGO_SRC}
             alt="Fere logo"
             className="service-map-node-logo service-map-core-logo"
             loading="lazy"
@@ -117,7 +117,7 @@ function WelcomeIntroPreview() {
   return (
     <div className="welcome-intro-preview" aria-hidden="true">
       <img
-        src={fereLogo}
+        src={APP_LOGO_SRC}
         alt="Fere logo"
         className="welcome-intro-logo"
         loading="lazy"
