@@ -218,7 +218,7 @@ function updateAlertNodeMap(delta) {
     if (nd.modified) {
       for (const patch of nd.modified) {
         const existing = alertNodeMap.get(patch.id);
-        if (existing) alertNodeMap.set(patch.id, { ...existing, ...patch });
+        if (existing) Object.assign(existing, patch);
       }
     }
   }
@@ -355,14 +355,23 @@ ipcMain.handle("get-environment-summary", async () => {
   }
 });
 
-// Get external APIs for a project path (on-demand)
+// Get external APIs for a project path (on-demand, with TTL cache)
+const _externalApisCache = new Map(); // path → { data, time }
+const _EXTERNAL_APIS_CACHE_TTL = 30000; // 30s
+
 ipcMain.handle("get-external-apis", async (event, projectPath) => {
   try {
-    const fs = require("fs");
     if (!projectPath || typeof projectPath !== "string") {
       return [];
     }
     const resolvedPath = path.resolve(projectPath);
+
+    // Check TTL cache first
+    const cached = _externalApisCache.get(resolvedPath);
+    if (cached && Date.now() - cached.time < _EXTERNAL_APIS_CACHE_TTL) {
+      return cached.data;
+    }
+
     if (!fs.existsSync(resolvedPath)) {
       return [];
     }
@@ -370,7 +379,9 @@ ipcMain.handle("get-external-apis", async (event, projectPath) => {
     if (!stats.isDirectory()) {
       return [];
     }
-    return await scanExternalApis(resolvedPath);
+    const data = await scanExternalApis(resolvedPath);
+    _externalApisCache.set(resolvedPath, { data, time: Date.now() });
+    return data;
   } catch (error) {
     console.error("Error getting external APIs:", error);
     return [];

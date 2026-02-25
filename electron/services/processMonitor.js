@@ -27,6 +27,14 @@ const DEV_PATTERNS = [
   'deno',
 ];
 
+// Pre-compiled regex from DEV_PATTERNS for O(1) amortized matching
+const DEV_PATTERNS_RE = new RegExp(
+  DEV_PATTERNS.map(p => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')
+);
+
+// Wrapper process names that should show their script argument
+const WRAPPER_NAMES = new Set(['node', 'python', 'python3', 'ruby']);
+
 /**
  * Parse ps aux output into structured process data
  */
@@ -72,7 +80,7 @@ function extractProcessName(command) {
   let name = parts[parts.length - 1];
 
   // Handle common wrappers
-  if (name === 'node' || name === 'python' || name === 'python3' || name === 'ruby') {
+  if (WRAPPER_NAMES.has(name)) {
     const args = command.split(' ');
     if (args.length > 1) {
       const script = args[1].split('/').pop();
@@ -90,11 +98,7 @@ function extractProcessName(command) {
  */
 function isDevProcess(process) {
   const cmdLower = process.command.toLowerCase();
-  const nameLower = process.name.toLowerCase();
-
-  return DEV_PATTERNS.some(pattern =>
-    cmdLower.includes(pattern) || nameLower.includes(pattern)
-  );
+  return DEV_PATTERNS_RE.test(cmdLower);
 }
 
 function filterDevProcesses(processes) {

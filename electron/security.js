@@ -279,21 +279,29 @@ function setupCSP(isDev) {
 // Network Policy
 // ============================================
 
+// In-memory cache for network policy — avoids blocking file I/O on every request
+let _cachedNetworkPolicy = null;
+
 /**
  * Read the current network policy from settings.json.
  * Returns "local" (allow private networks) or "public" (block them).
  * Default: "local" — this is a local dev tool.
+ * Uses in-memory cache after first read; cache is invalidated by setNetworkPolicy().
  */
 function getNetworkPolicy() {
+  if (_cachedNetworkPolicy !== null) return _cachedNetworkPolicy;
+
   try {
     if (fs.existsSync(SETTINGS_FILE_PATH)) {
       const raw = fs.readFileSync(SETTINGS_FILE_PATH, "utf-8");
       const parsed = JSON.parse(raw);
-      if (parsed.networkPolicy === "public") return "public";
+      _cachedNetworkPolicy = parsed.networkPolicy === "public" ? "public" : "local";
+      return _cachedNetworkPolicy;
     }
   } catch {
     // Corrupt/missing — fall through to default
   }
+  _cachedNetworkPolicy = "local";
   return "local";
 }
 
@@ -319,10 +327,14 @@ function setNetworkPolicy(policy) {
   } catch {
     // start fresh
   }
-  const merged = { ...existing, networkPolicy: policy };
+  existing.networkPolicy = policy;
   const tmp = SETTINGS_FILE_PATH + ".tmp";
-  fs.writeFileSync(tmp, JSON.stringify(merged, null, 2), "utf-8");
+  fs.writeFileSync(tmp, JSON.stringify(existing, null, 2), "utf-8");
   fs.renameSync(tmp, SETTINGS_FILE_PATH);
+
+  // Update in-memory cache immediately
+  _cachedNetworkPolicy = policy;
+
   return { success: true };
 }
 

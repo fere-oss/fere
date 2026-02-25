@@ -4,6 +4,10 @@ const { promisify } = require('util');
 const execAsync = promisify(exec);
 
 const LSOF_LINE_RE = /^(\S+)\s+(\d+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(.+)$/;
+const NORMALIZE_SUFFIX_RE = /\s+\(.*\)$/;
+const NORMALIZE_PREFIX_RE = /^TCP\s+/;
+const HOST_PORT_RE = /:(\d+)$/;
+const NETSTAT_LISTEN_RE = /\.(\d+)\s+\*\.\*\s+LISTEN/;
 
 function parseLsofLine(line) {
   const match = line.match(LSOF_LINE_RE);
@@ -14,7 +18,7 @@ function parseLsofLine(line) {
 }
 
 function normalizeName(name) {
-  return name.replace(/\s+\(.*\)$/, '').replace(/^TCP\s+/, '').trim();
+  return name.replace(NORMALIZE_SUFFIX_RE, '').replace(NORMALIZE_PREFIX_RE, '').trim();
 }
 
 function stripBrackets(host) {
@@ -22,7 +26,7 @@ function stripBrackets(host) {
 }
 
 function parseHostPort(part) {
-  const portMatch = part.match(/:(\d+)$/);
+  const portMatch = part.match(HOST_PORT_RE);
   if (!portMatch) return null;
   const port = parseInt(portMatch[1], 10);
   const hostRaw = part.slice(0, part.lastIndexOf(':'));
@@ -224,7 +228,7 @@ async function getListeningPortNumbers() {
     const ports = new Set();
     for (const line of stdout.trim().split('\n')) {
       if (!line.includes('LISTEN')) continue;
-      const match = line.match(/\.(\d+)\s+\*\.\*\s+LISTEN/);
+      const match = line.match(NETSTAT_LISTEN_RE);
       if (match) {
         ports.add(parseInt(match[1], 10));
       }

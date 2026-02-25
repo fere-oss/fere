@@ -40,15 +40,29 @@ const CONTAINER_COLORS = [
   '#6366f1', // indigo
 ];
 
+// Pre-compiled regexes for log level detection — avoids recompilation per log line
+const LOG_LEVEL_ERROR_RE = /\b(error|err|fatal|critical|exception)\b/i;
+const LOG_LEVEL_WARN_RE = /\b(warn|warning)\b/i;
+const LOG_LEVEL_DEBUG_RE = /\b(debug|trace)\b/i;
+const LOG_LEVEL_INFO_RE = /\b(info)\b/i;
+
 // Detect log level from log line
 function detectLogLevel(line: string): UnifiedLogEntry['level'] {
-  const lowerLine = line.toLowerCase();
-  if (lowerLine.match(/\b(error|err|fatal|critical|exception)\b/)) return 'error';
-  if (lowerLine.match(/\b(warn|warning)\b/)) return 'warn';
-  if (lowerLine.match(/\b(debug|trace)\b/)) return 'debug';
-  if (lowerLine.match(/\b(info)\b/)) return 'info';
+  if (LOG_LEVEL_ERROR_RE.test(line)) return 'error';
+  if (LOG_LEVEL_WARN_RE.test(line)) return 'warn';
+  if (LOG_LEVEL_DEBUG_RE.test(line)) return 'debug';
+  if (LOG_LEVEL_INFO_RE.test(line)) return 'info';
   return 'unknown';
 }
+
+// Hoisted to module level — constant array, no need to memoize per instance
+const FILTER_OPTIONS = [
+  { value: 'all' as const, label: 'All Levels' },
+  { value: 'error' as const, label: 'Errors' },
+  { value: 'warn' as const, label: 'Warnings' },
+  { value: 'info' as const, label: 'Info' },
+  { value: 'debug' as const, label: 'Debug' },
+];
 
 export function ContainerLogsTab({ containers, initialSelectedId }: ContainerLogsTabProps) {
   // Track which containers are selected for logging
@@ -77,13 +91,7 @@ export function ContainerLogsTab({ containers, initialSelectedId }: ContainerLog
   const bufferRef = useRef<UnifiedLogEntry[]>([]);
   const filterRef = useRef<HTMLDivElement>(null);
 
-  const filterOptions = useMemo(() => ([
-    { value: 'all', label: 'All Levels' },
-    { value: 'error', label: 'Errors' },
-    { value: 'warn', label: 'Warnings' },
-    { value: 'info', label: 'Info' },
-    { value: 'debug', label: 'Debug' },
-  ]), []);
+  const filterOptions = FILTER_OPTIONS;
 
   // Assign colors to containers
   const containerColorMap = useMemo(() => {

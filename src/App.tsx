@@ -500,20 +500,20 @@ function App() {
   }, [visibleGraphNodes]);
 
   const handleToggleAlerts = useCallback(async () => {
-    const newValue = !alertsEnabled;
-    setAlertsEnabled(newValue);
-    if (window.electronAPI?.setAlertPreferences) {
-      await window.electronAPI.setAlertPreferences({ alertsEnabled: newValue });
-    }
-  }, [alertsEnabled]);
+    setAlertsEnabled((prev) => {
+      const newValue = !prev;
+      window.electronAPI?.setAlertPreferences?.({ alertsEnabled: newValue });
+      return newValue;
+    });
+  }, []);
 
   const handleToggleCategory = useCallback(async (category: keyof typeof categoryToggles) => {
-    const newToggles = { ...categoryToggles, [category]: !categoryToggles[category] };
-    setCategoryToggles(newToggles);
-    if (window.electronAPI?.setAlertPreferences) {
-      await window.electronAPI.setAlertPreferences({ categoryToggles: newToggles });
-    }
-  }, [categoryToggles]);
+    setCategoryToggles((prev) => {
+      const newToggles = { ...prev, [category]: !prev[category] };
+      window.electronAPI?.setAlertPreferences?.({ categoryToggles: newToggles });
+      return newToggles;
+    });
+  }, []);
 
   const loadAlertHistory = useCallback(async () => {
     if (window.electronAPI?.getAlertHistory) {

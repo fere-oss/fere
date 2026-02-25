@@ -87,6 +87,16 @@ const KNOWN_SERVICES = {
 // Service Info / Display Name Functions
 // ============================================
 
+// Pre-compute lowercase lookup map — avoids re-lowercasing KNOWN_SERVICES keys
+// on every getServiceInfo call (hot path during graph building)
+const KNOWN_SERVICES_LOWER = new Map();
+for (const [key, value] of Object.entries(KNOWN_SERVICES)) {
+  KNOWN_SERVICES_LOWER.set(key.toLowerCase(), value);
+}
+// Pre-compute sorted keys for prefix/substring matching (longest first for better matches)
+const KNOWN_SERVICES_KEYS_SORTED = [...KNOWN_SERVICES_LOWER.keys()]
+  .sort((a, b) => b.length - a.length);
+
 function extractAppNameFromCommand(command = '') {
   if (!command) return null;
   const appMatch = command.match(/\/Applications\/([^/]+)\.app\//i)
@@ -107,21 +117,23 @@ function getServiceInfo(processName, command = '') {
   const appName = extractAppNameFromCommand(command);
   const appKey = appName ? appName.trim().toLowerCase() : null;
 
-  if (KNOWN_SERVICES[processName]) return KNOWN_SERVICES[processName];
-  if (KNOWN_SERVICES[name]) return KNOWN_SERVICES[name];
-  if (baseName && KNOWN_SERVICES[baseName]) return KNOWN_SERVICES[baseName];
-  if (appKey && KNOWN_SERVICES[appKey]) return KNOWN_SERVICES[appKey];
-
-  for (const [key, value] of Object.entries(KNOWN_SERVICES)) {
-    const keyLower = key.toLowerCase();
-    if (keyLower === name || keyLower === baseName || (appKey && keyLower === appKey)) return value;
+  // Fast exact lookup via pre-computed lowercase Map
+  let result = KNOWN_SERVICES_LOWER.get(name);
+  if (result) return result;
+  if (baseName) {
+    result = KNOWN_SERVICES_LOWER.get(baseName);
+    if (result) return result;
+  }
+  if (appKey) {
+    result = KNOWN_SERVICES_LOWER.get(appKey);
+    if (result) return result;
   }
 
-  for (const [key, value] of Object.entries(KNOWN_SERVICES)) {
-    const keyLower = key.toLowerCase();
-    if (name.startsWith(keyLower) || keyLower.startsWith(name)) return value;
-    if (baseName && (baseName.startsWith(keyLower) || keyLower.startsWith(baseName))) return value;
-    if (name.includes(keyLower) || keyLower.includes(name)) return value;
+  // Prefix/substring matching using pre-sorted keys
+  for (const keyLower of KNOWN_SERVICES_KEYS_SORTED) {
+    if (name.startsWith(keyLower) || keyLower.startsWith(name)) return KNOWN_SERVICES_LOWER.get(keyLower);
+    if (baseName && (baseName.startsWith(keyLower) || keyLower.startsWith(baseName))) return KNOWN_SERVICES_LOWER.get(keyLower);
+    if (name.includes(keyLower) || keyLower.includes(name)) return KNOWN_SERVICES_LOWER.get(keyLower);
   }
 
   return null;
@@ -266,16 +278,18 @@ function categorizeContainerImage(image) {
   return 'container';
 }
 
+// Hoisted to module level — avoids Set recreation on every call
+const ALLOWED_CONTAINER_TYPES = new Set([
+  'frontend', 'backend', 'webserver', 'database', 'cache', 'nodejs',
+  'python', 'container', 'broker', 'realtime', 'worker', 'client',
+  'service', 'external',
+]);
+
 function resolveContainerType(container) {
   const labeledType = container?.labels?.['fere.type'];
   if (typeof labeledType === 'string') {
     const normalized = labeledType.trim().toLowerCase();
-    const allowedTypes = new Set([
-      'frontend', 'backend', 'webserver', 'database', 'cache', 'nodejs',
-      'python', 'container', 'broker', 'realtime', 'worker', 'client',
-      'service', 'external',
-    ]);
-    if (allowedTypes.has(normalized)) {
+    if (ALLOWED_CONTAINER_TYPES.has(normalized)) {
       return normalized;
     }
   }
@@ -660,6 +674,9 @@ function buildGraphStructure({
     }
   }
 
+  // Track node count before Docker additions for optimized re-matching
+  const preDockerNodeCount = nodes.length;
+
   // Attach routes from pre-scanned data, matched per service.
   // This prevents non-API services (redis/db/broker/etc.) from inheriting
   // all project routes after route scanning.
@@ -677,13 +694,22 @@ function buildGraphStructure({
     addDockerContainerNodes(nodes, edges, dockerSnapshot, nodesByPid, portToPid, containerHealthToGraphHealth);
   }
 
-  // Docker nodes are added after the initial route pass; run route matching again
-  // so containerized services with project paths get API routes attached.
-  for (const node of nodes) {
+  // Docker nodes are added after the initial route pass; run route matching
+  // only for newly added/modified Docker nodes instead of the entire list.
+  for (let i = preDockerNodeCount; i < nodes.length; i++) {
+    const node = nodes[i];
     if (!node.projectPath) {
       node.routes = [];
       continue;
     }
+    const routes = routesByProject[node.projectPath] || [];
+    node.routes = matchRoutesToService(routes, node);
+  }
+  // Also re-match nodes that were enhanced with Docker info (existing nodes
+  // that got containerized metadata via enhanceNodeWithDockerInfo).
+  for (let i = 0; i < preDockerNodeCount; i++) {
+    const node = nodes[i];
+    if (!node.isDockerContainer || !node.projectPath) continue;
     const routes = routesByProject[node.projectPath] || [];
     node.routes = matchRoutesToService(routes, node);
   }
@@ -855,6 +881,7 @@ function addDockerContainerNodes(nodes, edges, dockerSnapshot, nodesByPid, portT
 /**
  * Overlay fresh metrics onto an existing node set without rebuilding structure.
  * Returns a new array with updated cpu/memory/health fields.
+ * Only creates new node objects when values actually changed.
  */
 function overlayMetrics(cachedNodes, processes, healthByPid) {
   const processMap = new Map();
@@ -869,12 +896,23 @@ function overlayMetrics(cachedNodes, processes, healthByPid) {
     const health = healthByPid[node.pid];
     if (!proc && !health) return node;
 
+    const newCpu = proc?.cpu ?? node.cpu;
+    const newMemory = proc?.memory ?? node.memory;
+    const newHealth = health?.healthStatus ?? node.healthStatus;
+    const newLastSeen = health?.lastSeen ?? node.lastSeen;
+
+    // Skip object allocation if nothing changed
+    if (newCpu === node.cpu && newMemory === node.memory &&
+        newHealth === node.healthStatus && newLastSeen === node.lastSeen) {
+      return node;
+    }
+
     return {
       ...node,
-      cpu: proc?.cpu ?? node.cpu,
-      memory: proc?.memory ?? node.memory,
-      healthStatus: health?.healthStatus ?? node.healthStatus,
-      lastSeen: health?.lastSeen ?? node.lastSeen,
+      cpu: newCpu,
+      memory: newMemory,
+      healthStatus: newHealth,
+      lastSeen: newLastSeen,
     };
   });
 }

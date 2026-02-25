@@ -67,11 +67,11 @@ const ROUTE_PATTERNS = {
   ],
 };
 
-// File extensions to scan
-const SCAN_EXTENSIONS = ['.py', '.js', '.ts', '.jsx', '.tsx', '.mjs', '.go', '.rb', '.java', '.php'];
+// File extensions to scan — Set for O(1) lookup in hot path
+const SCAN_EXTENSIONS = new Set(['.py', '.js', '.ts', '.jsx', '.tsx', '.mjs', '.go', '.rb', '.java', '.php']);
 
-// Directories to skip
-const SKIP_DIRS = [
+// Directories to skip — Set for O(1) lookup in hot path
+const SKIP_DIRS = new Set([
   'node_modules',
   '.git',
   '__pycache__',
@@ -90,7 +90,7 @@ const SKIP_DIRS = [
   'log',
   'target',
   'storage',
-];
+]);
 const MAX_FILES = 2000;
 // OPTIMIZATION: Extended cache TTL from 10s to 2min
 // Route definitions rarely change during active development,
@@ -111,12 +111,12 @@ function findFiles(dir, files = []) {
       const fullPath = path.join(dir, entry.name);
 
       if (entry.isDirectory()) {
-        if (!SKIP_DIRS.includes(entry.name)) {
+        if (!SKIP_DIRS.has(entry.name)) {
           findFiles(fullPath, files);
         }
       } else if (entry.isFile()) {
         const ext = path.extname(entry.name).toLowerCase();
-        if (SCAN_EXTENSIONS.includes(ext)) {
+        if (SCAN_EXTENSIONS.has(ext)) {
           files.push(fullPath);
         }
       }
@@ -175,7 +175,7 @@ function detectFramework(filePath, content) {
   }
 
   // JavaScript/TypeScript files
-  if (['.js', '.ts', '.jsx', '.tsx', '.mjs'].includes(ext)) {
+  if (ext === '.js' || ext === '.ts' || ext === '.jsx' || ext === '.tsx' || ext === '.mjs') {
     if (content.includes('express')) {
       return 'express';
     }
@@ -445,6 +445,17 @@ async function scanRoutes(projectPath) {
   return uniqueRoutes;
 }
 
+// Guardrail: only attach API routes to service types that can actually
+// expose application endpoints. Hoisted to module level to avoid Set recreation per call.
+const API_ELIGIBLE_TYPES = new Set([
+  'backend',
+  'frontend',
+  'nodejs',
+  'python',
+  'service',
+  'webserver',
+]);
+
 /**
  * Match routes to a service based on port/process
  */
@@ -453,17 +464,7 @@ function matchRoutesToService(routes, service) {
   const normalizedProjectPath = path.resolve(service.projectPath);
   const serviceType = String(service.type || '').toLowerCase();
 
-  // Guardrail: only attach API routes to service types that can actually
-  // expose application endpoints.
-  const apiEligibleTypes = new Set([
-    'backend',
-    'frontend',
-    'nodejs',
-    'python',
-    'service',
-    'webserver',
-  ]);
-  if (serviceType && !apiEligibleTypes.has(serviceType)) {
+  if (serviceType && !API_ELIGIBLE_TYPES.has(serviceType)) {
     return [];
   }
 

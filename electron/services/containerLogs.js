@@ -3,6 +3,7 @@ const fs = require('fs');
 const { promisify } = require('util');
 
 const execFileAsync = promisify(execFile);
+const TIMESTAMP_RE = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z)\s+(.*)$/;
 const DOCKER_EXEC_TIMEOUT_MS = 3000;
 const DOCKER_BIN_CANDIDATES = [
   process.env.FERE_DOCKER_BIN,
@@ -117,14 +118,15 @@ async function startLogStream(containerId, options = {}, onData, onError, onClos
     const incompleteLine = lines.pop() || '';
 
     // Emit each complete line
-    lines.forEach(line => {
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
       if (line.trim()) {
         // Parse timestamp if present
         let timestamp = null;
         let logLine = line;
 
         if (timestamps) {
-          const timestampMatch = line.match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z)\s+(.*)$/);
+          const timestampMatch = line.match(TIMESTAMP_RE);
           if (timestampMatch) {
             timestamp = timestampMatch[1];
             logLine = timestampMatch[2];
@@ -139,7 +141,7 @@ async function startLogStream(containerId, options = {}, onData, onError, onClos
           streamId,
         });
       }
-    });
+    }
 
     return incompleteLine;
   };

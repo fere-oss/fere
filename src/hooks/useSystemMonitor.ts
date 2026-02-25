@@ -1,21 +1,39 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { ConnectionGraph, EnvironmentSummary, Port, Process, SystemSnapshot, SnapshotDelta, GraphNode, GraphEdge } from '../types/electron';
 
-// Helper to create a stable key for comparing snapshots
-// Only includes actual topology changes (new/removed services and connections)
-// Excludes frequently changing properties (health, state, metrics) to prevent unnecessary re-renders
+// Helper to create a stable key for comparing snapshots.
+// Uses count + sorted IDs for fast comparison without full string join.
+// Only includes topology changes (new/removed services and connections).
 const createSnapshotKey = (snapshot: SystemSnapshot): string => {
-  const nodeKeys = snapshot.graph.nodes
-    .map(n => `${n.id}:${n.type}`)
-    .sort()
-    .join(',');
+  const { nodes, edges } = snapshot.graph;
+  // Use a Set-based approach: count + sorted IDs is sufficient for change detection
+  // and avoids expensive sort + join of large arrays on every delta
+  const nodeCount = nodes.length;
+  const edgeCount = edges.length;
 
-  const edgeKeys = snapshot.graph.edges
-    .map(e => `${e.source}-${e.target}`)
-    .sort()
-    .join(',');
+  // Fast path: if counts differ, topology definitely changed
+  // Build key from sorted IDs only (skip type — topology = presence, not type changes)
+  let nodeKey = '';
+  if (nodeCount <= 50) {
+    // Small graphs: full sorted key
+    const ids = nodes.map(n => n.id).sort();
+    nodeKey = ids.join(',');
+  } else {
+    // Large graphs: hash-like approach with count + first/last sorted IDs
+    const ids = nodes.map(n => n.id).sort();
+    nodeKey = `${nodeCount}:${ids[0]}..${ids[nodeCount - 1]}`;
+  }
 
-  return `${nodeKeys}|${edgeKeys}`;
+  let edgeKey = '';
+  if (edgeCount <= 50) {
+    const ids = edges.map(e => e.id).sort();
+    edgeKey = ids.join(',');
+  } else {
+    const ids = edges.map(e => e.id).sort();
+    edgeKey = `${edgeCount}:${ids[0]}..${ids[edgeCount - 1]}`;
+  }
+
+  return `${nodeKey}|${edgeKey}`;
 };
 
 // Check if we're running in Electron

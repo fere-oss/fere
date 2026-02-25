@@ -1,4 +1,4 @@
-import { useSyncExternalStore, useState, useCallback } from "react";
+import React, { useSyncExternalStore, useState, useCallback, useMemo } from "react";
 import type { GraphNode } from "../../types/electron";
 import type { RenderGroup } from "./types";
 import { getHealthInfo, getServiceColor, getTypeBadge } from "./constants";
@@ -8,6 +8,9 @@ import {
   subscribeExternalApiCacheUpdates,
 } from "./externalApis";
 import { BrandIcon, inferServiceBrand } from "./brandIcons";
+
+// Hoisted to module level — avoids Set recreation on every ServiceNode render
+const DOCKER_BADGE_TYPES = new Set(["container", "cache", "database", "broker"]);
 
 export function CompactServiceNode({
   node,
@@ -166,7 +169,7 @@ export function NodeGroupContainer({
   );
 }
 
-export function ServiceNode({
+export const ServiceNode = React.memo(function ServiceNode({
   node,
   onClick,
   onContextMenu,
@@ -185,29 +188,22 @@ export function ServiceNode({
     : getHealthInfo(node.healthStatus);
   const showDockerBadge =
     node.isDockerContainer &&
-    new Set(["container", "cache", "database", "broker"]).has(
-      (node.type || "").toLowerCase(),
-    );
+    DOCKER_BADGE_TYPES.has((node.type || "").toLowerCase());
   const mainPort = node.ports[0]?.port;
   const routes = node.routes || [];
-  const routeMethodRank = (method: string): number => {
-    switch (method.toUpperCase()) {
-      case "DELETE":
-        return 0;
-      case "POST":
-        return 1;
-      case "PUT":
-        return 2;
-      case "PATCH":
-        return 3;
-      case "GET":
-        return 4;
-      default:
-        return 5;
-    }
-  };
-  const visibleRoutes = (() => {
+  const visibleRoutes = useMemo(() => {
     if (routes.length <= 3) return routes;
+
+    const routeMethodRank = (method: string): number => {
+      switch (method.toUpperCase()) {
+        case "DELETE": return 0;
+        case "POST": return 1;
+        case "PUT": return 2;
+        case "PATCH": return 3;
+        case "GET": return 4;
+        default: return 5;
+      }
+    };
 
     const sorted = [...routes].sort((a, b) => {
       const methodDiff = routeMethodRank(a.method) - routeMethodRank(b.method);
@@ -228,23 +224,17 @@ export function ServiceNode({
       picked.push(route);
     };
 
-    // Ensure at least one GET is visible when available.
     pushUnique(gets[0]);
-
-    // Prefer mutating routes in preview so cards don't look GET-only.
     for (const route of mutating) {
       if (picked.length >= 3) break;
       pushUnique(route);
     }
-
-    // Fill remaining slots deterministically.
     for (const route of sorted) {
       if (picked.length >= 3) break;
       pushUnique(route);
     }
-
     return picked;
-  })();
+  }, [routes]);
   const shouldShowApis = supportsExternalApiScan(node);
   // Subscribe to the external API cache via useSyncExternalStore so that
   // ServiceNode re-renders whenever the cache entry for this node changes,
@@ -258,9 +248,10 @@ export function ServiceNode({
   const visibleApis = externalApis.slice(0, 3);
   const apiCount = externalApis.length;
   const isApiLoading = shouldShowApis && !apiEntry;
-  const projectLabel = node.projectPath
-    ? node.projectPath.split("/").pop()
-    : null;
+  const projectLabel = useMemo(
+    () => (node.projectPath ? node.projectPath.split("/").pop() : null),
+    [node.projectPath],
+  );
   // Container-type Docker nodes show the Docker logo by default — they are
   // generic containers without a specific recognized runtime brand.
   const serviceBrand =
@@ -531,4 +522,4 @@ export function ServiceNode({
       )}
     </div>
   );
-}
+});

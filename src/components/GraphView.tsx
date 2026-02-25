@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import ReactFlow, {
   Background,
@@ -22,7 +22,7 @@ import { useNodeMeasurements } from "./graph/useNodeMeasurements";
 const NODE_TYPES = flowNodeTypes;
 const EDGE_TYPES = flowEdgeTypes;
 
-function ActivePorts({
+const ActivePorts = React.memo(function ActivePorts({
   nodes,
   reactFlowInstance,
 }: {
@@ -131,7 +131,7 @@ function ActivePorts({
       </div>
     </div>
   );
-}
+});
 
 export function GraphView({
   nodes,
@@ -569,6 +569,18 @@ export function GraphView({
     }, 40);
   }, []);
 
+  const handlePaneClick = useCallback(() => {
+    setSelectedNode(null);
+    contextMenuOpenRef.current = false;
+    setContextMenu(null);
+  }, []);
+
+  const handlePaneContextMenu = useCallback((event: ReactMouseEvent) => {
+    event.preventDefault();
+    contextMenuOpenRef.current = false;
+    setContextMenu(null);
+  }, []);
+
   useEffect(() => {
     return () => {
       clearTimeout(hoverTimer.current);
@@ -652,16 +664,8 @@ export function GraphView({
             onInit={setReactFlowInstance}
             onNodeMouseEnter={handleNodeMouseEnter}
             onNodeMouseLeave={handleNodeMouseLeave}
-            onPaneClick={() => {
-              setSelectedNode(null);
-              contextMenuOpenRef.current = false;
-              setContextMenu(null);
-            }}
-            onPaneContextMenu={(event) => {
-              event.preventDefault();
-              contextMenuOpenRef.current = false;
-              setContextMenu(null);
-            }}
+            onPaneClick={handlePaneClick}
+            onPaneContextMenu={handlePaneContextMenu}
           >
             <Background color="rgba(0,0,0,0.04)" gap={24} />
             <Controls

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import type { GraphNode, GraphEdge, ExternalApi } from '../../types/electron';
 import { DatabaseViewer } from '../DatabaseViewer';
 import { getHealthInfo, getServiceColor } from './constants';
@@ -33,9 +33,14 @@ export function NodeDetailContent({ node, edges, allNodes }: NodeDetailContentPr
     return new Date(timestamp).toLocaleTimeString();
   };
 
-  const incomingEdges = edges.filter(e => e.target === node.id);
-  const outgoingEdges = edges.filter(e => e.source === node.id);
-  const getNodeName = (id: string) => allNodes.find(n => n.id === id)?.name || id;
+  const incomingEdges = useMemo(() => edges.filter(e => e.target === node.id), [edges, node.id]);
+  const outgoingEdges = useMemo(() => edges.filter(e => e.source === node.id), [edges, node.id]);
+  const nodeNameMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const n of allNodes) map.set(n.id, n.name);
+    return map;
+  }, [allNodes]);
+  const getNodeName = useCallback((id: string) => nodeNameMap.get(id) || id, [nodeNameMap]);
   const shouldShowExternalApis = supportsExternalApiScan(node);
 
   useEffect(() => {

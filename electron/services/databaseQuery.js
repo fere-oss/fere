@@ -22,6 +22,12 @@ try {
 }
 
 const VALID_CONTAINER_ID = /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/;
+const PG_IDENTIFIER_RE = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
+const MONGO_FIND_RE = /\.find\s*\(/;
+const MONGO_LIMIT_RE = /\.limit\s*\(/;
+const MONGO_TOARRAY_RE = /\.toArray\s*\(/;
+const MYSQL_SYSTEM_DBS = new Set(['information_schema', 'performance_schema', 'mysql', 'sys']);
+const dbTypeCache = new Map();
 
 function getDockerBinaries() {
   const bins = [];
@@ -293,7 +299,7 @@ function isPostgresUri(uri) {
 
 function sanitizePostgresIdentifier(name) {
   const value = String(name || '').trim();
-  if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(value)) {
+  if (!PG_IDENTIFIER_RE.test(value)) {
     throw new Error(`Invalid PostgreSQL identifier: ${name}`);
   }
   return value;
@@ -321,11 +327,15 @@ async function withPostgresUriClient(uri, callback) {
  * Detect database type from container image name
  */
 function detectDatabaseType(image) {
+  let result = dbTypeCache.get(image);
+  if (result !== undefined) return result;
   const imageLower = image.toLowerCase();
-  if (imageLower.includes('postgres') || imageLower.includes('pg')) return 'postgresql';
-  if (imageLower.includes('mysql') || imageLower.includes('mariadb')) return 'mysql';
-  if (imageLower.includes('mongo')) return 'mongodb';
-  return null;
+  if (imageLower.includes('postgres') || imageLower.includes('pg')) result = 'postgresql';
+  else if (imageLower.includes('mysql') || imageLower.includes('mariadb')) result = 'mysql';
+  else if (imageLower.includes('mongo')) result = 'mongodb';
+  else result = null;
+  dbTypeCache.set(image, result);
+  return result;
 }
 
 /**
@@ -493,7 +503,7 @@ async function getMySQLTables(containerId) {
     // Try to find the database name first
     try {
       const { stdout: dbOut } = await execDocker(containerId, ['mysql', ...authArgs, '-e', 'SHOW DATABASES;', '--skip-column-names'], 10000);
-      const databases = dbOut.split('\n').map(l => l.trim()).filter(l => l && !['information_schema', 'performance_schema', 'mysql', 'sys'].includes(l));
+      const databases = dbOut.split('\n').map(l => l.trim()).filter(l => l && !MYSQL_SYSTEM_DBS.has(l));
 
       if (databases.length > 0) {
         const { stdout } = await execDocker(containerId, ['mysql', ...authArgs, '-D', databases[0], '-e', 'SHOW TABLES;', '--skip-column-names'], 10000);
@@ -786,9 +796,9 @@ async function executeMongoCommand(containerId, command) {
   // Safety: inject a default limit on .find() calls without one
   let safeCommand = command;
   const MAX_QUERY_ROWS = 1000;
-  if (/\.find\s*\(/.test(safeCommand) && !/\.limit\s*\(/.test(safeCommand)) {
-    if (/\.toArray\s*\(/.test(safeCommand)) {
-      safeCommand = safeCommand.replace(/\.toArray\s*\(/, `.limit(${MAX_QUERY_ROWS}).toArray(`);
+  if (MONGO_FIND_RE.test(safeCommand) && !MONGO_LIMIT_RE.test(safeCommand)) {
+    if (MONGO_TOARRAY_RE.test(safeCommand)) {
+      safeCommand = safeCommand.replace(MONGO_TOARRAY_RE, `.limit(${MAX_QUERY_ROWS}).toArray(`);
     } else {
       safeCommand = safeCommand.replace(/(\.find\s*\([^)]*\))/, `$1.limit(${MAX_QUERY_ROWS})`);
     }
@@ -948,10 +958,10 @@ async function executeMongoUriQuery(uri, command) {
     // to prevent unbounded result sets from crashing the app.
     let safeCommand = command;
     const MAX_QUERY_ROWS = 1000;
-    if (/\.find\s*\(/.test(safeCommand) && !/\.limit\s*\(/.test(safeCommand)) {
+    if (MONGO_FIND_RE.test(safeCommand) && !MONGO_LIMIT_RE.test(safeCommand)) {
       // Insert .limit() before .toArray() if present, otherwise append it
-      if (/\.toArray\s*\(/.test(safeCommand)) {
-        safeCommand = safeCommand.replace(/\.toArray\s*\(/, `.limit(${MAX_QUERY_ROWS}).toArray(`);
+      if (MONGO_TOARRAY_RE.test(safeCommand)) {
+        safeCommand = safeCommand.replace(MONGO_TOARRAY_RE, `.limit(${MAX_QUERY_ROWS}).toArray(`);
       } else {
         safeCommand = safeCommand.replace(/(\.find\s*\([^)]*\))/, `$1.limit(${MAX_QUERY_ROWS})`);
       }

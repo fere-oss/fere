@@ -3,7 +3,7 @@ const path = require('path');
 const os = require('os');
 const net = require('net');
 
-const CODE_EXTENSIONS = ['.py', '.js', '.ts', '.jsx', '.tsx', '.mjs', '.cjs', '.go', '.rb', '.php', '.java', '.kt'];
+const CODE_EXTENSIONS = new Set(['.py', '.js', '.ts', '.jsx', '.tsx', '.mjs', '.cjs', '.go', '.rb', '.php', '.java', '.kt']);
 const EXTRA_FILES = [
   '.env',
   '.env.local',
@@ -12,7 +12,7 @@ const EXTRA_FILES = [
   '.env.test',
 ];
 
-const SKIP_DIRS = [
+const SKIP_DIRS = new Set([
   'node_modules',
   '.git',
   '__pycache__',
@@ -32,7 +32,7 @@ const SKIP_DIRS = [
   '__mocks__',
   'coverage',
   'docs',
-];
+]);
 
 const MAX_FILES = 2500;
 const API_CACHE_TTL_MS = 60000;
@@ -172,12 +172,12 @@ function findApiFiles(dir, files = []) {
       const fullPath = path.join(dir, entry.name);
 
       if (entry.isDirectory()) {
-        if (!SKIP_DIRS.includes(entry.name)) {
+        if (!SKIP_DIRS.has(entry.name)) {
           findApiFiles(fullPath, files);
         }
       } else if (entry.isFile()) {
         const ext = path.extname(entry.name).toLowerCase();
-        if (CODE_EXTENSIONS.includes(ext)) {
+        if (CODE_EXTENSIONS.has(ext)) {
           files.push(fullPath);
         }
       }
@@ -292,9 +292,9 @@ function recordProviderMatch(map, provider, matchType, host) {
   if (host) entry.hosts.add(normalizeHost(host));
 }
 
-function extractHosts(content) {
+function extractHosts(content, alreadyStripped = false) {
   const hosts = new Set();
-  const sanitized = stripComments(content);
+  const sanitized = alreadyStripped ? content : stripComments(content);
   const matches = sanitized.match(URL_REGEX) || [];
 
   for (const match of matches) {
@@ -313,13 +313,11 @@ function extractHosts(content) {
   return hosts;
 }
 
+// Single combined regex for stripping all comment styles in one pass
+const COMMENT_REGEX = /\/\*[\s\S]*?\*\/|^\s*\/\/.*$|^\s*#.*$|<!--[\s\S]*?-->/gm;
+
 function stripComments(content) {
-  let result = content;
-  result = result.replace(/\/\*[\s\S]*?\*\//g, '');
-  result = result.replace(/^\s*\/\/.*$/gm, '');
-  result = result.replace(/^\s*#.*$/gm, '');
-  result = result.replace(/<!--[\s\S]*?-->/g, '');
-  return result;
+  return content.replace(COMMENT_REGEX, '');
 }
 
 async function scanExternalApis(projectPath) {
@@ -356,7 +354,7 @@ async function scanExternalApis(projectPath) {
         if (stats.size > MAX_FILE_BYTES) continue;
         const content = fs.readFileSync(filePath, 'utf-8');
         const sanitizedContent = stripComments(content);
-        const hosts = extractHosts(sanitizedContent);
+        const hosts = extractHosts(sanitizedContent, true);
         for (const host of hosts) {
           hostMatches.add(host);
         }

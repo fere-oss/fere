@@ -236,12 +236,15 @@ class SnapshotScheduler extends EventEmitter {
         getDockerSnapshot(),
       ]);
 
+      // Convert once and reuse — avoid redundant Object.fromEntries()
+      const cwdMapObj = Object.fromEntries(cwdMap);
+
       // Build a preliminary graph to discover project paths, then scan routes
       const prelimResult = buildGraphStructure({
         processes: rawData.processes,
         ports: rawData.ports,
         connections: rawData.connections,
-        cwdMap: Object.fromEntries(cwdMap),
+        cwdMap: cwdMapObj,
         dockerSnapshot: null,
         routesByProject: {},
         healthByPid,
@@ -253,7 +256,7 @@ class SnapshotScheduler extends EventEmitter {
         processes: rawData.processes,
         ports: rawData.ports,
         connections: rawData.connections,
-        cwdMap: Object.fromEntries(cwdMap),
+        cwdMap: cwdMapObj,
         dockerSnapshot,
         routesByProject,
         healthByPid,
@@ -426,11 +429,15 @@ class SnapshotScheduler extends EventEmitter {
     let hasTopologyChange = false;
 
     // --- Process diff (keyed by PID) ---
+    // Use a Map only for prev (need object lookup); Set for curr (presence-only)
     const prevPids = new Map(prev.processes.map(p => [p.pid, p]));
-    const currPids = new Map(currentSnapshot.processes.map(p => [p.pid, p]));
+    const currPidSet = new Set(currentSnapshot.processes.map(p => p.pid));
 
     const addedProcesses = currentSnapshot.processes.filter(p => !prevPids.has(p.pid));
-    const removedProcessPids = [...prevPids.keys()].filter(pid => !currPids.has(pid));
+    const removedProcessPids = [];
+    for (const pid of prevPids.keys()) {
+      if (!currPidSet.has(pid)) removedProcessPids.push(pid);
+    }
     const modifiedProcesses = currentSnapshot.processes.filter(p => {
       const prev = prevPids.get(p.pid);
       return prev && (prev.cpu !== p.cpu || prev.memory !== p.memory || prev.status !== p.status);
@@ -442,12 +449,15 @@ class SnapshotScheduler extends EventEmitter {
     }
 
     // --- Port diff (keyed by "port-pid") ---
-    const portKey = (p) => `${p.port}-${p.pid}`;
-    const prevPortKeys = new Map(prev.ports.map(p => [portKey(p), p]));
-    const currPortKeys = new Map(currentSnapshot.ports.map(p => [portKey(p), p]));
+    // Use Sets for both sides — only need presence checking
+    const prevPortKeySet = new Set(prev.ports.map(p => `${p.port}-${p.pid}`));
+    const currPortKeySet = new Set(currentSnapshot.ports.map(p => `${p.port}-${p.pid}`));
 
-    const addedPorts = currentSnapshot.ports.filter(p => !prevPortKeys.has(portKey(p)));
-    const removedPortKeys = [...prevPortKeys.keys()].filter(k => !currPortKeys.has(k));
+    const addedPorts = currentSnapshot.ports.filter(p => !prevPortKeySet.has(`${p.port}-${p.pid}`));
+    const removedPortKeys = [];
+    for (const k of prevPortKeySet) {
+      if (!currPortKeySet.has(k)) removedPortKeys.push(k);
+    }
 
     if (addedPorts.length || removedPortKeys.length) {
       delta.ports = { added: addedPorts, removed: removedPortKeys };
@@ -455,12 +465,14 @@ class SnapshotScheduler extends EventEmitter {
     }
 
     // --- Connection diff (keyed by composite key) ---
-    const connKey = (c) => `${c.pid}-${c.localPort}-${c.remoteHost}-${c.remotePort}`;
-    const prevConnKeys = new Map(prev.connections.map(c => [connKey(c), c]));
-    const currConnKeys = new Map(currentSnapshot.connections.map(c => [connKey(c), c]));
+    const prevConnKeySet = new Set(prev.connections.map(c => `${c.pid}-${c.localPort}-${c.remoteHost}-${c.remotePort}`));
+    const currConnKeySet = new Set(currentSnapshot.connections.map(c => `${c.pid}-${c.localPort}-${c.remoteHost}-${c.remotePort}`));
 
-    const addedConns = currentSnapshot.connections.filter(c => !prevConnKeys.has(connKey(c)));
-    const removedConnKeys = [...prevConnKeys.keys()].filter(k => !currConnKeys.has(k));
+    const addedConns = currentSnapshot.connections.filter(c => !prevConnKeySet.has(`${c.pid}-${c.localPort}-${c.remoteHost}-${c.remotePort}`));
+    const removedConnKeys = [];
+    for (const k of prevConnKeySet) {
+      if (!currConnKeySet.has(k)) removedConnKeys.push(k);
+    }
 
     if (addedConns.length || removedConnKeys.length) {
       delta.connections = { added: addedConns, removed: removedConnKeys };
@@ -469,42 +481,59 @@ class SnapshotScheduler extends EventEmitter {
 
     // --- Graph node diff (keyed by node.id) ---
     const prevNodes = new Map(prev.graph.nodes.map(n => [n.id, n]));
-    const currNodes = new Map(currentSnapshot.graph.nodes.map(n => [n.id, n]));
+    const currNodeIdSet = new Set(currentSnapshot.graph.nodes.map(n => n.id));
 
     const addedNodes = currentSnapshot.graph.nodes.filter(n => !prevNodes.has(n.id));
-    const removedNodeIds = [...prevNodes.keys()].filter(id => !currNodes.has(id));
-    const modifiedNodes = currentSnapshot.graph.nodes.filter(n => {
+    const removedNodeIds = [];
+    for (const id of prevNodes.keys()) {
+      if (!currNodeIdSet.has(id)) removedNodeIds.push(id);
+    }
+
+    // Single-pass: detect modified nodes and build patches simultaneously
+    const modifiedNodes = [];
+    for (const n of currentSnapshot.graph.nodes) {
       const p = prevNodes.get(n.id);
-      if (!p) return false;
-      return p.type !== n.type ||
-        p.name !== n.name ||
-        p.command !== n.command ||
-        p.project !== n.project ||
-        p.projectPath !== n.projectPath ||
-        p.repoPath !== n.repoPath ||
-        p.healthStatus !== n.healthStatus ||
-        p.cpu !== n.cpu ||
-        p.memory !== n.memory ||
-        JSON.stringify(p.ports) !== JSON.stringify(n.ports) ||
-        JSON.stringify(p.routes || []) !== JSON.stringify(n.routes || []) ||
-        p.containerState !== n.containerState;
-    }).map(n => {
-      const p = prevNodes.get(n.id);
+      if (!p) continue;
+
+      // Check primitives first (cheap), then arrays (expensive) only if needed
+      const typeChanged = p.type !== n.type;
+      const nameChanged = p.name !== n.name;
+      const commandChanged = p.command !== n.command;
+      const projectChanged = p.project !== n.project;
+      const projectPathChanged = p.projectPath !== n.projectPath;
+      const repoPathChanged = p.repoPath !== n.repoPath;
+      const healthChanged = p.healthStatus !== n.healthStatus;
+      const cpuChanged = p.cpu !== n.cpu;
+      const memoryChanged = p.memory !== n.memory;
+      const containerStateChanged = p.containerState !== n.containerState;
+
+      // Quick exit if no primitives changed — skip expensive array comparison
+      const anyPrimitiveChanged = typeChanged || nameChanged || commandChanged ||
+        projectChanged || projectPathChanged || repoPathChanged ||
+        healthChanged || cpuChanged || memoryChanged || containerStateChanged;
+
+      // Shallow array comparison instead of JSON.stringify
+      const portsChanged = !shallowArrayEqual(p.ports, n.ports);
+      const routesChanged = !shallowArrayEqual(p.routes, n.routes);
+
+      if (!anyPrimitiveChanged && !portsChanged && !routesChanged) continue;
+
+      // Build patch in same pass — no second iteration needed
       const patch = { id: n.id };
-      if (p.type !== n.type) patch.type = n.type;
-      if (p.name !== n.name) patch.name = n.name;
-      if (p.command !== n.command) patch.command = n.command;
-      if (p.project !== n.project) patch.project = n.project;
-      if (p.projectPath !== n.projectPath) patch.projectPath = n.projectPath;
-      if (p.repoPath !== n.repoPath) patch.repoPath = n.repoPath;
-      if (p.healthStatus !== n.healthStatus) patch.healthStatus = n.healthStatus;
-      if (p.cpu !== n.cpu) patch.cpu = n.cpu;
-      if (p.memory !== n.memory) patch.memory = n.memory;
-      if (JSON.stringify(p.ports) !== JSON.stringify(n.ports)) patch.ports = n.ports;
-      if (JSON.stringify(p.routes || []) !== JSON.stringify(n.routes || [])) patch.routes = n.routes;
-      if (p.containerState !== n.containerState) patch.containerState = n.containerState;
-      return patch;
-    });
+      if (typeChanged) patch.type = n.type;
+      if (nameChanged) patch.name = n.name;
+      if (commandChanged) patch.command = n.command;
+      if (projectChanged) patch.project = n.project;
+      if (projectPathChanged) patch.projectPath = n.projectPath;
+      if (repoPathChanged) patch.repoPath = n.repoPath;
+      if (healthChanged) patch.healthStatus = n.healthStatus;
+      if (cpuChanged) patch.cpu = n.cpu;
+      if (memoryChanged) patch.memory = n.memory;
+      if (portsChanged) patch.ports = n.ports;
+      if (routesChanged) patch.routes = n.routes;
+      if (containerStateChanged) patch.containerState = n.containerState;
+      modifiedNodes.push(patch);
+    }
 
     if (addedNodes.length || removedNodeIds.length || modifiedNodes.length) {
       delta.graph = delta.graph || {};
@@ -513,11 +542,14 @@ class SnapshotScheduler extends EventEmitter {
     }
 
     // --- Graph edge diff (keyed by edge.id) ---
-    const prevEdges = new Map(prev.graph.edges.map(e => [e.id, e]));
-    const currEdges = new Map(currentSnapshot.graph.edges.map(e => [e.id, e]));
+    const prevEdgeIdSet = new Set(prev.graph.edges.map(e => e.id));
+    const currEdgeIdSet = new Set(currentSnapshot.graph.edges.map(e => e.id));
 
-    const addedEdges = currentSnapshot.graph.edges.filter(e => !prevEdges.has(e.id));
-    const removedEdgeIds = [...prevEdges.keys()].filter(id => !currEdges.has(id));
+    const addedEdges = currentSnapshot.graph.edges.filter(e => !prevEdgeIdSet.has(e.id));
+    const removedEdgeIds = [];
+    for (const id of prevEdgeIdSet) {
+      if (!currEdgeIdSet.has(id)) removedEdgeIds.push(id);
+    }
 
     if (addedEdges.length || removedEdgeIds.length) {
       delta.graph = delta.graph || {};
@@ -547,6 +579,32 @@ function setsEqual(a, b) {
   if (a.size !== b.size) return false;
   for (const item of a) {
     if (!b.has(item)) return false;
+  }
+  return true;
+}
+
+/**
+ * Shallow array equality — avoids JSON.stringify for port/route arrays.
+ * Compares by reference first, then length, then element identity.
+ * For arrays of objects, falls back to key-count comparison per element.
+ */
+function shallowArrayEqual(a, b) {
+  if (a === b) return true;
+  if (!a && !b) return true;
+  if (!a || !b) return false;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const ai = a[i], bi = b[i];
+    if (ai === bi) continue;
+    // For primitive elements
+    if (typeof ai !== 'object' || typeof bi !== 'object' || ai === null || bi === null) return false;
+    // Shallow object comparison — sufficient for port/route objects
+    const keysA = Object.keys(ai);
+    const keysB = Object.keys(bi);
+    if (keysA.length !== keysB.length) return false;
+    for (const k of keysA) {
+      if (ai[k] !== bi[k]) return false;
+    }
   }
   return true;
 }

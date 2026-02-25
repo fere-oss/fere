@@ -21,23 +21,23 @@ const {
 // Persistent cached structure for metrics-only updates
 let cachedStructure = null;
 
+// containerHealthToGraphHealth can't be sent as a function over postMessage,
+// so we define it once at module level matching the dockerMonitor logic
+const containerHealthToGraphHealth = (container) => {
+  const status = container.health?.status || container.state;
+  switch (status) {
+    case 'running': case 'healthy': return 'green';
+    case 'starting': case 'paused': case 'restarting': return 'yellow';
+    case 'exited': case 'dead': case 'unhealthy': return 'red';
+    default: return 'yellow';
+  }
+};
+
 parentPort.on('message', (msg) => {
   try {
     switch (msg.type) {
       case 'build-structure': {
-        const { processes, ports, connections, cwdMap, dockerSnapshot, routesByProject, healthByPid, containerHealthFn } = msg.data;
-
-        // containerHealthToGraphHealth can't be sent as a function over postMessage,
-        // so we use a simple inline implementation matching the dockerMonitor logic
-        const containerHealthToGraphHealth = (container) => {
-          const status = container.health?.status || container.state;
-          switch (status) {
-            case 'running': case 'healthy': return 'green';
-            case 'starting': case 'paused': case 'restarting': return 'yellow';
-            case 'exited': case 'dead': case 'unhealthy': return 'red';
-            default: return 'yellow';
-          }
-        };
+        const { processes, ports, connections, cwdMap, dockerSnapshot, routesByProject, healthByPid } = msg.data;
 
         cachedStructure = buildGraphStructure({
           processes,

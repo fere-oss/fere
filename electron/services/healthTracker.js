@@ -25,10 +25,16 @@ function updateHealthTracking(snapshot) {
   const { processes, ports, connections } = snapshot;
 
   // Get all current PIDs from processes
-  const currentPids = new Set(processes.map(p => p.pid));
+  const currentPids = new Set();
+  for (let i = 0; i < processes.length; i++) {
+    currentPids.add(processes[i].pid);
+  }
 
   // Get PIDs that have listening ports
-  const listeningPids = new Set(ports.map(p => p.pid));
+  const listeningPids = new Set();
+  for (let i = 0; i < ports.length; i++) {
+    listeningPids.add(ports[i].pid);
+  }
 
   // Update lastSeen for all currently visible processes with listening ports
   for (const pid of listeningPids) {
@@ -37,12 +43,8 @@ function updateHealthTracking(snapshot) {
   }
 
   // Update lastActivity for PIDs with established connections
-  const pidsWithConnections = new Set();
-  for (const conn of connections) {
-    pidsWithConnections.add(conn.pid);
-  }
-
-  for (const pid of pidsWithConnections) {
+  for (let i = 0; i < connections.length; i++) {
+    const pid = connections[i].pid;
     if (listeningPids.has(pid) || currentPids.has(pid)) {
       lastActivityByPid.set(pid, now);
     }

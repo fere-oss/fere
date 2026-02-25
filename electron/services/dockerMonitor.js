@@ -8,6 +8,8 @@ const execFileAsync = promisify(execFile);
 const CACHE_TTL_MS = 2000; // 2 second cache for Docker data (Docker commands are slower)
 const containersCache = { timestamp: 0, data: [], promise: null };
 const networksCache = { timestamp: 0, data: [], promise: null };
+const RUNNING_STATES = new Set(['running', 'paused', 'restarting']);
+const DEFAULT_NETWORKS = new Set(['bridge', 'host', 'none']);
 const DOCKER_EXEC_TIMEOUT_MS = 15000;
 const DOCKER_BIN_CANDIDATES = [
   process.env.FERE_DOCKER_BIN,
@@ -53,7 +55,7 @@ async function runDocker(args, options = {}) {
   const allowFailure = !!options.allowFailure;
   const preferred = await resolveDockerBinary();
   const candidates = preferred
-    ? [preferred, ...getDockerBinaries().filter((bin) => bin !== preferred)]
+    ? [preferred]
     : getDockerBinaries();
 
   let lastError = null;
@@ -69,9 +71,6 @@ async function runDocker(args, options = {}) {
       lastError = error;
       const isMissingBinary = error?.code === 'ENOENT' || /not found/i.test(String(error?.message || ''));
       if (isMissingBinary) continue;
-      if (allowFailure) {
-        throw error;
-      }
       throw error;
     }
   }
@@ -258,7 +257,7 @@ async function getDockerContainers() {
           // Skip stopped containers that no longer belong to the current compose config.
           // This filters out orphaned containers left behind by service renames/removals
           // without affecting intentionally-stopped compose services.
-          const isStopped = containerState !== 'running' && containerState !== 'paused' && containerState !== 'restarting';
+          const isStopped = !RUNNING_STATES.has(containerState);
           if (isStopped && !isCurrentComposeService(containerLabels)) {
             continue;
           }
@@ -342,6 +341,9 @@ async function inspectContainer(containerId) {
   }
 }
 
+const MAPPED_PORT_RE = /(?:(.+):)?(\d+)->(\d+)\/(\w+)/;
+const EXPOSED_PORT_RE = /(\d+)\/(\w+)/;
+
 /**
  * Parse ports string from docker ps output
  * Format: "0.0.0.0:8080->80/tcp, 0.0.0.0:443->443/tcp"
@@ -355,7 +357,7 @@ function parsePorts(portsString) {
   for (const entry of portEntries) {
     // Match format: host:hostPort->containerPort/protocol
     // or: containerPort/protocol (exposed but not mapped)
-    const mappedMatch = entry.match(/(?:(.+):)?(\d+)->(\d+)\/(\w+)/);
+    const mappedMatch = entry.match(MAPPED_PORT_RE);
     if (mappedMatch) {
       const [, host, hostPort, containerPort, protocol] = mappedMatch;
       ports.push({
@@ -367,7 +369,7 @@ function parsePorts(portsString) {
       });
     } else {
       // Exposed but not mapped: just "80/tcp"
-      const exposedMatch = entry.match(/(\d+)\/(\w+)/);
+      const exposedMatch = entry.match(EXPOSED_PORT_RE);
       if (exposedMatch) {
         const [, containerPort, protocol] = exposedMatch;
         ports.push({
@@ -669,7 +671,7 @@ function buildContainerConnections(containers, networks) {
   // Also create edges for containers on shared custom networks (non-default)
   for (const network of networks) {
     // Skip default networks that everything connects to
-    if (network.name === 'bridge' || network.name === 'host' || network.name === 'none') {
+    if (DEFAULT_NETWORKS.has(network.name)) {
       continue;
     }
 
