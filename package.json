@@ -23,6 +23,7 @@
     "react-dom": "^19.2.3",
     "react-flow": "^1.0.3",
     "react-scripts": "5.0.1",
+    "react-window": "^2.2.7",
     "reactflow": "^11.11.4",
     "typescript": "^4.9.5",
     "web-vitals": "^2.1.4"

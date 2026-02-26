@@ -8766,8 +8766,7 @@ textarea {
 /* Log Output */
 .unified-logs-output {
   flex: 1;
-  overflow-y: auto;
-  padding: 14px 16px;
+  overflow: hidden;
   font-family: var(--font-mono);
   font-size: 12px;
   line-height: 1.6;
@@ -8775,6 +8774,11 @@ textarea {
   border: none;
   border-radius: 0;
   margin-top: 0;
+}
+
+.unified-logs-output .unified-log-line {
+  padding-left: 16px;
+  padding-right: 16px;
 }
 
 .unified-logs-placeholder {

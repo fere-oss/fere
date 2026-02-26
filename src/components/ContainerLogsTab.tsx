@@ -1,4 +1,6 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
+import { List, useListRef } from 'react-window';
+import type { RowComponentProps } from 'react-window';
 import type { GraphNode } from '../types/electron';
 import type { ContainerLogData } from '../types/electron';
 
@@ -17,6 +19,14 @@ interface UnifiedLogEntry {
   stream: 'stdout' | 'stderr';
   level: 'error' | 'warn' | 'info' | 'debug' | 'unknown';
   formattedTime: string;
+}
+
+const LOG_ROW_HEIGHT = 26;
+
+interface LogRowProps {
+  logs: UnifiedLogEntry[];
+  showTimestamps: boolean;
+  highlightMatches: (line: string) => string | { text: string; match: boolean }[];
 }
 
 const LOG_TIME_FORMATTER = new Intl.DateTimeFormat('en-US', {
@@ -64,6 +74,44 @@ const FILTER_OPTIONS = [
   { value: 'debug' as const, label: 'Debug' },
 ];
 
+const LogRow = memo(({ index, style, logs, showTimestamps, highlightMatches }: RowComponentProps<LogRowProps>) => {
+  const log = logs[index];
+  const highlighted = highlightMatches(log.line);
+
+  return (
+    <div
+      style={style}
+      className={`unified-log-line unified-log-level-${log.level} unified-log-stream-${log.stream}`}
+    >
+      {showTimestamps && (
+        <span className="unified-log-time">{log.formattedTime}</span>
+      )}
+      <span
+        className="unified-log-container"
+        style={{ color: log.containerColor }}
+      >
+        {log.containerName}
+      </span>
+      <span className={`unified-log-stream unified-log-stream-${log.stream}`}>
+        {log.stream === 'stderr' ? 'ERR' : 'OUT'}
+      </span>
+      <span className="unified-log-text">
+        {typeof highlighted === 'string' ? (
+          highlighted
+        ) : (
+          highlighted.map((part, i) => (
+            part.match ? (
+              <mark key={i} className="unified-log-highlight">{part.text}</mark>
+            ) : (
+              <span key={i}>{part.text}</span>
+            )
+          ))
+        )}
+      </span>
+    </div>
+  );
+});
+
 export function ContainerLogsTab({ containers, initialSelectedId }: ContainerLogsTabProps) {
   // Track which containers are selected for logging
   const [selectedContainerIds, setSelectedContainerIds] = useState<Set<string>>(new Set());
@@ -88,6 +136,7 @@ export function ContainerLogsTab({ containers, initialSelectedId }: ContainerLog
   const [isFilterOpen, setIsFilterOpen] = useState(false);
 
   const logsContainerRef = useRef<HTMLDivElement>(null);
+  const listRef = useListRef(null);
   const bufferRef = useRef<UnifiedLogEntry[]>([]);
   const filterRef = useRef<HTMLDivElement>(null);
 
@@ -192,13 +241,6 @@ export function ContainerLogsTab({ containers, initialSelectedId }: ContainerLog
       return next;
     });
   }, [containers]);
-
-  // Auto-scroll when follow is enabled and not paused
-  useEffect(() => {
-    if (follow && !isPaused && logsContainerRef.current) {
-      logsContainerRef.current.scrollTop = logsContainerRef.current.scrollHeight;
-    }
-  }, [logs, follow, isPaused]);
 
   // Flush buffer to logs every 100ms — always flush even when paused so data
   // is never silently discarded.  The 5000-line cap prevents memory issues.
@@ -423,6 +465,20 @@ export function ContainerLogsTab({ containers, initialSelectedId }: ContainerLog
     return parts.length === 0 ? line : parts;
   }, [searchHighlightRegex]);
 
+  // Stable row props for react-window row renderer
+  const rowProps = useMemo<LogRowProps>(() => ({
+    logs: filteredLogs,
+    showTimestamps,
+    highlightMatches,
+  }), [filteredLogs, showTimestamps, highlightMatches]);
+
+  // Auto-scroll when follow is enabled and not paused
+  useEffect(() => {
+    if (follow && !isPaused && listRef.current && filteredLogs.length > 0) {
+      listRef.current.scrollToRow({ index: filteredLogs.length - 1, align: 'end' });
+    }
+  }, [filteredLogs.length, follow, isPaused, listRef]);
+
   const getStatusLabel = useCallback((container: GraphNode) => {
     if (container.containerHealth?.status && container.containerHealth.status !== 'unknown') {
       return container.containerHealth.status;
@@ -646,42 +702,15 @@ export function ContainerLogsTab({ containers, initialSelectedId }: ContainerLog
                 </div>
               </div>
             ) : (
-              filteredLogs.map((log) => {
-                const highlighted = highlightMatches(log.line);
-
-                return (
-                  <div
-                    key={log.id}
-                    className={`unified-log-line unified-log-level-${log.level} unified-log-stream-${log.stream}`}
-                  >
-                    {showTimestamps && (
-                      <span className="unified-log-time">{log.formattedTime}</span>
-                    )}
-                    <span
-                      className="unified-log-container"
-                      style={{ color: log.containerColor }}
-                    >
-                      {log.containerName}
-                    </span>
-                    <span className={`unified-log-stream unified-log-stream-${log.stream}`}>
-                      {log.stream === 'stderr' ? 'ERR' : 'OUT'}
-                    </span>
-                    <span className="unified-log-text">
-                      {typeof highlighted === 'string' ? (
-                        highlighted
-                      ) : (
-                        highlighted.map((part, i) => (
-                          part.match ? (
-                            <mark key={i} className="unified-log-highlight">{part.text}</mark>
-                          ) : (
-                            <span key={i}>{part.text}</span>
-                          )
-                        ))
-                      )}
-                    </span>
-                  </div>
-                );
-              })
+              <List
+                listRef={listRef}
+                rowComponent={LogRow}
+                rowProps={rowProps}
+                rowCount={filteredLogs.length}
+                rowHeight={LOG_ROW_HEIGHT}
+                overscanCount={20}
+                style={{ height: '100%' }}
+              />
             )}
           </div>
         </div>
