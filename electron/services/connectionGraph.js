@@ -27,6 +27,7 @@ const {
   inferProjectPathFromContainer,
   findProjectRoot,
   findNearestProjectMarkerRoot,
+  collectProjectPaths,
   buildGraphStructure,
   overlayMetrics,
   hasTopologyChanged,
@@ -156,24 +157,15 @@ async function getProcessCwd(pid, cache) {
 // ============================================
 
 /**
- * Collect routes for all project paths found in nodes.
- * @param {Array} nodes - Graph nodes with projectPath
+ * Collect routes for a set of project paths.
+ * @param {Set<string>} projectPaths - Unique project directory paths to scan
  * @returns {Promise<Object>} Map of projectPath → routes[]
  */
-async function collectRoutes(nodes, dockerSnapshot = null) {
-  const projects = new Set();
-  for (const node of nodes) {
-    if (node.projectPath) projects.add(node.projectPath);
-  }
-  if (dockerSnapshot?.containers?.length) {
-    for (const container of dockerSnapshot.containers) {
-      const projectPath = inferProjectPathFromContainer(container);
-      if (projectPath) projects.add(projectPath);
-    }
-  }
-
+async function collectRoutes(projectPaths) {
   const routesByProject = {};
-  if (projects.size === 0) return routesByProject;
+  if (projectPaths.size === 0) return routesByProject;
+
+  const projects = projectPaths;
 
   const startScan = Date.now();
   const scanPromises = Array.from(projects).map(async (projectPath) => {
@@ -327,28 +319,21 @@ async function buildConnectionGraph(snapshot = null) {
   const pids = processes.filter(p => p.pid > 0).map(p => p.pid);
   const cwdMap = await batchGetProcessCwds(pids);
 
-  // Fetch Docker + routes in parallel
+  const cwdMapObj = Object.fromEntries(cwdMap);
+
+  // Fetch Docker snapshot, then discover project paths and scan routes
   const startParallel = Date.now();
   const dockerSnapshot = await getDockerSnapshot();
-  const routesByProject = await (async () => {
-    // Build preliminary nodes to discover process project paths for route scanning,
-    // and include docker-derived project paths from mounts/compose labels.
-    const prelimResult = buildGraphStructure({
-      processes, ports, connections,
-      cwdMap: Object.fromEntries(cwdMap),
-      dockerSnapshot: null,
-      routesByProject: {},
-      healthByPid,
-      containerHealthToGraphHealth,
-    });
-    return collectRoutes(prelimResult.nodes, dockerSnapshot);
-  })();
+  const projectPaths = collectProjectPaths({
+    processes, ports, cwdMap: cwdMapObj, dockerSnapshot,
+  });
+  const routesByProject = await collectRoutes(projectPaths);
   perfLog('Parallel operations (docker + routes)', Date.now() - startParallel);
 
-  // Full structure build with all data
+  // Single graph build with all data
   const result = buildGraphStructure({
     processes, ports, connections,
-    cwdMap: Object.fromEntries(cwdMap),
+    cwdMap: cwdMapObj,
     dockerSnapshot,
     routesByProject,
     healthByPid,

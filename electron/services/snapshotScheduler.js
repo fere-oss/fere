@@ -5,7 +5,7 @@ const { getDevProcesses, getProcessCacheInfo, getProcessPids } = require('./proc
 const { getListeningPorts, getEstablishedConnections, getPortCacheInfo, getListeningPortNumbers } = require('./portMonitor');
 const { getDockerSnapshot } = require('./dockerMonitor');
 const { batchGetProcessCwds, collectHealthByPid, collectRoutes } = require('./connectionGraph');
-const { hasTopologyChanged, buildGraphStructure } = require('./graphFunctions');
+const { hasTopologyChanged, buildGraphStructure, collectProjectPaths } = require('./graphFunctions');
 
 /**
  * SnapshotScheduler — event-driven collection pipeline with Worker offload.
@@ -239,18 +239,14 @@ class SnapshotScheduler extends EventEmitter {
       // Convert once and reuse — avoid redundant Object.fromEntries()
       const cwdMapObj = Object.fromEntries(cwdMap);
 
-      // Build a preliminary graph to discover project paths, then scan routes
-      const prelimResult = buildGraphStructure({
+      // Lightweight project-path discovery (no full graph build)
+      const projectPaths = collectProjectPaths({
         processes: rawData.processes,
         ports: rawData.ports,
-        connections: rawData.connections,
         cwdMap: cwdMapObj,
-        dockerSnapshot: null,
-        routesByProject: {},
-        healthByPid,
-        containerHealthToGraphHealth: () => 'yellow',
+        dockerSnapshot,
       });
-      const routesByProject = await collectRoutes(prelimResult.nodes, dockerSnapshot);
+      const routesByProject = await collectRoutes(projectPaths);
 
       const workerData = {
         processes: rawData.processes,

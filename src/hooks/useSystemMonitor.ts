@@ -58,31 +58,28 @@ function applyDelta(current: SystemSnapshot, delta: SnapshotDelta): SystemSnapsh
     };
   }
 
-  const result: SystemSnapshot = {
-    processes: [...current.processes],
-    ports: [...current.ports],
-    connections: [...current.connections],
-    graph: {
-      nodes: [...current.graph.nodes],
-      edges: [...current.graph.edges],
-    },
-    docker: delta.docker ?? current.docker,
-    meta: delta.meta ?? current.meta,
-  };
+  // Start with references to existing arrays — only copy sections the delta touches.
+  // For metrics-only updates this avoids 4 unnecessary array allocations.
+  let processes = current.processes;
+  let ports = current.ports;
+  let connections = current.connections;
+  let nodes = current.graph.nodes;
+  let edges = current.graph.edges;
 
   // Apply process delta
   if (delta.processes && 'added' in delta.processes) {
     const pd = delta.processes;
     if (pd.removed?.length > 0) {
       const removedSet = new Set(pd.removed);
-      result.processes = result.processes.filter(p => !removedSet.has(p.pid));
+      processes = processes.filter(p => !removedSet.has(p.pid));
     }
     if (pd.added?.length > 0) {
-      result.processes.push(...pd.added);
+      if (processes === current.processes) processes = [...processes];
+      processes.push(...pd.added);
     }
     if (pd.modified?.length > 0) {
       const modMap = new Map(pd.modified.map(p => [p.pid, p]));
-      result.processes = result.processes.map(p => {
+      processes = processes.map(p => {
         const mod = modMap.get(p.pid);
         return mod ? { ...p, ...mod } : p;
       });
@@ -94,10 +91,11 @@ function applyDelta(current: SystemSnapshot, delta: SnapshotDelta): SystemSnapsh
     const portd = delta.ports;
     if (portd.removed?.length > 0) {
       const removedSet = new Set(portd.removed);
-      result.ports = result.ports.filter(p => !removedSet.has(`${p.port}-${p.pid}`));
+      ports = ports.filter(p => !removedSet.has(`${p.port}-${p.pid}`));
     }
     if (portd.added?.length > 0) {
-      result.ports.push(...portd.added);
+      if (ports === current.ports) ports = [...ports];
+      ports.push(...portd.added);
     }
   }
 
@@ -106,12 +104,13 @@ function applyDelta(current: SystemSnapshot, delta: SnapshotDelta): SystemSnapsh
     const cd = delta.connections;
     if (cd.removed?.length > 0) {
       const removedSet = new Set(cd.removed);
-      result.connections = result.connections.filter(c =>
+      connections = connections.filter(c =>
         !removedSet.has(`${c.pid}-${c.localPort}-${c.remoteHost}-${c.remotePort}`)
       );
     }
     if (cd.added?.length > 0) {
-      result.connections.push(...cd.added);
+      if (connections === current.connections) connections = [...connections];
+      connections.push(...cd.added);
     }
   }
 
@@ -120,14 +119,15 @@ function applyDelta(current: SystemSnapshot, delta: SnapshotDelta): SystemSnapsh
     const nd = delta.graph.nodes as { added: GraphNode[]; removed: string[]; modified: (Partial<GraphNode> & { id: string })[] };
     if (nd.removed?.length > 0) {
       const removedSet = new Set(nd.removed);
-      result.graph.nodes = result.graph.nodes.filter(n => !removedSet.has(n.id));
+      nodes = nodes.filter(n => !removedSet.has(n.id));
     }
     if (nd.added?.length > 0) {
-      result.graph.nodes.push(...nd.added);
+      if (nodes === current.graph.nodes) nodes = [...nodes];
+      nodes.push(...nd.added);
     }
     if (nd.modified?.length > 0) {
       const modMap = new Map(nd.modified.map(n => [n.id, n]));
-      result.graph.nodes = result.graph.nodes.map(n => {
+      nodes = nodes.map(n => {
         const mod = modMap.get(n.id);
         return mod ? { ...n, ...mod } as GraphNode : n;
       });
@@ -139,14 +139,26 @@ function applyDelta(current: SystemSnapshot, delta: SnapshotDelta): SystemSnapsh
     const ed = delta.graph.edges as { added: GraphEdge[]; removed: string[] };
     if (ed.removed?.length > 0) {
       const removedSet = new Set(ed.removed);
-      result.graph.edges = result.graph.edges.filter(e => !removedSet.has(e.id));
+      edges = edges.filter(e => !removedSet.has(e.id));
     }
     if (ed.added?.length > 0) {
-      result.graph.edges.push(...ed.added);
+      if (edges === current.graph.edges) edges = [...edges];
+      edges.push(...ed.added);
     }
   }
 
-  return result;
+  // Only allocate a new graph object when nodes or edges actually changed
+  const graphChanged = nodes !== current.graph.nodes || edges !== current.graph.edges;
+  const graph = graphChanged ? { nodes, edges } : current.graph;
+
+  return {
+    processes,
+    ports,
+    connections,
+    graph,
+    docker: delta.docker ?? current.docker,
+    meta: delta.meta ?? current.meta,
+  };
 }
 
 type Connection = import('../types/electron').Connection;

@@ -729,9 +729,11 @@ textarea {
 
 .rf-node-wrapper {
   pointer-events: auto;
+  transform: scale(1);
   transition:
-    opacity 0.2s ease,
-    filter 0.2s ease;
+    opacity 0.25s ease,
+    filter 0.25s ease,
+    transform 0.25s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .rf-node-wrapper.rf-node-highlighted {
@@ -747,9 +749,6 @@ textarea {
   opacity: 0.5;
   filter: grayscale(20%);
   pointer-events: auto;
-  transition:
-    opacity 0.2s ease,
-    filter 0.2s ease;
 }
 
 .rf-node-wrapper.rf-node-animate {
@@ -1843,6 +1842,7 @@ textarea {
   height: auto;
   box-sizing: border-box;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  transition: box-shadow 0.25s ease;
   -webkit-app-region: no-drag;
   cursor: pointer;
   animation: nodeAppear 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
