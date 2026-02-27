@@ -522,6 +522,46 @@ function enhanceNodeWithDockerInfo(node, container) {
  * @param {Function} params.containerHealthToGraphHealth - Docker health mapper
  * @returns {{ nodes: Array, edges: Array, dockerSnapshot: Object }}
  */
+/**
+ * Lightweight project-path discovery — extracts the set of project paths
+ * from process CWD data and Docker container metadata without building
+ * the full graph.  Used to decide which directories to scan for routes.
+ */
+function collectProjectPaths({ processes, ports, cwdMap = {}, dockerSnapshot = null }) {
+  const projects = new Set();
+
+  // Only port-owning PIDs become graph nodes, so only their CWDs matter
+  const portPids = new Set(ports.map(p => p.pid));
+  const processMap = new Map(processes.map(p => [p.pid, p]));
+
+  for (const pid of portPids) {
+    const cwd = cwdMap[pid] || null;
+    let projectPath = cwd ? findProjectRoot(cwd) : null;
+    if (!projectPath) {
+      const proc = processMap.get(pid);
+      if (proc?.command) {
+        projectPath = inferProjectPathFromCommand(proc.command);
+      }
+    }
+    if (projectPath) projects.add(projectPath);
+  }
+
+  // Also consider connection-originating PIDs that may have a CWD
+  // but no listening port (they still create graph nodes)
+  // — skip for now: those are rare and connections require a target port
+  // which is already covered above.
+
+  // Docker container project paths
+  if (dockerSnapshot?.containers?.length) {
+    for (const container of dockerSnapshot.containers) {
+      const projectPath = inferProjectPathFromContainer(container);
+      if (projectPath) projects.add(projectPath);
+    }
+  }
+
+  return projects;
+}
+
 function buildGraphStructure({
   processes, ports, connections,
   cwdMap = {}, dockerSnapshot = null, routesByProject = {},
@@ -981,6 +1021,7 @@ module.exports = {
   findMatchingNativeNode,
   enhanceNodeWithDockerInfo,
   // Graph building
+  collectProjectPaths,
   buildGraphStructure,
   overlayMetrics,
   hasTopologyChanged,
