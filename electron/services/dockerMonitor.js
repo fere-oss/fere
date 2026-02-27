@@ -244,12 +244,41 @@ async function getDockerContainers() {
       const containers = [];
       const lines = stdout.trim().split('\n');
 
+      // Parse all container listings first
+      const psEntries = [];
       for (const line of lines) {
         try {
-          const container = JSON.parse(line);
+          psEntries.push(JSON.parse(line));
+        } catch (parseError) {
+          console.error('Error parsing container JSON:', parseError);
+        }
+      }
 
-          // Get detailed inspect data for this container
-          const inspectData = await inspectContainer(container.ID);
+      // Batch inspect: single `docker inspect` call for all containers
+      const inspectMap = new Map();
+      if (psEntries.length > 0) {
+        try {
+          const ids = psEntries.map(c => c.ID);
+          const inspectStdout = await runDocker(['inspect', ...ids]);
+          const inspectArray = JSON.parse(inspectStdout);
+          for (const entry of inspectArray) {
+            if (entry?.Id) inspectMap.set(entry.Id, entry);
+          }
+        } catch (inspectError) {
+          // Fallback: if batch fails, inspect individually
+          for (const entry of psEntries) {
+            const data = await inspectContainer(entry.ID);
+            if (data?.Id) inspectMap.set(data.Id, data);
+          }
+        }
+      }
+
+      for (const container of psEntries) {
+        try {
+          // Match by full ID or prefix
+          const inspectData = inspectMap.get(container.ID) ||
+            [...inspectMap.values()].find(d => d.Id?.startsWith(container.ID)) ||
+            null;
 
           const containerLabels = inspectData?.Config?.Labels || {};
           const containerState = container.State;
@@ -283,7 +312,7 @@ async function getDockerContainers() {
             memory: 0,
           });
         } catch (parseError) {
-          console.error('Error parsing container JSON:', parseError);
+          console.error('Error processing container:', parseError);
         }
       }
 
@@ -557,12 +586,40 @@ async function getDockerNetworks() {
       const networks = [];
       const lines = stdout.trim().split('\n');
 
+      // Parse all network listings first
+      const netEntries = [];
       for (const line of lines) {
         try {
-          const network = JSON.parse(line);
+          netEntries.push(JSON.parse(line));
+        } catch (parseError) {
+          console.error('Error parsing network JSON:', parseError);
+        }
+      }
 
-          // Get detailed network info
-          const inspectData = await inspectNetwork(network.ID);
+      // Batch inspect: single `docker network inspect` call for all networks
+      const netInspectMap = new Map();
+      if (netEntries.length > 0) {
+        try {
+          const ids = netEntries.map(n => n.ID);
+          const inspectStdout = await runDocker(['network', 'inspect', ...ids]);
+          const inspectArray = JSON.parse(inspectStdout);
+          for (const entry of inspectArray) {
+            if (entry?.Id) netInspectMap.set(entry.Id, entry);
+          }
+        } catch (inspectError) {
+          // Fallback: if batch fails, inspect individually
+          for (const entry of netEntries) {
+            const data = await inspectNetwork(entry.ID);
+            if (data?.Id) netInspectMap.set(data.Id, data);
+          }
+        }
+      }
+
+      for (const network of netEntries) {
+        try {
+          const inspectData = netInspectMap.get(network.ID) ||
+            [...netInspectMap.values()].find(d => d.Id?.startsWith(network.ID)) ||
+            null;
 
           networks.push({
             id: network.ID,
@@ -575,7 +632,7 @@ async function getDockerNetworks() {
             attachable: inspectData?.Attachable || false,
           });
         } catch (parseError) {
-          console.error('Error parsing network JSON:', parseError);
+          console.error('Error processing network:', parseError);
         }
       }
 
