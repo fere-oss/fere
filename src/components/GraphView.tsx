@@ -325,10 +325,15 @@ export function GraphView({
       stableConnectedLayout.map((ln) => [ln.node.id, ln]),
     );
     const outgoingBySource = new Map<string, GraphEdge[]>();
+    const incomingByTarget = new Map<string, GraphEdge[]>();
     layoutEdges.forEach((edge) => {
-      const list = outgoingBySource.get(edge.source);
-      if (list) list.push(edge);
+      const srcList = outgoingBySource.get(edge.source);
+      if (srcList) srcList.push(edge);
       else outgoingBySource.set(edge.source, [edge]);
+
+      const tgtList = incomingByTarget.get(edge.target);
+      if (tgtList) tgtList.push(edge);
+      else incomingByTarget.set(edge.target, [edge]);
     });
     return {
       posMap,
@@ -336,6 +341,7 @@ export function GraphView({
       serviceCenters,
       layoutLookup,
       outgoingBySource,
+      incomingByTarget,
       endpoint,
       width: W,
     };
@@ -351,8 +357,9 @@ export function GraphView({
     const connected = new Set<string>();
     connected.add(hoveredNodeId);
     const outgoing = hoverEdgeGeometry.outgoingBySource.get(hoveredNodeId);
-    if (!outgoing) return connected;
-    outgoing.forEach((edge) => connected.add(edge.target));
+    if (outgoing) outgoing.forEach((edge) => connected.add(edge.target));
+    const incoming = hoverEdgeGeometry.incomingByTarget.get(hoveredNodeId);
+    if (incoming) incoming.forEach((edge) => connected.add(edge.source));
     return connected;
   }, [hoveredNodeId, hoverEdgeGeometry]);
 
@@ -369,26 +376,34 @@ export function GraphView({
       serviceCenters,
       layoutLookup,
       outgoingBySource,
+      incomingByTarget,
       endpoint,
       width,
     } = hoverEdgeGeometry;
-    const sourceEdges = outgoingBySource.get(hoveredNodeId);
-    if (!sourceEdges || sourceEdges.length === 0) return [];
+    // Collect both outgoing and incoming edges for the hovered node.
+    const outEdges = outgoingBySource.get(hoveredNodeId) ?? [];
+    const inEdges = incomingByTarget.get(hoveredNodeId) ?? [];
+    if (outEdges.length === 0 && inEdges.length === 0) return [];
 
+    // Deduplicate by ordered pair so A→B and B→A collapse to one edge.
     const seen = new Set<string>();
-    const dedupedEdges = sourceEdges.filter((edge) => {
-      const key = `${edge.source}->${edge.target}`;
+    const dedupedEdges = [...outEdges, ...inEdges].filter((edge) => {
+      const a = edge.source < edge.target ? edge.source : edge.target;
+      const b = edge.source < edge.target ? edge.target : edge.source;
+      const key = `${a}<->${b}`;
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
     });
 
-    // Grouped bundling for dense fan-out targets.
+    // Grouped bundling for dense fan-out / fan-in targets.
     const BUNDLE_THRESHOLD = 3;
     const edgesByGroup = new Map<string, GraphEdge[]>();
     dedupedEdges.forEach((edge) => {
-      const tgt = layoutLookup.get(edge.target);
-      const groupKey = tgt ? `layer-${tgt.layer}-${tgt.groupId}` : edge.target;
+      // For each edge, the "other" node is the one that isn't the hovered node.
+      const otherId = edge.source === hoveredNodeId ? edge.target : edge.source;
+      const other = layoutLookup.get(otherId);
+      const groupKey = other ? `layer-${other.layer}-${other.groupId}` : otherId;
       const list = edgesByGroup.get(groupKey);
       if (list) list.push(edge);
       else edgesByGroup.set(groupKey, [edge]);
@@ -408,59 +423,56 @@ export function GraphView({
       }
     });
 
-    return bundled.map((edge) => {
+    return bundled.flatMap((edge) => {
       const srcPos = posMap.get(edge.source);
       const tgtPos = posMap.get(edge.target);
+      // Skip edges whose source or target has no position in the flow layout
+      // to avoid phantom lines rendered at (0,0).
+      if (!srcPos || !tgtPos) return [];
       const srcH = heightMap.get(edge.source) ?? FLOW_LAYOUT.NODE_MIN_HEIGHT;
       const tgtH = heightMap.get(edge.target) ?? FLOW_LAYOUT.NODE_MIN_HEIGHT;
       let srcSide: "top" | "bottom" | "left" | "right" = "bottom";
       let tgtSide: "top" | "bottom" | "left" | "right" = "top";
       let edgeType: "arrowBezier" | "arrowStep" = "arrowBezier";
-      if (srcPos && tgtPos) {
-        const dx = tgtPos.x - srcPos.x;
-        const dy = tgtPos.y - srcPos.y;
-        const sameLayer = Math.abs(dy) < 80;
-        if (sameLayer) {
-          const srcCenterX = srcPos.x + width / 2;
-          const tgtCenterX = tgtPos.x + width / 2;
-          const minX = Math.min(srcCenterX, tgtCenterX);
-          const maxX = Math.max(srcCenterX, tgtCenterX);
-          const hasIntermediate = serviceCenters.some((node) => {
-            if (node.id === edge.source || node.id === edge.target) return false;
-            if (Math.abs(node.y - srcPos.y) > 60) return false;
-            return node.x > minX + 8 && node.x < maxX - 8;
-          });
+      const dx = tgtPos.x - srcPos.x;
+      const dy = tgtPos.y - srcPos.y;
+      const sameLayer = Math.abs(dy) < 80;
+      if (sameLayer) {
+        const srcCenterX = srcPos.x + width / 2;
+        const tgtCenterX = tgtPos.x + width / 2;
+        const minX = Math.min(srcCenterX, tgtCenterX);
+        const maxX = Math.max(srcCenterX, tgtCenterX);
+        const hasIntermediate = serviceCenters.some((node) => {
+          if (node.id === edge.source || node.id === edge.target) return false;
+          if (Math.abs(node.y - srcPos.y) > 60) return false;
+          return node.x > minX + 8 && node.x < maxX - 8;
+        });
 
-          if (hasIntermediate) {
-            edgeType = "arrowStep";
-            if (dx > 0) {
-              srcSide = "top";
-              tgtSide = "top";
-            } else {
-              srcSide = "bottom";
-              tgtSide = "bottom";
-            }
-          } else if (dx > 0) {
-            srcSide = "right";
-            tgtSide = "left";
+        if (hasIntermediate) {
+          edgeType = "arrowStep";
+          if (dx > 0) {
+            srcSide = "top";
+            tgtSide = "top";
           } else {
-            srcSide = "left";
-            tgtSide = "right";
+            srcSide = "bottom";
+            tgtSide = "bottom";
           }
-        } else if (dy > 0) {
-          srcSide = "bottom";
-          tgtSide = "top";
+        } else if (dx > 0) {
+          srcSide = "right";
+          tgtSide = "left";
         } else {
-          srcSide = "top";
-          tgtSide = "bottom";
+          srcSide = "left";
+          tgtSide = "right";
         }
+      } else if (dy > 0) {
+        srcSide = "bottom";
+        tgtSide = "top";
+      } else {
+        srcSide = "top";
+        tgtSide = "bottom";
       }
-      const src = srcPos
-        ? endpoint(srcPos, srcH, srcSide)
-        : { x: 0, y: 0, pos: Position.Bottom };
-      const tgt = tgtPos
-        ? endpoint(tgtPos, tgtH, tgtSide)
-        : { x: 0, y: 0, pos: Position.Top };
+      const src = endpoint(srcPos, srcH, srcSide);
+      const tgt = endpoint(tgtPos, tgtH, tgtSide);
       const data: ArrowEdgeData = {
         sx: src.x,
         sy: src.y,
@@ -471,13 +483,13 @@ export function GraphView({
         bundleCount: (edge as typeof edge & { _bundleCount?: number })
           ._bundleCount,
       };
-      return {
+      return [{
         id: edge.id,
         source: edge.source,
         target: edge.target,
         type: edgeType,
         data,
-      };
+      }];
     });
   }, [hoveredNodeId, hoverEdgeGeometry]);
 

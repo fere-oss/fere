@@ -116,10 +116,19 @@ export function useGraphLayoutData({
   );
 
   const layoutNodes = isContainerView ? containerNodes : localNodes;
-  const layoutEdges = useMemo(
-    () => (isContainerView ? [] : hierarchyEdges),
-    [isContainerView, hierarchyEdges],
-  );
+  // Deduplicate edges to at most one per source→target pair.
+  // The backend may create multiple edges between the same pair on different
+  // ports (e.g. A→B:5432, A→B:6379).  Layout only needs unique pairs.
+  const layoutEdges = useMemo(() => {
+    if (isContainerView) return [];
+    const seen = new Set<string>();
+    return hierarchyEdges.filter((edge) => {
+      const key = `${edge.source}->${edge.target}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [isContainerView, hierarchyEdges]);
 
   const projectPathsKey = useMemo(() => {
     return Array.from(
