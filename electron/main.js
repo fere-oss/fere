@@ -6,6 +6,7 @@ const fs = require("fs");
 const {
   validateExternalUrl,
   validateHttpRequestUrl,
+  isPrivateHost,
   setupNavigationBlocking,
   setupWindowOpenHandler,
   setupPermissionHandlers,
@@ -14,6 +15,32 @@ const {
   getNetworkPolicy,
   setNetworkPolicy,
 } = require("./security");
+
+/**
+ * Extract hostname from a database connection URI and reject private/internal addresses.
+ * Supports mongodb://, mongodb+srv://, postgresql://, postgres://, http://, https://.
+ * Returns { valid: true } or { valid: false, reason: string }.
+ */
+function validateRemoteDbUri(uri) {
+  if (!uri || typeof uri !== "string") {
+    return { valid: false, reason: "URI must be a non-empty string" };
+  }
+
+  let parsed;
+  try {
+    // mongodb+srv:// isn't recognized by URL natively, normalize to https for parsing
+    const normalized = uri.replace(/^mongodb(\+srv)?:\/\//, "https://");
+    parsed = new URL(normalized);
+  } catch {
+    return { valid: false, reason: "Invalid URI format" };
+  }
+
+  if (isPrivateHost(parsed.hostname)) {
+    return { valid: false, reason: "Connections to private/internal addresses are not allowed for remote URIs" };
+  }
+
+  return { valid: true };
+}
 
 // Import services
 const {
@@ -1080,6 +1107,8 @@ ipcMain.handle("create-database-table", async (_, containerId, containerImage, t
 
 // Connect directly to remote MongoDB via URI
 ipcMain.handle("connect-mongo-uri", async (_, uri) => {
+  const check = validateRemoteDbUri(uri);
+  if (!check.valid) return { error: check.reason, tables: [], dbType: "mongodb" };
   try {
     const result = await connectMongoUri(uri);
     analytics.capture("database_connected", { db_type: "mongodb", mode: "remote_uri", success: !result.error });
@@ -1092,6 +1121,8 @@ ipcMain.handle("connect-mongo-uri", async (_, uri) => {
 
 // Get collection data from remote MongoDB URI
 ipcMain.handle("get-mongo-uri-collection-data", async (_, uri, collectionName, limit) => {
+  const check = validateRemoteDbUri(uri);
+  if (!check.valid) return { error: check.reason, columns: [], rows: [], dbType: "mongodb" };
   try {
     return await getMongoUriCollectionData(uri, collectionName, limit || 100);
   } catch (error) {
@@ -1102,6 +1133,8 @@ ipcMain.handle("get-mongo-uri-collection-data", async (_, uri, collectionName, l
 
 // Execute Mongo command against remote URI
 ipcMain.handle("execute-mongo-uri-query", async (_, uri, command) => {
+  const check = validateRemoteDbUri(uri);
+  if (!check.valid) return { error: check.reason, dbType: "mongodb" };
   try {
     return await executeMongoUriQuery(uri, command);
   } catch (error) {
@@ -1112,6 +1145,8 @@ ipcMain.handle("execute-mongo-uri-query", async (_, uri, command) => {
 
 // Connect directly to remote PostgreSQL via URI
 ipcMain.handle("connect-postgres-uri", async (_, uri) => {
+  const check = validateRemoteDbUri(uri);
+  if (!check.valid) return { error: check.reason, tables: [], dbType: "postgresql" };
   try {
     const result = await connectPostgresUri(uri);
     analytics.capture("database_connected", { db_type: "postgresql", mode: "remote_uri", success: !result.error });
@@ -1124,6 +1159,8 @@ ipcMain.handle("connect-postgres-uri", async (_, uri) => {
 
 // Get table data from remote PostgreSQL URI
 ipcMain.handle("get-postgres-uri-table-data", async (_, uri, tableName, limit) => {
+  const check = validateRemoteDbUri(uri);
+  if (!check.valid) return { error: check.reason, columns: [], rows: [], dbType: "postgresql" };
   try {
     return await getPostgresUriTableData(uri, tableName, limit || 100);
   } catch (error) {
@@ -1134,6 +1171,8 @@ ipcMain.handle("get-postgres-uri-table-data", async (_, uri, tableName, limit) =
 
 // Execute PostgreSQL query against remote URI
 ipcMain.handle("execute-postgres-uri-query", async (_, uri, query) => {
+  const check = validateRemoteDbUri(uri);
+  if (!check.valid) return { error: check.reason, dbType: "postgresql" };
   try {
     return await executePostgresUriQuery(uri, query);
   } catch (error) {
@@ -1144,6 +1183,8 @@ ipcMain.handle("execute-postgres-uri-query", async (_, uri, query) => {
 
 // Connect to Elasticsearch via HTTP URL
 ipcMain.handle("connect-elasticsearch-uri", async (_, baseUrl) => {
+  const check = validateRemoteDbUri(baseUrl);
+  if (!check.valid) return { error: check.reason, tables: [], dbType: "elasticsearch" };
   try {
     return await connectElasticsearchUri(baseUrl);
   } catch (error) {
@@ -1154,6 +1195,8 @@ ipcMain.handle("connect-elasticsearch-uri", async (_, baseUrl) => {
 
 // Fetch index data from Elasticsearch
 ipcMain.handle("get-elasticsearch-uri-index-data", async (_, baseUrl, indexName, limit) => {
+  const check = validateRemoteDbUri(baseUrl);
+  if (!check.valid) return { columns: [], rows: [], error: check.reason, dbType: "elasticsearch" };
   try {
     return await getElasticsearchUriIndexData(baseUrl, indexName, limit);
   } catch (error) {
@@ -1164,6 +1207,8 @@ ipcMain.handle("get-elasticsearch-uri-index-data", async (_, baseUrl, indexName,
 
 // Execute search query against Elasticsearch
 ipcMain.handle("execute-elasticsearch-uri-query", async (_, baseUrl, query) => {
+  const check = validateRemoteDbUri(baseUrl);
+  if (!check.valid) return { error: check.reason, dbType: "elasticsearch" };
   try {
     return await executeElasticsearchUriQuery(baseUrl, query);
   } catch (error) {
