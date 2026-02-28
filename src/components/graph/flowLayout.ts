@@ -6,7 +6,7 @@ import type { FlowServiceNodeData } from "./flowNodes";
 import { supportsExternalApiScan } from "./externalApis";
 
 // Primitive constants — all derived values below depend on these.
-const TIER_LABEL_HEIGHT = 60; // layer labels (LAYER 0, LAYER 1 …) — larger
+const TIER_LABEL_HEIGHT = 40; // layer labels (LAYER 0, LAYER 1 …) — larger
 const LABEL_HEIGHT = 28; // group labels (STOREFRONT-WEB …) — smaller
 const GROUP_BOX_PADDING = 16;
 const LABEL_SPACING = 12; // minimum gap between layer label and group label
@@ -48,7 +48,7 @@ export const FLOW_LAYOUT = {
   CONTAINER_NODE_MIN_HEIGHT: 132,
   CONTAINER_GROUP_BOX_PADDING: 16,
   LAYER_LABEL_OFFSET,
-  STANDALONE_SECTION_OFFSET: 100,
+  STANDALONE_SECTION_OFFSET: 120,
   GROUP_BOX_PADDING,
   LABEL_WIDTH: 240,
   TIER_LABEL_HEIGHT,

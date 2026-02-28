@@ -691,9 +691,9 @@ textarea {
 }
 
 .graph-tier-label {
-  font-size: 35px;
-  padding: 12px 44px;
-  letter-spacing: 0.15em;
+  font-size: 15px;
+  padding: 8px 24px;
+  letter-spacing: 0.12em;
 }
 
 .graph-group-label {
