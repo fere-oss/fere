@@ -755,8 +755,8 @@ textarea {
 }
 
 .rf-node-wrapper.rf-node-dimmed {
-  opacity: 0.5;
-  filter: grayscale(20%);
+  opacity: 0.18;
+  filter: grayscale(50%);
   pointer-events: auto;
 }
 
