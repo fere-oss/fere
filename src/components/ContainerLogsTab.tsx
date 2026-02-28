@@ -21,7 +21,7 @@ interface UnifiedLogEntry {
   formattedTime: string;
 }
 
-const LOG_ROW_HEIGHT = 26;
+const LOG_ROW_HEIGHT = 28;
 
 interface LogRowProps {
   logs: UnifiedLogEntry[];
@@ -95,7 +95,7 @@ const LogRow = memo(({ index, style, logs, showTimestamps, highlightMatches }: R
       <span className={`unified-log-stream unified-log-stream-${log.stream}`}>
         {log.stream === 'stderr' ? 'ERR' : 'OUT'}
       </span>
-      <span className="unified-log-text">
+      <span className="unified-log-text" title={log.line}>
         {typeof highlighted === 'string' ? (
           highlighted
         ) : (

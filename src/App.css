@@ -8974,8 +8974,13 @@ textarea {
 
 .unified-log-text {
   color: #111111;
-  word-break: break-all;
   flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  word-break: normal;
+  overflow-wrap: normal;
 }
 
 .unified-log-level-error .unified-log-text {
