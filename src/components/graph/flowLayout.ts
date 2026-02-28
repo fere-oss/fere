@@ -5,13 +5,39 @@ import { groupLayoutNodes } from "./grouping";
 import type { FlowServiceNodeData } from "./flowNodes";
 import { supportsExternalApiScan } from "./externalApis";
 
+// Primitive constants — all derived values below depend on these.
+const TIER_LABEL_HEIGHT = 60; // layer labels (LAYER 0, LAYER 1 …) — larger
+const LABEL_HEIGHT = 28; // group labels (STOREFRONT-WEB …) — smaller
+const GROUP_BOX_PADDING = 16;
+const LABEL_SPACING = 12; // minimum gap between layer label and group label
+const INTER_LAYER_SPACING = 36; // gap between previous layer's content and next layer's label
+
+// Vertical stacking above each layer's rowY (node top edge):
+//   ┌─ Layer label ─┐   ← rowY - LAYER_LABEL_OFFSET          (height: TIER_LABEL_HEIGHT)
+//        (gap)
+//   ┌─ Group label ─┐   ← rowY - GROUP_BOX_PADDING - LABEL_HEIGHT - 4
+//   ┌─ Group box  ──┐   ← rowY - GROUP_BOX_PADDING
+//   │   Nodes …     │   ← rowY
+//
+// LAYER_LABEL_OFFSET is derived so the layer label bottom never overlaps the
+// group label top:
+//   rowY - LAYER_LABEL_OFFSET + TIER_LABEL_HEIGHT  <=  rowY - GROUP_BOX_PADDING - LABEL_HEIGHT - 4 - LABEL_SPACING
+//   ⟹  LAYER_LABEL_OFFSET  >=  TIER_LABEL_HEIGHT + GROUP_BOX_PADDING + LABEL_HEIGHT + 4 + LABEL_SPACING
+const LAYER_LABEL_OFFSET =
+  TIER_LABEL_HEIGHT + GROUP_BOX_PADDING + LABEL_HEIGHT + 4 + LABEL_SPACING;
+
+// LAYER_GAP must be large enough that the previous layer's group box bottom
+// doesn't collide with the next layer's layer label top:
+//   LAYER_GAP  >=  LAYER_LABEL_OFFSET + GROUP_BOX_PADDING + INTER_LAYER_SPACING
+const LAYER_GAP = LAYER_LABEL_OFFSET + GROUP_BOX_PADDING + INTER_LAYER_SPACING;
+
 export const FLOW_LAYOUT = {
   NODE_WIDTH: 260,
   NODE_MIN_HEIGHT: 190,
   NODE_GAP: 40,
   STANDALONE_NODE_GAP: 36,
   GROUP_GAP: 40,
-  LAYER_GAP: 100,
+  LAYER_GAP,
   STANDALONE_GROUP_GAP: 24,
   STANDALONE_LABEL_OFFSET: 64,
   CONTAINER_SECTION_OFFSET: 64,
@@ -21,11 +47,12 @@ export const FLOW_LAYOUT = {
   CONTAINER_NODE_GAP: 20,
   CONTAINER_NODE_MIN_HEIGHT: 132,
   CONTAINER_GROUP_BOX_PADDING: 16,
-  LAYER_LABEL_OFFSET: 64,
+  LAYER_LABEL_OFFSET,
   STANDALONE_SECTION_OFFSET: 100,
-  GROUP_BOX_PADDING: 16,
+  GROUP_BOX_PADDING,
   LABEL_WIDTH: 240,
-  LABEL_HEIGHT: 28,
+  TIER_LABEL_HEIGHT,
+  LABEL_HEIGHT,
   MAX_GROUP_COLUMNS: 2,
   MAX_STANDALONE_COLUMNS: 2,
   MAX_CONTAINER_COLUMNS: 3,
@@ -167,6 +194,7 @@ export function buildFlowLayout({
     STANDALONE_SECTION_OFFSET,
     GROUP_BOX_PADDING,
     LABEL_WIDTH,
+    TIER_LABEL_HEIGHT,
     LABEL_HEIGHT,
     MAX_GROUP_COLUMNS,
     MAX_STANDALONE_COLUMNS,
@@ -371,12 +399,12 @@ export function buildFlowLayout({
         data: { text: labelText },
         draggable: false,
         selectable: false,
-        style: { width: LABEL_WIDTH, height: LABEL_HEIGHT },
+        style: { width: LABEL_WIDTH, height: TIER_LABEL_HEIGHT },
       });
       minX = Math.min(minX, -LABEL_WIDTH / 2);
       minY = Math.min(minY, rowY - LAYER_LABEL_OFFSET);
       maxX = Math.max(maxX, LABEL_WIDTH / 2);
-      maxY = Math.max(maxY, rowY - LAYER_LABEL_OFFSET + LABEL_HEIGHT);
+      maxY = Math.max(maxY, rowY - LAYER_LABEL_OFFSET + TIER_LABEL_HEIGHT);
 
       currentY += meta.height + LAYER_GAP;
     });
@@ -565,7 +593,7 @@ export function buildFlowLayout({
         data: { text: "Standalone Services", offset: true },
         draggable: false,
         selectable: false,
-        style: { width: sectionLabelWidth, height: LABEL_HEIGHT + 4 },
+        style: { width: sectionLabelWidth, height: TIER_LABEL_HEIGHT },
       });
     }
   }

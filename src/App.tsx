@@ -6,6 +6,7 @@ import { DatabaseListView } from "./components/DatabaseListView";
 import { ContainerLogsTab } from "./components/ContainerLogsTab";
 import { WelcomeModal } from "./components/WelcomeModal";
 import { ShareModal } from "./components/ShareModal";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { useKnownServices, serviceKey, nodeServiceKey, looseServiceIdentity } from "./components/checklist/useKnownServices";
 import { ServiceDropdown } from "./components/checklist/ServiceDropdown";
 import { HEALTH_COLORS } from "./components/graph/constants";
@@ -1267,6 +1268,7 @@ function App() {
 
       {/* Main Content */}
       <main className="main-content">
+        <ErrorBoundary>
         <div
           className={`main-view ${viewMode === "graph" ? "main-view-active" : ""}`}
         >
@@ -1394,6 +1396,7 @@ function App() {
             )}
           </div>
         </div>
+        </ErrorBoundary>
       </main>
 
       {/* Welcome Modal */}
