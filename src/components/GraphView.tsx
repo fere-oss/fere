@@ -158,6 +158,7 @@ export function GraphView({
   const groupOrderCacheRef = useRef<Map<number, string[]>>(new Map());
   const fitPendingRef = useRef(true);
   const wasVisibleRef = useRef(false);
+  const autoRecoverKeyRef = useRef("");
   const [viewportReady, setViewportReady] = useState(false);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const contextMenuOpenRef = useRef(false);
@@ -503,7 +504,54 @@ export function GraphView({
   useEffect(() => {
     fitPendingRef.current = true;
     setViewportReady(false);
+    autoRecoverKeyRef.current = "";
   }, [nodesKey]);
+
+  useEffect(() => {
+    if (!reactFlowInstance || !viewportReady) return;
+    const container = containerRef.current;
+    if (!container) return;
+
+    // Guard against rare viewport glitches where the camera drifts away from
+    // every service node after topology/layout updates.
+    const serviceNodes = flowLayout.nodes.filter((node) => node.type === "service");
+    if (serviceNodes.length === 0) return;
+
+    const recoveryKey = `${nodesKey}:${layoutVersion}`;
+    if (autoRecoverKeyRef.current === recoveryKey) return;
+
+    const viewport = reactFlowInstance.getViewport();
+    const zoom = Math.max(0.0001, viewport.zoom || 1);
+    const worldXMin = -viewport.x / zoom;
+    const worldYMin = -viewport.y / zoom;
+    const worldXMax = (container.clientWidth - viewport.x) / zoom;
+    const worldYMax = (container.clientHeight - viewport.y) / zoom;
+
+    const hasVisibleServiceNode = serviceNodes.some((node) => {
+      const h = nodeHeightsRef.current.get(node.id) ?? measurementMinHeight;
+      const x = node.position.x;
+      const y = node.position.y;
+      return (
+        x + FLOW_LAYOUT.NODE_WIDTH >= worldXMin &&
+        x <= worldXMax &&
+        y + h >= worldYMin &&
+        y <= worldYMax
+      );
+    });
+
+    if (hasVisibleServiceNode) return;
+
+    autoRecoverKeyRef.current = recoveryKey;
+    reactFlowInstance.fitView({ padding: 0.32, duration: 220 });
+  }, [
+    reactFlowInstance,
+    viewportReady,
+    flowLayout.nodes,
+    nodesKey,
+    layoutVersion,
+    measurementMinHeight,
+    nodeHeightsRef,
+  ]);
 
   useEffect(() => {
     if (!reactFlowInstance) return;

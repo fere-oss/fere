@@ -95,6 +95,7 @@ const {
   stopLogStream,
   stopContainerStreams,
   stopAllStreams,
+  getActiveStreams,
 } = require("./services/containerLogs");
 const {
   initAlertManager,
@@ -119,6 +120,51 @@ let mainWindow;
 let snapshotScheduler = null;
 let snapshotHandler = null;
 let alertNodeMap = new Map();
+const logStreamsBySender = new Map();
+
+function registerSenderLogStream(sender, streamId) {
+  if (!sender || sender.isDestroyed() || !streamId) return;
+  const senderId = sender.id;
+  let entry = logStreamsBySender.get(senderId);
+
+  if (!entry) {
+    const streamIds = new Set();
+    const onDestroyed = () => {
+      const current = logStreamsBySender.get(senderId);
+      if (!current) return;
+      current.streamIds.forEach((id) => stopLogStream(id));
+      logStreamsBySender.delete(senderId);
+    };
+
+    sender.once("destroyed", onDestroyed);
+    entry = { sender, streamIds, onDestroyed };
+    logStreamsBySender.set(senderId, entry);
+  }
+
+  entry.streamIds.add(streamId);
+}
+
+function unregisterSenderLogStream(sender, streamId) {
+  if (!sender || !streamId) return;
+  const entry = logStreamsBySender.get(sender.id);
+  if (!entry) return;
+
+  entry.streamIds.delete(streamId);
+  if (entry.streamIds.size === 0) {
+    entry.sender.removeListener("destroyed", entry.onDestroyed);
+    logStreamsBySender.delete(sender.id);
+  }
+}
+
+function unregisterLogStreamEverywhere(streamId) {
+  for (const [senderId, entry] of logStreamsBySender.entries()) {
+    if (!entry.streamIds.delete(streamId)) continue;
+    if (entry.streamIds.size === 0) {
+      entry.sender.removeListener("destroyed", entry.onDestroyed);
+      logStreamsBySender.delete(senderId);
+    }
+  }
+}
 
 const isDev = process.env.NODE_ENV === "development" || !app.isPackaged;
 
@@ -1256,21 +1302,17 @@ ipcMain.handle("start-container-logs", async (event, containerId, options = {}) 
         }
       },
       (code, sid) => {
+        const id = sid || streamId;
+        if (id) unregisterSenderLogStream(sender, id);
         safeSend("container-log-close", {
-          streamId: sid,
+          streamId: id,
           containerId,
           exitCode: code,
         });
       }
     );
 
-    if (sender && !sender.isDestroyed()) {
-      sender.once("destroyed", () => {
-        if (streamId) {
-          stopLogStream(streamId);
-        }
-      });
-    }
+    registerSenderLogStream(sender, streamId);
 
     analytics.capture("container_logs_started");
     return { success: true, streamId };
@@ -1284,6 +1326,7 @@ ipcMain.handle("start-container-logs", async (event, containerId, options = {}) 
 ipcMain.handle("stop-container-logs", async (_, streamId) => {
   try {
     const stopped = stopLogStream(streamId);
+    unregisterLogStreamEverywhere(streamId);
     return { success: stopped };
   } catch (error) {
     console.error("Error stopping container logs:", error);
@@ -1294,7 +1337,12 @@ ipcMain.handle("stop-container-logs", async (_, streamId) => {
 // Stop all log streams for a container
 ipcMain.handle("stop-container-streams", async (_, containerId) => {
   try {
+    const beforeActive = new Set(getActiveStreams().map((stream) => stream.streamId));
     const count = stopContainerStreams(containerId);
+    const afterActive = new Set(getActiveStreams().map((stream) => stream.streamId));
+    beforeActive.forEach((id) => {
+      if (!afterActive.has(id)) unregisterLogStreamEverywhere(id);
+    });
     return { success: true, count };
   } catch (error) {
     console.error("Error stopping container streams:", error);
@@ -1305,7 +1353,11 @@ ipcMain.handle("stop-container-streams", async (_, containerId) => {
 // Stop all active log streams
 ipcMain.handle("stop-all-container-logs", async () => {
   try {
+    const allStreamIds = Array.from(logStreamsBySender.values()).flatMap((entry) =>
+      Array.from(entry.streamIds),
+    );
     stopAllStreams();
+    allStreamIds.forEach((id) => unregisterLogStreamEverywhere(id));
     return { success: true };
   } catch (error) {
     console.error("Error stopping all container logs:", error);

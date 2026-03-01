@@ -844,7 +844,7 @@ function App() {
       edges: expandedEdges,
       ports: filteredPorts,
     };
-  }, [graphIndex, edgeIndex, graph.edges, ports, selectedTab, edgeMode, getProjectStatus]);
+  }, [graphIndex, edgeIndex, ports, selectedTab, edgeMode, getProjectStatus]);
 
   // Filter to show only running Docker containers
   const dockerContainerData = useMemo(() => {

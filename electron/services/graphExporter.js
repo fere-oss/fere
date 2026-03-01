@@ -53,22 +53,85 @@ function nodeBrandMatch(haystack, lookup) {
   catch { return haystack.includes(lookup); }
 }
 
-function getNodeLogoUrl(name, containerImage, token) {
-  const candidates = [name, containerImage].filter(Boolean);
-  for (const s of candidates) {
-    const k = String(s).toLowerCase().trim();
-    if (k.startsWith('/') || k.startsWith('~')) continue;
-    let domain = NODE_BRAND_DOMAIN[k] || null;
-    if (!domain) {
-      for (const [lookup, d] of Object.entries(NODE_BRAND_DOMAIN)) {
-        if (nodeBrandMatch(k, lookup)) { domain = d; break; }
+function nodeNormalizeBrand(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function nodeExtractDomainLike(value) {
+  const match = String(value || '').match(/([a-z0-9.-]+\.[a-z]{2,})/i);
+  return match ? match[1].toLowerCase() : null;
+}
+
+function nodeIsHostLike(value) {
+  return /^[a-z0-9.-]+\.[a-z]{2,}$/i.test(value);
+}
+
+function nodeIsReverseDnsBundleId(value) {
+  return /^(com|org|net|io|dev|app|ai)\.[a-z0-9-]+(\.[a-z0-9-]+)+$/i.test(value);
+}
+
+function nodeInferServiceBrand(node) {
+  const command = node.command || '';
+  let runtimeCommand = command.includes(' | ')
+    ? command.split(' | ').slice(1).join(' | ')
+    : command;
+  runtimeCommand = runtimeCommand.replace(/^docker-entrypoint\.sh\s+/i, '').trim();
+
+  const dockerLangMatch = runtimeCommand.match(/^docker-([\w]+)-entrypoint\b/i);
+  const dockerLangHint = dockerLangMatch ? dockerLangMatch[1] : null;
+  if (dockerLangHint) {
+    runtimeCommand = runtimeCommand.replace(/^docker-[\w]+-entrypoint\s*/i, '').trim();
+  }
+
+  const samples = [node.name, node.containerImage, dockerLangHint, runtimeCommand]
+    .filter(Boolean);
+  for (const sample of samples) {
+    const key = nodeNormalizeBrand(sample);
+    const isPathLike = key.startsWith('/') || key.startsWith('~');
+    if (!isPathLike) {
+      if (NODE_BRAND_DOMAIN[key]) return sample;
+      for (const lookup of Object.keys(NODE_BRAND_DOMAIN)) {
+        if (nodeBrandMatch(key, lookup)) return sample;
       }
     }
-    if (domain) {
-      let url = 'https://img.logo.dev/' + domain + '?size=64&format=png&fallback=monogram';
-      if (token) url += '&token=' + token;
-      return url;
-    }
+    const host = nodeExtractDomainLike(sample);
+    if (host) return host;
+  }
+  return null;
+}
+
+function nodeLogoDevUrl(domain, token) {
+  let url = 'https://img.logo.dev/' + domain + '?size=64&format=png&fallback=monogram';
+  if (token) url += '&token=' + token;
+  return url;
+}
+
+function nodeLogoDevNameUrl(name, token) {
+  let url = 'https://img.logo.dev/name/' + encodeURIComponent(name) + '?size=64&format=png&fallback=monogram';
+  if (token) url += '&token=' + token;
+  return url;
+}
+
+function getNodeLogoUrl(node, token) {
+  const serviceBrand = nodeInferServiceBrand(node);
+  if (!serviceBrand) return null;
+
+  const key = nodeNormalizeBrand(serviceBrand);
+  if (NODE_BRAND_DOMAIN[key]) {
+    return nodeLogoDevUrl(NODE_BRAND_DOMAIN[key], token);
+  }
+  for (const [lookup, domain] of Object.entries(NODE_BRAND_DOMAIN)) {
+    if (nodeBrandMatch(key, lookup)) return nodeLogoDevUrl(domain, token);
+  }
+  const extracted = nodeExtractDomainLike(key);
+  if (extracted && nodeIsHostLike(extracted) && !nodeIsReverseDnsBundleId(extracted)) {
+    return nodeLogoDevUrl(extracted, token);
+  }
+  if (nodeIsHostLike(key) && !nodeIsReverseDnsBundleId(key)) {
+    return nodeLogoDevUrl(key, token);
+  }
+  if (key.length <= 80) {
+    return nodeLogoDevNameUrl(key, token);
   }
   return null;
 }
@@ -155,18 +218,27 @@ async function generateHTML({ graphData, metadata, logoDevToken = '' }) {
       routes: (n.routes || []).map(r => ({ method: String(r.method || 'GET').toUpperCase(), path: r.path })),
       containerNetworks: (n.containerNetworks || []).slice(0, 2).map(cn => cn.name || cn),
     }));
+  cleanNodes.sort((a, b) => String(a.id).localeCompare(String(b.id)));
 
   // Keep only edges between non-external nodes
   const cleanNodeIds = new Set(cleanNodes.map(n => n.id));
   const cleanEdges = edges
     .filter(e => cleanNodeIds.has(e.source) && cleanNodeIds.has(e.target))
-    .map(e => ({ id: e.id, source: e.source, target: e.target, sourcePort: e.sourcePort || null, targetPort: e.targetPort || null }));
+    .map(e => ({
+      id: e.id,
+      source: e.source,
+      target: e.target,
+      sourcePort: e.sourcePort || null,
+      targetPort: e.targetPort || null,
+      protocol: e.protocol || null,
+    }));
+  cleanEdges.sort((a, b) => String(a.id).localeCompare(String(b.id)));
 
   // Pre-fetch brand logos as base64 so the exported HTML is fully self-contained
   // (htmlpreview.github.io blocks external image requests)
   const logosMap = {};
   await Promise.all(cleanNodes.map(async (n) => {
-    const url = getNodeLogoUrl(n.name, n.containerImage, logoDevToken);
+    const url = getNodeLogoUrl(n, logoDevToken);
     if (url) {
       const b64 = await fetchLogoBase64(url);
       if (b64) logosMap[n.id] = 'data:image/png;base64,' + b64;
@@ -183,10 +255,23 @@ async function generateHTML({ graphData, metadata, logoDevToken = '' }) {
   <title>fere — ${escapeHtml(metadata.tabName)}</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --font-ui: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      --font-mono: 'SF Mono', 'Menlo', 'Consolas', 'Monaco', monospace;
+      --bg-white: #ffffff;
+      --bg-primary: #f5f5f5;
+      --bg-muted: #fafafa;
+      --border-color: #e5e5e5;
+      --border-hover: #d4d4d4;
+      --text-primary: #171717;
+      --text-secondary: #525252;
+      --text-muted: #737373;
+      --text-faint: #a3a3a3;
+    }
     html, body {
       width: 100%; height: 100%; overflow: hidden;
       background: #f8f9fa;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      font-family: var(--font-ui);
       color: #0a0a0a;
       -webkit-font-smoothing: antialiased;
     }
@@ -245,6 +330,16 @@ async function generateHTML({ graphData, metadata, logoDevToken = '' }) {
       box-shadow: 0 1px 4px rgba(0,0,0,0.06);
       pointer-events: none;
       z-index: 2;
+    }
+    .group-label-centered {
+      transform: translateX(-50%);
+      padding: 6px 18px;
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      background: color-mix(in srgb, var(--gc, #d6dce8) 12%, #ffffff);
+      color: color-mix(in srgb, #161a20 82%, #737373 18%);
+      border: 1.5px solid color-mix(in srgb, var(--gc, #d6dce8) 55%, #ffffff);
     }
 
     /* ── Tier label pill — matches .graph-tier-label ── */
@@ -317,8 +412,33 @@ async function generateHTML({ graphData, metadata, logoDevToken = '' }) {
     }
 
     /* Brand logo */
+    .brand-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-secondary);
+      flex-shrink: 0;
+      width: 15px;
+      height: 15px;
+    }
+    .brand-icon-image {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      display: block;
+      border-radius: 3px;
+    }
+    .brand-icon-fallback {
+      border: 1px solid var(--border-color);
+      border-radius: 50%;
+      font-family: var(--font-mono);
+      line-height: 1;
+      font-size: 9px;
+      color: var(--text-secondary);
+      background: #fff;
+    }
     .n-logo-row { display: flex; align-items: center; gap: 8px; }
-    .n-logo { width: 20px; height: 20px; object-fit: contain; flex-shrink: 0; border-radius: 4px; }
+    .n-logo { width: 15px; height: 15px; object-fit: contain; flex-shrink: 0; border-radius: 3px; }
 
     /* Name */
     .n-name { font-size: 16px; font-weight: 500; letter-spacing: -0.01em; color: #0a0a0a; margin-bottom: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -352,95 +472,221 @@ async function generateHTML({ graphData, metadata, logoDevToken = '' }) {
     .n-route-path { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 160px; }
     .n-routes-more { font-size: 11px; color: #a3a3a3; margin-top: 2px; }
 
-    /* ── Detail sidebar (matches app NodeDetailContent panel) ── */
-    #detail-backdrop { display: none; }
-
-    #detail {
-      position: fixed; top: 16px; bottom: 16px; right: 16px;
-      width: 400px;
-      background: #ffffff;
-      border-radius: 16px;
-      border: 1px solid #e5e5e5;
-      box-shadow: 0 8px 40px rgba(0,0,0,0.12), 0 2px 12px rgba(0,0,0,0.06);
-      transform: translateX(calc(100% + 32px));
-      transition: transform 0.25s cubic-bezier(0.4,0,0.2,1);
-      z-index: 50;
-      display: flex; flex-direction: column;
-      overflow: hidden;
+    /* ── Detail sidebar (matches app NodeDetailPanel/NodeDetailContent) ── */
+    #detail-backdrop {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: transparent;
+      z-index: 49;
+      pointer-events: none;
     }
-    #detail.open { transform: translateX(0); }
-
-    .dp-top {
-      display: flex; align-items: flex-start; justify-content: space-between;
-      padding: 20px 16px 16px;
-      border-bottom: 1px solid #e5e5e5;
+    #detail-backdrop.open { pointer-events: auto; }
+    #detail {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      bottom: 12px;
+      background: var(--bg-white);
+      border-radius: 12px;
+      box-shadow: -4px 0 24px rgba(0, 0, 0, 0.15);
+      width: 320px;
+      max-width: calc(100vw - 24px);
+      display: flex;
+      flex-direction: column;
+      transform: translateX(calc(100% + 24px));
+      transition: transform 0.2s ease-out;
+      z-index: 50;
+      overflow: hidden;
+      pointer-events: none;
+    }
+    #detail.open {
+      transform: translateX(0);
+      pointer-events: auto;
+    }
+    .node-detail-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      padding: 20px 20px;
+      border-bottom: 1px solid var(--border-color);
+      background: var(--bg-primary);
+      border-radius: 12px 12px 0 0;
       flex-shrink: 0;
+    }
+    .node-detail-title-row { display: flex; align-items: center; gap: 14px; }
+    .node-detail-dot { width: 14px; height: 14px; border-radius: 50%; flex-shrink: 0; }
+    .node-detail-title-info { display: flex; flex-direction: column; gap: 6px; }
+    .node-detail-name {
+      font-size: 18px;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      color: var(--text-primary);
+      margin: 0;
+      word-break: break-word;
+    }
+    .node-detail-badge {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      padding: 4px 10px;
+      border-radius: 6px;
+      width: fit-content;
+    }
+    .node-detail-close {
+      width: 32px;
+      height: 32px;
+      border: none;
+      background: transparent;
+      border-radius: 8px;
+      font-size: 24px;
+      font-weight: 400;
+      color: var(--text-muted);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.15s ease;
+      line-height: 1;
+    }
+    .node-detail-close:hover { background: var(--bg-primary); color: var(--text-primary); }
+    .node-detail-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px 20px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+    .node-detail-section { display: flex; flex-direction: column; gap: 12px; }
+    .node-detail-section-title {
+      font-size: 12px;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+      margin: 0;
+      display: flex;
+      align-items: center;
       gap: 8px;
     }
-    .dp-top-left { flex: 1; min-width: 0; }
-    .dp-logo-name { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
-    .dp-logo { width: 28px; height: 28px; object-fit: contain; flex-shrink: 0; border-radius: 6px; }
-    .dp-name { font-size: 17px; font-weight: 600; letter-spacing: -0.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .dp-badge { display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 6px; font-family: 'SF Mono', Menlo, monospace; font-size: 11px; font-weight: 600; }
-    .dp-close {
-      background: none; border: none; cursor: pointer;
-      color: #a3a3a3; font-size: 20px; padding: 2px 4px;
-      border-radius: 4px; line-height: 1; flex-shrink: 0;
-      transition: color 0.12s;
+    .node-detail-health {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 14px;
+      background: var(--bg-primary);
+      border-radius: 8px;
+      border: 1px solid var(--border-color);
     }
-    .dp-close:hover { color: #0a0a0a; }
-
-    .dp-body { flex: 1; overflow-y: auto; padding: 16px; }
-    .dp-section { margin-bottom: 20px; }
-    .dp-stitle {
-      font-size: 11px; font-weight: 700; text-transform: uppercase;
-      letter-spacing: 0.08em; color: #a3a3a3; margin-bottom: 10px;
-      display: flex; align-items: center; gap: 6px;
+    .node-detail-health-indicator { display: flex; align-items: center; gap: 8px; }
+    .node-detail-health-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+    .node-detail-health-label { font-size: 13px; font-weight: 600; }
+    .node-detail-health-meta { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+    .node-detail-count {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-faint);
+      font-weight: 500;
+      margin-left: 6px;
     }
-    .dp-count {
-      background: #f5f5f5; border-radius: 4px; padding: 1px 6px;
-      font-size: 10px; font-weight: 600; color: #737373;
+    .node-detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .node-detail-item { display: flex; flex-direction: column; gap: 4px; }
+    .node-detail-item.full-width { grid-column: 1 / -1; }
+    .node-detail-label {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-faint);
     }
-    .dp-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-    .dp-item { display: flex; flex-direction: column; gap: 3px; }
-    .dp-item.full { grid-column: 1 / -1; }
-    .dp-label { font-size: 10px; color: #a3a3a3; font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em; }
-    .dp-value { font-size: 13px; color: #171717; font-weight: 500; }
-    .dp-value.mono { font-family: 'SF Mono', Menlo, monospace; }
-    .dp-value.small { font-size: 11px; word-break: break-all; }
-
-    .dp-health { display: flex; align-items: center; gap: 8px; }
-    .dp-health-label { font-size: 13px; font-weight: 600; }
-
-    .dp-command {
-      font-family: 'SF Mono', Menlo, monospace; font-size: 11px;
-      color: #525252; background: #f8f9fa; border: 1px solid #e5e5e5;
-      border-radius: 6px; padding: 8px 10px; word-break: break-all;
+    .node-detail-value { font-size: 14px; color: var(--text-primary); }
+    .node-detail-value.mono { font-family: var(--font-mono); font-weight: 500; }
+    .node-detail-value.small { font-size: 12px; word-break: break-all; }
+    .node-detail-command {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--text-secondary);
+      background: var(--bg-primary);
+      padding: 12px 14px;
+      border-radius: 8px;
+      border: 1px solid var(--border-color);
+      word-break: break-all;
+      line-height: 1.5;
     }
-
-    .dp-ports { display: flex; flex-direction: column; gap: 6px; }
-    .dp-port { display: flex; align-items: center; gap: 8px; }
-    .dp-port-num { font-family: 'SF Mono', Menlo, monospace; font-size: 15px; font-weight: 600; }
-    .dp-port-host { font-size: 12px; color: #a3a3a3; }
-    .dp-port-desc { font-size: 11px; color: #737373; }
-
-    .dp-routes { display: flex; flex-direction: column; gap: 6px; }
-    .dp-route { display: flex; align-items: center; gap: 8px; font-family: 'SF Mono', Menlo, monospace; font-size: 11px; }
-    .dp-route-path { color: #525252; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
-
-    .dp-conn-group { margin-bottom: 12px; }
-    .dp-conn-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: #a3a3a3; display: block; margin-bottom: 6px; }
-    .dp-conn { display: flex; align-items: center; gap: 6px; font-size: 12px; padding: 5px 0; border-bottom: 1px solid #f5f5f5; }
-    .dp-conn-arrow { color: #a3a3a3; }
-    .dp-conn-node { color: #171717; font-weight: 500; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .dp-conn-ports { font-family: 'SF Mono', Menlo, monospace; font-size: 10px; color: #a3a3a3; white-space: nowrap; }
+    .node-detail-ports { display: flex; flex-direction: column; gap: 8px; }
+    .node-detail-port {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      background: var(--bg-primary);
+      border-radius: 8px;
+      border: 1px solid var(--border-color);
+    }
+    .node-detail-port-number { font-family: var(--font-mono); font-size: 14px; font-weight: 600; }
+    .node-detail-port-host { font-size: 13px; color: var(--text-muted); }
+    .node-detail-port-desc { font-size: 12px; color: var(--text-faint); margin-left: auto; }
+    .node-detail-routes { display: flex; flex-direction: column; gap: 6px; max-height: 240px; overflow-y: auto; padding: 2px; }
+    .node-detail-route {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 12px;
+      background: var(--bg-primary);
+      border-radius: 6px;
+      border: 1px solid var(--border-color);
+    }
+    .route-method {
+      font-family: var(--font-mono);
+      font-weight: 700;
+      font-size: 10px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: #f5f5f5;
+      color: var(--text-muted);
+      min-width: 38px;
+      text-align: center;
+      text-transform: uppercase;
+    }
+    .route-method.route-get { background: #e8f5e9; color: #2e7d32; }
+    .route-method.route-post { background: #fff3e0; color: #ef6c00; }
+    .route-method.route-put { background: #e3f2fd; color: #1565c0; }
+    .route-method.route-delete { background: #ffebee; color: #c62828; }
+    .route-method.route-patch { background: #e3f2fd; color: #0078d4; }
+    .node-detail-route-path { font-family: var(--font-mono); font-size: 12px; color: var(--text-secondary); }
+    .node-detail-connections { display: flex; flex-direction: column; gap: 16px; }
+    .node-detail-connection-group { display: flex; flex-direction: column; gap: 8px; }
+    .node-detail-connection-label { font-size: 11px; font-weight: 600; color: var(--text-faint); text-transform: uppercase; }
+    .node-detail-connection {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      background: var(--bg-primary);
+      border-radius: 8px;
+      border: 1px solid var(--border-color);
+      font-size: 13px;
+    }
+    .connection-arrow { font-size: 14px; color: var(--text-faint); }
+    .connection-node { font-weight: 500; color: var(--text-primary); }
+    .connection-port { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); margin-left: auto; }
+    .docker-state { font-family: var(--font-mono); font-size: 11px; font-weight: 600; text-transform: uppercase; }
+    .docker-state-running { color: #22c55e; }
+    .docker-state-paused { color: #eab308; }
+    .docker-state-restarting { color: #f97316; }
+    .docker-state-exited, .docker-state-dead { color: #ef4444; }
+    .docker-state-created { color: #6b7280; }
 
     /* ── Controls ── */
     .ctrl {
       position: fixed; top: 12px; right: 12px; display: flex; flex-direction: column;
       gap: 4px; z-index: 20; transition: right 0.25s cubic-bezier(0.4,0,0.2,1);
     }
-    body.detail-open .ctrl { right: 428px; }
+    body.detail-open .ctrl { right: 340px; }
     .ctrl button {
       width: 32px; height: 32px; background: #fff; border: 1px solid #e5e5e5;
       border-radius: 7px; cursor: pointer; display: flex;
@@ -472,11 +718,17 @@ async function generateHTML({ graphData, metadata, logoDevToken = '' }) {
     <!-- Detail popup -->
     <div id="detail-backdrop"></div>
     <div id="detail">
-      <div class="dp-top">
-        <div class="dp-top-left" id="dp-top-left"></div>
-        <button class="dp-close" id="dp-close" title="Close">&#x2715;</button>
+      <div class="node-detail-header">
+        <div class="node-detail-title-row">
+          <div class="node-detail-dot" id="detail-dot"></div>
+          <div class="node-detail-title-info">
+            <h2 class="node-detail-name" id="detail-name"></h2>
+            <span class="node-detail-badge" id="detail-badge"></span>
+          </div>
+        </div>
+        <button class="node-detail-close" id="dp-close" title="Close">&#x2715;</button>
       </div>
-      <div class="dp-body" id="dp-body"></div>
+      <div class="node-detail-content" id="dp-body"></div>
     </div>
   </div>
 
@@ -566,6 +818,10 @@ async function generateHTML({ graphData, metadata, logoDevToken = '' }) {
       catch { return haystack.includes(lookup); }
     }
 
+    function normalizeBrand(value) {
+      return String(value || '').trim().toLowerCase();
+    }
+
     function logoDevUrl(domain) {
       let url = 'https://img.logo.dev/' + domain + '?size=64&format=png&fallback=monogram';
       if (LOGO_TOKEN) url += '&token=' + LOGO_TOKEN;
@@ -580,22 +836,46 @@ async function generateHTML({ graphData, metadata, logoDevToken = '' }) {
 
     function isHostLike(v) { return /^[a-z0-9.-]+\.[a-z]{2,}$/i.test(v); }
     function isRevDns(v) { return /^(com|org|net|io|dev|app|ai)\.[a-z0-9-]+(\.[a-z0-9-]+)+$/i.test(v); }
-    function extractDomain(v) { const m = v.match(/([a-z0-9.-]+\.[a-z]{2,})/i); return m ? m[1].toLowerCase() : null; }
+    function extractDomain(v) { const m = String(v || '').match(/([a-z0-9.-]+\.[a-z]{2,})/i); return m ? m[1].toLowerCase() : null; }
 
-    function getLogoUrl(name, containerImage) {
-      const candidates = [name, containerImage].filter(Boolean);
-      for (const s of candidates) {
-        const k = String(s).toLowerCase().trim();
-        if (k.startsWith('/') || k.startsWith('~')) continue;
-        if (BRAND_DOMAIN[k]) return logoDevUrl(BRAND_DOMAIN[k]);
-        for (const [lookup, domain] of Object.entries(BRAND_DOMAIN)) {
-          if (matchBrand(k, lookup)) return logoDevUrl(domain);
-        }
-        const extracted = extractDomain(k);
-        if (extracted && isHostLike(extracted) && !isRevDns(extracted)) return logoDevUrl(extracted);
-        if (isHostLike(k) && !isRevDns(k)) return logoDevUrl(k);
-        if (k.length <= 80) return logoDevNameUrl(k);
+    function inferServiceBrand(node) {
+      const command = node.command || '';
+      let runtimeCommand = command.includes(' | ')
+        ? command.split(' | ').slice(1).join(' | ')
+        : command;
+      runtimeCommand = runtimeCommand.replace(/^docker-entrypoint\\.sh\\s+/i, '').trim();
+      const dockerLangMatch = runtimeCommand.match(/^docker-([\\w]+)-entrypoint\\b/i);
+      const dockerLangHint = dockerLangMatch ? dockerLangMatch[1] : null;
+      if (dockerLangHint) {
+        runtimeCommand = runtimeCommand.replace(/^docker-[\\w]+-entrypoint\\s*/i, '').trim();
       }
+      const samples = [node.name, node.containerImage, dockerLangHint, runtimeCommand].filter(Boolean);
+      for (const sample of samples) {
+        const key = normalizeBrand(sample);
+        const isPathLike = key.startsWith('/') || key.startsWith('~');
+        if (!isPathLike) {
+          if (BRAND_DOMAIN[key]) return sample;
+          for (const lookup of Object.keys(BRAND_DOMAIN)) {
+            if (matchBrand(key, lookup)) return sample;
+          }
+        }
+        const host = extractDomain(sample);
+        if (host) return host;
+      }
+      return null;
+    }
+
+    function getBrandImageUrl(value) {
+      if (!value) return null;
+      const key = normalizeBrand(value);
+      if (BRAND_DOMAIN[key]) return logoDevUrl(BRAND_DOMAIN[key]);
+      for (const [lookup, domain] of Object.entries(BRAND_DOMAIN)) {
+        if (matchBrand(key, lookup)) return logoDevUrl(domain);
+      }
+      const extracted = extractDomain(key);
+      if (extracted && isHostLike(extracted) && !isRevDns(extracted)) return logoDevUrl(extracted);
+      if (isHostLike(key) && !isRevDns(key)) return logoDevUrl(key);
+      if (key.length <= 80) return logoDevNameUrl(key);
       return null;
     }
 
@@ -619,6 +899,80 @@ async function generateHTML({ graphData, metadata, logoDevToken = '' }) {
       b = b.replace(/[-_]?\\d+$/, '');
       b = b.replace(/[-_]+$/, '');
       return b || name.toLowerCase();
+    }
+
+    function isSyntheticDockerNetworkEdge(edge) {
+      return typeof edge.protocol === 'string' && edge.protocol.startsWith('docker-network:');
+    }
+
+    // Mirrors useGraphLayoutData hierarchy edge preprocessing so shared view
+    // matches in-app layering when Docker-only network edges are present.
+    function prepareGraphData(nodes, edges) {
+      const localNodes = [...nodes]
+        .filter(n => n.type !== 'external')
+        .sort((a, b) => String(a.id).localeCompare(String(b.id)));
+      const localNodeIds = new Set(localNodes.map(n => n.id));
+      const localNodeById = new Map(localNodes.map((n) => [n.id, n]));
+      const localEdges = [...edges]
+        .filter((e) => localNodeIds.has(e.source) && localNodeIds.has(e.target))
+        .sort((a, b) => String(a.id).localeCompare(String(b.id)));
+
+      const structuralEdges = localEdges.filter((edge) => !isSyntheticDockerNetworkEdge(edge));
+      const effectiveHierarchyEdges = structuralEdges.length > 0 ? structuralEdges : localEdges;
+
+      const hierarchyEdges = (() => {
+        if (structuralEdges.length > 0) return effectiveHierarchyEdges;
+
+        const normalized = new Map();
+        for (const edge of effectiveHierarchyEdges) {
+          if (!isSyntheticDockerNetworkEdge(edge)) {
+            normalized.set(edge.id, edge);
+            continue;
+          }
+
+          const sourceNode = localNodeById.get(edge.source);
+          const targetNode = localNodeById.get(edge.target);
+          if (!sourceNode || !targetNode) continue;
+
+          const sourcePriority = typePriority(sourceNode.type);
+          const targetPriority = typePriority(targetNode.type);
+          if (sourcePriority === targetPriority) continue;
+
+          const lowNode = sourcePriority < targetPriority ? sourceNode : targetNode;
+          const highNode = sourcePriority < targetPriority ? targetNode : sourceNode;
+          const lowPriority = Math.min(sourcePriority, targetPriority);
+          const highPriority = Math.max(sourcePriority, targetPriority);
+
+          if (lowPriority === 0 && highPriority !== 1) continue;
+          if (lowPriority === 1 && highPriority > 3) continue;
+          if (highPriority - lowPriority > 2) continue;
+
+          const normalizedId = 'hier-' + lowNode.id + '-' + highNode.id;
+          normalized.set(normalizedId, {
+            ...edge,
+            id: normalizedId,
+            source: lowNode.id,
+            target: highNode.id,
+          });
+        }
+
+        return Array.from(normalized.values());
+      })();
+
+      const layoutEdges = (() => {
+        const seen = new Set();
+        return hierarchyEdges.filter((edge) => {
+          const key = edge.source + '->' + edge.target;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+      })();
+
+      return {
+        nodes: localNodes,
+        layoutEdges,
+      };
     }
 
     // ── Layout constants (from flowLayout.ts FLOW_LAYOUT) ────────────────
@@ -740,6 +1094,14 @@ async function generateHTML({ graphData, metadata, logoDevToken = '' }) {
     function placeNodes(nodes, edges) {
       const { nodesByLayer, sortedLayerNums, layerOrders, standalone } = computeLayout(nodes, edges);
       const PAD = 80;
+      const estimateNodeHeight = (node) => {
+        let estimated = NHB;
+        if (node.routes && node.routes.length > 0) {
+          const visibleRoutes = Math.min(3, node.routes.length);
+          estimated += 26 + visibleRoutes * 18 + (node.routes.length > 3 ? 16 : 0);
+        }
+        return estimated;
+      };
 
       let maxRowW = 0;
       sortedLayerNums.forEach(layerNum => {
@@ -749,9 +1111,62 @@ async function generateHTML({ graphData, metadata, logoDevToken = '' }) {
       });
 
       if (standalone.length > 0) {
-        const MAX_COLS = 4;
-        const cols = Math.min(standalone.length, MAX_COLS);
-        maxRowW = Math.max(maxRowW, cols * NW + (cols - 1) * GAP_H);
+        const STANDALONE_NODE_GAP = 36;
+        const STANDALONE_GROUP_GAP = 24;
+        const GROUP_BOX_PADDING = 16;
+        const LABEL_WIDTH = 240;
+        const MAX_STANDALONE_COLUMNS = 2;
+        const MAX_SYSTEM_SERVICE_COLUMNS = 3;
+
+        const standaloneGroupsMap = new Map();
+        standalone.forEach((n) => {
+          const type = n.type || 'service';
+          const key = n.isDocker ? ('docker:' + type) : type;
+          const list = standaloneGroupsMap.get(key) || [];
+          list.push(n);
+          standaloneGroupsMap.set(key, list);
+        });
+
+        const standaloneGroups = Array.from(standaloneGroupsMap.entries())
+          .sort((a, b) => {
+            const aDocker = a[0].startsWith('docker:') ? 1 : 0;
+            const bDocker = b[0].startsWith('docker:') ? 1 : 0;
+            if (aDocker !== bDocker) return aDocker - bDocker;
+            const aType = a[0].replace('docker:', '');
+            const bType = b[0].replace('docker:', '');
+            const pd = typePriority(aType) - typePriority(bType);
+            return pd !== 0 ? pd : aType.localeCompare(bType);
+          })
+          .map(([key, nodes]) => {
+            const isDocker = key.startsWith('docker:');
+            const type = isDocker ? key.replace('docker:', '') : key;
+            return {
+              groupType: type,
+              isGroup: isDocker || nodes.length > 1,
+              nodes,
+            };
+          });
+
+        const standaloneWidth =
+          standaloneGroups
+            .map((group) => {
+              const desiredColumns = Math.ceil(Math.sqrt(group.nodes.length));
+              const maxColumns = group.groupType === 'service'
+                ? MAX_SYSTEM_SERVICE_COLUMNS
+                : MAX_STANDALONE_COLUMNS;
+              const columnCount = Math.min(
+                Math.max(1, desiredColumns),
+                Math.min(maxColumns, group.nodes.length),
+              );
+              const width = columnCount * NW + (columnCount - 1) * STANDALONE_NODE_GAP;
+              return group.isGroup
+                ? Math.max(width + GROUP_BOX_PADDING * 2, LABEL_WIDTH)
+                : width;
+            })
+            .reduce((sum, width) => sum + width, 0) +
+          STANDALONE_GROUP_GAP * Math.max(0, standaloneGroups.length - 1);
+
+        maxRowW = Math.max(maxRowW, standaloneWidth);
       }
 
       const canvasW = maxRowW + PAD * 2;
@@ -810,32 +1225,148 @@ async function generateHTML({ graphData, metadata, logoDevToken = '' }) {
         curY += NHB + LAYER_GAP;
       });
 
-      // Standalone section — flat grid sorted by type priority (matches app service map view)
+      // Standalone section — grouped by type (matches app standalone grouping)
       if (standalone.length > 0) {
-        const STANDALONE_GAP = 60;
-        const MAX_COLS = 4;
-        curY += STANDALONE_GAP;
+        const STANDALONE_NODE_GAP = 36;
+        const STANDALONE_GROUP_GAP = 24;
+        const STANDALONE_LABEL_OFFSET = 64;
+        const STANDALONE_SECTION_OFFSET = 120;
+        const GROUP_BOX_PADDING = 16;
+        const LABEL_WIDTH = 240;
+        const MAX_STANDALONE_COLUMNS = 2;
+        const MAX_SYSTEM_SERVICE_COLUMNS = 3;
 
-        labelInfos.push({ text: 'Standalone Services', cx, y: curY, isStandalone: true });
-        curY += LABEL_H + LABEL_GAP;
-
-        // Sort by type priority then name (matches app ordering)
-        const sortedStandalone = [...standalone].sort((a, b) => {
-          const pd = typePriority(a.type) - typePriority(b.type);
-          return pd !== 0 ? pd : a.name.localeCompare(b.name);
+        const standaloneGroupsMap = new Map();
+        standalone.forEach((n) => {
+          const type = n.type || 'service';
+          const key = n.isDocker ? ('docker:' + type) : type;
+          const list = standaloneGroupsMap.get(key) || [];
+          list.push(n);
+          standaloneGroupsMap.set(key, list);
         });
 
-        const cols   = Math.min(sortedStandalone.length, MAX_COLS);
-        const rowW   = cols * NW + (cols - 1) * GAP_H;
-        const startX = cx - rowW / 2;
-        sortedStandalone.forEach((n, i) => {
-          const col = i % MAX_COLS;
-          const row = Math.floor(i / MAX_COLS);
-          pos[n.id] = { x: startX + col * (NW + GAP_H), y: curY + row * (NHB + 40) };
+        const standaloneGroups = Array.from(standaloneGroupsMap.entries())
+          .sort((a, b) => {
+            const aDocker = a[0].startsWith('docker:') ? 1 : 0;
+            const bDocker = b[0].startsWith('docker:') ? 1 : 0;
+            if (aDocker !== bDocker) return aDocker - bDocker;
+            const aType = a[0].replace('docker:', '');
+            const bType = b[0].replace('docker:', '');
+            const pd = typePriority(aType) - typePriority(bType);
+            return pd !== 0 ? pd : aType.localeCompare(bType);
+          })
+          .map(([key, nodes]) => {
+            const isDocker = key.startsWith('docker:');
+            const type = isDocker ? key.replace('docker:', '') : key;
+            let groupName;
+            if (isDocker) groupName = 'Docker Containers';
+            else if (type === 'service') groupName = 'System Services';
+            else groupName = SL[type] || (type.charAt(0).toUpperCase() + type.slice(1));
+            return {
+              groupName,
+              groupType: type,
+              isGroup: isDocker || nodes.length > 1,
+              nodes: [...nodes].sort((a, b) => a.name.localeCompare(b.name)),
+            };
+          });
+
+        const baseY = curY + STANDALONE_SECTION_OFFSET;
+        labelInfos.push({
+          text: 'Standalone Services',
+          cx,
+          y: baseY - STANDALONE_SECTION_OFFSET,
+          isStandalone: true,
         });
 
-        const numRows = Math.ceil(sortedStandalone.length / MAX_COLS);
-        curY += numRows * NHB + (numRows - 1) * 40;
+        const meta = standaloneGroups.map((group) => {
+          const desiredColumns = Math.ceil(Math.sqrt(group.nodes.length));
+          const maxColumns = group.groupType === 'service'
+            ? MAX_SYSTEM_SERVICE_COLUMNS
+            : MAX_STANDALONE_COLUMNS;
+          const columnCount = Math.min(
+            Math.max(1, desiredColumns),
+            Math.min(maxColumns, group.nodes.length),
+          );
+          const rowCount = Math.ceil(group.nodes.length / columnCount);
+          const width = columnCount * NW + (columnCount - 1) * STANDALONE_NODE_GAP;
+          const rowHeights = new Array(rowCount).fill(NHB);
+          const height =
+            rowHeights.reduce((sum, h) => sum + h, 0) +
+            (rowCount - 1) * STANDALONE_NODE_GAP;
+          return {
+            group,
+            columnCount,
+            width,
+            height,
+            occupiedWidth: group.isGroup
+              ? Math.max(width + GROUP_BOX_PADDING * 2, LABEL_WIDTH)
+              : width,
+            rowHeights,
+          };
+        });
+
+        const rowY = baseY;
+        const rowWidth =
+          meta.reduce((sum, item) => sum + item.occupiedWidth, 0) +
+          STANDALONE_GROUP_GAP * Math.max(0, meta.length - 1);
+        let cursorX = cx - rowWidth / 2;
+
+        meta.forEach((item) => {
+          const groupCenterX = cursorX + item.occupiedWidth / 2;
+          const groupX = item.group.isGroup
+            ? groupCenterX - item.width / 2
+            : cursorX;
+
+          item.group.nodes.forEach((n, idx) => {
+            const row = Math.floor(idx / item.columnCount);
+            const col = idx % item.columnCount;
+            const nodesInRow = Math.min(
+              item.columnCount,
+              item.group.nodes.length - row * item.columnCount,
+            );
+            const rowWidth = nodesInRow * NW + (nodesInRow - 1) * STANDALONE_NODE_GAP;
+            const colOffset = (item.width - rowWidth) / 2;
+            const rowOffset =
+              (item.rowHeights || []).slice(0, row).reduce((sum, h) => sum + h, 0) +
+              row * STANDALONE_NODE_GAP;
+            pos[n.id] = {
+              x: groupX + colOffset + col * (NW + STANDALONE_NODE_GAP),
+              y: rowY + rowOffset,
+            };
+          });
+
+          if (item.group.isGroup) {
+            const nodeXs = item.group.nodes.map((n) => pos[n.id].x);
+            const nodeYs = item.group.nodes.map((n) => pos[n.id].y);
+            const nodeBottoms = item.group.nodes.map((n) => pos[n.id].y + estimateNodeHeight(n));
+            const minX = Math.min(...nodeXs) - GROUP_BOX_PADDING;
+            const maxX = Math.max(...nodeXs) + NW + GROUP_BOX_PADDING;
+            const minY = Math.min(...nodeYs) - GROUP_BOX_PADDING;
+            const maxY = Math.max(...nodeBottoms) + GROUP_BOX_PADDING;
+
+            groupInfos.push({
+              x: minX,
+              y: minY,
+              width: maxX - minX,
+              height: maxY - minY,
+              color: GROUP_COLOR,
+              label: item.group.groupName,
+              centerLabel: true,
+              labelCx: (minX + maxX) / 2,
+              labelY: Math.min(...nodeYs) - STANDALONE_LABEL_OFFSET,
+              nodeIds: new Set(item.group.nodes.map((n) => n.id)),
+            });
+          }
+
+          cursorX += item.occupiedWidth + STANDALONE_GROUP_GAP;
+        });
+
+        const rowHeight = meta.length > 0
+          ? Math.max(...meta.map((item) =>
+              item.height + (item.group.isGroup ? GROUP_BOX_PADDING : 0),
+            ))
+          : 0;
+        curY = rowY + rowHeight + STANDALONE_GROUP_GAP + STANDALONE_LABEL_OFFSET;
       }
 
       const canvasH = curY + PAD;
@@ -904,7 +1435,9 @@ async function generateHTML({ graphData, metadata, logoDevToken = '' }) {
       const hGlow  = HG[n.healthStatus] || HG.yellow;
       const mainPort = n.ports[0]?.port || n.ports[0];
       const projectLabel = n.projectPath ? n.projectPath.split('/').pop() : null;
-      const logoUrl = (D.logos && D.logos[n.id]) || getLogoUrl(n.name, n.containerImage);
+      const serviceBrand = n.isDocker && n.type === 'container' ? 'docker' : inferServiceBrand(n);
+      const logoUrl = (D.logos && D.logos[n.id]) || getBrandImageUrl(serviceBrand);
+      const logoFallback = serviceBrand ? esc(String(serviceBrand).trim().charAt(0).toUpperCase() || '?') : '?';
 
       const div = document.createElement('div');
       div.className = 'node';
@@ -921,10 +1454,18 @@ async function generateHTML({ graphData, metadata, logoDevToken = '' }) {
       html += '<span class="n-badge" style="background:' + color + '15;color:' + color + '">' + esc(label) + '</span>';
       html += '</div>';
 
-      // Name row (with optional logo)
-      if (logoUrl) {
+      // Name row with brand icon fallback (matches app BrandIcon behavior)
+      if (serviceBrand) {
         html += '<div class="n-logo-row">';
-        html += '<img class="n-logo" src="' + esc(logoUrl) + '" onerror="this.style.display=\\'none\\'" loading="lazy" />';
+        if (logoUrl) {
+          html += '<span class="brand-icon">';
+          html += '<img class="brand-icon-image n-logo" src="' + esc(logoUrl) + '" loading="lazy" ';
+          html += 'onerror="this.style.display=\\'none\\';if(this.nextElementSibling)this.nextElementSibling.style.display=\\'inline-flex\\'" />';
+          html += '<span class="brand-icon brand-icon-fallback" style="display:none">' + logoFallback + '</span>';
+          html += '</span>';
+        } else {
+          html += '<span class="brand-icon brand-icon-fallback">' + logoFallback + '</span>';
+        }
         html += '<div class="n-name" title="' + esc(n.name) + '">' + esc(n.name) + '</div>';
         html += '</div>';
       } else {
@@ -975,82 +1516,99 @@ async function generateHTML({ graphData, metadata, logoDevToken = '' }) {
     // ── Detail popup ───────────────────────────────────────────────────────
     const detailEl   = document.getElementById('detail');
     const backdropEl = document.getElementById('detail-backdrop');
-    const dpTopLeft  = document.getElementById('dp-top-left');
+    const detailDot  = document.getElementById('detail-dot');
+    const detailName = document.getElementById('detail-name');
+    const detailBadge = document.getElementById('detail-badge');
     const dpBody     = document.getElementById('dp-body');
     const dpClose    = document.getElementById('dp-close');
+
+    function formatLastSeen(ts) {
+      if (!ts) return 'unknown';
+      const now = Date.now();
+      const diff = now - ts;
+      if (diff < 1000) return 'just now';
+      if (diff < 60000) return Math.floor(diff / 1000) + 's ago';
+      if (diff < 3600000) return Math.floor(diff / 60000) + 'm ago';
+      const d = new Date(ts);
+      try { return d.toLocaleTimeString(); } catch { return String(d); }
+    }
 
     function openDetail(n, allEdges, nodesMap) {
       const color  = SC[n.type] || '#6B7280';
       const hColor = HC[n.healthStatus] || HC.yellow;
       const hLabel = HL[n.healthStatus] || 'Idle';
       const hGlow  = HG[n.healthStatus] || HG.yellow;
-      const logoUrl = (D.logos && D.logos[n.id]) || getLogoUrl(n.name, n.containerImage);
-
-      // Header
-      let hdrHtml = '<div class="dp-logo-name">';
-      if (logoUrl) hdrHtml += '<img class="dp-logo" src="' + esc(logoUrl) + '" onerror="this.style.display=\\'none\\'" loading="lazy" />';
-      hdrHtml += '<div class="dp-name" title="' + esc(n.name) + '">' + esc(n.name) + '</div>';
-      hdrHtml += '</div>';
-      hdrHtml += '<span class="dp-badge" style="background:' + color + '15;color:' + color + '">' + esc(SL[n.type] || 'Service') + '</span>';
-      dpTopLeft.innerHTML = hdrHtml;
+      detailDot.style.backgroundColor = color;
+      detailDot.style.boxShadow = '0 0 12px ' + color + '50';
+      detailName.textContent = n.name || '';
+      detailBadge.textContent = SL[n.type] || 'Service';
+      detailBadge.style.backgroundColor = color + '15';
+      detailBadge.style.color = color;
 
       // Body
       let html = '';
 
       // Health
-      html += '<div class="dp-section">';
-      html += '<div class="dp-stitle">Health</div>';
-      html += '<div class="dp-health">';
-      html += '<div class="n-dot" style="background:' + hColor + ';box-shadow:' + hGlow + '"></div>';
-      html += '<span class="dp-health-label" style="color:' + hColor + '">' + hLabel + '</span>';
+      html += '<div class="node-detail-section">';
+      html += '<h3 class="node-detail-section-title">Health Status</h3>';
+      html += '<div class="node-detail-health">';
+      html += '<div class="node-detail-health-indicator">';
+      html += '<div class="node-detail-health-dot" style="background:' + hColor + ';box-shadow:' + hGlow + '"></div>';
+      html += '<span class="node-detail-health-label" style="color:' + hColor + '">' + hLabel + '</span>';
+      html += '</div>';
+      html += '<div class="node-detail-health-meta">';
+      html += '<span class="node-detail-label">Last seen</span>';
+      html += '<span class="node-detail-value">' + esc(formatLastSeen(n.lastSeen)) + '</span>';
+      html += '</div>';
       html += '</div></div>';
 
       // Process / Container info
       if (!n.isDocker) {
-        html += '<div class="dp-section"><div class="dp-stitle">Process</div>';
-        html += '<div class="dp-grid">';
-        if (n.pid)    html += '<div class="dp-item"><span class="dp-label">PID</span><span class="dp-value mono">' + esc(String(n.pid)) + '</span></div>';
-        if (n.user)   html += '<div class="dp-item"><span class="dp-label">User</span><span class="dp-value">' + esc(n.user) + '</span></div>';
-        html += '<div class="dp-item"><span class="dp-label">CPU</span><span class="dp-value mono">' + esc((n.cpu||0).toFixed(1)) + '%</span></div>';
-        html += '<div class="dp-item"><span class="dp-label">Memory</span><span class="dp-value mono">' + esc((n.memory||0).toFixed(1)) + '%</span></div>';
+        html += '<div class="node-detail-section"><h3 class="node-detail-section-title">Process Information</h3>';
+        html += '<div class="node-detail-grid">';
+        if (n.pid) html += '<div class="node-detail-item"><span class="node-detail-label">PID</span><span class="node-detail-value mono">' + esc(String(n.pid)) + '</span></div>';
+        if (n.user) html += '<div class="node-detail-item"><span class="node-detail-label">User</span><span class="node-detail-value">' + esc(n.user) + '</span></div>';
+        html += '<div class="node-detail-item"><span class="node-detail-label">CPU</span><span class="node-detail-value mono">' + esc((n.cpu || 0).toFixed(1)) + '%</span></div>';
+        html += '<div class="node-detail-item"><span class="node-detail-label">Memory</span><span class="node-detail-value mono">' + esc((n.memory || 0).toFixed(1)) + '%</span></div>';
         html += '</div></div>';
       } else {
-        html += '<div class="dp-section"><div class="dp-stitle">Container</div>';
-        html += '<div class="dp-grid">';
-        if (n.containerId)    html += '<div class="dp-item"><span class="dp-label">ID</span><span class="dp-value mono">' + esc(n.containerId.substring(0, 12)) + '</span></div>';
-        if (n.containerState) html += '<div class="dp-item"><span class="dp-label">State</span><span class="dp-value">' + esc(n.containerState) + '</span></div>';
-        html += '<div class="dp-item"><span class="dp-label">CPU</span><span class="dp-value mono">' + esc((n.cpu||0).toFixed(1)) + '%</span></div>';
-        html += '<div class="dp-item"><span class="dp-label">Memory</span><span class="dp-value mono">' + esc(n.memoryUsage || ((n.memory||0).toFixed(1) + '%')) + '</span></div>';
+        html += '<div class="node-detail-section"><h3 class="node-detail-section-title">Container Information</h3>';
+        html += '<div class="node-detail-grid">';
+        if (n.containerId) html += '<div class="node-detail-item"><span class="node-detail-label">Container ID</span><span class="node-detail-value mono">' + esc(n.containerId.substring(0, 12)) + '</span></div>';
+        if (n.containerState) html += '<div class="node-detail-item"><span class="node-detail-label">State</span><span class="node-detail-value docker-state docker-state-' + esc(String(n.containerState).toLowerCase()) + '">' + esc(n.containerState) + '</span></div>';
+        html += '<div class="node-detail-item"><span class="node-detail-label">CPU</span><span class="node-detail-value mono">' + esc((n.cpu || 0).toFixed(1)) + '%</span></div>';
+        html += '<div class="node-detail-item"><span class="node-detail-label">Memory</span><span class="node-detail-value mono">' + esc(n.memoryUsage || ((n.memory || 0).toFixed(1) + '%')) + '</span></div>';
         html += '</div>';
-        if (n.containerImage) html += '<div class="dp-item full" style="margin-top:8px"><span class="dp-label">Image</span><span class="dp-value mono small">' + esc(n.containerImage) + '</span></div>';
+        if (n.containerImage) html += '<div class="node-detail-item full-width" style="margin-top:8px"><span class="node-detail-label">Image</span><span class="node-detail-value mono small">' + esc(n.containerImage) + '</span></div>';
+        if (n.containerStatus) html += '<div class="node-detail-item full-width" style="margin-top:4px"><span class="node-detail-label">Status</span><span class="node-detail-value small">' + esc(n.containerStatus) + '</span></div>';
         html += '</div>';
       }
 
       // Command
       if (n.command) {
-        html += '<div class="dp-section"><div class="dp-stitle">Command</div>';
-        html += '<div class="dp-command">' + esc(n.command) + '</div></div>';
+        html += '<div class="node-detail-section"><h3 class="node-detail-section-title">Command</h3>';
+        html += '<div class="node-detail-command">' + esc(n.command) + '</div></div>';
       }
 
       // Project
       if (n.project || n.projectPath) {
-        html += '<div class="dp-section"><div class="dp-stitle">Project</div>';
-        html += '<div class="dp-grid">';
-        if (n.project)     html += '<div class="dp-item full"><span class="dp-label">Name</span><span class="dp-value">' + esc(n.project) + '</span></div>';
-        if (n.projectPath) html += '<div class="dp-item full"><span class="dp-label">Path</span><span class="dp-value mono small">' + esc(n.projectPath) + '</span></div>';
+        html += '<div class="node-detail-section"><h3 class="node-detail-section-title">Project</h3>';
+        html += '<div class="node-detail-grid">';
+        if (n.project) html += '<div class="node-detail-item full-width"><span class="node-detail-label">Name</span><span class="node-detail-value">' + esc(n.project) + '</span></div>';
+        if (n.projectPath) html += '<div class="node-detail-item full-width"><span class="node-detail-label">Path</span><span class="node-detail-value mono small">' + esc(n.projectPath) + '</span></div>';
         html += '</div></div>';
       }
 
       // Ports (all)
       if (n.ports && n.ports.length > 0) {
-        html += '<div class="dp-section"><div class="dp-stitle">Ports <span class="dp-count">' + n.ports.length + '</span></div>';
-        html += '<div class="dp-ports">';
+        html += '<div class="node-detail-section"><h3 class="node-detail-section-title">Ports <span class="node-detail-count">' + n.ports.length + '</span></h3>';
+        html += '<div class="node-detail-ports">';
         n.ports.forEach(p => {
           const portNum = p.port || p;
-          html += '<div class="dp-port">';
-          html += '<span class="dp-port-num" style="color:' + color + '">:' + esc(String(portNum)) + '</span>';
-          if (p.host) html += '<span class="dp-port-host">' + esc(p.host) + '</span>';
-          if (p.description) html += '<span class="dp-port-desc">' + esc(p.description) + '</span>';
+          html += '<div class="node-detail-port">';
+          html += '<span class="node-detail-port-number" style="color:' + color + '">:' + esc(String(portNum)) + '</span>';
+          if (p.host) html += '<span class="node-detail-port-host">' + esc(p.host) + '</span>';
+          if (p.description) html += '<span class="node-detail-port-desc">' + esc(p.description) + '</span>';
           html += '</div>';
         });
         html += '</div></div>';
@@ -1058,11 +1616,11 @@ async function generateHTML({ graphData, metadata, logoDevToken = '' }) {
 
       // API Routes (all)
       if (n.routes && n.routes.length > 0) {
-        html += '<div class="dp-section"><div class="dp-stitle">API Routes <span class="dp-count">' + n.routes.length + '</span></div>';
-        html += '<div class="dp-routes">';
+        html += '<div class="node-detail-section"><h3 class="node-detail-section-title">API Routes <span class="node-detail-count">' + n.routes.length + '</span></h3>';
+        html += '<div class="node-detail-routes">';
         n.routes.forEach(r => {
           const m = r.method.toUpperCase();
-          html += '<div class="dp-route"><span class="n-method ' + esc(m) + '">' + esc(m) + '</span><span class="dp-route-path">' + esc(r.path) + '</span></div>';
+          html += '<div class="node-detail-route"><span class="route-method route-' + esc(m.toLowerCase()) + '">' + esc(m) + '</span><span class="node-detail-route-path">' + esc(r.path) + '</span></div>';
         });
         html += '</div></div>';
       }
@@ -1071,46 +1629,51 @@ async function generateHTML({ graphData, metadata, logoDevToken = '' }) {
       const incoming = allEdges.filter(e => e.target === n.id);
       const outgoing = allEdges.filter(e => e.source === n.id);
       if (incoming.length > 0 || outgoing.length > 0) {
-        html += '<div class="dp-section"><div class="dp-stitle">Connections</div>';
+        html += '<div class="node-detail-section"><h3 class="node-detail-section-title">Connections</h3><div class="node-detail-connections">';
         if (incoming.length > 0) {
-          html += '<div class="dp-conn-group"><span class="dp-conn-label">Incoming</span>';
+          html += '<div class="node-detail-connection-group"><span class="node-detail-connection-label">Incoming</span>';
           incoming.forEach(e => {
             const srcName = nodesMap.get(e.source)?.name || e.source;
-            html += '<div class="dp-conn"><span class="dp-conn-arrow">←</span><span class="dp-conn-node">' + esc(srcName) + '</span>';
-            if (e.sourcePort || e.targetPort) html += '<span class="dp-conn-ports">:' + esc(String(e.sourcePort||'')) + '→:' + esc(String(e.targetPort||'')) + '</span>';
+            html += '<div class="node-detail-connection"><span class="connection-arrow">←</span><span class="connection-node">' + esc(srcName) + '</span>';
+            if (e.sourcePort || e.targetPort) html += '<span class="connection-port">:' + esc(String(e.sourcePort || '')) + ' → :' + esc(String(e.targetPort || '')) + '</span>';
             html += '</div>';
           });
           html += '</div>';
         }
         if (outgoing.length > 0) {
-          html += '<div class="dp-conn-group"><span class="dp-conn-label">Outgoing</span>';
+          html += '<div class="node-detail-connection-group"><span class="node-detail-connection-label">Outgoing</span>';
           outgoing.forEach(e => {
             const tgtName = nodesMap.get(e.target)?.name || e.target;
-            html += '<div class="dp-conn"><span class="dp-conn-arrow">→</span><span class="dp-conn-node">' + esc(tgtName) + '</span>';
-            if (e.sourcePort || e.targetPort) html += '<span class="dp-conn-ports">:' + esc(String(e.sourcePort||'')) + '→:' + esc(String(e.targetPort||'')) + '</span>';
+            html += '<div class="node-detail-connection"><span class="connection-arrow">→</span><span class="connection-node">' + esc(tgtName) + '</span>';
+            if (e.sourcePort || e.targetPort) html += '<span class="connection-port">:' + esc(String(e.sourcePort || '')) + ' → :' + esc(String(e.targetPort || '')) + '</span>';
             html += '</div>';
           });
           html += '</div>';
         }
-        html += '</div>';
+        html += '</div></div>';
       }
 
       dpBody.innerHTML = html;
       dpBody.scrollTop = 0;
       detailEl.classList.add('open');
+      backdropEl.classList.add('open');
       document.body.classList.add('detail-open');
     }
 
     function closeDetail() {
       detailEl.classList.remove('open');
+      backdropEl.classList.remove('open');
       document.body.classList.remove('detail-open');
     }
 
     dpClose.addEventListener('click', closeDetail);
+    backdropEl.addEventListener('click', closeDetail);
 
     // ── Render ────────────────────────────────────────────────────────────
     function render() {
-      const { nodes, edges } = D;
+      const prepared = prepareGraphData(D.nodes, D.edges);
+      const nodes = prepared.nodes;
+      const edges = prepared.layoutEdges;
       const { pos, labelInfos, groupInfos, canvasW, canvasH } = placeNodes(nodes, edges);
       const nodesMap = new Map(nodes.map(n => [n.id, n]));
 
@@ -1127,6 +1690,7 @@ async function generateHTML({ graphData, metadata, logoDevToken = '' }) {
       esv.setAttribute('height', canvasH);
 
       // Draw group boxes (behind nodes)
+      const groupRenderRefs = [];
       groupInfos.forEach(gi => {
         const box = document.createElement('div');
         box.className = 'group-box';
@@ -1138,12 +1702,18 @@ async function generateHTML({ graphData, metadata, logoDevToken = '' }) {
         grpCont.appendChild(box);
 
         const lbl = document.createElement('div');
-        lbl.className = 'group-label';
+        lbl.className = gi.centerLabel ? 'group-label group-label-centered' : 'group-label';
         lbl.textContent = gi.label;
-        lbl.style.left = (gi.x + 14) + 'px';
-        lbl.style.top  = (gi.y + 10) + 'px';
+        if (gi.centerLabel) {
+          lbl.style.left = gi.labelCx + 'px';
+          lbl.style.top = gi.labelY + 'px';
+        } else {
+          lbl.style.left = (gi.x + 14) + 'px';
+          lbl.style.top  = (gi.y + 10) + 'px';
+        }
         lbl.style.setProperty('--gc', gi.color);
         grpCont.appendChild(lbl);
+        groupRenderRefs.push({ gi, box, lbl });
       });
 
       // Tier / standalone labels
@@ -1184,18 +1754,61 @@ async function generateHTML({ graphData, metadata, logoDevToken = '' }) {
         nodeEls[n.id] = el;
       }
 
+      // Use real rendered node bounds so standalone group backgrounds always
+      // fit cards exactly (font metrics/content can vary per environment).
+      const STANDALONE_LABEL_OFFSET = 64;
+      const GROUP_BOX_PADDING = 16;
+      groupRenderRefs.forEach(({ gi, box, lbl }) => {
+        if (!gi.centerLabel || !gi.nodeIds || gi.nodeIds.size === 0) return;
+
+        const memberEls = Array.from(gi.nodeIds)
+          .map((id) => nodeEls[id])
+          .filter(Boolean);
+        if (memberEls.length === 0) return;
+
+        let minX = Infinity;
+        let minY = Infinity;
+        let maxX = -Infinity;
+        let maxY = -Infinity;
+
+        memberEls.forEach((el) => {
+          const x = parseFloat(el.style.left) || 0;
+          const y = parseFloat(el.style.top) || 0;
+          const w = el.offsetWidth || NW;
+          const h = el.offsetHeight || NHB;
+          minX = Math.min(minX, x);
+          minY = Math.min(minY, y);
+          maxX = Math.max(maxX, x + w);
+          maxY = Math.max(maxY, y + h);
+        });
+
+        const boxX = minX - GROUP_BOX_PADDING;
+        const boxY = minY - GROUP_BOX_PADDING;
+        const boxW = (maxX - minX) + GROUP_BOX_PADDING * 2;
+        const boxH = (maxY - minY) + GROUP_BOX_PADDING * 2;
+
+        box.style.left = boxX + 'px';
+        box.style.top = boxY + 'px';
+        box.style.width = boxW + 'px';
+        box.style.height = boxH + 'px';
+
+        lbl.style.left = ((minX + maxX) / 2) + 'px';
+        lbl.style.top = (minY - STANDALONE_LABEL_OFFSET) + 'px';
+      });
+
       // After nodes are in DOM, measure actual heights then draw edges
       requestAnimationFrame(() => {
         const heights = {};
         for (const id in nodeEls) heights[id] = nodeEls[id].offsetHeight || NHB;
 
-        // Update group box heights to match actual measured node heights
-        const grpEls = grpCont.querySelectorAll('.group-box');
-        groupInfos.forEach((gi, i) => {
-          const box = grpEls[i];
-          if (!box) return;
+        // Update only layer-group box heights to match measured node heights.
+        // Standalone grouped boxes are already fully measured from DOM bounds above.
+        groupRenderRefs.forEach(({ gi, box }) => {
+          if (gi.centerLabel) return;
           let maxH = NHB;
-          gi.nodeIds.forEach(id => { maxH = Math.max(maxH, heights[id] || NHB); });
+          gi.nodeIds.forEach((id) => {
+            maxH = Math.max(maxH, heights[id] || NHB);
+          });
           const GRP_PAD_Y = 16;
           const GRP_TOP_EXTRA = 34;
           box.style.height = (maxH + GRP_PAD_Y * 2 + GRP_TOP_EXTRA) + 'px';
@@ -1309,6 +1922,12 @@ async function generateHTML({ graphData, metadata, logoDevToken = '' }) {
       applyT();
     }
 
+    // Zoom tuning: larger steps for faster interaction in shared web view.
+    const WHEEL_ZOOM_SENSITIVITY = 0.0032;
+    const BUTTON_ZOOM_IN_FACTOR = 1.5;
+    const BUTTON_ZOOM_OUT_FACTOR = 1 / BUTTON_ZOOM_IN_FACTOR;
+    const PINCH_ZOOM_EXPONENT = 1.15;
+
     // factor > 1 = zoom in, factor < 1 = zoom out
     function zoomAt(mx, my, factor) {
       const newSc = Math.min(Math.max(sc * factor, 0.1), 3);
@@ -1322,7 +1941,7 @@ async function generateHTML({ graphData, metadata, logoDevToken = '' }) {
       e.preventDefault();
       const r = vp.getBoundingClientRect();
       // Multiplicative zoom — feels consistent at every zoom level
-      const factor = Math.pow(2, -e.deltaY * 0.0018);
+      const factor = Math.pow(2, -e.deltaY * WHEEL_ZOOM_SENSITIVITY);
       zoomAt(e.clientX - r.left, e.clientY - r.top, factor);
     }, { passive: false });
 
@@ -1360,14 +1979,17 @@ async function generateHTML({ graphData, metadata, logoDevToken = '' }) {
         const mx = (e.touches[0].clientX + e.touches[1].clientX) / 2;
         const my = (e.touches[0].clientY + e.touches[1].clientY) / 2;
         const r  = vp.getBoundingClientRect();
-        if (d0 > 0) zoomAt(mx - r.left, my - r.top, d1 / d0);
+        if (d0 > 0) {
+          const pinchFactor = Math.pow(d1 / d0, PINCH_ZOOM_EXPONENT);
+          zoomAt(mx - r.left, my - r.top, pinchFactor);
+        }
       }
       touches = e.touches;
     }, { passive: false });
     vp.addEventListener('touchend', () => { touches = null; });
 
-    document.getElementById('btn-zi').onclick  = () => zoomAt(vp.clientWidth/2, vp.clientHeight/2, 1.25);
-    document.getElementById('btn-zo').onclick  = () => zoomAt(vp.clientWidth/2, vp.clientHeight/2, 0.8);
+    document.getElementById('btn-zi').onclick  = () => zoomAt(vp.clientWidth/2, vp.clientHeight/2, BUTTON_ZOOM_IN_FACTOR);
+    document.getElementById('btn-zo').onclick  = () => zoomAt(vp.clientWidth/2, vp.clientHeight/2, BUTTON_ZOOM_OUT_FACTOR);
     document.getElementById('btn-fit').onclick = fit;
 
     render();
