@@ -1225,7 +1225,6 @@ ipcMain.handle("execute-elasticsearch-uri-query", async (_, baseUrl, query) => {
 ipcMain.handle("start-container-logs", async (event, containerId, options = {}) => {
   try {
     const sender = event.sender;
-    let streamId = "";
     const safeSend = (channel, payload) => {
       if (!sender || sender.isDestroyed()) return false;
       try {
@@ -1240,34 +1239,25 @@ ipcMain.handle("start-container-logs", async (event, containerId, options = {}) 
       }
     };
 
-    streamId = await startLogStream(
+    // Bug 24 fix: callbacks use only the streamId provided by startLogStream
+    // (via logData.streamId or the sid parameter), never the outer variable
+    // which may still be unassigned if data arrives before the await resolves.
+    const streamId = await startLogStream(
       containerId,
       options,
-      // onData callback — use logData.streamId (always valid) instead of the
-      // outer `streamId` variable which may still be "" if data arrives before
-      // the await resolves (Bug 24).
       (logData) => {
         if (!safeSend("container-log-data", logData)) {
-          const sid = logData.streamId || streamId;
+          if (logData.streamId) stopLogStream(logData.streamId);
+        }
+      },
+      (error, sid) => {
+        if (!safeSend("container-log-error", { streamId: sid, containerId, error: error.message })) {
           if (sid) stopLogStream(sid);
         }
       },
-      // onError callback — streamId passed as second arg from startLogStream
-      (error, sid) => {
-        const delivered = safeSend("container-log-error", {
-          streamId: sid || streamId,
-          containerId,
-          error: error.message,
-        });
-        if (!delivered) {
-          const id = sid || streamId;
-          if (id) stopLogStream(id);
-        }
-      },
-      // onClose callback — streamId passed as second arg from startLogStream
       (code, sid) => {
         safeSend("container-log-close", {
-          streamId: sid || streamId,
+          streamId: sid,
           containerId,
           exitCode: code,
         });
