@@ -272,7 +272,7 @@ function App() {
         if (prefs.categoryToggles) {
           setCategoryToggles(prefs.categoryToggles);
         }
-      }).catch(() => {});
+      }).catch((err) => console.error("Failed to load alert preferences:", err));
     }
   }, []);
 
@@ -283,7 +283,7 @@ function App() {
     if (window.electronAPI?.getAnalyticsId) {
       window.electronAPI.getAnalyticsId().then((id) => {
         if (id) identifyWithMainProcess(id);
-      }).catch(() => {});
+      }).catch((err) => console.error("Failed to get analytics ID:", err));
     }
   }, []);
 
@@ -496,6 +496,10 @@ function App() {
     visibleGraphNodes.forEach((node) => {
       if (node.type === "external") return;
       next.set(nodeServiceKey(node), node.id);
+      // Also index by loose key so ghost nodes can find the last-seen node ID
+      // even when containerId changes across container restarts (Bug 31/32).
+      const loose = looseServiceIdentity({ ...node, projectPath: node.projectPath || undefined });
+      next.set(loose, node.id);
     });
     lastNodeIdByServiceRef.current = next;
   }, [visibleGraphNodes]);
@@ -733,9 +737,13 @@ function App() {
         if (liveNode) {
           trackedExtra.push(liveNode);
         } else {
-          // Create ghost node for tracked service that isn't running
+          // Create ghost node for tracked service that isn't running.
+          // Try loose key too so stale containerId in `key` doesn't prevent
+          // finding the last-seen node ID (Bug 31/32).
           trackedExtra.push({
-            id: lastNodeIdByServiceRef.current.get(key) || `ghost-${key}`,
+            id: lastNodeIdByServiceRef.current.get(key)
+              || lastNodeIdByServiceRef.current.get(loose)
+              || `ghost-${key}`,
             pid: 0,
             name: svc.service.name,
             command: svc.service.lastCommand || "",

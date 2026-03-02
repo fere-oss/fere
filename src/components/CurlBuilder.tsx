@@ -646,7 +646,7 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
       if (result.success && result.policy) {
         setNetworkPolicyState(result.policy);
       }
-    }).catch(() => {});
+    }).catch((err) => console.error("Failed to load network policy:", err));
   }, []);
 
   const toggleNetworkPolicy = useCallback(async () => {

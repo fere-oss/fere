@@ -150,19 +150,27 @@ async function startLogStream(containerId, options = {}, onData, onError, onClos
   dockerProcess.stdout.on('data', (data) => {
     stdoutBuffer += data.toString();
     if (stdoutBuffer.length > MAX_BUFFER_SIZE) {
-      processBuffer(stdoutBuffer + '\n', 'stdout');
-      stdoutBuffer = '';
+      // Flush complete lines and keep the trailing incomplete fragment.
+      // The old code discarded the incomplete line on overflow.
+      const remaining = processBuffer(stdoutBuffer, 'stdout');
+      // If a single line exceeds the cap (no newlines at all), force-emit it
+      // truncated rather than letting it grow forever.
+      stdoutBuffer = remaining.length > MAX_BUFFER_SIZE
+        ? (processBuffer(remaining + '\n', 'stdout'), '')
+        : remaining;
     } else {
       stdoutBuffer = processBuffer(stdoutBuffer, 'stdout');
     }
   });
 
-  // Handle stderr data
+  // Handle stderr data — same overflow strategy as stdout (Bug 26)
   dockerProcess.stderr.on('data', (data) => {
     stderrBuffer += data.toString();
     if (stderrBuffer.length > MAX_BUFFER_SIZE) {
-      processBuffer(stderrBuffer + '\n', 'stderr');
-      stderrBuffer = '';
+      const remaining = processBuffer(stderrBuffer, 'stderr');
+      stderrBuffer = remaining.length > MAX_BUFFER_SIZE
+        ? (processBuffer(remaining + '\n', 'stderr'), '')
+        : remaining;
     } else {
       stderrBuffer = processBuffer(stderrBuffer, 'stderr');
     }
