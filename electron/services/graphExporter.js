@@ -754,7 +754,11 @@ async function generateHTML({ graphData, metadata, logoDevToken = '' }) {
   (function() {
     'use strict';
     const D = ${payload};
-    const LOGO_TOKEN = '${logoDevToken.replace(/'/g, '')}';
+    // Logo token is intentionally omitted from exported HTML to prevent
+    // leaking credentials if the file is shared.  Logos are pre-fetched as
+    // base64 data URIs at export time (using the token server-side), so the
+    // runtime fallback below works without a token.
+    const LOGO_TOKEN = '';
 
     // ── Constants (from constants.ts) ────────────────────────────────────
     const SC = {

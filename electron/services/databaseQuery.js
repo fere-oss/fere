@@ -372,14 +372,20 @@ async function getTableData(containerId, containerImage, tableName, limit = 100)
     return { error: 'Unsupported database type', columns: [], rows: [] };
   }
 
+  // Coerce limit to a safe positive integer to prevent injection via string
+  // interpolation in SQL/mongosh commands downstream.
+  const safeLimit = Number.isFinite(Number(limit))
+    ? Math.max(1, Math.min(1000, Math.floor(Number(limit))))
+    : 100;
+
   try {
     switch (dbType) {
       case 'postgresql':
-        return await getPostgresTableData(containerId, tableName, limit);
+        return await getPostgresTableData(containerId, tableName, safeLimit);
       case 'mysql':
-        return await getMySQLTableData(containerId, tableName, limit);
+        return await getMySQLTableData(containerId, tableName, safeLimit);
       case 'mongodb':
-        return await getMongoCollectionData(containerId, tableName, limit);
+        return await getMongoCollectionData(containerId, tableName, safeLimit);
       default:
         return { error: 'Unsupported database type', columns: [], rows: [] };
     }
