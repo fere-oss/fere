@@ -38,13 +38,15 @@
     "start": "react-scripts start",
     "start:no-deprecation": "node --no-deprecation node_modules/react-scripts/scripts/start.js",
     "build": "react-scripts build",
+    "typecheck": "tsc --noEmit",
     "test": "react-scripts test",
     "eject": "react-scripts eject",
     "electron": "env -u ELECTRON_RUN_AS_NODE electron .",
     "electron:dev": "concurrently \"BROWSER=none PORT=3001 npm run start:no-deprecation\" \"wait-on http://localhost:3001 && env -u ELECTRON_RUN_AS_NODE electron .\"",
     "electron:build": "npm run build && electron-builder",
     "electron:build:mac": "npm run build && electron-builder --mac",
-    "test:node": "node --test electron/services/*.test.js electron/security.test.js"
+    "test:node": "node --test electron/services/*.test.js electron/security.test.js",
+    "release:check": "npm run typecheck && npm run test:node && npm run build"
   },
   "build": {
     "appId": "com.fere.app",
