@@ -918,6 +918,7 @@ function buildGraphStructure({
   const edges = [];
   const edgeSet = new Set();
   const externalNodes = new Map();
+  const realRemoteConnectionsByPid = new Map();
 
   const getExternalNode = (host, port, protocol = null) => {
     const key = `${host}:${port}`;
@@ -986,6 +987,8 @@ function buildGraphStructure({
         protocol: inferredProtocol,
         confidence,
       });
+      const currentCount = realRemoteConnectionsByPid.get(conn.pid) || 0;
+      realRemoteConnectionsByPid.set(conn.pid, currentCount + 1);
     }
   }
 
@@ -1063,6 +1066,36 @@ function buildGraphStructure({
       command: node.command || proc.command || '',
       conn: { remoteHost, remotePort: targetPort },
     });
+    node.remoteAccess.source = 'command';
+  }
+
+  // Compute remote-access health flags
+  const duplicateKeyCounts = new Map();
+  for (const node of nodes) {
+    if (!node.remoteAccess) continue;
+    const host = node.remoteAccess.host;
+    if (!host) continue;
+    const key = `${node.remoteAccess.tool}|${node.remoteAccess.user || ''}|${host}|${node.remoteAccess.port || ''}`;
+    duplicateKeyCounts.set(key, (duplicateKeyCounts.get(key) || 0) + 1);
+  }
+  for (const node of nodes) {
+    if (!node.remoteAccess) continue;
+    const host = node.remoteAccess.host;
+    const key = `${node.remoteAccess.tool}|${node.remoteAccess.user || ''}|${host || ''}|${node.remoteAccess.port || ''}`;
+    const duplicateSessions = host ? Math.max(0, (duplicateKeyCounts.get(key) || 0) - 1) : 0;
+    const realConnections = realRemoteConnectionsByPid.get(node.pid) || 0;
+    const missingConnection = node.remoteAccess.source === 'command' && realConnections === 0;
+    const staleLikely = missingConnection && node.healthStatus !== 'green';
+    const notes = [];
+    if (missingConnection) notes.push('no active socket');
+    if (staleLikely) notes.push('session may be stale');
+    if (duplicateSessions > 0) notes.push(`${duplicateSessions + 1} similar sessions`);
+    node.remoteAccess.healthFlags = {
+      missingConnection,
+      staleLikely,
+      duplicateSessions,
+      notes,
+    };
   }
 
   // Track node count before Docker additions for optimized re-matching

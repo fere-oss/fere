@@ -68,6 +68,12 @@ function getInboundSshSummary(node: GraphNode): string | null {
   return `inbound ssh: ${sessions} (${preview}${extra})`;
 }
 
+function getRemoteHealthSummary(node: GraphNode): string | null {
+  const notes = node.remoteAccess?.healthFlags?.notes || [];
+  if (notes.length === 0) return null;
+  return `status: ${notes.join(", ")}`;
+}
+
 export function CompactServiceNode({
   node,
   onClick,
@@ -260,6 +266,10 @@ export const ServiceNode = React.memo(function ServiceNode({
   );
   const inboundSshSummary = useMemo(
     () => getInboundSshSummary(node),
+    [node.remoteAccess],
+  );
+  const remoteHealthSummary = useMemo(
+    () => getRemoteHealthSummary(node),
     [node.remoteAccess],
   );
   const routes = node.routes || [];
@@ -466,6 +476,11 @@ export const ServiceNode = React.memo(function ServiceNode({
       {!node.isDockerContainer && inboundSshSummary && (
         <div className="service-node-project service-node-remote-target">
           {inboundSshSummary}
+        </div>
+      )}
+      {!node.isDockerContainer && remoteHealthSummary && (
+        <div className="service-node-project service-node-remote-target">
+          {remoteHealthSummary}
         </div>
       )}
 

@@ -195,6 +195,44 @@ test('buildConnectionGraph aggregates inbound sshd session stats', async () => {
   assert.ok(sshdNode.remoteAccess.inboundClients.includes('203.0.113.12'));
 });
 
+test('buildConnectionGraph marks missing connection and duplicate remote sessions', async () => {
+  const snapshot = {
+    processes: [
+      {
+        pid: 990,
+        name: 'ssh',
+        command: 'ssh dev@example.com',
+        cpu: 0,
+        memory: 0.1,
+        user: 'me',
+        tty: 'ttys010',
+      },
+      {
+        pid: 991,
+        name: 'ssh',
+        command: 'ssh dev@example.com',
+        cpu: 0,
+        memory: 0.1,
+        user: 'me',
+        tty: 'ttys011',
+      },
+    ],
+    ports: [],
+    connections: [],
+  };
+
+  const { nodes } = await buildConnectionGraph(snapshot);
+  const first = nodes.find((node) => node.id === 'proc-990');
+  const second = nodes.find((node) => node.id === 'proc-991');
+  assert.ok(first?.remoteAccess?.healthFlags);
+  assert.ok(second?.remoteAccess?.healthFlags);
+  assert.equal(first.remoteAccess.healthFlags.missingConnection, true);
+  assert.equal(second.remoteAccess.healthFlags.missingConnection, true);
+  assert.equal(first.remoteAccess.healthFlags.duplicateSessions, 1);
+  assert.equal(second.remoteAccess.healthFlags.duplicateSessions, 1);
+  assert.ok(first.remoteAccess.healthFlags.notes.includes('no active socket'));
+});
+
 test('categorizeProcess detects common service types', () => {
   assert.equal(categorizeProcess('postgres', 'postgres'), 'database');
   assert.equal(categorizeProcess('redis', 'redis'), 'cache');

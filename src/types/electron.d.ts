@@ -285,6 +285,12 @@ export interface GraphNode {
     }>;
     inboundSessions?: number;
     inboundClients?: string[];
+    healthFlags?: {
+      missingConnection: boolean;
+      staleLikely: boolean;
+      duplicateSessions: number;
+      notes: string[];
+    };
   };
   // Synthetic node for tracked services not currently running
   isGhost?: boolean;
