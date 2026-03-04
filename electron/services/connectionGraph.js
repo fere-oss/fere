@@ -212,7 +212,7 @@ function collectHealthByPid(processes, ports, connections) {
   for (const proc of processes) {
     const isListening = listeningPids.has(proc.pid);
     const hasConnections = pidsWithConnections.has(proc.pid);
-    healthByPid[proc.pid] = getHealthStatus(proc.pid, isListening, hasConnections);
+    healthByPid[proc.pid] = getHealthStatus(proc.pid, isListening, hasConnections, proc);
   }
 
   // Also compute for port-owning PIDs not in process list

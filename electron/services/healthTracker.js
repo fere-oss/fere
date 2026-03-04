@@ -12,6 +12,8 @@ const lastSeenByPid = new Map();
 
 // Track last activity (connection) time per PID
 const lastActivityByPid = new Map();
+// Track last compute activity (CPU usage) time per PID
+const lastCpuActiveByPid = new Map();
 
 // Track previously known PIDs (to detect crashed processes)
 const knownPids = new Set();
@@ -36,10 +38,20 @@ function updateHealthTracking(snapshot) {
     listeningPids.add(ports[i].pid);
   }
 
-  // Update lastSeen for all currently visible processes with listening ports
-  for (const pid of listeningPids) {
+  // Update lastSeen for all visible processes (not only listeners).
+  // System services often don't expose listening ports.
+  for (const pid of currentPids) {
     lastSeenByPid.set(pid, now);
     knownPids.add(pid);
+  }
+
+  // Treat non-trivial CPU usage as active work for non-network/system services.
+  // Keep threshold conservative to avoid status jitter from scheduler noise.
+  for (let i = 0; i < processes.length; i++) {
+    const proc = processes[i];
+    if (proc.cpu >= 0.3) {
+      lastCpuActiveByPid.set(proc.pid, now);
+    }
   }
 
   // Update lastActivity for PIDs with established connections
@@ -56,6 +68,7 @@ function updateHealthTracking(snapshot) {
     if (time < cleanupThreshold) {
       lastSeenByPid.delete(pid);
       lastActivityByPid.delete(pid);
+      lastCpuActiveByPid.delete(pid);
       knownPids.delete(pid);
     }
   }
@@ -68,10 +81,11 @@ function updateHealthTracking(snapshot) {
  * @param {boolean} hasConnections - Whether the process currently has connections
  * @returns {{ healthStatus: 'green' | 'yellow' | 'red', lastSeen: number }}
  */
-function getHealthStatus(pid, isListening, hasConnections) {
+function getHealthStatus(pid, isListening, hasConnections, process = null) {
   const now = Date.now();
   const lastSeen = lastSeenByPid.get(pid) || now;
   const lastActivity = lastActivityByPid.get(pid) || 0;
+  const lastCpuActive = lastCpuActiveByPid.get(pid) || 0;
 
   // External nodes (pid = -1) are always yellow (we can't track their health)
   if (pid === -1) {
@@ -96,7 +110,15 @@ function getHealthStatus(pid, isListening, hasConnections) {
     return { healthStatus: 'yellow', lastSeen };
   }
 
-  // Not listening but still seen -> yellow
+  // Non-listening processes: use CPU bursts as "active" signal.
+  const timeSinceLastCpuActive = now - lastCpuActive;
+  const hasRecentCpuActivity =
+    timeSinceLastCpuActive < ACTIVITY_THRESHOLD ||
+    (process && process.cpu >= 0.3);
+  if (hasConnections || hasRecentCpuActivity) {
+    return { healthStatus: 'green', lastSeen };
+  }
+
   return { healthStatus: 'yellow', lastSeen };
 }
 
@@ -138,6 +160,7 @@ function getStaleServices(currentPids) {
 function resetHealthTracking() {
   lastSeenByPid.clear();
   lastActivityByPid.clear();
+  lastCpuActiveByPid.clear();
   knownPids.clear();
 }
 
