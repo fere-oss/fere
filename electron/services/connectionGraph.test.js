@@ -45,12 +45,83 @@ test('buildConnectionGraph maps connections to internal and external nodes', asy
   assert.equal(internalEdge.targetPort, 5001);
 });
 
+test('buildConnectionGraph tags SSH/SFTP style remote connections', async () => {
+  const snapshot = {
+    processes: [
+      { pid: 300, name: 'ssh', command: 'ssh dev@10.0.0.42', cpu: 1, memory: 1, user: 'me', tty: 'ttys010' },
+      { pid: 301, name: 'sftp', command: 'sftp dev@10.0.0.43', cpu: 1, memory: 1, user: 'me', tty: 'ttys011' },
+    ],
+    ports: [
+      { port: 61000, host: '127.0.0.1', pid: 300, process: 'ssh', user: 'me', protocol: 'tcp' },
+      { port: 61001, host: '127.0.0.1', pid: 301, process: 'sftp', user: 'me', protocol: 'tcp' },
+    ],
+    connections: [
+      { pid: 300, process: 'ssh', user: 'me', localHost: '127.0.0.1', localPort: 61000, remoteHost: 'example.com', remotePort: 22, protocol: 'tcp' },
+      { pid: 301, process: 'sftp', user: 'me', localHost: '127.0.0.1', localPort: 61001, remoteHost: 'files.example.com', remotePort: 22, protocol: 'tcp' },
+    ],
+  };
+
+  const { edges } = await buildConnectionGraph(snapshot);
+  assert.equal(edges.length, 2);
+  assert.ok(edges.some((edge) => edge.source === 'proc-300' && edge.protocol === 'ssh'));
+  assert.ok(edges.some((edge) => edge.source === 'proc-301' && edge.protocol === 'sftp'));
+});
+
+test('buildConnectionGraph keeps SSH edge when ps snapshot misses process row', async () => {
+  const snapshot = {
+    processes: [],
+    ports: [],
+    connections: [
+      {
+        pid: 999,
+        process: 'ssh',
+        user: 'me',
+        localHost: '127.0.0.1',
+        localPort: 61234,
+        remoteHost: 'example.com',
+        remotePort: 22,
+        protocol: 'tcp',
+      },
+    ],
+  };
+
+  const { nodes, edges } = await buildConnectionGraph(snapshot);
+  assert.ok(nodes.some((node) => node.id === 'proc-999'));
+  assert.ok(edges.some((edge) => edge.source === 'proc-999' && edge.protocol === 'ssh'));
+});
+
+test('buildConnectionGraph synthesizes SSH remote edge from command when lsof data is missing', async () => {
+  const snapshot = {
+    processes: [
+      {
+        pid: 777,
+        name: 'ssh',
+        command: 'ssh dev@example.com',
+        cpu: 0.1,
+        memory: 0.1,
+        user: 'me',
+        tty: 'ttys001',
+      },
+    ],
+    ports: [],
+    connections: [],
+  };
+
+  const { nodes, edges } = await buildConnectionGraph(snapshot);
+  assert.ok(nodes.some((node) => node.id === 'proc-777'));
+  assert.ok(nodes.some((node) => node.id === 'external-example.com:22'));
+  assert.ok(edges.some((edge) => edge.source === 'proc-777' && edge.protocol === 'ssh'));
+});
+
 test('categorizeProcess detects common service types', () => {
   assert.equal(categorizeProcess('postgres', 'postgres'), 'database');
   assert.equal(categorizeProcess('redis', 'redis'), 'cache');
   assert.equal(categorizeProcess('nginx', 'nginx'), 'webserver');
   assert.equal(categorizeProcess('node', 'vite dev'), 'frontend');
   assert.equal(categorizeProcess('python', 'uvicorn app:app'), 'backend');
+  assert.equal(categorizeProcess('ssh', 'ssh user@example.com'), 'client');
+  assert.equal(categorizeProcess('sftp', 'sftp user@example.com'), 'client');
+  assert.equal(categorizeProcess('sshd', '/usr/sbin/sshd -D'), 'service');
 });
 
 test('categorizeProcess detects framework backends', () => {

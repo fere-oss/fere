@@ -76,6 +76,10 @@ const KNOWN_SERVICES = {
   'mysqld': { description: 'MySQL Server - a popular open-source relational database management system.', category: 'database', displayName: 'MySQL' },
   'mongod': { description: 'MongoDB Server - a NoSQL document database for modern applications.', category: 'database', displayName: 'MongoDB' },
   'redis-server': { description: 'Redis Server - an in-memory data structure store used as database, cache, and message broker.', category: 'cache', displayName: 'Redis' },
+  'ssh': { description: 'OpenSSH client - secure remote shell access tool.', category: 'network', displayName: 'SSH Client' },
+  'sshd': { description: 'OpenSSH server daemon - accepts secure remote shell connections.', category: 'network', displayName: 'SSH Daemon' },
+  'sftp': { description: 'SFTP client - secure file transfer over SSH.', category: 'network', displayName: 'SFTP Client' },
+  'scp': { description: 'SCP client - secure copy over SSH.', category: 'network', displayName: 'SCP' },
   'nginx': { description: 'Nginx - a high-performance web server, reverse proxy, and load balancer.', category: 'webserver', displayName: 'Nginx' },
   'httpd': { description: 'Apache HTTP Server - a widely-used open-source web server.', category: 'webserver', displayName: 'Apache' },
   'Docker': { description: 'Docker Desktop - container platform for building, sharing, and running containerized applications.', category: 'container', displayName: 'Docker' },
@@ -177,6 +181,11 @@ function categorizeProcess(processName, command = '') {
   if (cmd.includes('http-client-mock')) return 'client';
   if (cmd.includes('worker-mock')) return 'worker';
 
+  // Remote access and transfer tools
+  if (name === 'sshd' || cmd.includes('sshd')) return 'service';
+  if (name === 'ssh' || name === 'sftp' || name === 'scp') return 'client';
+  if (/(^|\s)(ssh|sftp|scp)(\s|$)/.test(cmd)) return 'client';
+
   if (name.includes('postgres') || name.includes('psql') || cmd.includes('postgres')) return 'database';
   if (name.includes('mysql') || cmd.includes('mysql')) return 'database';
   if (name.includes('mongo') || cmd.includes('mongo')) return 'database';
@@ -226,6 +235,60 @@ function categorizeProcess(processName, command = '') {
   if (name.includes('ruby') || name.includes('php')) return 'backend';
 
   return 'service';
+}
+
+function looksLikeRemoteAccessProcess(processName = '', command = '') {
+  const name = String(processName || '').toLowerCase().trim();
+  const cmd = String(command || '').toLowerCase();
+  if (name === 'ssh' || name === 'sftp' || name === 'scp' || name === 'sshd' || name === 'autossh') return true;
+  if (name === 'ssh-agent') return false;
+  if (/(^|\s)(ssh|sftp|scp|sshd|autossh)(\s|$)/.test(cmd)) return true;
+  return /\brsync\b/.test(cmd) && (/\b-e\s+ssh\b/.test(cmd) || /\bssh:\/\//.test(cmd));
+}
+
+function looksLikeRemoteAccessConnection(conn = {}) {
+  const processName = String(conn.process || '').toLowerCase();
+  const remotePort = Number(conn.remotePort || 0);
+  if (looksLikeRemoteAccessProcess(processName, processName)) return true;
+  return remotePort === 22 || remotePort === 21 || remotePort === 989 || remotePort === 990;
+}
+
+function extractRemoteHostFromCommand(command = '') {
+  const cmd = String(command || '');
+  if (!cmd) return null;
+  const hostWithUser = cmd.match(/(?:^|\s)(?:ssh|autossh|sftp)\s+(?:-[A-Za-z0-9-]+(?:\s+\S+)?\s+)*(?:[^@\s]+@)?([A-Za-z0-9._-]+)/i);
+  if (hostWithUser?.[1]) return hostWithUser[1];
+
+  // scp can include host:path in either src or dest
+  const scpHost = cmd.match(/(?:^|\s)(?:[^@\s]+@)?([A-Za-z0-9._-]+):\S+/i);
+  if (scpHost?.[1]) return scpHost[1];
+  return null;
+}
+
+function inferConnectionProtocol(conn, sourceNode) {
+  const remotePort = Number(conn?.remotePort || 0);
+  const sourceText = `${sourceNode?.name || ''} ${sourceNode?.command || ''}`.toLowerCase();
+  const sourceLooksLikeSftp = /\bsftp\b/.test(sourceText);
+  const sourceLooksLikeScp = /\bscp\b/.test(sourceText);
+  const sourceLooksLikeSsh = /\bssh\b/.test(sourceText) || sourceLooksLikeSftp || sourceLooksLikeScp;
+
+  if (remotePort === 22 || sourceLooksLikeSsh) {
+    if (sourceLooksLikeSftp) return 'sftp';
+    if (sourceLooksLikeScp) return 'scp';
+    return 'ssh';
+  }
+  if (remotePort === 21) return 'ftp';
+  if (remotePort === 989 || remotePort === 990) return 'ftps';
+
+  return conn?.protocol || 'tcp';
+}
+
+function getExternalConnectionDescription(protocol, port) {
+  if (protocol === 'ssh') return 'Remote SSH endpoint';
+  if (protocol === 'sftp') return 'Remote SFTP endpoint';
+  if (protocol === 'scp') return 'Remote SCP endpoint';
+  if (port === 22) return 'Remote SSH endpoint';
+  return null;
 }
 
 function categorizeContainerImage(image) {
@@ -653,7 +716,7 @@ function buildGraphStructure({
   const edgeSet = new Set();
   const externalNodes = new Map();
 
-  const getExternalNode = (host, port) => {
+  const getExternalNode = (host, port, protocol = null) => {
     const key = `${host}:${port}`;
     if (externalNodes.has(key)) return externalNodes.get(key);
 
@@ -670,6 +733,7 @@ function buildGraphStructure({
       project: null,
       projectPath: null,
       repoPath: null,
+      description: getExternalConnectionDescription(protocol, port),
       ports: [{ port, host, description: null }],
       routes: [],
       healthStatus: 'yellow',
@@ -682,16 +746,17 @@ function buildGraphStructure({
 
   for (const conn of connections) {
     const sourceProc = processMap.get(conn.pid);
-    if (!sourceProc) continue;
+    if (!sourceProc && !looksLikeRemoteAccessConnection(conn)) continue;
 
     // Skip connections with missing remote endpoint data
     if (!conn.remoteHost && !conn.remotePort) continue;
 
     const sourceNode = ensureProcessNode(conn.pid, conn.process);
     const targetPid = isLocalHost(conn.remoteHost) ? portToPid.get(conn.remotePort) : null;
+    const inferredProtocol = inferConnectionProtocol(conn, sourceNode);
     const targetNode = targetPid
       ? ensureProcessNode(targetPid, conn.process)
-      : getExternalNode(conn.remoteHost || 'unknown', conn.remotePort || 0);
+      : getExternalNode(conn.remoteHost || 'unknown', conn.remotePort || 0, inferredProtocol);
 
     if (sourceNode.id === targetNode.id) continue;
 
@@ -708,10 +773,44 @@ function buildGraphStructure({
         target: targetNode.id,
         sourcePort: conn.localPort,
         targetPort: conn.remotePort,
-        protocol: conn.protocol,
+        protocol: inferredProtocol,
         confidence,
       });
     }
+  }
+
+  // Keep SSH/SFTP/SCP process nodes visible even when they are outbound-only
+  // and lsof has not yet emitted a stable ESTABLISHED row.
+  for (const proc of processes) {
+    if (!proc || nodesByPid.has(proc.pid)) continue;
+    if (!looksLikeRemoteAccessProcess(proc.name, proc.command)) continue;
+    const node = ensureProcessNode(proc.pid, proc.name || 'ssh');
+
+    // Add a synthetic remote edge when lsof has not yet surfaced the
+    // established socket but the command clearly includes a remote host.
+    const hasOutgoingEdge = edges.some((edge) => edge.source === node.id);
+    if (hasOutgoingEdge) continue;
+    const remoteHost = extractRemoteHostFromCommand(proc.command);
+    if (!remoteHost) continue;
+    const protocol = /\bsftp\b/i.test(proc.command)
+      ? 'sftp'
+      : /\bscp\b/i.test(proc.command)
+        ? 'scp'
+        : 'ssh';
+    const targetPort = 22;
+    const targetNode = getExternalNode(remoteHost, targetPort, protocol);
+    const edgeKey = `${node.id}->${targetNode.id}:${targetPort}`;
+    if (edgeSet.has(edgeKey)) continue;
+    edgeSet.add(edgeKey);
+    edges.push({
+      id: edgeKey,
+      source: node.id,
+      target: targetNode.id,
+      sourcePort: 0,
+      targetPort,
+      protocol,
+      confidence: 0.45,
+    });
   }
 
   // Track node count before Docker additions for optimized re-matching
@@ -1006,6 +1105,8 @@ module.exports = {
   formatScriptLabel,
   // Classification
   categorizeProcess,
+  looksLikeRemoteAccessProcess,
+  looksLikeRemoteAccessConnection,
   categorizeContainerImage,
   resolveContainerType,
   // Project/path helpers

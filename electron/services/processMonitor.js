@@ -19,6 +19,7 @@ const DEV_PATTERNS = [
   'mysql', 'mysqld',
   'mongo', 'mongod',
   'docker', 'docker-compose', 'podman',
+  'ssh', 'sshd', 'sftp', 'scp', 'autossh', 'rsync',
   'nginx', 'apache', 'httpd',
   'webpack', 'vite', 'esbuild', 'rollup', 'parcel',
   'electron',

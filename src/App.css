@@ -2006,6 +2006,10 @@ textarea {
   margin-bottom: 6px;
 }
 
+.service-node-remote-target {
+  color: var(--text-secondary);
+}
+
 .service-node-port {
   font-family: var(--font-mono);
   font-size: 15px;

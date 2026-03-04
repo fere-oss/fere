@@ -12,6 +12,25 @@ import { BrandIcon, inferServiceBrand } from "./brandIcons";
 // Hoisted to module level — avoids Set recreation on every ServiceNode render
 const DOCKER_BADGE_TYPES = new Set(["container", "cache", "database", "broker"]);
 
+function getRemoteAccessKind(node: GraphNode): "SSH" | "SFTP" | "SCP" | null {
+  const source = `${node.name || ""} ${node.command || ""}`.toLowerCase();
+  if (/(^|\s)sftp(\s|$)/.test(source)) return "SFTP";
+  if (/(^|\s)scp(\s|$)/.test(source)) return "SCP";
+  if (/(^|\s)(auto)?ssh(d)?(\s|$)/.test(source)) return "SSH";
+  return null;
+}
+
+function getRemoteAccessTarget(node: GraphNode): string | null {
+  const command = node.command || "";
+  if (!command) return null;
+
+  const match = command.match(
+    /(?:^|\s)(?:sftp|scp|ssh|autossh)\s+(?:-[A-Za-z0-9-]+\s+)*(?:[^@\s]+@)?([A-Za-z0-9._-]+)(?::\S+)?/i,
+  );
+  if (!match?.[1]) return null;
+  return `remote: ${match[1]}`;
+}
+
 export function CompactServiceNode({
   node,
   onClick,
@@ -25,6 +44,7 @@ export function CompactServiceNode({
 }) {
   const healthInfo = getHealthInfo(node.healthStatus);
   const mainPort = node.ports[0]?.port;
+  const remoteKind = getRemoteAccessKind(node);
 
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -63,7 +83,9 @@ export function CompactServiceNode({
             {healthInfo.label}
           </span>
         </div>
-        <span className="compact-node-badge">{getTypeBadge(node.type)}</span>
+        <span className="compact-node-badge">
+          {remoteKind || getTypeBadge(node.type)}
+        </span>
       </div>
 
       <h4 className="compact-node-name">{node.name}</h4>
@@ -190,6 +212,11 @@ export const ServiceNode = React.memo(function ServiceNode({
     node.isDockerContainer &&
     DOCKER_BADGE_TYPES.has((node.type || "").toLowerCase());
   const mainPort = node.ports[0]?.port;
+  const remoteKind = getRemoteAccessKind(node);
+  const remoteTarget = useMemo(
+    () => getRemoteAccessTarget(node),
+    [node.command, node.name],
+  );
   const routes = node.routes || [];
   const visibleRoutes = useMemo(() => {
     if (routes.length <= 3) return routes;
@@ -358,7 +385,7 @@ export const ServiceNode = React.memo(function ServiceNode({
             color: accentColor,
           }}
         >
-          {getTypeBadge(node.type)}
+          {remoteKind || getTypeBadge(node.type)}
         </span>
       </div>
 
@@ -380,6 +407,11 @@ export const ServiceNode = React.memo(function ServiceNode({
       )}
       {!node.isDockerContainer && projectLabel && (
         <div className="service-node-project">{projectLabel}</div>
+      )}
+      {!node.isDockerContainer && !projectLabel && remoteTarget && (
+        <div className="service-node-project service-node-remote-target">
+          {remoteTarget}
+        </div>
       )}
 
       {canStart && (
