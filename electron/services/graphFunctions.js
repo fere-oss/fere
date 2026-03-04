@@ -257,6 +257,48 @@ function parseRemoteAccessCommand(command = '') {
   const cmd = String(command || '');
   if (!cmd) return { tool: null, user: null, host: null, port: null };
 
+  const parseTunnelSpec = (mode, spec) => {
+    const raw = String(spec || '').trim();
+    if (!raw) return null;
+    const parts = raw.split(':');
+    if (mode === 'D') {
+      const listenPort = parseInt(parts[parts.length - 1], 10);
+      const listenHost = parts.length > 1 ? parts.slice(0, -1).join(':') : null;
+      return {
+        mode,
+        listenHost: listenHost || null,
+        listenPort: Number.isNaN(listenPort) ? null : listenPort,
+        targetHost: null,
+        targetPort: null,
+      };
+    }
+
+    if (parts.length < 3) return null;
+    const listenPort = parseInt(parts[parts.length - 3], 10);
+    const targetHost = parts[parts.length - 2] || null;
+    const targetPort = parseInt(parts[parts.length - 1], 10);
+    const listenHost = parts.length > 3 ? parts.slice(0, -3).join(':') : null;
+    return {
+      mode,
+      listenHost: listenHost || null,
+      listenPort: Number.isNaN(listenPort) ? null : listenPort,
+      targetHost,
+      targetPort: Number.isNaN(targetPort) ? null : targetPort,
+    };
+  };
+
+  const tunnels = [];
+  const tunnelMatches = cmd.matchAll(/(?:^|\s)-([LRD])\s+([^\s]+)/g);
+  for (const match of tunnelMatches) {
+    const parsed = parseTunnelSpec(match[1], match[2]);
+    if (parsed) tunnels.push(parsed);
+  }
+  const compactTunnelMatches = cmd.matchAll(/(?:^|\s)-([LRD])([^\s]+)/g);
+  for (const match of compactTunnelMatches) {
+    const parsed = parseTunnelSpec(match[1], match[2]);
+    if (parsed) tunnels.push(parsed);
+  }
+
   const toolMatch = cmd.match(/(?:^|\s)(autossh|ssh|sftp|scp)(?=\s|$)/i);
   const tool = toolMatch ? toolMatch[1].toLowerCase() : null;
 
@@ -271,6 +313,7 @@ function parseRemoteAccessCommand(command = '') {
       user: hostWithUser[1] || null,
       host: hostWithUser[2] || null,
       port,
+      tunnels,
     };
   }
 
@@ -282,10 +325,11 @@ function parseRemoteAccessCommand(command = '') {
       user: scpHost[1] || null,
       host: scpHost[2] || null,
       port,
+      tunnels,
     };
   }
 
-  return { tool, user: null, host: null, port };
+  return { tool, user: null, host: null, port, tunnels };
 }
 
 function buildRemoteAccessMetadata({ proc = null, command = '', conn = null }) {
@@ -306,6 +350,7 @@ function buildRemoteAccessMetadata({ proc = null, command = '', conn = null }) {
     port: Number.isNaN(port) ? null : port,
     source: conn ? 'connection' : 'command',
     startTime: proc?.startTime || null,
+    tunnels: parsed.tunnels || [],
   };
 }
 

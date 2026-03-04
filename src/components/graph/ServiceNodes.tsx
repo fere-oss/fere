@@ -41,6 +41,21 @@ function getRemoteAccessTarget(node: GraphNode): string | null {
   return `remote: ${match[1]}`;
 }
 
+function getTunnelSummary(node: GraphNode): string | null {
+  const tunnels = node.remoteAccess?.tunnels || [];
+  if (tunnels.length === 0) return null;
+
+  const summaries = tunnels.slice(0, 2).map((tunnel) => {
+    if (tunnel.mode === "D") {
+      return `D:${tunnel.listenPort ?? "?"}`;
+    }
+    const target = `${tunnel.targetHost ?? "?"}:${tunnel.targetPort ?? "?"}`;
+    return `${tunnel.mode}:${tunnel.listenPort ?? "?"}->${target}`;
+  });
+  const extra = tunnels.length > 2 ? ` +${tunnels.length - 2}` : "";
+  return `tunnel ${summaries.join(", ")}${extra}`;
+}
+
 export function CompactServiceNode({
   node,
   onClick,
@@ -226,6 +241,10 @@ export const ServiceNode = React.memo(function ServiceNode({
   const remoteTarget = useMemo(
     () => getRemoteAccessTarget(node),
     [node.command, node.name],
+  );
+  const tunnelSummary = useMemo(
+    () => getTunnelSummary(node),
+    [node.remoteAccess],
   );
   const routes = node.routes || [];
   const visibleRoutes = useMemo(() => {
@@ -421,6 +440,11 @@ export const ServiceNode = React.memo(function ServiceNode({
       {!node.isDockerContainer && !projectLabel && remoteTarget && (
         <div className="service-node-project service-node-remote-target">
           {remoteTarget}
+        </div>
+      )}
+      {!node.isDockerContainer && tunnelSummary && (
+        <div className="service-node-project service-node-remote-target">
+          {tunnelSummary}
         </div>
       )}
 

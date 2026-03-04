@@ -275,6 +275,13 @@ export interface GraphNode {
     port: number | null;
     source: 'command' | 'connection';
     startTime: string | null;
+    tunnels?: Array<{
+      mode: 'L' | 'R' | 'D';
+      listenHost: string | null;
+      listenPort: number | null;
+      targetHost: string | null;
+      targetPort: number | null;
+    }>;
   };
   // Synthetic node for tracked services not currently running
   isGhost?: boolean;

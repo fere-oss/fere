@@ -113,6 +113,41 @@ test('buildConnectionGraph synthesizes SSH remote edge from command when lsof da
   assert.ok(edges.some((edge) => edge.source === 'proc-777' && edge.protocol === 'ssh'));
 });
 
+test('buildConnectionGraph parses ssh tunnel flags into remoteAccess metadata', async () => {
+  const snapshot = {
+    processes: [
+      {
+        pid: 778,
+        name: 'ssh',
+        command: 'ssh -L 5433:db.internal:5432 -D 1080 dev@example.com',
+        cpu: 0.1,
+        memory: 0.1,
+        user: 'me',
+        tty: 'ttys002',
+      },
+    ],
+    ports: [],
+    connections: [],
+  };
+
+  const { nodes } = await buildConnectionGraph(snapshot);
+  const sshNode = nodes.find((node) => node.id === 'proc-778');
+  assert.ok(sshNode);
+  assert.ok(sshNode.remoteAccess);
+  assert.equal(sshNode.remoteAccess.host, 'example.com');
+  assert.equal(sshNode.remoteAccess.tunnels.length, 2);
+  assert.ok(
+    sshNode.remoteAccess.tunnels.some(
+      (t) => t.mode === 'L' && t.listenPort === 5433 && t.targetHost === 'db.internal' && t.targetPort === 5432,
+    ),
+  );
+  assert.ok(
+    sshNode.remoteAccess.tunnels.some(
+      (t) => t.mode === 'D' && t.listenPort === 1080,
+    ),
+  );
+});
+
 test('categorizeProcess detects common service types', () => {
   assert.equal(categorizeProcess('postgres', 'postgres'), 'database');
   assert.equal(categorizeProcess('redis', 'redis'), 'cache');
