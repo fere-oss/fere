@@ -439,10 +439,18 @@ ipcMain.handle("get-external-apis", async (event, projectPath) => {
     }
     const resolvedPath = path.resolve(projectPath);
 
-    // Check TTL cache first
+    // Check TTL cache — evict stale entries to prevent unbounded growth
+    const now = Date.now();
     const cached = _externalApisCache.get(resolvedPath);
-    if (cached && Date.now() - cached.time < _EXTERNAL_APIS_CACHE_TTL) {
+    if (cached && now - cached.time < _EXTERNAL_APIS_CACHE_TTL) {
       return cached.data;
+    }
+    if (cached) _externalApisCache.delete(resolvedPath);
+    // Periodic sweep: if the cache has grown large, prune all expired entries
+    if (_externalApisCache.size > 50) {
+      for (const [k, v] of _externalApisCache) {
+        if (now - v.time >= _EXTERNAL_APIS_CACHE_TTL) _externalApisCache.delete(k);
+      }
     }
 
     if (!fs.existsSync(resolvedPath)) {
@@ -1106,8 +1114,22 @@ ipcMain.handle("get-docker-snapshot", async () => {
   }
 });
 
+// Validate common database IPC parameters at the boundary so downstream
+// functions receive safe types and errors are user-friendly.
+function validateDbParams(containerId, containerImage) {
+  if (!containerId || typeof containerId !== "string") {
+    return "Invalid container ID";
+  }
+  if (!containerImage || typeof containerImage !== "string") {
+    return "Invalid container image";
+  }
+  return null;
+}
+
 // Get database tables from a container
 ipcMain.handle("get-database-tables", async (_, containerId, containerImage) => {
+  const err = validateDbParams(containerId, containerImage);
+  if (err) return { error: err, tables: [] };
   try {
     return await getDatabaseTables(containerId, containerImage);
   } catch (error) {
@@ -1118,6 +1140,11 @@ ipcMain.handle("get-database-tables", async (_, containerId, containerImage) => 
 
 // Get table data from a database container
 ipcMain.handle("get-table-data", async (_, containerId, containerImage, tableName, limit) => {
+  const err = validateDbParams(containerId, containerImage);
+  if (err) return { error: err, columns: [], rows: [] };
+  if (!tableName || typeof tableName !== "string") {
+    return { error: "Invalid table name", columns: [], rows: [] };
+  }
   try {
     return await getTableData(containerId, containerImage, tableName, limit || 100);
   } catch (error) {
@@ -1128,6 +1155,11 @@ ipcMain.handle("get-table-data", async (_, containerId, containerImage, tableNam
 
 // Execute a query on a database container
 ipcMain.handle("execute-database-query", async (_, containerId, containerImage, query) => {
+  const err = validateDbParams(containerId, containerImage);
+  if (err) return { error: err, result: null };
+  if (!query || typeof query !== "string") {
+    return { error: "Invalid query", result: null };
+  }
   try {
     const result = await executeQuery(containerId, containerImage, query);
     analytics.capture("database_query_executed", {
@@ -1143,6 +1175,14 @@ ipcMain.handle("execute-database-query", async (_, containerId, containerImage, 
 
 // Create a new table in a database container
 ipcMain.handle("create-database-table", async (_, containerId, containerImage, tableName, columns) => {
+  const err = validateDbParams(containerId, containerImage);
+  if (err) return { error: err, success: false };
+  if (!tableName || typeof tableName !== "string") {
+    return { error: "Invalid table name", success: false };
+  }
+  if (!Array.isArray(columns) || columns.length === 0) {
+    return { error: "Invalid columns", success: false };
+  }
   try {
     return await createTable(containerId, containerImage, tableName, columns);
   } catch (error) {

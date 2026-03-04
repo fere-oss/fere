@@ -366,7 +366,9 @@ export function ContainerLogsTab({ containers, initialSelectedId }: ContainerLog
     });
   }, [startStream, stopStream]);
 
-  // Select all containers — single batched state update
+  // Select all containers — single batched state update.
+  // Use Promise.allSettled so one failed stream doesn't block the rest,
+  // and all calls are properly awaited instead of fire-and-forget (Bug 25/28).
   const selectAll = useCallback(() => {
     const toStart: string[] = [];
     setSelectedContainerIds(prev => {
@@ -379,7 +381,7 @@ export function ContainerLogsTab({ containers, initialSelectedId }: ContainerLog
       });
       return next;
     });
-    toStart.forEach(id => startStream(id));
+    Promise.allSettled(toStart.map(id => startStream(id)));
   }, [containers, startStream]);
 
   // Deselect all containers
