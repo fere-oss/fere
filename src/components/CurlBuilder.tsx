@@ -9,6 +9,12 @@ import type {
 
 interface CurlBuilderProps {
   nodes: GraphNode[];
+  onTraceRequest?: (options: {
+    method: string;
+    url: string;
+    headers: Record<string, string>;
+    body?: string;
+  }) => void;
 }
 
 let headerIdCounter = 0;
@@ -574,7 +580,7 @@ function generateHistoryId(): string {
   return `${Date.now()}-${historyIdCounter}-${Math.random().toString(36).substr(2, 9)}`;
 }
 
-export function CurlBuilder({ nodes }: CurlBuilderProps) {
+export function CurlBuilder({ nodes, onTraceRequest }: CurlBuilderProps) {
   // State for request configuration
   const [selectedNodeId, setSelectedNodeId] = useState<string>("");
   const [selectedPortIndex, setSelectedPortIndex] = useState<number>(0);
@@ -607,6 +613,9 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
 
   // State for network policy
   const [networkPolicy, setNetworkPolicyState] = useState<NetworkPolicy>("local");
+
+  // State for trace toggle
+  const [traceEnabled, setTraceEnabled] = useState(false);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -946,6 +955,17 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
           : undefined;
       }
 
+      // If trace is enabled, fire trace request and switch to graph
+      if (traceEnabled && onTraceRequest) {
+        onTraceRequest({
+          method: requestMethod,
+          url: requestUrl,
+          headers: requestHeaders,
+          body: requestBody,
+        });
+        // Still fire the normal request for response display
+      }
+
       const result = await window.electronAPI.executeHttpRequest({
         method: requestMethod,
         url: requestUrl,
@@ -987,7 +1007,7 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
     } finally {
       setIsLoading(false);
     }
-  }, [fullUrl, method, headers, body, isCurlModified, editedCurl]);
+  }, [fullUrl, method, headers, body, isCurlModified, editedCurl, traceEnabled, onTraceRequest]);
 
   // Format bytes to human readable
   const formatBytes = (bytes: number): string => {
@@ -1319,25 +1339,42 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
             )}
           </div>
 
-          {/* Run Button */}
+          {/* Run Button + Trace Toggle */}
           {selectedNode && (
-            <button
-              className={`curl-run-btn ${isLoading ? "loading" : ""}`}
-              onClick={executeRequest}
-              disabled={(!fullUrl && !isCurlModified) || isLoading}
-            >
-              {isLoading ? (
-                <>
-                  <span className="curl-run-spinner" />
-                  Sending...
-                </>
-              ) : (
-                <>
-                  <span className="curl-run-icon">▶</span>
-                  Send Request
-                </>
+            <div className="curl-run-group">
+              <button
+                className={`curl-run-btn ${isLoading ? "loading" : ""}`}
+                onClick={executeRequest}
+                disabled={(!fullUrl && !isCurlModified) || isLoading}
+              >
+                {isLoading ? (
+                  <>
+                    <span className="curl-run-spinner" />
+                    {traceEnabled ? "Tracing..." : "Sending..."}
+                  </>
+                ) : (
+                  <>
+                    <span className="curl-run-icon">▶</span>
+                    {traceEnabled ? "Send & Trace" : "Send Request"}
+                  </>
+                )}
+              </button>
+              {onTraceRequest && (
+                <button
+                  className={`curl-trace-toggle ${traceEnabled ? "active" : ""}`}
+                  onClick={() => setTraceEnabled(!traceEnabled)}
+                  title={traceEnabled ? "Disable request tracing" : "Enable request tracing — visualize request flow on the service map"}
+                  aria-label="Toggle request tracing"
+                >
+                  <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                    <circle cx="4" cy="8" r="2" />
+                    <circle cx="12" cy="4" r="2" />
+                    <circle cx="12" cy="12" r="2" />
+                    <path d="M6 7l4-2M6 9l4 2" />
+                  </svg>
+                </button>
               )}
-            </button>
+            </div>
           )}
         </div>
 

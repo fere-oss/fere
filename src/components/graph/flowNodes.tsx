@@ -4,6 +4,7 @@ import type { MouseEvent as ReactMouseEvent } from "react";
 import { Handle, Position } from "reactflow";
 import { ServiceNode } from "./ServiceNodes";
 import { useHoverState } from "./hoverContext";
+import { useTraceState } from "./traceContext";
 
 export type { HoverState } from "./hoverContext";
 export { HoverContext } from "./hoverContext";
@@ -58,6 +59,7 @@ const FlowServiceNodeInner = memo(function FlowServiceNodeInner({ data }: { data
   const dataRef = useRef(data);
   dataRef.current = data;
   const { hoveredNodeId, connectedNodeIds } = useHoverState();
+  const { phase: tracePhase, traceNodeIds } = useTraceState();
 
   useEffect(() => {
     if (!nodeRef.current) return;
@@ -81,15 +83,24 @@ const FlowServiceNodeInner = memo(function FlowServiceNodeInner({ data }: { data
     };
   }, []);
 
+  const traceActive = tracePhase !== "idle";
+  const isInTrace = traceNodeIds.has(data.node.id);
+
+  // Trace takes priority over hover when a trace is active
   const isConnected = connectedNodeIds.has(data.node.id);
-  const dimmed = hoveredNodeId !== null && !isConnected;
-  const highlighted = hoveredNodeId !== null && isConnected;
+  const dimmed = traceActive
+    ? !isInTrace
+    : hoveredNodeId !== null && !isConnected;
+  const highlighted = traceActive
+    ? isInTrace
+    : hoveredNodeId !== null && isConnected;
 
   const wrapperClass = [
     "rf-node-wrapper",
     data.animate && "rf-node-animate",
     dimmed && "rf-node-dimmed",
     highlighted && "rf-node-highlighted",
+    traceActive && isInTrace && "rf-node-trace-active",
   ]
     .filter(Boolean)
     .join(" ");

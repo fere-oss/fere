@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useLayoutEffect, useCallback, useRef } from "react";
+import { useState, useMemo, useEffect, useLayoutEffect, useCallback, useRef, useReducer } from "react";
 import { useSystemSnapshot } from "./hooks/useSystemMonitor";
 import { GraphView } from "./components/GraphView";
 import { CurlBuilder } from "./components/CurlBuilder";
@@ -11,7 +11,8 @@ import { useKnownServices, serviceKey, nodeServiceKey, looseServiceIdentity } fr
 import { ServiceDropdown } from "./components/checklist/ServiceDropdown";
 import { HEALTH_COLORS } from "./components/graph/constants";
 import { initAnalytics, capture, identifyWithMainProcess } from "./analytics";
-import type { AlertEvent, GraphEdge, GraphNode } from "./types/electron";
+import { TraceContext, TraceDispatchContext, traceReducer } from "./components/graph/traceContext";
+import type { AlertEvent, GraphEdge, GraphNode, TraceResult } from "./types/electron";
 import "./App.css";
 
 // Detect platform for default tab label
@@ -191,6 +192,15 @@ function App() {
   const { graph, ports } = snapshot;
   // View mode state - graph or api-tester
   const [viewMode, setViewMode] = useState<ViewMode>("graph");
+
+  // Trace state (shared between CurlBuilder and GraphView)
+  const [traceState, traceDispatch] = useReducer(traceReducer, {
+    phase: "idle",
+    activeHopIndex: -1,
+    traceNodeIds: new Set<string>(),
+    traceEdgeIds: new Set<string>(),
+    result: null,
+  });
 
   // Selected tab state - default to system tab
   const [selectedTab, setSelectedTab] = useState<string>(SYSTEM_TAB_ID);
@@ -572,6 +582,39 @@ function App() {
     setViewMode("database");
   }, []);
 
+  // Handle trace request from CurlBuilder
+  const handleTraceRequest = useCallback(async (options: {
+    method: string;
+    url: string;
+    headers: Record<string, string>;
+    body?: string;
+  }) => {
+    // Switch to graph view and start capture
+    setViewMode("graph");
+    traceDispatch({ type: "start-capture" });
+
+    try {
+      const result = await window.electronAPI.executeTracedRequest({
+        method: options.method,
+        url: options.url,
+        headers: options.headers,
+        body: options.body,
+        graphNodes: visibleGraphNodes,
+        graphEdges: graph.edges,
+      });
+
+      if (result.success && result.trace) {
+        traceDispatch({ type: "set-result", result: result.trace });
+      } else {
+        console.error("Trace failed:", result.error);
+        traceDispatch({ type: "dismiss" });
+      }
+    } catch (err) {
+      console.error("Trace error:", err);
+      traceDispatch({ type: "dismiss" });
+    }
+  }, [visibleGraphNodes, graph.edges]);
+
   // Reconcile databaseNode with live data when containers change
   // (e.g., container restarts get a new containerId)
   useEffect(() => {
@@ -937,6 +980,9 @@ function App() {
               </svg>
             </span>
             Service Map
+            {traceState.phase !== "idle" && viewMode !== "graph" && (
+              <span className="trace-tab-indicator" />
+            )}
           </button>
           <button
             className={`view-mode-tab ${viewMode === "containers" ? "view-mode-tab-active" : ""}`}
@@ -1276,6 +1322,8 @@ function App() {
 
       {/* Main Content */}
       <main className="main-content">
+        <TraceContext.Provider value={traceState}>
+        <TraceDispatchContext.Provider value={traceDispatch}>
         <ErrorBoundary>
         <div
           className={`main-view ${viewMode === "graph" ? "main-view-active" : ""}`}
@@ -1400,11 +1448,13 @@ function App() {
             {loading ? (
               <div className="loading">Scanning localhost...</div>
             ) : (
-              <CurlBuilder nodes={visibleGraphNodes} />
+              <CurlBuilder nodes={visibleGraphNodes} onTraceRequest={handleTraceRequest} />
             )}
           </div>
         </div>
         </ErrorBoundary>
+        </TraceDispatchContext.Provider>
+        </TraceContext.Provider>
       </main>
 
       {/* Welcome Modal */}

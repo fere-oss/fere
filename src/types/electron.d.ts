@@ -386,6 +386,50 @@ export interface HistoryResult {
   error?: string;
 }
 
+// Trace types
+export interface TraceHop {
+  sourceNodeId: string;
+  targetNodeId: string;
+  startTime: number;
+  endTime: number;
+  latency: number;
+  connectionType: 'tcp' | 'external';
+  inferred: boolean;
+}
+
+export interface TraceResult {
+  id: string;
+  timestamp: number;
+  request: {
+    method: string;
+    url: string;
+    headers?: Record<string, string>;
+  };
+  response: {
+    status: number;
+    statusText: string;
+    time: number;
+  } | null;
+  hops: TraceHop[];
+  totalTime: number;
+  timedOut: boolean;
+}
+
+export interface TraceRequestOptions {
+  method: string;
+  url: string;
+  headers?: Record<string, string>;
+  body?: string;
+  graphNodes: GraphNode[];
+  graphEdges: GraphEdge[];
+}
+
+export interface TraceRequestResult {
+  success: boolean;
+  trace?: TraceResult;
+  error?: string;
+}
+
 // Network policy
 export type NetworkPolicy = 'local' | 'public';
 
@@ -538,6 +582,7 @@ export interface ElectronAPI {
 
   // API testing
   executeHttpRequest: (options: HttpRequestOptions) => Promise<HttpRequestResult>;
+  executeTracedRequest: (options: TraceRequestOptions) => Promise<TraceRequestResult>;
 
   // Request History
   loadRequestHistory: () => Promise<HistoryResult>;

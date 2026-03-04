@@ -9656,3 +9656,362 @@ textarea {
   text-align: center;
   line-height: 1.5;
 }
+
+/* ============================================
+   Request Flow Tracing
+   ============================================ */
+
+/* Trace-active node — blue ring */
+.rf-node-wrapper.rf-node-trace-active .service-node {
+  box-shadow: 0 0 0 2px #3B82F6, 0 0 12px rgba(59, 130, 246, 0.3);
+  animation: traceNodePulse 1.5s ease-in-out infinite;
+}
+
+@keyframes traceNodePulse {
+  0%, 100% { box-shadow: 0 0 0 2px #3B82F6, 0 0 12px rgba(59, 130, 246, 0.3); }
+  50% { box-shadow: 0 0 0 2px #3B82F6, 0 0 20px rgba(59, 130, 246, 0.5); }
+}
+
+/* Trace overlay pill */
+.trace-overlay-pill {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: rgba(59, 130, 246, 0.08);
+  border: 1px solid rgba(59, 130, 246, 0.25);
+  border-radius: 20px;
+  backdrop-filter: blur(8px);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  white-space: nowrap;
+  animation: traceOverlayIn 0.3s ease-out;
+}
+
+@keyframes traceOverlayIn {
+  from { opacity: 0; transform: translateX(-50%) translateY(-8px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+.trace-overlay-icon {
+  font-size: 11px;
+  color: #3B82F6;
+}
+
+.trace-overlay-spinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(59, 130, 246, 0.3);
+  border-top-color: #3B82F6;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.trace-overlay-method {
+  font-weight: 600;
+}
+
+.trace-overlay-url {
+  color: var(--text-muted);
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.trace-overlay-time {
+  color: var(--text-muted);
+}
+
+/* Trace waterfall panel */
+.trace-waterfall {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 90;
+  background: var(--bg-primary);
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  animation: traceWaterfallIn 0.2s ease-out;
+}
+
+@keyframes traceWaterfallIn {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+.trace-waterfall-resize {
+  height: 4px;
+  cursor: ns-resize;
+  background: transparent;
+  transition: background 0.15s;
+}
+
+.trace-waterfall-resize:hover {
+  background: rgba(59, 130, 246, 0.3);
+}
+
+.trace-waterfall-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border-color);
+  cursor: pointer;
+  user-select: none;
+}
+
+.trace-waterfall-header:hover {
+  background: var(--bg-muted);
+}
+
+.trace-waterfall-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.trace-waterfall-icon {
+  color: #3B82F6;
+  font-size: 16px;
+}
+
+.trace-waterfall-method {
+  font-family: var(--font-mono);
+  font-weight: 600;
+}
+
+.trace-waterfall-url {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.trace-waterfall-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.trace-waterfall-status {
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: white;
+}
+
+.trace-waterfall-total {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.trace-waterfall-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.trace-waterfall-close:hover {
+  background: var(--bg-muted);
+  color: var(--text-primary);
+}
+
+.trace-waterfall-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 16px 12px;
+}
+
+.trace-waterfall-axis {
+  position: relative;
+  height: 24px;
+  margin-left: 160px;
+  margin-right: 60px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.trace-waterfall-tick {
+  position: absolute;
+  top: 6px;
+  transform: translateX(-50%);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.trace-waterfall-rows {
+  display: flex;
+  flex-direction: column;
+}
+
+.trace-waterfall-row {
+  display: flex;
+  align-items: center;
+  height: 28px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background 0.1s;
+}
+
+.trace-waterfall-row:hover {
+  background: var(--bg-muted);
+}
+
+.trace-waterfall-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 160px;
+  min-width: 160px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trace-waterfall-arrow {
+  color: #3B82F6;
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+.trace-waterfall-node-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.trace-waterfall-bar-area {
+  flex: 1;
+  position: relative;
+  height: 16px;
+  margin: 0 8px;
+}
+
+.trace-waterfall-bar {
+  position: absolute;
+  top: 2px;
+  height: 12px;
+  border-radius: 3px;
+  min-width: 4px;
+  transition: width 0.3s ease;
+}
+
+.trace-waterfall-bar-pulse {
+  animation: traceBarPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes traceBarPulse {
+  0%, 100% { box-shadow: 0 0 4px rgba(234, 179, 8, 0.3); }
+  50% { box-shadow: 0 0 12px rgba(234, 179, 8, 0.6); }
+}
+
+.trace-waterfall-latency {
+  width: 56px;
+  min-width: 56px;
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.trace-waterfall-row-bottleneck .trace-waterfall-label {
+  font-weight: 600;
+}
+
+.trace-waterfall-row-response .trace-waterfall-arrow {
+  color: #22C55E;
+}
+
+.trace-waterfall-empty {
+  padding: 16px 0;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+/* Trace toggle on Send button */
+.curl-run-group {
+  display: flex;
+  gap: 0;
+  margin-top: 8px;
+}
+
+.curl-run-group .curl-run-btn {
+  margin-top: 0;
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+  flex: 1;
+}
+
+.curl-trace-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  padding: 0;
+  background: var(--bg-white);
+  border: 1px solid var(--border-color);
+  border-left: none;
+  border-radius: 0 10px 10px 0;
+  cursor: pointer;
+  color: var(--text-muted);
+  transition: all 0.15s;
+}
+
+.curl-trace-toggle:hover {
+  background: var(--bg-muted);
+  color: #3B82F6;
+}
+
+.curl-trace-toggle.active {
+  background: rgba(59, 130, 246, 0.08);
+  color: #3B82F6;
+  border-color: rgba(59, 130, 246, 0.3);
+}
+
+.curl-trace-toggle.active svg {
+  filter: drop-shadow(0 0 3px rgba(59, 130, 246, 0.5));
+}
+
+/* Tab indicator for active trace */
+.trace-tab-indicator {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #3B82F6;
+  margin-left: 6px;
+  animation: traceTabPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes traceTabPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
