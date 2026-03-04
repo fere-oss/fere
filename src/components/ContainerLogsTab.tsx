@@ -435,12 +435,15 @@ export function ContainerLogsTab({ containers, initialSelectedId }: ContainerLog
   }, []);
 
   // Copy logs
-  const handleCopy = useCallback(() => {
+  const handleCopy = useCallback(async () => {
     const text = filteredLogs.map(log =>
       `[${log.formattedTime}] [${log.containerName}] ${log.line}`
     ).join('\n');
-    if (!navigator.clipboard?.writeText) return;
-    navigator.clipboard.writeText(text).catch(console.error);
+    if (!window.electronAPI?.copyText) return;
+    const result = await window.electronAPI.copyText(text);
+    if (!result.success) {
+      console.error(result.error || "Failed to copy logs");
+    }
   }, [filteredLogs]);
 
   // Highlight search matches

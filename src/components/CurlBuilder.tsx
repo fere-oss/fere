@@ -843,7 +843,13 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
   const copyToClipboard = useCallback(async () => {
     if (!displayCurl) return;
     try {
-      await navigator.clipboard.writeText(displayCurl);
+      if (!window.electronAPI?.copyText) {
+        throw new Error("Clipboard API unavailable");
+      }
+      const result = await window.electronAPI.copyText(displayCurl);
+      if (!result.success) {
+        throw new Error(result.error || "Failed to copy");
+      }
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {

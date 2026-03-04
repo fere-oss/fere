@@ -93,13 +93,12 @@ export function ShareModal({ onClose, graphNodes, graphEdges, activeTabLabel }: 
   async function handleCopy() {
     if (!shareUrl) return;
     try {
-      if (window.electronAPI?.copyText) {
-        const result = await window.electronAPI.copyText(shareUrl);
-        if (!result.success) {
-          throw new Error(result.error || "Copy failed");
-        }
-      } else {
-        await navigator.clipboard.writeText(shareUrl);
+      if (!window.electronAPI?.copyText) {
+        throw new Error("Clipboard API unavailable");
+      }
+      const result = await window.electronAPI.copyText(shareUrl);
+      if (!result.success) {
+        throw new Error(result.error || "Copy failed");
       }
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
