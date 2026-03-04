@@ -345,7 +345,7 @@ export function useSystemSnapshot(pollInterval = 2000) {
         clearTimeout(bootstrapTimer);
         unsubscribe();
         cancelAnimationFrame(metricsRafRef.current);
-        window.electronAPI.stopSnapshotStream();
+        window.electronAPI.stopSnapshotStream()?.catch(() => {});
       };
     }
 
