@@ -28,7 +28,7 @@ function getRemoteAccessTarget(node: GraphNode): string | null {
     const portSuffix = node.remoteAccess.port
       ? `:${node.remoteAccess.port}`
       : "";
-    return `remote: ${userPrefix}${node.remoteAccess.host}${portSuffix}`;
+    return `${userPrefix}${node.remoteAccess.host}${portSuffix}`;
   }
 
   const command = node.command || "";
@@ -38,7 +38,7 @@ function getRemoteAccessTarget(node: GraphNode): string | null {
     /(?:^|\s)(?:sftp|scp|ssh|autossh)\s+(?:-[A-Za-z0-9-]+\s+)*(?:[^@\s]+@)?([A-Za-z0-9._-]+)(?::\S+)?/i,
   );
   if (!match?.[1]) return null;
-  return `remote: ${match[1]}`;
+  return match[1];
 }
 
 function getTunnelSummary(node: GraphNode): string | null {
@@ -53,7 +53,7 @@ function getTunnelSummary(node: GraphNode): string | null {
     return `${tunnel.mode}:${tunnel.listenPort ?? "?"}->${target}`;
   });
   const extra = tunnels.length > 2 ? ` +${tunnels.length - 2}` : "";
-  return `tunnel ${summaries.join(", ")}${extra}`;
+  return `${summaries.join(", ")}${extra}`;
 }
 
 function getInboundSshSummary(node: GraphNode): string | null {
@@ -61,17 +61,17 @@ function getInboundSshSummary(node: GraphNode): string | null {
   if (sessions <= 0) return null;
   const clients = node.remoteAccess?.inboundClients || [];
   if (clients.length === 0) {
-    return `inbound ssh: ${sessions}`;
+    return `${sessions}`;
   }
   const preview = clients.slice(0, 2).join(", ");
   const extra = clients.length > 2 ? ` +${clients.length - 2}` : "";
-  return `inbound ssh: ${sessions} (${preview}${extra})`;
+  return `${sessions} (${preview}${extra})`;
 }
 
 function getRemoteHealthSummary(node: GraphNode): string | null {
   const notes = node.remoteAccess?.healthFlags?.notes || [];
   if (notes.length === 0) return null;
-  return `status: ${notes.join(", ")}`;
+  return notes.join(", ");
 }
 
 export function CompactServiceNode({
@@ -464,23 +464,35 @@ export const ServiceNode = React.memo(function ServiceNode({
         <div className="service-node-project">{projectLabel}</div>
       )}
       {!node.isDockerContainer && !projectLabel && remoteTarget && (
-        <div className="service-node-project service-node-remote-target">
-          {remoteTarget}
+        <div className="service-node-port service-node-remote-target">
+          <span className="service-node-port-host">remote</span>
+          <span className="service-node-port-number" title={remoteTarget}>
+            {remoteTarget}
+          </span>
         </div>
       )}
       {!node.isDockerContainer && tunnelSummary && (
-        <div className="service-node-project service-node-remote-target">
-          {tunnelSummary}
+        <div className="service-node-remote-meta">
+          <span className="service-node-remote-meta-label">Tunnel</span>
+          <span className="service-node-remote-meta-value" title={tunnelSummary}>
+            {tunnelSummary}
+          </span>
         </div>
       )}
       {!node.isDockerContainer && inboundSshSummary && (
-        <div className="service-node-project service-node-remote-target">
-          {inboundSshSummary}
+        <div className="service-node-remote-meta">
+          <span className="service-node-remote-meta-label">Inbound</span>
+          <span className="service-node-remote-meta-value" title={inboundSshSummary}>
+            {inboundSshSummary}
+          </span>
         </div>
       )}
       {!node.isDockerContainer && remoteHealthSummary && (
-        <div className="service-node-project service-node-remote-target">
-          {remoteHealthSummary}
+        <div className="service-node-remote-meta">
+          <span className="service-node-remote-meta-label">Status</span>
+          <span className="service-node-remote-meta-value" title={remoteHealthSummary}>
+            {remoteHealthSummary}
+          </span>
         </div>
       )}
 

@@ -42,6 +42,7 @@ export function NodeDetailContent({ node, edges, allNodes }: NodeDetailContentPr
   }, [allNodes]);
   const getNodeName = useCallback((id: string) => nodeNameMap.get(id) || id, [nodeNameMap]);
   const shouldShowExternalApis = supportsExternalApiScan(node);
+  const remoteAccess = node.remoteAccess;
 
   useEffect(() => {
     let active = true;
@@ -147,6 +148,100 @@ export function NodeDetailContent({ node, edges, allNodes }: NodeDetailContentPr
               <span className="node-detail-value mono">{node.memory.toFixed(1)}%</span>
             </div>
           </div>
+        </div>
+      )}
+
+      {!node.isDockerContainer && remoteAccess && (
+        <div className="node-detail-section">
+          <h3 className="node-detail-section-title">Remote Session</h3>
+          <div className="node-detail-grid">
+            <div className="node-detail-item">
+              <span className="node-detail-label">Tool</span>
+              <span className="node-detail-value mono">{remoteAccess.tool.toUpperCase()}</span>
+            </div>
+            <div className="node-detail-item">
+              <span className="node-detail-label">Source</span>
+              <span className="node-detail-value">{remoteAccess.source}</span>
+            </div>
+            {remoteAccess.alias && (
+              <div className="node-detail-item">
+                <span className="node-detail-label">Alias</span>
+                <span className="node-detail-value mono">{remoteAccess.alias}</span>
+              </div>
+            )}
+            {remoteAccess.user && (
+              <div className="node-detail-item">
+                <span className="node-detail-label">Remote User</span>
+                <span className="node-detail-value mono">{remoteAccess.user}</span>
+              </div>
+            )}
+            {remoteAccess.host && (
+              <div className="node-detail-item full-width">
+                <span className="node-detail-label">Remote Host</span>
+                <span className="node-detail-value mono small">{remoteAccess.host}</span>
+              </div>
+            )}
+            {remoteAccess.port && (
+              <div className="node-detail-item">
+                <span className="node-detail-label">Remote Port</span>
+                <span className="node-detail-value mono">:{remoteAccess.port}</span>
+              </div>
+            )}
+            {remoteAccess.startTime && (
+              <div className="node-detail-item">
+                <span className="node-detail-label">Process Start</span>
+                <span className="node-detail-value mono">{remoteAccess.startTime}</span>
+              </div>
+            )}
+            {!!remoteAccess.inboundSessions && (
+              <div className="node-detail-item">
+                <span className="node-detail-label">Inbound Sessions</span>
+                <span className="node-detail-value mono">{remoteAccess.inboundSessions}</span>
+              </div>
+            )}
+          </div>
+
+          {remoteAccess.tunnels && remoteAccess.tunnels.length > 0 && (
+            <div className="node-detail-remote-list">
+              <div className="node-detail-label">Tunnels</div>
+              {remoteAccess.tunnels.map((tunnel, idx) => (
+                <div key={`${tunnel.mode}-${idx}`} className="node-detail-remote-row">
+                  <span className="node-detail-remote-mode">{tunnel.mode}</span>
+                  {tunnel.mode === 'D' ? (
+                    <span className="node-detail-value mono">
+                      {tunnel.listenHost ? `${tunnel.listenHost}:` : ''}{tunnel.listenPort ?? '?'}
+                    </span>
+                  ) : (
+                    <span className="node-detail-value mono small">
+                      {tunnel.listenHost ? `${tunnel.listenHost}:` : ''}{tunnel.listenPort ?? '?'} -&gt; {tunnel.targetHost ?? '?'}:{tunnel.targetPort ?? '?'}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {remoteAccess.inboundClients && remoteAccess.inboundClients.length > 0 && (
+            <div className="node-detail-remote-list">
+              <div className="node-detail-label">Inbound Clients</div>
+              {remoteAccess.inboundClients.map((client) => (
+                <div key={client} className="node-detail-remote-row">
+                  <span className="node-detail-value mono small">{client}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {remoteAccess.healthFlags && remoteAccess.healthFlags.notes.length > 0 && (
+            <div className="node-detail-remote-list">
+              <div className="node-detail-label">Session Status</div>
+              {remoteAccess.healthFlags.notes.map((note, idx) => (
+                <div key={`${note}-${idx}`} className="node-detail-remote-row">
+                  <span className="node-detail-value">{note}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
