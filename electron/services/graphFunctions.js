@@ -253,6 +253,11 @@ function looksLikeRemoteAccessConnection(conn = {}) {
   return remotePort === 22 || remotePort === 21 || remotePort === 989 || remotePort === 990;
 }
 
+function isSshdProcess(processName = '', command = '') {
+  const text = `${processName || ''} ${command || ''}`.toLowerCase();
+  return /(^|\s)sshd(\s|$)/.test(text);
+}
+
 function parseRemoteAccessCommand(command = '') {
   const cmd = String(command || '');
   if (!cmd) return { tool: null, user: null, host: null, port: null };
@@ -982,6 +987,43 @@ function buildGraphStructure({
         confidence,
       });
     }
+  }
+
+  // Aggregate inbound SSHD sessions from external clients.
+  const inboundSshByPid = new Map();
+  for (const conn of connections) {
+    const sourceProc = processMap.get(conn.pid);
+    if (!sourceProc) continue;
+    if (!isSshdProcess(sourceProc.name, sourceProc.command)) continue;
+    if (isLocalHost(conn.remoteHost)) continue;
+    if (Number(conn.localPort || 0) !== 22) continue;
+
+    const pid = conn.pid;
+    if (!inboundSshByPid.has(pid)) {
+      inboundSshByPid.set(pid, { total: 0, clients: new Set() });
+    }
+    const entry = inboundSshByPid.get(pid);
+    entry.total += 1;
+    if (conn.remoteHost) entry.clients.add(conn.remoteHost);
+  }
+
+  for (const [pid, stats] of inboundSshByPid.entries()) {
+    const proc = processMap.get(pid);
+    const node =
+      nodesByPid.get(pid) ||
+      ensureProcessNode(pid, proc?.name || 'sshd');
+    const baseRemoteAccess =
+      node.remoteAccess ||
+      buildRemoteAccessMetadata({
+        proc: proc || null,
+        command: node.command || proc?.command || 'sshd',
+      });
+    node.remoteAccess = {
+      ...baseRemoteAccess,
+      inboundSessions: stats.total,
+      inboundClients: Array.from(stats.clients).sort().slice(0, 6),
+      source: 'connection',
+    };
   }
 
   // Keep SSH/SFTP/SCP process nodes visible even when they are outbound-only

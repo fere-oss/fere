@@ -148,6 +148,53 @@ test('buildConnectionGraph parses ssh tunnel flags into remoteAccess metadata', 
   );
 });
 
+test('buildConnectionGraph aggregates inbound sshd session stats', async () => {
+  const snapshot = {
+    processes: [
+      {
+        pid: 880,
+        name: 'sshd',
+        command: '/usr/sbin/sshd -D',
+        cpu: 0.2,
+        memory: 0.2,
+        user: 'root',
+        tty: null,
+      },
+    ],
+    ports: [],
+    connections: [
+      {
+        pid: 880,
+        process: 'sshd',
+        user: 'root',
+        localHost: '0.0.0.0',
+        localPort: 22,
+        remoteHost: '203.0.113.12',
+        remotePort: 55221,
+        protocol: 'tcp',
+      },
+      {
+        pid: 880,
+        process: 'sshd',
+        user: 'root',
+        localHost: '0.0.0.0',
+        localPort: 22,
+        remoteHost: '198.51.100.44',
+        remotePort: 52111,
+        protocol: 'tcp',
+      },
+    ],
+  };
+
+  const { nodes } = await buildConnectionGraph(snapshot);
+  const sshdNode = nodes.find((node) => node.id === 'proc-880');
+  assert.ok(sshdNode);
+  assert.ok(sshdNode.remoteAccess);
+  assert.equal(sshdNode.remoteAccess.inboundSessions, 2);
+  assert.ok(sshdNode.remoteAccess.inboundClients.includes('198.51.100.44'));
+  assert.ok(sshdNode.remoteAccess.inboundClients.includes('203.0.113.12'));
+});
+
 test('categorizeProcess detects common service types', () => {
   assert.equal(categorizeProcess('postgres', 'postgres'), 'database');
   assert.equal(categorizeProcess('redis', 'redis'), 'cache');

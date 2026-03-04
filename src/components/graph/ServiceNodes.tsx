@@ -56,6 +56,18 @@ function getTunnelSummary(node: GraphNode): string | null {
   return `tunnel ${summaries.join(", ")}${extra}`;
 }
 
+function getInboundSshSummary(node: GraphNode): string | null {
+  const sessions = node.remoteAccess?.inboundSessions || 0;
+  if (sessions <= 0) return null;
+  const clients = node.remoteAccess?.inboundClients || [];
+  if (clients.length === 0) {
+    return `inbound ssh: ${sessions}`;
+  }
+  const preview = clients.slice(0, 2).join(", ");
+  const extra = clients.length > 2 ? ` +${clients.length - 2}` : "";
+  return `inbound ssh: ${sessions} (${preview}${extra})`;
+}
+
 export function CompactServiceNode({
   node,
   onClick,
@@ -244,6 +256,10 @@ export const ServiceNode = React.memo(function ServiceNode({
   );
   const tunnelSummary = useMemo(
     () => getTunnelSummary(node),
+    [node.remoteAccess],
+  );
+  const inboundSshSummary = useMemo(
+    () => getInboundSshSummary(node),
     [node.remoteAccess],
   );
   const routes = node.routes || [];
@@ -445,6 +461,11 @@ export const ServiceNode = React.memo(function ServiceNode({
       {!node.isDockerContainer && tunnelSummary && (
         <div className="service-node-project service-node-remote-target">
           {tunnelSummary}
+        </div>
+      )}
+      {!node.isDockerContainer && inboundSshSummary && (
+        <div className="service-node-project service-node-remote-target">
+          {inboundSshSummary}
         </div>
       )}
 

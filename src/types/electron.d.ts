@@ -283,6 +283,8 @@ export interface GraphNode {
       targetHost: string | null;
       targetPort: number | null;
     }>;
+    inboundSessions?: number;
+    inboundClients?: string[];
   };
   // Synthetic node for tracked services not currently running
   isGhost?: boolean;
