@@ -258,9 +258,43 @@ function isSshdProcess(processName = '', command = '') {
   return /(^|\s)sshd(\s|$)/.test(text);
 }
 
+const PERF_SSH_LOGGING = process.env.FERE_PERF_SSH === '1';
+const REMOTE_CMD_PARSE_CACHE_MAX = 512;
+const REMOTE_CMD_PARSE_CACHE = new Map();
+const REMOTE_PARSE_STATS = { hits: 0, misses: 0 };
+
+function getCachedRemoteCommandParse(command) {
+  const cached = REMOTE_CMD_PARSE_CACHE.get(command);
+  if (!cached) return null;
+  REMOTE_CMD_PARSE_CACHE.delete(command);
+  REMOTE_CMD_PARSE_CACHE.set(command, cached);
+  REMOTE_PARSE_STATS.hits += 1;
+  return cached;
+}
+
+function setCachedRemoteCommandParse(command, parsed) {
+  if (!command || !parsed) return;
+  if (REMOTE_CMD_PARSE_CACHE.has(command)) {
+    REMOTE_CMD_PARSE_CACHE.delete(command);
+  }
+  REMOTE_CMD_PARSE_CACHE.set(command, parsed);
+  if (REMOTE_CMD_PARSE_CACHE.size > REMOTE_CMD_PARSE_CACHE_MAX) {
+    const oldestKey = REMOTE_CMD_PARSE_CACHE.keys().next().value;
+    if (oldestKey) REMOTE_CMD_PARSE_CACHE.delete(oldestKey);
+  }
+}
+
 function parseRemoteAccessCommand(command = '') {
   const cmd = String(command || '');
-  if (!cmd) return { tool: null, user: null, host: null, port: null };
+  if (!cmd) return { tool: null, user: null, host: null, port: null, tunnels: [] };
+  const cached = getCachedRemoteCommandParse(cmd);
+  if (cached) {
+    return {
+      ...cached,
+      tunnels: (cached.tunnels || []).map((tunnel) => ({ ...tunnel })),
+    };
+  }
+  REMOTE_PARSE_STATS.misses += 1;
 
   const parseTunnelSpec = (mode, spec) => {
     const raw = String(spec || '').trim();
@@ -313,28 +347,43 @@ function parseRemoteAccessCommand(command = '') {
 
   const hostWithUser = cmd.match(/(?:^|\s)(?:ssh|autossh|sftp)\s+(?:-[A-Za-z0-9-]+(?:\s+\S+)?\s+)*(?:([^@\s]+)@)?([A-Za-z0-9._-]+)/i);
   if (hostWithUser) {
-    return {
+    const parsed = {
       tool,
       user: hostWithUser[1] || null,
       host: hostWithUser[2] || null,
       port,
       tunnels,
     };
+    setCachedRemoteCommandParse(cmd, parsed);
+    return {
+      ...parsed,
+      tunnels: (parsed.tunnels || []).map((tunnel) => ({ ...tunnel })),
+    };
   }
 
   // scp can include host:path in either src or dest
   const scpHost = cmd.match(/(?:^|\s)(?:([^@\s]+)@)?([A-Za-z0-9._-]+):\S+/i);
   if (scpHost) {
-    return {
+    const parsed = {
       tool,
       user: scpHost[1] || null,
       host: scpHost[2] || null,
       port,
       tunnels,
     };
+    setCachedRemoteCommandParse(cmd, parsed);
+    return {
+      ...parsed,
+      tunnels: (parsed.tunnels || []).map((tunnel) => ({ ...tunnel })),
+    };
   }
 
-  return { tool, user: null, host: null, port, tunnels };
+  const parsed = { tool, user: null, host: null, port, tunnels };
+  setCachedRemoteCommandParse(cmd, parsed);
+  return {
+    ...parsed,
+    tunnels: (parsed.tunnels || []).map((tunnel) => ({ ...tunnel })),
+  };
 }
 
 function buildRemoteAccessMetadata({ proc = null, command = '', conn = null }) {
@@ -357,7 +406,7 @@ function buildRemoteAccessMetadata({ proc = null, command = '', conn = null }) {
     port: Number.isNaN(port) ? null : port,
     source: conn ? 'connection' : 'command',
     startTime: proc?.startTime || null,
-    tunnels: parsed.tunnels || [],
+    tunnels: parsed.tunnels ? parsed.tunnels.map((tunnel) => ({ ...tunnel })) : [],
   };
 }
 
@@ -830,6 +879,8 @@ function buildGraphStructure({
   cwdMap = {}, dockerSnapshot = null, routesByProject = {},
   healthByPid = {}, containerHealthToGraphHealth = () => 'yellow',
 }) {
+  const sshPerfStart = PERF_SSH_LOGGING ? Date.now() : 0;
+  let remoteAccessEnrichCount = 0;
   const pidsWithConnections = new Set();
   for (const conn of connections) {
     pidsWithConnections.add(conn.pid);
@@ -962,6 +1013,7 @@ function buildGraphStructure({
         command: sourceNode.command || conn.process || '',
         conn,
       });
+      remoteAccessEnrichCount++;
     }
     const targetPid = isLocalHost(conn.remoteHost) ? portToPid.get(conn.remotePort) : null;
     const inferredProtocol = inferConnectionProtocol(conn, sourceNode);
@@ -1027,6 +1079,7 @@ function buildGraphStructure({
       inboundClients: Array.from(stats.clients).sort().slice(0, 6),
       source: 'connection',
     };
+    remoteAccessEnrichCount++;
   }
 
   // Keep SSH/SFTP/SCP process nodes visible even when they are outbound-only
@@ -1067,6 +1120,7 @@ function buildGraphStructure({
       conn: { remoteHost, remotePort: targetPort },
     });
     node.remoteAccess.source = 'command';
+    remoteAccessEnrichCount++;
   }
 
   // Compute remote-access health flags
@@ -1096,6 +1150,13 @@ function buildGraphStructure({
       duplicateSessions,
       notes,
     };
+  }
+
+  if (PERF_SSH_LOGGING && remoteAccessEnrichCount > 0) {
+    const elapsed = Date.now() - sshPerfStart;
+    console.log(
+      `[PERF][SSH] ${elapsed.toFixed(2)}ms enrich=${remoteAccessEnrichCount} cache=${REMOTE_CMD_PARSE_CACHE.size} hits=${REMOTE_PARSE_STATS.hits} misses=${REMOTE_PARSE_STATS.misses}`,
+    );
   }
 
   // Track node count before Docker additions for optimized re-matching
