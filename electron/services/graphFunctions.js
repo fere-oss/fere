@@ -253,16 +253,64 @@ function looksLikeRemoteAccessConnection(conn = {}) {
   return remotePort === 22 || remotePort === 21 || remotePort === 989 || remotePort === 990;
 }
 
-function extractRemoteHostFromCommand(command = '') {
+function parseRemoteAccessCommand(command = '') {
   const cmd = String(command || '');
-  if (!cmd) return null;
-  const hostWithUser = cmd.match(/(?:^|\s)(?:ssh|autossh|sftp)\s+(?:-[A-Za-z0-9-]+(?:\s+\S+)?\s+)*(?:[^@\s]+@)?([A-Za-z0-9._-]+)/i);
-  if (hostWithUser?.[1]) return hostWithUser[1];
+  if (!cmd) return { tool: null, user: null, host: null, port: null };
+
+  const toolMatch = cmd.match(/(?:^|\s)(autossh|ssh|sftp|scp)(?=\s|$)/i);
+  const tool = toolMatch ? toolMatch[1].toLowerCase() : null;
+
+  const portMatch = cmd.match(/(?:^|\s)-p\s+(\d+)(?=\s|$)/i)
+    || cmd.match(/(?:^|\s)-P\s+(\d+)(?=\s|$)/i);
+  const port = portMatch ? parseInt(portMatch[1], 10) : null;
+
+  const hostWithUser = cmd.match(/(?:^|\s)(?:ssh|autossh|sftp)\s+(?:-[A-Za-z0-9-]+(?:\s+\S+)?\s+)*(?:([^@\s]+)@)?([A-Za-z0-9._-]+)/i);
+  if (hostWithUser) {
+    return {
+      tool,
+      user: hostWithUser[1] || null,
+      host: hostWithUser[2] || null,
+      port,
+    };
+  }
 
   // scp can include host:path in either src or dest
-  const scpHost = cmd.match(/(?:^|\s)(?:[^@\s]+@)?([A-Za-z0-9._-]+):\S+/i);
-  if (scpHost?.[1]) return scpHost[1];
-  return null;
+  const scpHost = cmd.match(/(?:^|\s)(?:([^@\s]+)@)?([A-Za-z0-9._-]+):\S+/i);
+  if (scpHost) {
+    return {
+      tool,
+      user: scpHost[1] || null,
+      host: scpHost[2] || null,
+      port,
+    };
+  }
+
+  return { tool, user: null, host: null, port };
+}
+
+function buildRemoteAccessMetadata({ proc = null, command = '', conn = null }) {
+  const parsed = parseRemoteAccessCommand(command);
+  const normalizedTool = parsed.tool === 'autossh'
+    ? 'autossh'
+    : parsed.tool === 'sftp'
+      ? 'sftp'
+      : parsed.tool === 'scp'
+        ? 'scp'
+        : 'ssh';
+  const host = conn?.remoteHost || parsed.host || null;
+  const port = Number(conn?.remotePort || parsed.port || 22);
+  return {
+    tool: normalizedTool,
+    user: parsed.user || null,
+    host,
+    port: Number.isNaN(port) ? null : port,
+    source: conn ? 'connection' : 'command',
+    startTime: proc?.startTime || null,
+  };
+}
+
+function extractRemoteHostFromCommand(command = '') {
+  return parseRemoteAccessCommand(command).host;
 }
 
 function inferConnectionProtocol(conn, sourceNode) {
@@ -683,6 +731,9 @@ function buildGraphStructure({
       healthStatus: health.healthStatus,
       lastSeen: health.lastSeen,
     };
+    if (looksLikeRemoteAccessProcess(rawName, command)) {
+      node.remoteAccess = buildRemoteAccessMetadata({ proc, command });
+    }
 
     nodes.push(node);
     nodesByPid.set(pid, node);
@@ -752,6 +803,13 @@ function buildGraphStructure({
     if (!conn.remoteHost && !conn.remotePort) continue;
 
     const sourceNode = ensureProcessNode(conn.pid, conn.process);
+    if (looksLikeRemoteAccessConnection(conn)) {
+      sourceNode.remoteAccess = buildRemoteAccessMetadata({
+        proc: processMap.get(conn.pid) || null,
+        command: sourceNode.command || conn.process || '',
+        conn,
+      });
+    }
     const targetPid = isLocalHost(conn.remoteHost) ? portToPid.get(conn.remotePort) : null;
     const inferredProtocol = inferConnectionProtocol(conn, sourceNode);
     const targetNode = targetPid
@@ -810,6 +868,11 @@ function buildGraphStructure({
       targetPort,
       protocol,
       confidence: 0.45,
+    });
+    node.remoteAccess = buildRemoteAccessMetadata({
+      proc,
+      command: node.command || proc.command || '',
+      conn: { remoteHost, remotePort: targetPort },
     });
   }
 

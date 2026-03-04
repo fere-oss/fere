@@ -267,6 +267,15 @@ export interface GraphNode {
   containerMounts?: DockerMount[];
   containerPorts?: DockerPort[];
   memoryUsage?: string;
+  // Remote access metadata (SSH/SFTP/SCP session details)
+  remoteAccess?: {
+    tool: 'ssh' | 'sftp' | 'scp' | 'autossh';
+    user: string | null;
+    host: string | null;
+    port: number | null;
+    source: 'command' | 'connection';
+    startTime: string | null;
+  };
   // Synthetic node for tracked services not currently running
   isGhost?: boolean;
   startCommand?: string;

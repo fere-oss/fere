@@ -21,6 +21,16 @@ function getRemoteAccessKind(node: GraphNode): "SSH" | "SFTP" | "SCP" | null {
 }
 
 function getRemoteAccessTarget(node: GraphNode): string | null {
+  if (node.remoteAccess?.host) {
+    const userPrefix = node.remoteAccess.user
+      ? `${node.remoteAccess.user}@`
+      : "";
+    const portSuffix = node.remoteAccess.port
+      ? `:${node.remoteAccess.port}`
+      : "";
+    return `remote: ${userPrefix}${node.remoteAccess.host}${portSuffix}`;
+  }
+
   const command = node.command || "";
   if (!command) return null;
 
