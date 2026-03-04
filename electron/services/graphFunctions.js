@@ -334,6 +334,7 @@ function parseRemoteAccessCommand(command = '') {
 
 function buildRemoteAccessMetadata({ proc = null, command = '', conn = null }) {
   const parsed = parseRemoteAccessCommand(command);
+  const resolved = resolveSshAlias(parsed.host);
   const normalizedTool = parsed.tool === 'autossh'
     ? 'autossh'
     : parsed.tool === 'sftp'
@@ -341,11 +342,12 @@ function buildRemoteAccessMetadata({ proc = null, command = '', conn = null }) {
       : parsed.tool === 'scp'
         ? 'scp'
         : 'ssh';
-  const host = conn?.remoteHost || parsed.host || null;
-  const port = Number(conn?.remotePort || parsed.port || 22);
+  const host = conn?.remoteHost || resolved.host || parsed.host || null;
+  const port = Number(conn?.remotePort || parsed.port || resolved.port || 22);
   return {
     tool: normalizedTool,
-    user: parsed.user || null,
+    alias: resolved.alias || null,
+    user: parsed.user || resolved.user || null,
     host,
     port: Number.isNaN(port) ? null : port,
     source: conn ? 'connection' : 'command',
@@ -355,7 +357,9 @@ function buildRemoteAccessMetadata({ proc = null, command = '', conn = null }) {
 }
 
 function extractRemoteHostFromCommand(command = '') {
-  return parseRemoteAccessCommand(command).host;
+  const parsed = parseRemoteAccessCommand(command);
+  const resolved = resolveSshAlias(parsed.host);
+  return resolved.host || parsed.host;
 }
 
 function inferConnectionProtocol(conn, sourceNode) {
@@ -483,6 +487,104 @@ const PROJECT_MARKERS = [
   'setup.py', 'go.mod', 'Cargo.toml', 'composer.json', 'Gemfile',
   'pom.xml', 'build.gradle', 'Makefile',
 ];
+
+const SSH_CONFIG_CACHE = {
+  mtimeMs: -1,
+  aliases: new Map(),
+};
+
+function parseSshConfigText(content = '') {
+  const aliases = new Map();
+  const lines = String(content || '').split('\n');
+  let currentHosts = [];
+
+  const ensureAlias = (alias) => {
+    const key = alias.toLowerCase();
+    if (!aliases.has(key)) {
+      aliases.set(key, { host: alias, hostname: null, user: null, port: null });
+    }
+    return aliases.get(key);
+  };
+
+  for (const rawLine of lines) {
+    const line = rawLine.replace(/#.*$/, '').trim();
+    if (!line) continue;
+    const [keywordRaw, ...rest] = line.split(/\s+/);
+    const keyword = (keywordRaw || '').toLowerCase();
+    if (!keyword || rest.length === 0) continue;
+    const value = rest.join(' ').trim();
+
+    if (keyword === 'host') {
+      currentHosts = value
+        .split(/\s+/)
+        .filter(Boolean)
+        .filter((alias) => !/[*?!]/.test(alias));
+      for (const alias of currentHosts) ensureAlias(alias);
+      continue;
+    }
+
+    if (currentHosts.length === 0) continue;
+    if (keyword === 'hostname') {
+      for (const alias of currentHosts) ensureAlias(alias).hostname = value;
+      continue;
+    }
+    if (keyword === 'user') {
+      for (const alias of currentHosts) ensureAlias(alias).user = value;
+      continue;
+    }
+    if (keyword === 'port') {
+      const parsedPort = parseInt(value, 10);
+      for (const alias of currentHosts) {
+        ensureAlias(alias).port = Number.isNaN(parsedPort) ? null : parsedPort;
+      }
+    }
+  }
+
+  return aliases;
+}
+
+function loadSshAliasMap() {
+  const configPath = path.join(os.homedir(), '.ssh', 'config');
+  let stat;
+  try {
+    stat = fs.statSync(configPath);
+  } catch (error) {
+    SSH_CONFIG_CACHE.mtimeMs = -1;
+    SSH_CONFIG_CACHE.aliases = new Map();
+    return SSH_CONFIG_CACHE.aliases;
+  }
+
+  if (SSH_CONFIG_CACHE.mtimeMs === stat.mtimeMs) {
+    return SSH_CONFIG_CACHE.aliases;
+  }
+
+  try {
+    const content = fs.readFileSync(configPath, 'utf8');
+    SSH_CONFIG_CACHE.aliases = parseSshConfigText(content);
+    SSH_CONFIG_CACHE.mtimeMs = stat.mtimeMs;
+  } catch (error) {
+    SSH_CONFIG_CACHE.aliases = new Map();
+    SSH_CONFIG_CACHE.mtimeMs = stat.mtimeMs;
+  }
+  return SSH_CONFIG_CACHE.aliases;
+}
+
+function resolveSshAliasWithMap(host = null, aliasMap = new Map()) {
+  if (!host) return { alias: null, host: null, user: null, port: null };
+  const key = String(host).toLowerCase();
+  const entry = aliasMap.get(key);
+  if (!entry) return { alias: null, host, user: null, port: null };
+  return {
+    alias: entry.host || host,
+    host: entry.hostname || host,
+    user: entry.user || null,
+    port: entry.port || null,
+  };
+}
+
+function resolveSshAlias(host = null) {
+  return resolveSshAliasWithMap(host, loadSshAliasMap());
+}
 
 function findProjectRoot(startPath) {
   let current = startPath;
@@ -1224,6 +1326,8 @@ module.exports = {
   PROJECT_MARKERS,
   findProjectRoot,
   findNearestProjectMarkerRoot,
+  parseSshConfigText,
+  resolveSshAliasWithMap,
   extractProjectFromContainerName,
   inferProjectPathFromContainer,
   // Docker helpers

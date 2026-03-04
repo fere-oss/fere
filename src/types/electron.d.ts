@@ -270,6 +270,7 @@ export interface GraphNode {
   // Remote access metadata (SSH/SFTP/SCP session details)
   remoteAccess?: {
     tool: 'ssh' | 'sftp' | 'scp' | 'autossh';
+    alias?: string | null;
     user: string | null;
     host: string | null;
     port: number | null;
