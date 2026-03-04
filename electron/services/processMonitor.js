@@ -1,7 +1,8 @@
-const { exec } = require('child_process');
+const { exec, execFile } = require('child_process');
 const { promisify } = require('util');
 
 const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 const CACHE_TTL_MS = 5000;
 const processCache = { timestamp: 0, data: [], promise: null };
 
@@ -160,7 +161,10 @@ async function getDevProcesses() {
  */
 async function getProcessByPid(pid) {
   try {
-    const { stdout } = await execAsync(`ps -p ${pid} -o user,pid,%cpu,%mem,vsz,rss,tty,stat,start,time,command`);
+    const { stdout } = await execFileAsync('ps', [
+      '-p', String(pid),
+      '-o', 'user,pid,%cpu,%mem,vsz,rss,tty,stat,start,time,command',
+    ]);
     const processes = parseProcesses(stdout);
     return processes[0] || null;
   } catch (error) {
@@ -172,14 +176,19 @@ async function getProcessByPid(pid) {
  * Kill a process by PID
  */
 async function killProcess(pid, signal = 'TERM') {
+  // Whitelist allowed signals to prevent injection via the signal parameter.
+  const ALLOWED_SIGNALS = new Set(['TERM', 'KILL', 'INT', 'HUP', 'QUIT']);
+  const safeSignal = ALLOWED_SIGNALS.has(signal) ? signal : 'TERM';
+  const pidStr = String(pid);
+
   try {
-    await execAsync(`kill -${signal} ${pid}`);
+    await execFileAsync('kill', [`-${safeSignal}`, pidStr]);
     // Give the process a brief moment to exit
     await new Promise(resolve => setTimeout(resolve, 300));
     try {
-      await execAsync(`kill -0 ${pid}`);
+      await execFileAsync('kill', ['-0', pidStr]);
       // Still alive, escalate to SIGKILL
-      await execAsync(`kill -KILL ${pid}`);
+      await execFileAsync('kill', ['-KILL', pidStr]);
     } catch (error) {
       // kill -0 failed, process is gone
     }
