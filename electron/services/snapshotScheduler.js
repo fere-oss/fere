@@ -261,7 +261,18 @@ class SnapshotScheduler extends EventEmitter {
       if (this.workerReady) {
         this.workerBusy = true;
         this._pendingRawForResult = rawData;
-        this.worker.postMessage({ type: 'build-structure', seq: this.seq, data: workerData });
+        try {
+          this.worker.postMessage({ type: 'build-structure', seq: this.seq, data: workerData });
+        } catch (err) {
+          // Worker died between readiness check and postMessage — reset and
+          // fall back to main thread so snapshot processing isn't permanently
+          // blocked.
+          console.error('[SnapshotScheduler] postMessage failed, falling back to main thread:', err);
+          this.workerBusy = false;
+          this.workerReady = false;
+          this._restartWorker();
+          await this._buildOnMainThread(rawData, workerData, healthByPid);
+        }
       } else {
         // Fallback: run on main thread
         await this._buildOnMainThread(rawData, workerData, healthByPid);
@@ -271,11 +282,19 @@ class SnapshotScheduler extends EventEmitter {
       if (this.workerReady) {
         this.workerBusy = true;
         this._pendingRawForResult = rawData;
-        this.worker.postMessage({
-          type: 'overlay-metrics',
-          seq: this.seq,
-          data: { processes: rawData.processes, healthByPid },
-        });
+        try {
+          this.worker.postMessage({
+            type: 'overlay-metrics',
+            seq: this.seq,
+            data: { processes: rawData.processes, healthByPid },
+          });
+        } catch (err) {
+          console.error('[SnapshotScheduler] postMessage failed, falling back to main thread:', err);
+          this.workerBusy = false;
+          this.workerReady = false;
+          this._restartWorker();
+          await this._buildOnMainThread(rawData, null, healthByPid);
+        }
       } else {
         // Fallback: run on main thread with buildGraphStructure
         await this._buildOnMainThread(rawData, null, healthByPid);

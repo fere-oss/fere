@@ -262,7 +262,11 @@ app.on("window-all-closed", () => {
 });
 
 app.on("will-quit", async () => {
-  await analytics.shutdown();
+  try {
+    await analytics.shutdown();
+  } catch (err) {
+    console.error("Error shutting down analytics:", err);
+  }
 });
 
 app.on("activate", () => {
@@ -412,7 +416,11 @@ ipcMain.handle("stop-snapshot-stream", async () => {
       snapshotScheduler.removeListener("snapshot", snapshotHandler);
       snapshotHandler = null;
     }
-    snapshotScheduler.stop();
+    try {
+      snapshotScheduler.stop();
+    } catch (err) {
+      console.error("Error stopping snapshot scheduler:", err);
+    }
     snapshotScheduler = null;
   }
   return { success: true };
