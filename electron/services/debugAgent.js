@@ -14,23 +14,25 @@ const execFileAsync = promisify(execFile);
 
 // --- Constants ---
 
-const MAX_ITERATIONS = 15;
+const MAX_ITERATIONS = 20;
 const MODEL = 'gpt-4.1-mini';
 const ENV_PATH = path.join(__dirname, '..', '..', '.env');
 
 // --- Token budget limits ---
-const MAX_TOKENS_TOOL_TURN = 1024; // Intermediate turns only need tool calls
+const MAX_TOKENS_TOOL_TURN = 2048; // Intermediate turns: enough for reasoning + 2-3 tool calls
 const MAX_TOKENS_FINAL = 4096;     // Final diagnosis gets full budget
-const TRUNCATE_BODY = 1500;        // HTTP response body chars
-const TRUNCATE_BODY_CONCURRENT = 400;
-const TRUNCATE_LOG_LINES = 80;
-const TRUNCATE_SOURCE_LINES = 120;
-const TRUNCATE_SOURCE_CHARS = 4000;
-const MAX_GREP_MATCHES = 20;
-const MAX_FILE_LIST = 30;
-const MAX_DB_ROWS = 15;
+const TRUNCATE_BODY = 3000;        // HTTP response body chars
+const TRUNCATE_BODY_CONCURRENT = 800;
+const TRUNCATE_LOG_LINES = 150;
+const TRUNCATE_SOURCE_LINES = 180;
+const TRUNCATE_SOURCE_CHARS = 6000;
+const MAX_GREP_MATCHES = 25;
+const MAX_FILE_LIST = 40;
+const MAX_DB_ROWS = 30;
 // Context trimming: after this many messages, compress old tool results
-const CONTEXT_TRIM_THRESHOLD = 20;
+const CONTEXT_TRIM_THRESHOLD = 24;
+// Loop detection: if the last N tool calls are identical, nudge the model
+const LOOP_DETECT_WINDOW = 3;
 
 const DOCKER_BIN_CANDIDATES = [
   process.env.FERE_DOCKER_BIN,
@@ -69,7 +71,7 @@ function parseEnvFile(filePath) {
 function getApiKey() {
   // 1. Check process.env first (e.g. set via shell)
   if (process.env.OPENAI_API_KEY) return process.env.OPENAI_API_KEY;
-  // 2. Read from ~/.fere/.env
+  // 2. Read from project root .env
   const vars = parseEnvFile(ENV_PATH);
   return vars.OPENAI_API_KEY || null;
 }
@@ -186,7 +188,7 @@ const DEBUG_TOOLS = [
     type: 'function',
     function: {
       name: 'find_source_files',
-      description: "Search for files in a service's project directory by name pattern. Use this to locate files mentioned in error messages or to explore project structure.",
+      description: "Search for source code files in a service's project directory by name pattern. Only indexes code files (.js, .ts, .py, .go, .rb, .java, .php) — config files like .yml, .json, .env, Dockerfile are not included. Use read_source_file to read config files directly if you know the path.",
       parameters: {
         type: 'object',
         properties: {
@@ -201,7 +203,7 @@ const DEBUG_TOOLS = [
     type: 'function',
     function: {
       name: 'grep_source',
-      description: "Search for a text pattern across source files in a service's project. Returns matching lines with file paths and line numbers.",
+      description: "Search for a text pattern across source code files in a service's project. Returns matching lines with file paths and line numbers. Only searches code files (.js, .ts, .py, .go, .rb, .java, .php) — does not search config/YAML/JSON/.env files.",
       parameters: {
         type: 'object',
         properties: {
@@ -680,7 +682,8 @@ function buildSystemPrompt(graphSnapshot) {
       const routes = (n.routes || []).map(r => `${r.method} ${r.path}`).join(', ');
       const health = n.healthStatus || 'unknown';
       const container = n.isDockerContainer ? ` [Docker: ${n.containerState || 'unknown'}]` : '';
-      return `- ${n.name} (id: ${n.id}, type: ${n.type}, ports: ${ports || 'none'}, health: ${health}${container})${routes ? `\n  Routes: ${routes}` : ''}`;
+      const project = n.projectPath ? ` [project: ${n.projectPath}]` : '';
+      return `- ${n.name} (ports: ${ports || 'none'}, health: ${health}${container}${project})${routes ? `\n  Routes: ${routes}` : ''}`;
     })
     .join('\n');
 
@@ -710,6 +713,11 @@ ${connections || 'No connections detected'}
 
 ### External APIs
 ${externals || 'None detected'}
+
+## Using Tools
+When calling tools that accept a \`service_name\` parameter, use the service name shown in the topology above (the first name on each line, e.g. "express-api", "postgres-db"). The name is matched flexibly — partial matches work.
+
+\`find_source_files\` and \`grep_source\` only index code files (.js, .ts, .py, .go, .rb, .java, .php). To read config files (.yml, .json, .env, Dockerfile), use \`read_source_file\` directly with the known file path.
 
 ## Your Goal
 The user will describe a bug or issue. Your job is to systematically investigate and diagnose the root cause by:
@@ -794,23 +802,27 @@ async function callOpenAI(apiKey, systemPrompt, messages, maxTokens = MAX_TOKENS
 }
 
 // --- Context Trimming ---
-// Replace verbose old tool results with short summaries to keep context small.
+// Replace verbose old tool results with structured summaries to keep context small
+// while preserving the key findings the model needs for its final diagnosis.
 
-function trimConversationContext(messages) {
+function trimConversationContext(messages, toolResultSummaries) {
   if (messages.length < CONTEXT_TRIM_THRESHOLD) return;
 
-  // Keep first user message, last 8 messages intact; compress the middle
-  const keepTailCount = 8;
+  // Keep first user message + last 12 messages intact; compress the middle
+  const keepTailCount = 12;
   const compressEnd = messages.length - keepTailCount;
 
   for (let i = 1; i < compressEnd; i++) {
     const msg = messages[i];
-    if (msg.role === 'tool' && typeof msg.content === 'string' && msg.content.length > 200) {
-      // Replace with a short summary — keep first 150 chars as context
-      messages[i] = {
-        ...msg,
-        content: msg.content.slice(0, 150) + '\n... (trimmed for context)',
-      };
+    if (msg.role === 'tool' && typeof msg.content === 'string' && msg.content.length > 300) {
+      // Use the structured summary we captured during execution, falling back to a prefix
+      const summary = toolResultSummaries.get(msg.tool_call_id);
+      if (summary) {
+        messages[i] = { ...msg, content: `[Summary: ${summary}]` };
+      } else {
+        // Fallback: keep enough to preserve key error messages / status codes
+        messages[i] = { ...msg, content: msg.content.slice(0, 400) + '\n... (trimmed)' };
+      }
     }
   }
 }
@@ -822,6 +834,10 @@ async function runDebugAgent(options, onProgress) {
 
   // Session-level cache: avoids re-scanning routes and file trees within one investigation
   const sessionCache = { routes: {}, files: {} };
+  // Map tool_call_id → human-readable summary for context trimming
+  const toolResultSummaries = new Map();
+  // Track recent tool calls for loop detection
+  const recentToolCalls = [];
 
   const systemPrompt = buildSystemPrompt(graphSnapshot);
   const messages = [
@@ -836,7 +852,7 @@ async function runDebugAgent(options, onProgress) {
     onProgress({ type: 'thinking', iteration: i + 1 });
 
     // Trim old tool results to keep context lean
-    trimConversationContext(messages);
+    trimConversationContext(messages, toolResultSummaries);
 
     // Use small token budget for intermediate turns, full budget near the end
     const isNearEnd = i >= MAX_ITERATIONS - 2;
@@ -856,10 +872,37 @@ async function runDebugAgent(options, onProgress) {
       return { success: false, error: 'No response from OpenAI' };
     }
 
-    const message = choice.message;
+    // Handle finish_reason: "length" — response was truncated by token limit
+    if (choice.finish_reason === 'length') {
+      // Retry once with full token budget if we were on the smaller budget
+      if (maxTokens < MAX_TOKENS_FINAL) {
+        try {
+          response = await callOpenAI(apiKey, systemPrompt, messages, MAX_TOKENS_FINAL);
+          const retryChoice = response.choices?.[0];
+          if (retryChoice && retryChoice.finish_reason !== 'length') {
+            // Use the retry response
+            const retryMessage = retryChoice.message;
+            messages.push(retryMessage);
+            const retryToolCalls = retryMessage.tool_calls;
+            if (!retryToolCalls || retryToolCalls.length === 0) {
+              const text = retryMessage.content || '';
+              onProgress({ type: 'complete', diagnosis: text });
+              return { success: true, diagnosis: text, iterations: i + 1 };
+            }
+            // Fall through to tool execution below with retryMessage
+            // (handled by re-reading from messages)
+          }
+        } catch { /* fall through to use original truncated response */ }
+      }
+      // If retry also truncated or we were already at max, use what we got
+    }
+
+    const message = response.choices?.[0]?.message || choice.message;
 
     // Append the full assistant message to conversation history (must include tool_calls)
-    messages.push(message);
+    if (!messages.includes(message)) {
+      messages.push(message);
+    }
 
     const toolCalls = message.tool_calls;
     if (!toolCalls || toolCalls.length === 0) {
@@ -867,6 +910,28 @@ async function runDebugAgent(options, onProgress) {
       const text = message.content || '';
       onProgress({ type: 'complete', diagnosis: text });
       return { success: true, diagnosis: text, iterations: i + 1 };
+    }
+
+    // Loop detection: check if the model is repeating the same tool calls
+    const callSignature = toolCalls
+      .map(tc => `${tc.function.name}:${tc.function.arguments}`)
+      .sort()
+      .join('|');
+    recentToolCalls.push(callSignature);
+    if (recentToolCalls.length > LOOP_DETECT_WINDOW) {
+      recentToolCalls.shift();
+    }
+    if (
+      recentToolCalls.length === LOOP_DETECT_WINDOW &&
+      recentToolCalls.every(sig => sig === callSignature)
+    ) {
+      // Inject a nudge to break the loop
+      messages.push({
+        role: 'user',
+        content: 'You have called the same tools with identical arguments multiple times. Please try a different approach, gather different evidence, or provide your diagnosis based on what you have so far.',
+      });
+      recentToolCalls.length = 0; // Reset
+      continue; // Skip tool execution, let model reconsider
     }
 
     // Execute all tool calls and append each result as a separate "tool" message
@@ -879,8 +944,22 @@ async function runDebugAgent(options, onProgress) {
       let fnArgs;
       try {
         fnArgs = JSON.parse(toolCall.function.arguments);
-      } catch {
-        fnArgs = {};
+      } catch (parseErr) {
+        // Return the parse error to the model so it can self-correct
+        const errorResult = `Failed to parse tool arguments: ${parseErr.message}. Raw: ${toolCall.function.arguments.slice(0, 200)}`;
+        messages.push({
+          role: 'tool',
+          tool_call_id: toolCall.id,
+          content: errorResult,
+        });
+        toolResultSummaries.set(toolCall.id, `Error: malformed arguments for ${fnName}`);
+        onProgress({
+          type: 'tool_result',
+          tool: fnName,
+          summary: `Error: malformed arguments`,
+          iteration: i + 1,
+        });
+        continue;
       }
 
       onProgress({
@@ -891,19 +970,22 @@ async function runDebugAgent(options, onProgress) {
       });
 
       const result = await executeDebugTool(fnName, fnArgs, graphSnapshot, sessionCache);
+      const summary = summarizeToolResult(fnName, result);
 
       onProgress({
         type: 'tool_result',
         tool: fnName,
-        summary: summarizeToolResult(fnName, result),
+        summary,
         iteration: i + 1,
       });
 
+      const resultContent = typeof result === 'string' ? result : JSON.stringify(result);
       messages.push({
         role: 'tool',
         tool_call_id: toolCall.id,
-        content: typeof result === 'string' ? result : JSON.stringify(result),
+        content: resultContent,
       });
+      toolResultSummaries.set(toolCall.id, summary);
     }
   }
 
