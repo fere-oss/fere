@@ -16,8 +16,8 @@ const execFileAsync = promisify(execFile);
 // --- Constants ---
 
 const MAX_ITERATIONS = 25;
-const MODEL = 'claude-sonnet-4-6';
-const CONFIG_PATH = path.join(os.homedir(), '.fere', 'config.json');
+const MODEL = 'gpt-5';
+const ENV_PATH = path.join(os.homedir(), '.fere', '.env');
 
 const DOCKER_BIN_CANDIDATES = [
   process.env.FERE_DOCKER_BIN,
@@ -28,26 +28,48 @@ const DOCKER_BIN_CANDIDATES = [
 ].filter(Boolean);
 let resolvedDockerBin = null;
 
-// --- API Key Management ---
+// --- API Key Management (.env) ---
 
-function getApiKey() {
+function parseEnvFile(filePath) {
   try {
-    const config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
-    return config.claudeApiKey || null;
+    const content = fs.readFileSync(filePath, 'utf8');
+    const vars = {};
+    for (const line of content.split('\n')) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      const eqIdx = trimmed.indexOf('=');
+      if (eqIdx === -1) continue;
+      const key = trimmed.slice(0, eqIdx).trim();
+      let value = trimmed.slice(eqIdx + 1).trim();
+      // Strip surrounding quotes
+      if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+        value = value.slice(1, -1);
+      }
+      vars[key] = value;
+    }
+    return vars;
   } catch {
-    return null;
+    return {};
   }
 }
 
+function getApiKey() {
+  // 1. Check process.env first (e.g. set via shell)
+  if (process.env.OPENAI_API_KEY) return process.env.OPENAI_API_KEY;
+  // 2. Read from ~/.fere/.env
+  const vars = parseEnvFile(ENV_PATH);
+  return vars.OPENAI_API_KEY || null;
+}
+
 function setApiKey(key) {
-  const dir = path.dirname(CONFIG_PATH);
+  const dir = path.dirname(ENV_PATH);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  let config = {};
-  try {
-    config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
-  } catch {}
-  config.claudeApiKey = key;
-  fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
+
+  const vars = parseEnvFile(ENV_PATH);
+  vars.OPENAI_API_KEY = key;
+
+  const lines = Object.entries(vars).map(([k, v]) => `${k}=${v}`);
+  fs.writeFileSync(ENV_PATH, lines.join('\n') + '\n');
 }
 
 // --- Docker Binary Resolution ---
@@ -79,108 +101,132 @@ async function resolveDockerBinary() {
 
 const DEBUG_TOOLS = [
   {
-    name: 'fire_request',
-    description: 'Send an HTTP request to a local service and get the response. Use this to reproduce bugs, test endpoints, and observe behavior.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        method: { type: 'string', enum: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'] },
-        url: { type: 'string', description: 'Full URL, e.g. http://localhost:3001/api/checkout' },
-        headers: { type: 'object', description: 'Request headers as key-value pairs', additionalProperties: { type: 'string' } },
-        body: { type: 'string', description: 'Request body (for POST/PUT/PATCH)' },
+    type: 'function',
+    function: {
+      name: 'fire_request',
+      description: 'Send an HTTP request to a local service and get the response. Use this to reproduce bugs, test endpoints, and observe behavior.',
+      parameters: {
+        type: 'object',
+        properties: {
+          method: { type: 'string', enum: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'] },
+          url: { type: 'string', description: 'Full URL, e.g. http://localhost:3001/api/checkout' },
+          headers: { type: 'object', description: 'Request headers as key-value pairs', additionalProperties: { type: 'string' } },
+          body: { type: 'string', description: 'Request body (for POST/PUT/PATCH)' },
+        },
+        required: ['method', 'url'],
       },
-      required: ['method', 'url'],
     },
   },
   {
-    name: 'fire_concurrent_requests',
-    description: 'Fire multiple identical requests concurrently to test for race conditions or intermittent failures. Returns all responses.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        method: { type: 'string', enum: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'] },
-        url: { type: 'string' },
-        headers: { type: 'object', additionalProperties: { type: 'string' } },
-        body: { type: 'string' },
-        count: { type: 'number', description: 'Number of concurrent requests (2-20)', minimum: 2, maximum: 20 },
+    type: 'function',
+    function: {
+      name: 'fire_concurrent_requests',
+      description: 'Fire multiple identical requests concurrently to test for race conditions or intermittent failures. Returns all responses.',
+      parameters: {
+        type: 'object',
+        properties: {
+          method: { type: 'string', enum: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'] },
+          url: { type: 'string' },
+          headers: { type: 'object', additionalProperties: { type: 'string' } },
+          body: { type: 'string' },
+          count: { type: 'number', description: 'Number of concurrent requests (2-20)', minimum: 2, maximum: 20 },
+        },
+        required: ['method', 'url', 'count'],
       },
-      required: ['method', 'url', 'count'],
     },
   },
   {
-    name: 'get_container_logs',
-    description: 'Get recent logs from a Docker container. Use the container name or ID. Returns the last N lines.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        container_name: { type: 'string', description: 'Container name (from the topology)' },
-        tail: { type: 'number', description: 'Number of recent lines to fetch (default 100, max 500)', maximum: 500 },
-        since: { type: 'string', description: 'Only return logs after this timestamp (ISO 8601 or relative like "5m")' },
-        grep: { type: 'string', description: 'Filter log lines to only those containing this string (case-insensitive)' },
+    type: 'function',
+    function: {
+      name: 'get_container_logs',
+      description: 'Get recent logs from a Docker container. Use the container name or ID. Returns the last N lines.',
+      parameters: {
+        type: 'object',
+        properties: {
+          container_name: { type: 'string', description: 'Container name (from the topology)' },
+          tail: { type: 'number', description: 'Number of recent lines to fetch (default 100, max 500)', maximum: 500 },
+          since: { type: 'string', description: 'Only return logs after this timestamp (ISO 8601 or relative like "5m")' },
+          grep: { type: 'string', description: 'Filter log lines to only those containing this string (case-insensitive)' },
+        },
+        required: ['container_name'],
       },
-      required: ['container_name'],
     },
   },
   {
-    name: 'read_source_file',
-    description: "Read a source code file from a service's project directory. Use this to understand implementations, check error handlers, read configuration files, etc.",
-    input_schema: {
-      type: 'object',
-      properties: {
-        service_name: { type: 'string', description: 'Name of the service (from topology) whose project to read from' },
-        file_path: { type: 'string', description: 'Relative file path within the project, e.g. "src/routes/checkout.js"' },
-        line_start: { type: 'number', description: 'Start reading from this line (1-indexed)' },
-        line_end: { type: 'number', description: 'Stop reading at this line (inclusive)' },
+    type: 'function',
+    function: {
+      name: 'read_source_file',
+      description: "Read a source code file from a service's project directory. Use this to understand implementations, check error handlers, read configuration files, etc.",
+      parameters: {
+        type: 'object',
+        properties: {
+          service_name: { type: 'string', description: 'Name of the service (from topology) whose project to read from' },
+          file_path: { type: 'string', description: 'Relative file path within the project, e.g. "src/routes/checkout.js"' },
+          line_start: { type: 'number', description: 'Start reading from this line (1-indexed)' },
+          line_end: { type: 'number', description: 'Stop reading at this line (inclusive)' },
+        },
+        required: ['service_name', 'file_path'],
       },
-      required: ['service_name', 'file_path'],
     },
   },
   {
-    name: 'find_source_files',
-    description: "Search for files in a service's project directory by name pattern. Use this to locate files mentioned in error messages or to explore project structure.",
-    input_schema: {
-      type: 'object',
-      properties: {
-        service_name: { type: 'string', description: 'Name of the service (from topology)' },
-        pattern: { type: 'string', description: 'Glob pattern to match, e.g. "**/*.js", "**/checkout*", "src/routes/*.ts"' },
+    type: 'function',
+    function: {
+      name: 'find_source_files',
+      description: "Search for files in a service's project directory by name pattern. Use this to locate files mentioned in error messages or to explore project structure.",
+      parameters: {
+        type: 'object',
+        properties: {
+          service_name: { type: 'string', description: 'Name of the service (from topology)' },
+          pattern: { type: 'string', description: 'Glob pattern to match, e.g. "**/*.js", "**/checkout*", "src/routes/*.ts"' },
+        },
+        required: ['service_name', 'pattern'],
       },
-      required: ['service_name', 'pattern'],
     },
   },
   {
-    name: 'grep_source',
-    description: "Search for a text pattern across source files in a service's project. Returns matching lines with file paths and line numbers.",
-    input_schema: {
-      type: 'object',
-      properties: {
-        service_name: { type: 'string', description: 'Name of the service (from topology)' },
-        pattern: { type: 'string', description: 'Text or regex pattern to search for' },
-        file_glob: { type: 'string', description: 'Optional glob to limit search scope, e.g. "**/*.py"' },
+    type: 'function',
+    function: {
+      name: 'grep_source',
+      description: "Search for a text pattern across source files in a service's project. Returns matching lines with file paths and line numbers.",
+      parameters: {
+        type: 'object',
+        properties: {
+          service_name: { type: 'string', description: 'Name of the service (from topology)' },
+          pattern: { type: 'string', description: 'Text or regex pattern to search for' },
+          file_glob: { type: 'string', description: 'Optional glob to limit search scope, e.g. "**/*.py"' },
+        },
+        required: ['service_name', 'pattern'],
       },
-      required: ['service_name', 'pattern'],
     },
   },
   {
-    name: 'get_service_routes',
-    description: 'Get all discovered API routes for a service. Shows method, path, and framework.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        service_name: { type: 'string', description: 'Name of the service (from topology)' },
+    type: 'function',
+    function: {
+      name: 'get_service_routes',
+      description: 'Get all discovered API routes for a service. Shows method, path, and framework.',
+      parameters: {
+        type: 'object',
+        properties: {
+          service_name: { type: 'string', description: 'Name of the service (from topology)' },
+        },
+        required: ['service_name'],
       },
-      required: ['service_name'],
     },
   },
   {
-    name: 'run_database_query',
-    description: 'Execute a read-only SQL query against a running database container. Use this to check data state.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        container_name: { type: 'string', description: 'Database container name' },
-        query: { type: 'string', description: 'SQL query (SELECT only — no mutations)' },
+    type: 'function',
+    function: {
+      name: 'run_database_query',
+      description: 'Execute a read-only SQL query against a running database container. Use this to check data state.',
+      parameters: {
+        type: 'object',
+        properties: {
+          container_name: { type: 'string', description: 'Database container name' },
+          query: { type: 'string', description: 'SQL query (SELECT only — no mutations)' },
+        },
+        required: ['container_name', 'query'],
       },
-      required: ['container_name', 'query'],
     },
   },
 ];
@@ -667,44 +713,48 @@ When you've identified the root cause, provide your diagnosis as a structured re
 - If a container is not running (health: red), note this as it may BE the bug.`;
 }
 
-// --- Claude API Call ---
+// --- OpenAI API Call ---
 
-async function callClaudeAPI(apiKey, systemPrompt, messages) {
+async function callOpenAI(apiKey, systemPrompt, messages) {
+  // Prepend system message to the conversation
+  const fullMessages = [
+    { role: 'system', content: systemPrompt },
+    ...messages,
+  ];
+
   const body = JSON.stringify({
     model: MODEL,
     max_tokens: 4096,
-    system: systemPrompt,
-    messages,
+    messages: fullMessages,
     tools: DEBUG_TOOLS,
   });
 
   return new Promise((resolve, reject) => {
     const req = https.request({
-      hostname: 'api.anthropic.com',
-      path: '/v1/messages',
+      hostname: 'api.openai.com',
+      path: '/v1/chat/completions',
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
+        'Authorization': `Bearer ${apiKey}`,
       },
     }, (res) => {
       let data = '';
       res.on('data', chunk => { data += chunk; });
       res.on('end', () => {
         if (res.statusCode !== 200) {
-          reject(new Error(`Claude API error ${res.statusCode}: ${data}`));
+          reject(new Error(`OpenAI API error ${res.statusCode}: ${data}`));
           return;
         }
         try {
           resolve(JSON.parse(data));
         } catch (e) {
-          reject(new Error(`Failed to parse Claude API response: ${e.message}`));
+          reject(new Error(`Failed to parse OpenAI API response: ${e.message}`));
         }
       });
     });
     req.on('error', reject);
-    req.setTimeout(60000, () => { req.destroy(); reject(new Error('Claude API timeout (60s)')); });
+    req.setTimeout(60000, () => { req.destroy(); reject(new Error('OpenAI API timeout (60s)')); });
     req.write(body);
     req.end();
   });
@@ -721,7 +771,6 @@ async function runDebugAgent(options, onProgress) {
   ];
 
   for (let i = 0; i < MAX_ITERATIONS; i++) {
-    // Check cancellation before each API call
     if (options._cancelled) {
       return { success: false, error: 'Cancelled' };
     }
@@ -730,59 +779,67 @@ async function runDebugAgent(options, onProgress) {
 
     let response;
     try {
-      response = await callClaudeAPI(apiKey, systemPrompt, messages);
+      response = await callOpenAI(apiKey, systemPrompt, messages);
     } catch (err) {
       onProgress({ type: 'error', error: err.message });
       return { success: false, error: err.message };
     }
 
-    // Append assistant response to conversation
-    messages.push({ role: 'assistant', content: response.content });
+    const choice = response.choices?.[0];
+    if (!choice) {
+      onProgress({ type: 'error', error: 'No response from OpenAI' });
+      return { success: false, error: 'No response from OpenAI' };
+    }
 
-    // Check if there are tool calls
-    const toolUses = response.content.filter(b => b.type === 'tool_use');
-    if (toolUses.length === 0) {
-      // Agent is done — extract final text
-      const text = response.content
-        .filter(b => b.type === 'text')
-        .map(b => b.text)
-        .join('\n');
+    const message = choice.message;
+
+    // Append the full assistant message to conversation history (must include tool_calls)
+    messages.push(message);
+
+    const toolCalls = message.tool_calls;
+    if (!toolCalls || toolCalls.length === 0) {
+      // Agent is done — return the text content
+      const text = message.content || '';
       onProgress({ type: 'complete', diagnosis: text });
       return { success: true, diagnosis: text, iterations: i + 1 };
     }
 
-    // Execute all tool calls
-    const toolResults = [];
-    for (const toolUse of toolUses) {
+    // Execute all tool calls and append each result as a separate "tool" message
+    for (const toolCall of toolCalls) {
       if (options._cancelled) {
         return { success: false, error: 'Cancelled' };
       }
 
+      const fnName = toolCall.function.name;
+      let fnArgs;
+      try {
+        fnArgs = JSON.parse(toolCall.function.arguments);
+      } catch {
+        fnArgs = {};
+      }
+
       onProgress({
         type: 'tool_call',
-        tool: toolUse.name,
-        input: toolUse.input,
+        tool: fnName,
+        input: fnArgs,
         iteration: i + 1,
       });
 
-      const result = await executeDebugTool(toolUse.name, toolUse.input, graphSnapshot);
+      const result = await executeDebugTool(fnName, fnArgs, graphSnapshot);
 
       onProgress({
         type: 'tool_result',
-        tool: toolUse.name,
-        summary: summarizeToolResult(toolUse.name, result),
+        tool: fnName,
+        summary: summarizeToolResult(fnName, result),
         iteration: i + 1,
       });
 
-      toolResults.push({
-        type: 'tool_result',
-        tool_use_id: toolUse.id,
+      messages.push({
+        role: 'tool',
+        tool_call_id: toolCall.id,
         content: typeof result === 'string' ? result : JSON.stringify(result),
       });
     }
-
-    // Append tool results to conversation
-    messages.push({ role: 'user', content: toolResults });
   }
 
   onProgress({ type: 'complete', diagnosis: 'Investigation reached maximum iterations without a definitive diagnosis.' });
