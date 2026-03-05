@@ -83,8 +83,25 @@ function TraceEdgePath({
   const badgeText = latency !== undefined && latency >= 0 ? `${inferred ? "~" : ""}${formatLatency(latency)}` : "";
   const badgeWidth = Math.max(40, badgeText.length * 8 + 16);
 
+  const markerId = `trace-arrow-${id.replace(/[^a-zA-Z0-9-_]/g, "_")}`;
+  const markerColor = inferred ? "rgba(100, 116, 139, 0.7)" : "#3B82F6";
+
   return (
     <g className={isActiveHop || isDrawn ? "rf-trace-edge-active" : "rf-trace-edge-pending"}>
+      {/* Arrow marker definition */}
+      <defs>
+        <marker
+          id={markerId}
+          markerWidth="8"
+          markerHeight="6"
+          refX="7"
+          refY="3"
+          orient="auto"
+          markerUnits="strokeWidth"
+        >
+          <path d="M0,0 L8,3 L0,6 Z" fill={markerColor} />
+        </marker>
+      </defs>
       {/* Base glow stroke */}
       <path
         ref={pathRef}
@@ -101,12 +118,13 @@ function TraceEdgePath({
         id={id}
         d={edgePath}
         fill="none"
-        stroke="#3B82F6"
+        stroke={inferred ? "rgba(100, 116, 139, 0.7)" : "#3B82F6"}
         strokeWidth={2}
         strokeLinecap="round"
         strokeDasharray={inferred ? "6 4" : "none"}
+        markerEnd={isDrawn ? `url(#${markerId})` : undefined}
         className="react-flow__edge-path"
-        style={{ filter: "drop-shadow(0 0 3px rgba(59, 130, 246, 0.5))" }}
+        style={{ filter: inferred ? "none" : "drop-shadow(0 0 3px rgba(59, 130, 246, 0.5))" }}
       />
       {/* Latency badge */}
       {showBadge && (

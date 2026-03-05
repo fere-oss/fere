@@ -185,6 +185,18 @@ export function TraceWaterfall({ result, nodes, onHoverHop, onClickHop, onDismis
             ))}
           </div>
 
+          {/* Legend */}
+          <div className="trace-waterfall-legend">
+            <span className="trace-waterfall-legend-item">
+              <span className="trace-waterfall-legend-line trace-waterfall-legend-solid" />
+              <span>Observed</span>
+            </span>
+            <span className="trace-waterfall-legend-item">
+              <span className="trace-waterfall-legend-line trace-waterfall-legend-dashed" />
+              <span>Inferred (~)</span>
+            </span>
+          </div>
+
           {/* Hop rows */}
           <div className="trace-waterfall-rows">
             {result.hops.map((hop, i) => {

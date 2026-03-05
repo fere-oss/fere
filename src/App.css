@@ -9954,6 +9954,36 @@ textarea {
   color: var(--text-muted);
 }
 
+.trace-waterfall-legend {
+  display: flex;
+  gap: 16px;
+  padding: 4px 12px;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.trace-waterfall-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.trace-waterfall-legend-line {
+  display: inline-block;
+  width: 20px;
+  height: 0;
+  border-top: 2px solid;
+}
+
+.trace-waterfall-legend-solid {
+  border-color: #3B82F6;
+}
+
+.trace-waterfall-legend-dashed {
+  border-style: dashed;
+  border-color: rgba(100, 116, 139, 0.7);
+}
+
 .trace-waterfall-rows {
   display: flex;
   flex-direction: column;
