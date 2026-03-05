@@ -589,17 +589,42 @@ function App() {
     headers: Record<string, string>;
     body?: string;
   }) => {
+    // Find the target node from URL port and switch to its project tab
+    let targetPort: number | null = null;
+    try {
+      const parsed = new URL(options.url);
+      targetPort = parseInt(parsed.port, 10) || (parsed.protocol === "https:" ? 443 : 80);
+    } catch { /* ignore */ }
+
+    if (targetPort) {
+      // Search all tab paths for a node matching this port
+      let found = false;
+      graphIndex.nodesByTabPath.forEach((tabNodes, tabPath) => {
+        if (found) return;
+        const match = tabNodes.find((n: GraphNode) => n.ports.some((p: { port: number }) => p.port === targetPort));
+        if (match) {
+          setSelectedTab(tabPath);
+          found = true;
+        }
+      });
+      // Also check system nodes
+      if (!found && graphIndex.systemNodes.find((n: GraphNode) => n.ports.some((p: { port: number }) => p.port === targetPort))) {
+        setSelectedTab(SYSTEM_TAB_ID);
+      }
+    }
+
     // Switch to graph view and start capture
     setViewMode("graph");
     traceDispatch({ type: "start-capture" });
 
     try {
+      // Send ALL graph nodes/edges so backend can BFS across the full topology
       const result = await window.electronAPI.executeTracedRequest({
         method: options.method,
         url: options.url,
         headers: options.headers,
         body: options.body,
-        graphNodes: visibleGraphNodes,
+        graphNodes: graph.nodes,
         graphEdges: graph.edges,
       });
 
@@ -613,7 +638,7 @@ function App() {
       console.error("Trace error:", err);
       traceDispatch({ type: "dismiss" });
     }
-  }, [visibleGraphNodes, graph.edges]);
+  }, [graph.nodes, graph.edges, graphIndex.nodesByTabPath, graphIndex.systemNodes]);
 
   // Reconcile databaseNode with live data when containers change
   // (e.g., container restarts get a new containerId)
