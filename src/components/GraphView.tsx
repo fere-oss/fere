@@ -19,7 +19,6 @@ import { useExternalApis } from "./graph/useExternalApis";
 import { useGraphLayoutData } from "./graph/useGraphLayoutData";
 import { useNodeMeasurements } from "./graph/useNodeMeasurements";
 import { useTraceState, useTraceDispatch } from "./graph/traceContext";
-import { TraceOverlay } from "./graph/TraceOverlay";
 import { TraceWaterfall } from "./graph/TraceWaterfall";
 
 const NODE_TYPES = flowNodeTypes;
@@ -617,7 +616,7 @@ export function GraphView({
     const port = node.ports[0].port;
     const url = `http://localhost:${port}${route.path}`;
 
-    traceDispatch({ type: "start-capture" });
+    traceDispatch({ type: "start-capture", entryNodeId: node.id });
 
     window.electronAPI.executeTracedRequest({
       method: route.method || "GET",
@@ -947,8 +946,7 @@ export function GraphView({
         />
       )}
 
-      {/* Trace Overlay (origin pill) */}
-      <TraceOverlay result={traceState.result} phase={traceState.phase} />
+      {/* Entry point marker is now rendered directly on the node in flowNodes.tsx */}
 
       {/* Trace Waterfall (bottom panel) */}
       {traceState.phase === "complete" && traceState.result && (

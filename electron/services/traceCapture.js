@@ -238,6 +238,9 @@ async function executeTracedRequest(options, makeRequest) {
 
   const { pidToNode, portToNode, externalApis } = buildNodeMaps(graphNodes);
 
+  // 0. Identify the entry point node (the service that receives the initial request)
+  const entryNode = findTargetNode(options.url, graphNodes);
+
   // 1. Snapshot connections before
   const beforeConns = await getFreshConnections();
   const beforeKeys = new Set(beforeConns.map(connKey));
@@ -411,8 +414,7 @@ async function executeTracedRequest(options, makeRequest) {
       targetNodeId: entry.targetNodeId,
       startTime,
       endTime,
-      // Inferred hops have no real per-hop latency — use -1 to signal "unknown"
-      latency: entry.inferred ? -1 : Math.max(0, endTime - startTime),
+      latency: Math.max(0, endTime - startTime),
       connectionType: entry.connectionType,
       inferred: entry.inferred,
     };
@@ -436,6 +438,7 @@ async function executeTracedRequest(options, makeRequest) {
     hops,
     totalTime,
     timedOut,
+    entryNodeId: entryNode ? entryNode.id : null,
   };
 }
 

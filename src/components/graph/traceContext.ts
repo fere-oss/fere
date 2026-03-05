@@ -9,6 +9,7 @@ export interface TraceState {
   traceNodeIds: Set<string>;
   traceEdgeIds: Set<string>;
   result: TraceResult | null;
+  entryNodeId: string | null;
 }
 
 const defaultState: TraceState = {
@@ -17,6 +18,7 @@ const defaultState: TraceState = {
   traceNodeIds: new Set(),
   traceEdgeIds: new Set(),
   result: null,
+  entryNodeId: null,
 };
 
 export const TraceContext = createContext<TraceState>(defaultState);
@@ -28,7 +30,7 @@ export function useTraceState() {
 export type TraceDispatch = (action: TraceAction) => void;
 
 export type TraceAction =
-  | { type: "start-capture" }
+  | { type: "start-capture"; entryNodeId?: string | null }
   | { type: "set-result"; result: TraceResult }
   | { type: "advance-hop" }
   | { type: "complete-animation" }
@@ -49,27 +51,29 @@ export function traceReducer(state: TraceState, action: TraceAction): TraceState
         traceNodeIds: new Set(),
         traceEdgeIds: new Set(),
         result: null,
+        entryNodeId: action.entryNodeId ?? null,
       };
 
     case "set-result": {
       const { result } = action;
+      const entry = result?.entryNodeId ?? state.entryNodeId;
       if (!result || result.hops.length === 0) {
-        // No hops — go straight to complete with just the target node
+        // No hops — go straight to complete with just the entry node
         const nodeIds = new Set<string>();
-        if (result?.hops.length === 0) {
-          // Still show something — will be handled by the component
-        }
+        if (entry) nodeIds.add(entry);
         return {
           phase: "complete",
           activeHopIndex: -1,
           traceNodeIds: nodeIds,
           traceEdgeIds: new Set(),
           result,
+          entryNodeId: entry,
         };
       }
       // Start animating from first hop
       const firstHop = result.hops[0];
       const nodeIds = new Set([firstHop.sourceNodeId, firstHop.targetNodeId]);
+      if (entry) nodeIds.add(entry);
       const edgeKey = `${firstHop.sourceNodeId}->${firstHop.targetNodeId}`;
       return {
         phase: "animating",
@@ -77,6 +81,7 @@ export function traceReducer(state: TraceState, action: TraceAction): TraceState
         traceNodeIds: nodeIds,
         traceEdgeIds: new Set([edgeKey]),
         result,
+        entryNodeId: entry,
       };
     }
 
@@ -111,6 +116,7 @@ export function traceReducer(state: TraceState, action: TraceAction): TraceState
         traceNodeIds: new Set(),
         traceEdgeIds: new Set(),
         result: null,
+        entryNodeId: null,
       };
 
     default:

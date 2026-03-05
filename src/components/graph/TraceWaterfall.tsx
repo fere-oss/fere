@@ -60,12 +60,12 @@ function computeDepths(hops: TraceHop[]): number[] {
   return depths;
 }
 
-/** Find the hop with the highest latency (skip inferred hops with no real data) */
+/** Find the hop with the highest latency (only consider observed hops) */
 function findBottleneck(hops: TraceHop[]): number {
   let maxIdx = -1;
   let maxLatency = 0;
   for (let i = 0; i < hops.length; i++) {
-    if (hops[i].inferred || hops[i].latency < 0) continue;
+    if (hops[i].inferred) continue;
     if (hops[i].latency > maxLatency) {
       maxLatency = hops[i].latency;
       maxIdx = i;
@@ -188,11 +188,11 @@ export function TraceWaterfall({ result, nodes, onHoverHop, onClickHop, onDismis
           {/* Hop rows */}
           <div className="trace-waterfall-rows">
             {result.hops.map((hop, i) => {
-              const isInferred = hop.inferred || hop.latency < 0;
-              const barLeft = isInferred ? 0 : (hop.startTime / totalTime) * 100;
-              const barWidth = isInferred ? 100 : Math.max(1, (hop.latency / totalTime) * 100);
+              const isInferred = hop.inferred;
+              const barLeft = (hop.startTime / totalTime) * 100;
+              const barWidth = Math.max(1, (hop.latency / totalTime) * 100);
               const isBottleneck = !isInferred && i === bottleneckIdx;
-              const color = isInferred ? "rgba(100, 116, 139, 0.3)" : getLatencyColor(hop.latency);
+              const color = isInferred ? "rgba(100, 116, 139, 0.5)" : getLatencyColor(hop.latency);
 
               return (
                 <div
@@ -218,12 +218,11 @@ export function TraceWaterfall({ result, nodes, onHoverHop, onClickHop, onDismis
                         left: `${barLeft}%`,
                         width: `${barWidth}%`,
                         background: color,
-                        ...(isInferred ? { opacity: 0.5, borderRadius: 2 } : {}),
                       }}
                     />
                   </div>
                   <div className="trace-waterfall-latency" style={{ color: isInferred ? "#94A3B8" : color }}>
-                    {isInferred ? "inferred" : formatLatency(hop.latency)}
+                    {isInferred ? `~${formatLatency(hop.latency)}` : formatLatency(hop.latency)}
                   </div>
                 </div>
               );

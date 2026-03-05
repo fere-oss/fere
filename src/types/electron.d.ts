@@ -413,6 +413,7 @@ export interface TraceResult {
   hops: TraceHop[];
   totalTime: number;
   timedOut: boolean;
+  entryNodeId: string | null;
 }
 
 export interface TraceRequestOptions {

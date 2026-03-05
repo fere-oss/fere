@@ -9667,9 +9667,99 @@ textarea {
   animation: traceNodePulse 1.5s ease-in-out infinite;
 }
 
+.rf-node-wrapper.rf-node-trace-entry {
+  z-index: 20;
+  overflow: visible;
+}
+
 @keyframes traceNodePulse {
   0%, 100% { box-shadow: 0 0 0 2px #3B82F6, 0 0 12px rgba(59, 130, 246, 0.3); }
   50% { box-shadow: 0 0 0 2px #3B82F6, 0 0 20px rgba(59, 130, 246, 0.5); }
+}
+
+/* Trace entry point marker — anchored to the entry node */
+.trace-entry-marker {
+  position: absolute;
+  top: -48px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  z-index: 10;
+  pointer-events: none;
+  animation: traceEntryFadeIn 0.3s ease-out;
+}
+
+@keyframes traceEntryFadeIn {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+.trace-entry-pill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  background: rgba(30, 41, 59, 0.95);
+  border: 1px solid rgba(59, 130, 246, 0.5);
+  border-radius: 20px;
+  font-size: 11px;
+  font-family: "JetBrains Mono", "Fira Code", monospace;
+  white-space: nowrap;
+  box-shadow: 0 0 12px rgba(59, 130, 246, 0.25), 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.trace-entry-icon {
+  font-size: 9px;
+  color: #3B82F6;
+}
+
+.trace-entry-method {
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.trace-entry-path {
+  color: #CBD5E1;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.trace-entry-time {
+  color: #94A3B8;
+  margin-left: 2px;
+}
+
+.trace-entry-status {
+  display: flex;
+  align-items: center;
+}
+
+.trace-entry-spinner {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid rgba(59, 130, 246, 0.3);
+  border-top-color: #3B82F6;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.trace-entry-arrow {
+  width: 0;
+  height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 5px solid rgba(59, 130, 246, 0.5);
+  margin-top: 2px;
 }
 
 /* Trace overlay pill */

@@ -200,6 +200,7 @@ function App() {
     traceNodeIds: new Set<string>(),
     traceEdgeIds: new Set<string>(),
     result: null,
+    entryNodeId: null,
   });
 
   // Selected tab state - default to system tab
@@ -596,26 +597,31 @@ function App() {
       targetPort = parseInt(parsed.port, 10) || (parsed.protocol === "https:" ? 443 : 80);
     } catch { /* ignore */ }
 
+    // Find the entry node and switch to its tab
+    let entryNodeId: string | null = null;
     if (targetPort) {
-      // Search all tab paths for a node matching this port
       let found = false;
       graphIndex.nodesByTabPath.forEach((tabNodes, tabPath) => {
         if (found) return;
         const match = tabNodes.find((n: GraphNode) => n.ports.some((p: { port: number }) => p.port === targetPort));
         if (match) {
           setSelectedTab(tabPath);
+          entryNodeId = match.id;
           found = true;
         }
       });
-      // Also check system nodes
-      if (!found && graphIndex.systemNodes.find((n: GraphNode) => n.ports.some((p: { port: number }) => p.port === targetPort))) {
-        setSelectedTab(SYSTEM_TAB_ID);
+      if (!found) {
+        const sysMatch = graphIndex.systemNodes.find((n: GraphNode) => n.ports.some((p: { port: number }) => p.port === targetPort));
+        if (sysMatch) {
+          setSelectedTab(SYSTEM_TAB_ID);
+          entryNodeId = sysMatch.id;
+        }
       }
     }
 
     // Switch to graph view and start capture
     setViewMode("graph");
-    traceDispatch({ type: "start-capture" });
+    traceDispatch({ type: "start-capture", entryNodeId });
 
     try {
       // Send ALL graph nodes/edges so backend can BFS across the full topology
