@@ -1546,7 +1546,7 @@ ipcMain.handle("debug-start", async (event, options) => {
 
   const apiKey = getApiKey();
   if (!apiKey) {
-    return { success: false, error: "No OpenAI API key configured. Set OPENAI_API_KEY in ~/.fere/.env" };
+    return { success: false, error: "No OpenAI API key configured. Set OPENAI_API_KEY in .env" };
   }
 
   // Get current graph snapshot

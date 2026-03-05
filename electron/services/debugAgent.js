@@ -2,7 +2,6 @@ const https = require('https');
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
-const os = require('os');
 const { execFile } = require('child_process');
 const { promisify } = require('util');
 const picomatch = require('picomatch');
@@ -17,7 +16,7 @@ const execFileAsync = promisify(execFile);
 
 const MAX_ITERATIONS = 25;
 const MODEL = 'gpt-5';
-const ENV_PATH = path.join(os.homedir(), '.fere', '.env');
+const ENV_PATH = path.join(__dirname, '..', '..', '.env');
 
 const DOCKER_BIN_CANDIDATES = [
   process.env.FERE_DOCKER_BIN,

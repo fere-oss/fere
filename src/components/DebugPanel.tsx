@@ -225,7 +225,7 @@ export function DebugPanel({ onClose }: DebugPanelProps) {
           <div className="debug-panel-setup">
             <p className="debug-panel-setup-text">
               Enter your OpenAI API key to enable the debug agent, or set{" "}
-              <code>OPENAI_API_KEY</code> in <code>~/.fere/.env</code>. Your
+              <code>OPENAI_API_KEY</code> in the project root <code>.env</code>. Your
               key is stored locally and never sent to the renderer.
             </p>
             <input
