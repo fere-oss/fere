@@ -359,7 +359,8 @@ async function executeTracedRequest(options, makeRequest) {
       targetNodeId: entry.targetNodeId,
       startTime,
       endTime,
-      latency: Math.max(0, endTime - startTime),
+      // Inferred hops have no real per-hop latency — use -1 to signal "unknown"
+      latency: entry.inferred ? -1 : Math.max(0, endTime - startTime),
       connectionType: entry.connectionType,
       inferred: entry.inferred,
     };

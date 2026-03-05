@@ -78,9 +78,11 @@ function TraceEdgePath({
     }
   }, [isActiveHop, isDrawn, latency]);
 
-  const showBadge = (isDrawn || isActiveHop) && latency !== undefined && labelX !== undefined && labelY !== undefined;
-  const badgeColor = latency !== undefined ? getLatencyColor(latency) : "#3B82F6";
-  const badgeText = latency !== undefined ? formatLatency(latency) : "";
+  // Don't show latency badge for inferred hops (latency === -1) — no real data
+  const hasRealLatency = latency !== undefined && latency >= 0;
+  const showBadge = (isDrawn || isActiveHop) && hasRealLatency && labelX !== undefined && labelY !== undefined;
+  const badgeColor = hasRealLatency ? getLatencyColor(latency) : "#3B82F6";
+  const badgeText = hasRealLatency ? formatLatency(latency) : "";
   const badgeWidth = Math.max(40, badgeText.length * 8 + 16);
 
   return (

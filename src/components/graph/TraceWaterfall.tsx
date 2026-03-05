@@ -60,11 +60,12 @@ function computeDepths(hops: TraceHop[]): number[] {
   return depths;
 }
 
-/** Find the hop with the highest latency */
+/** Find the hop with the highest latency (skip inferred hops with no real data) */
 function findBottleneck(hops: TraceHop[]): number {
   let maxIdx = -1;
   let maxLatency = 0;
   for (let i = 0; i < hops.length; i++) {
+    if (hops[i].inferred || hops[i].latency < 0) continue;
     if (hops[i].latency > maxLatency) {
       maxLatency = hops[i].latency;
       maxIdx = i;
@@ -187,10 +188,11 @@ export function TraceWaterfall({ result, nodes, onHoverHop, onClickHop, onDismis
           {/* Hop rows */}
           <div className="trace-waterfall-rows">
             {result.hops.map((hop, i) => {
-              const barLeft = (hop.startTime / totalTime) * 100;
-              const barWidth = Math.max(1, (hop.latency / totalTime) * 100);
-              const isBottleneck = i === bottleneckIdx;
-              const color = getLatencyColor(hop.latency);
+              const isInferred = hop.inferred || hop.latency < 0;
+              const barLeft = isInferred ? 0 : (hop.startTime / totalTime) * 100;
+              const barWidth = isInferred ? 100 : Math.max(1, (hop.latency / totalTime) * 100);
+              const isBottleneck = !isInferred && i === bottleneckIdx;
+              const color = isInferred ? "rgba(100, 116, 139, 0.3)" : getLatencyColor(hop.latency);
 
               return (
                 <div
@@ -203,7 +205,7 @@ export function TraceWaterfall({ result, nodes, onHoverHop, onClickHop, onDismis
                 >
                   <div className="trace-waterfall-label">
                     <span className="trace-waterfall-arrow">
-                      {hop.inferred ? "⇢" : "→"}
+                      {isInferred ? "⇢" : "→"}
                     </span>
                     <span className="trace-waterfall-node-name">
                       {getNodeName(hop.targetNodeId, nodes)}
@@ -216,11 +218,12 @@ export function TraceWaterfall({ result, nodes, onHoverHop, onClickHop, onDismis
                         left: `${barLeft}%`,
                         width: `${barWidth}%`,
                         background: color,
+                        ...(isInferred ? { opacity: 0.5, borderRadius: 2 } : {}),
                       }}
                     />
                   </div>
-                  <div className="trace-waterfall-latency" style={{ color }}>
-                    {formatLatency(hop.latency)}
+                  <div className="trace-waterfall-latency" style={{ color: isInferred ? "#94A3B8" : color }}>
+                    {isInferred ? "inferred" : formatLatency(hop.latency)}
                   </div>
                 </div>
               );
