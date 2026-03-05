@@ -14,8 +14,8 @@ const execFileAsync = promisify(execFile);
 
 // --- Constants ---
 
-const MAX_ITERATIONS = 25;
-const MODEL = 'gpt-5';
+const MAX_ITERATIONS = 15;
+const MODEL = 'gpt-4.1-mini';
 const ENV_PATH = path.join(__dirname, '..', '..', '.env');
 
 const DOCKER_BIN_CANDIDATES = [
