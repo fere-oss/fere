@@ -18,6 +18,20 @@ const MAX_ITERATIONS = 15;
 const MODEL = 'gpt-4.1-mini';
 const ENV_PATH = path.join(__dirname, '..', '..', '.env');
 
+// --- Token budget limits ---
+const MAX_TOKENS_TOOL_TURN = 1024; // Intermediate turns only need tool calls
+const MAX_TOKENS_FINAL = 4096;     // Final diagnosis gets full budget
+const TRUNCATE_BODY = 1500;        // HTTP response body chars
+const TRUNCATE_BODY_CONCURRENT = 400;
+const TRUNCATE_LOG_LINES = 80;
+const TRUNCATE_SOURCE_LINES = 120;
+const TRUNCATE_SOURCE_CHARS = 4000;
+const MAX_GREP_MATCHES = 20;
+const MAX_FILE_LIST = 30;
+const MAX_DB_ROWS = 15;
+// Context trimming: after this many messages, compress old tool results
+const CONTEXT_TRIM_THRESHOLD = 20;
+
 const DOCKER_BIN_CANDIDATES = [
   process.env.FERE_DOCKER_BIN,
   '/opt/homebrew/bin/docker',
@@ -329,7 +343,7 @@ async function executeFireRequest(input) {
       status: result.status,
       statusText: result.statusText,
       headers: result.headers,
-      body: truncate(result.body, 4000),
+      body: truncate(result.body, TRUNCATE_BODY),
       duration: result.duration,
       size: result.size,
     };
@@ -366,7 +380,7 @@ async function executeConcurrentRequests(input) {
       if (summary.responses.length < 3) {
         summary.responses.push({
           status: r.status,
-          body: truncate(r.body, 1000),
+          body: truncate(r.body, TRUNCATE_BODY_CONCURRENT),
           duration: r.duration,
         });
       }
@@ -413,8 +427,8 @@ async function executeGetLogs(input, graphSnapshot) {
         lines = lines.filter(line => line.toLowerCase().includes(lower));
       }
 
-      if (lines.length > 200) {
-        lines = lines.slice(-200);
+      if (lines.length > TRUNCATE_LOG_LINES) {
+        lines = lines.slice(-TRUNCATE_LOG_LINES);
       }
 
       resolve({
@@ -450,14 +464,14 @@ async function executeReadSource(input, graphSnapshot) {
       lines = lines.slice(start, end);
     }
 
-    if (lines.length > 200) {
-      lines = lines.slice(0, 200);
+    if (lines.length > TRUNCATE_SOURCE_LINES) {
+      lines = lines.slice(0, TRUNCATE_SOURCE_LINES);
       lines.push('... (truncated)');
     }
 
     const result = lines.join('\n');
-    if (result.length > 8000) {
-      return { file: file_path, content: result.slice(0, 8000) + '\n... (truncated)', totalLines };
+    if (result.length > TRUNCATE_SOURCE_CHARS) {
+      return { file: file_path, content: result.slice(0, TRUNCATE_SOURCE_CHARS) + '\n... (truncated)', totalLines };
     }
 
     return { file: file_path, content: result, totalLines };
@@ -466,7 +480,7 @@ async function executeReadSource(input, graphSnapshot) {
   }
 }
 
-async function executeFindFiles(input, graphSnapshot) {
+async function executeFindFiles(input, graphSnapshot, sessionCache) {
   const { service_name, pattern } = input;
 
   const node = findServiceNode(graphSnapshot, service_name);
@@ -474,22 +488,26 @@ async function executeFindFiles(input, graphSnapshot) {
     return { error: `Service "${service_name}" not found or has no project path` };
   }
 
-  const allFiles = findFiles(node.projectPath);
+  // Cache file tree per project path within the session
+  if (!sessionCache.files[node.projectPath]) {
+    sessionCache.files[node.projectPath] = findFiles(node.projectPath);
+  }
+  const allFiles = sessionCache.files[node.projectPath];
   const isMatch = picomatch(pattern);
   const matched = allFiles.filter(f => {
     const rel = path.relative(node.projectPath, f);
     return isMatch(rel);
   });
 
-  const limited = matched.slice(0, 50);
+  const limited = matched.slice(0, MAX_FILE_LIST);
   return {
     files: limited.map(f => path.relative(node.projectPath, f)),
     total: matched.length,
-    truncated: matched.length > 50,
+    truncated: matched.length > MAX_FILE_LIST,
   };
 }
 
-async function executeGrepSource(input, graphSnapshot) {
+async function executeGrepSource(input, graphSnapshot, sessionCache) {
   const { service_name, pattern, file_glob } = input;
 
   const node = findServiceNode(graphSnapshot, service_name);
@@ -497,7 +515,11 @@ async function executeGrepSource(input, graphSnapshot) {
     return { error: `Service "${service_name}" not found or has no project path` };
   }
 
-  let files = findFiles(node.projectPath);
+  // Reuse cached file tree
+  if (!sessionCache.files[node.projectPath]) {
+    sessionCache.files[node.projectPath] = findFiles(node.projectPath);
+  }
+  let files = [...sessionCache.files[node.projectPath]];
 
   if (file_glob) {
     const isMatch = picomatch(file_glob);
@@ -505,7 +527,7 @@ async function executeGrepSource(input, graphSnapshot) {
   }
 
   const matches = [];
-  const MAX_MATCHES = 30;
+  const MAX_MATCHES = MAX_GREP_MATCHES;
   let regex;
   try {
     regex = new RegExp(pattern, 'i');
@@ -534,7 +556,7 @@ async function executeGrepSource(input, graphSnapshot) {
   return { pattern, matches, totalMatches: matches.length };
 }
 
-async function executeGetRoutes(input, graphSnapshot) {
+async function executeGetRoutes(input, graphSnapshot, sessionCache) {
   const { service_name } = input;
 
   const node = findServiceNode(graphSnapshot, service_name);
@@ -542,8 +564,20 @@ async function executeGetRoutes(input, graphSnapshot) {
     return { error: `Service "${service_name}" not found or has no project path` };
   }
 
+  // Cache route scans per project path within the session
+  const cacheKey = `${node.projectPath}:${node.id}`;
+  if (sessionCache.routes[cacheKey]) {
+    const matched = sessionCache.routes[cacheKey];
+    return {
+      service: service_name,
+      routes: matched.map(r => ({ method: r.method, path: r.path, framework: r.framework })),
+      count: matched.length,
+    };
+  }
+
   const allRoutes = await scanRoutes(node.projectPath);
   const matched = matchRoutesToService(allRoutes, node);
+  sessionCache.routes[cacheKey] = matched;
 
   return {
     service: service_name,
@@ -575,7 +609,7 @@ async function executeDbQuery(input, graphSnapshot) {
     if (result.error) {
       return { error: result.error };
     }
-    const rows = (result.rows || []).slice(0, 50);
+    const rows = (result.rows || []).slice(0, MAX_DB_ROWS);
     return { columns: result.columns, rows, totalRows: result.rows?.length || 0 };
   } catch (err) {
     return { error: err.message };
@@ -584,7 +618,7 @@ async function executeDbQuery(input, graphSnapshot) {
 
 // --- Tool Dispatcher ---
 
-async function executeDebugTool(toolName, input, graphSnapshot) {
+async function executeDebugTool(toolName, input, graphSnapshot, sessionCache) {
   switch (toolName) {
     case 'fire_request':
       return await executeFireRequest(input);
@@ -595,11 +629,11 @@ async function executeDebugTool(toolName, input, graphSnapshot) {
     case 'read_source_file':
       return await executeReadSource(input, graphSnapshot);
     case 'find_source_files':
-      return await executeFindFiles(input, graphSnapshot);
+      return await executeFindFiles(input, graphSnapshot, sessionCache);
     case 'grep_source':
-      return await executeGrepSource(input, graphSnapshot);
+      return await executeGrepSource(input, graphSnapshot, sessionCache);
     case 'get_service_routes':
-      return await executeGetRoutes(input, graphSnapshot);
+      return await executeGetRoutes(input, graphSnapshot, sessionCache);
     case 'run_database_query':
       return await executeDbQuery(input, graphSnapshot);
     default:
@@ -714,7 +748,7 @@ When you've identified the root cause, provide your diagnosis as a structured re
 
 // --- OpenAI API Call ---
 
-async function callOpenAI(apiKey, systemPrompt, messages) {
+async function callOpenAI(apiKey, systemPrompt, messages, maxTokens = MAX_TOKENS_FINAL) {
   // Prepend system message to the conversation
   const fullMessages = [
     { role: 'system', content: systemPrompt },
@@ -723,7 +757,7 @@ async function callOpenAI(apiKey, systemPrompt, messages) {
 
   const body = JSON.stringify({
     model: MODEL,
-    max_tokens: 4096,
+    max_tokens: maxTokens,
     messages: fullMessages,
     tools: DEBUG_TOOLS,
   });
@@ -759,10 +793,35 @@ async function callOpenAI(apiKey, systemPrompt, messages) {
   });
 }
 
+// --- Context Trimming ---
+// Replace verbose old tool results with short summaries to keep context small.
+
+function trimConversationContext(messages) {
+  if (messages.length < CONTEXT_TRIM_THRESHOLD) return;
+
+  // Keep first user message, last 8 messages intact; compress the middle
+  const keepTailCount = 8;
+  const compressEnd = messages.length - keepTailCount;
+
+  for (let i = 1; i < compressEnd; i++) {
+    const msg = messages[i];
+    if (msg.role === 'tool' && typeof msg.content === 'string' && msg.content.length > 200) {
+      // Replace with a short summary — keep first 150 chars as context
+      messages[i] = {
+        ...msg,
+        content: msg.content.slice(0, 150) + '\n... (trimmed for context)',
+      };
+    }
+  }
+}
+
 // --- Agent Loop ---
 
 async function runDebugAgent(options, onProgress) {
   const { problem, graphSnapshot, apiKey } = options;
+
+  // Session-level cache: avoids re-scanning routes and file trees within one investigation
+  const sessionCache = { routes: {}, files: {} };
 
   const systemPrompt = buildSystemPrompt(graphSnapshot);
   const messages = [
@@ -776,9 +835,16 @@ async function runDebugAgent(options, onProgress) {
 
     onProgress({ type: 'thinking', iteration: i + 1 });
 
+    // Trim old tool results to keep context lean
+    trimConversationContext(messages);
+
+    // Use small token budget for intermediate turns, full budget near the end
+    const isNearEnd = i >= MAX_ITERATIONS - 2;
+    const maxTokens = isNearEnd ? MAX_TOKENS_FINAL : MAX_TOKENS_TOOL_TURN;
+
     let response;
     try {
-      response = await callOpenAI(apiKey, systemPrompt, messages);
+      response = await callOpenAI(apiKey, systemPrompt, messages, maxTokens);
     } catch (err) {
       onProgress({ type: 'error', error: err.message });
       return { success: false, error: err.message };
@@ -824,7 +890,7 @@ async function runDebugAgent(options, onProgress) {
         iteration: i + 1,
       });
 
-      const result = await executeDebugTool(fnName, fnArgs, graphSnapshot);
+      const result = await executeDebugTool(fnName, fnArgs, graphSnapshot, sessionCache);
 
       onProgress({
         type: 'tool_result',
