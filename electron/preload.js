@@ -107,6 +107,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
   publishGraph: (options) => ipcRenderer.invoke('publish-graph', options),
   updateSharedGraph: (options) => ipcRenderer.invoke('update-shared-graph', options),
 
+  // Debug Agent
+  debugSetApiKey: (key) => ipcRenderer.invoke('debug-set-api-key', key),
+  debugGetApiKeyStatus: () => ipcRenderer.invoke('debug-get-api-key-status'),
+  debugStart: (options) => ipcRenderer.invoke('debug-start', options),
+  debugStop: () => ipcRenderer.invoke('debug-stop'),
+  onDebugProgress: (callback) => {
+    const listener = (event, data) => callback(data);
+    ipcRenderer.on('debug-progress', listener);
+    return () => ipcRenderer.removeListener('debug-progress', listener);
+  },
+
   // Platform info
   platform: process.platform,
 });

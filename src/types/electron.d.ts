@@ -490,6 +490,13 @@ export interface ShareSettings {
   publishedAt: number | null;
 }
 
+export type DebugProgress =
+  | { type: 'thinking'; iteration: number }
+  | { type: 'tool_call'; tool: string; input: Record<string, unknown>; iteration: number }
+  | { type: 'tool_result'; tool: string; summary: string; iteration: number }
+  | { type: 'complete'; diagnosis: string }
+  | { type: 'error'; error: string };
+
 // Electron API interface
 export interface ElectronAPI {
   // Process monitoring
@@ -578,6 +585,13 @@ export interface ElectronAPI {
   saveGithubToken: (token: string) => Promise<{ success: boolean; error?: string }>;
   publishGraph: (options: PublishGraphOptions) => Promise<PublishGraphResult>;
   updateSharedGraph: (options: PublishGraphOptions) => Promise<PublishGraphResult>;
+
+  // Debug Agent
+  debugSetApiKey: (key: string) => Promise<{ success: boolean; error?: string }>;
+  debugGetApiKeyStatus: () => Promise<{ hasKey: boolean }>;
+  debugStart: (options: { problem: string }) => Promise<{ success: boolean; error?: string }>;
+  debugStop: () => Promise<{ success: boolean }>;
+  onDebugProgress: (callback: (progress: DebugProgress) => void) => () => void;
 
   // Platform info
   platform: string;

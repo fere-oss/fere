@@ -7,6 +7,7 @@ import { ContainerLogsTab } from "./components/ContainerLogsTab";
 import { WelcomeModal } from "./components/WelcomeModal";
 import { ShareModal } from "./components/ShareModal";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { DebugPanel } from "./components/DebugPanel";
 import { useKnownServices, serviceKey, nodeServiceKey, looseServiceIdentity } from "./components/checklist/useKnownServices";
 import { ServiceDropdown } from "./components/checklist/ServiceDropdown";
 import { HEALTH_COLORS } from "./components/graph/constants";
@@ -213,6 +214,9 @@ function App() {
 
   // Database node for database page
   const [databaseNode, setDatabaseNode] = useState<GraphNode | null>(null);
+
+  // Debug panel
+  const [showDebugPanel, setShowDebugPanel] = useState(false);
 
   // Sub-tab for containers view
   const [containerSubTab, setContainerSubTab] =
@@ -1012,6 +1016,23 @@ function App() {
         <div className="app-header-actions">
           <button
             className="alert-toggle"
+            onClick={() => setShowDebugPanel(true)}
+            title="Debug Agent"
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2">
+              <circle cx="8" cy="6" r="4" />
+              <path d="M3 2L5.5 4.5" />
+              <path d="M13 2L10.5 4.5" />
+              <path d="M1.5 6H4" />
+              <path d="M12 6h2.5" />
+              <path d="M3 10l1.5-1.5" />
+              <path d="M13 10l-1.5-1.5" />
+              <path d="M6.5 10v4" />
+              <path d="M9.5 10v4" />
+            </svg>
+          </button>
+          <button
+            className="alert-toggle"
             onClick={() => setShowShare(true)}
             title="Share service map"
           >
@@ -1418,6 +1439,9 @@ function App() {
           graphEdges={filteredData.edges}
           activeTabLabel={tabs.find((t) => t.id === selectedTab)?.label ?? SYSTEM_TAB_LABEL}
         />
+      )}
+      {showDebugPanel && (
+        <DebugPanel onClose={() => setShowDebugPanel(false)} />
       )}
     </div>
   );

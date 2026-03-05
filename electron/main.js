@@ -110,6 +110,7 @@ const {
 const analytics = require("./analytics");
 const { generateHTML } = require("./services/graphExporter");
 const { createGist, updateGist, buildPreviewUrl } = require("./services/gistPublisher");
+const { runDebugAgent, getApiKey, setApiKey } = require("./services/debugAgent");
 
 app.setName("Fere");
 app.name = "Fere";
@@ -1519,4 +1520,88 @@ ipcMain.handle("update-shared-graph", async (_, options) => {
     console.error("update-shared-graph error:", err);
     return { error: err.message };
   }
+});
+
+// --- Debug Agent ---
+
+let activeDebugSession = null;
+
+ipcMain.handle("debug-set-api-key", async (_, key) => {
+  if (typeof key !== "string" || key.length < 10) {
+    return { success: false, error: "Invalid API key" };
+  }
+  setApiKey(key);
+  return { success: true };
+});
+
+ipcMain.handle("debug-get-api-key-status", async () => {
+  const key = getApiKey();
+  return { hasKey: !!key };
+});
+
+ipcMain.handle("debug-start", async (event, options) => {
+  if (typeof options?.problem !== "string" || !options.problem.trim()) {
+    return { success: false, error: "Problem description is required" };
+  }
+
+  const apiKey = getApiKey();
+  if (!apiKey) {
+    return { success: false, error: "No Claude API key configured" };
+  }
+
+  // Get current graph snapshot
+  const snapshot = await getSystemSnapshot();
+  const graphSnapshot = {
+    nodes: snapshot.graph?.nodes || [],
+    edges: snapshot.graph?.edges || [],
+  };
+
+  // Cancel any existing session
+  if (activeDebugSession) {
+    activeDebugSession._cancelled = true;
+  }
+
+  const session = { _cancelled: false };
+  activeDebugSession = session;
+
+  // Run agent asynchronously, streaming progress
+  const agentOptions = {
+    problem: options.problem,
+    graphSnapshot,
+    apiKey,
+    _cancelled: false,
+  };
+
+  // Link cancellation
+  Object.defineProperty(agentOptions, "_cancelled", {
+    get() { return session._cancelled; },
+  });
+
+  runDebugAgent(agentOptions, (progress) => {
+    if (session._cancelled) return;
+    const sender = event.sender;
+    if (!sender.isDestroyed()) {
+      sender.send("debug-progress", progress);
+    }
+  }).then(() => {
+    if (activeDebugSession === session) activeDebugSession = null;
+  }).catch((err) => {
+    if (!session._cancelled && !event.sender.isDestroyed()) {
+      event.sender.send("debug-progress", {
+        type: "error",
+        error: err.message,
+      });
+    }
+    if (activeDebugSession === session) activeDebugSession = null;
+  });
+
+  return { success: true };
+});
+
+ipcMain.handle("debug-stop", async () => {
+  if (activeDebugSession) {
+    activeDebugSession._cancelled = true;
+    activeDebugSession = null;
+  }
+  return { success: true };
 });
