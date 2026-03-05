@@ -1,5 +1,6 @@
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useEffect } from "react";
 import type { TraceResult, TraceHop, GraphNode } from "../../types/electron";
+import { BrandIcon, inferServiceBrand } from "./brandIcons";
 
 interface TraceWaterfallProps {
   result: TraceResult;
@@ -21,6 +22,19 @@ function formatLatency(ms: number): string {
   return `${(ms / 1000).toFixed(1)}s`;
 }
 
+function formatAxisTick(ms: number, totalTime: number): string {
+  if (totalTime < 10) {
+    const decimals = totalTime < 2 ? 2 : 1;
+    return `${ms.toFixed(decimals)}ms`;
+  }
+  return formatLatency(ms);
+}
+
+function formatHopLatency(ms: number, inferred: boolean): string {
+  if (ms < 1) return "<1ms";
+  return inferred ? `~${formatLatency(ms)}` : formatLatency(ms);
+}
+
 function getStatusColor(status: number): string {
   if (status >= 200 && status < 300) return "#22C55E";
   if (status >= 300 && status < 400) return "#3B82F6";
@@ -28,14 +42,20 @@ function getStatusColor(status: number): string {
   return "#EF4444";
 }
 
-function getNodeName(nodeId: string, nodes: GraphNode[]): string {
+function getNodeInfo(nodeId: string, nodes: GraphNode[]): { name: string; brand: string | null; isGraphNode: boolean } {
   const node = nodes.find((n) => n.id === nodeId);
   if (node) {
     const port = node.ports[0]?.port;
-    return port ? `${node.name}:${port}` : node.name;
+    return {
+      name: port ? `${node.name}:${port}` : node.name,
+      brand: inferServiceBrand(node),
+      isGraphNode: true,
+    };
   }
-  if (nodeId.startsWith("external:")) return nodeId.slice(9);
-  return nodeId;
+  if (nodeId.startsWith("external:")) {
+    return { name: nodeId.slice(9), brand: null, isGraphNode: false };
+  }
+  return { name: nodeId, brand: null, isGraphNode: false };
 }
 
 /**
@@ -76,32 +96,14 @@ function findBottleneck(hops: TraceHop[]): number {
 
 export function TraceWaterfall({ result, nodes, onHoverHop, onClickHop, onDismiss }: TraceWaterfallProps) {
   const [collapsed, setCollapsed] = useState(false);
-  const [panelHeight, setPanelHeight] = useState(200);
-  const dragRef = useRef<{ startY: number; startHeight: number } | null>(null);
 
   const depths = computeDepths(result.hops);
   const bottleneckIdx = findBottleneck(result.hops);
   const totalTime = result.totalTime || 1;
-
-  const handleDragStart = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    dragRef.current = { startY: e.clientY, startHeight: panelHeight };
-
-    const handleMove = (ev: MouseEvent) => {
-      if (!dragRef.current) return;
-      const dy = dragRef.current.startY - ev.clientY;
-      setPanelHeight(Math.max(120, Math.min(500, dragRef.current.startHeight + dy)));
-    };
-
-    const handleUp = () => {
-      dragRef.current = null;
-      document.removeEventListener("mousemove", handleMove);
-      document.removeEventListener("mouseup", handleUp);
-    };
-
-    document.addEventListener("mousemove", handleMove);
-    document.addEventListener("mouseup", handleUp);
-  }, [panelHeight]);
+  const responseWindow = Math.min(
+    totalTime,
+    Math.max(0.2, Math.min(2, totalTime * 0.2)),
+  );
 
   // Keyboard dismiss
   useEffect(() => {
@@ -115,25 +117,48 @@ export function TraceWaterfall({ result, nodes, onHoverHop, onClickHop, onDismis
   const methodColor =
     result.request.method === "GET" ? "#22C55E" :
     result.request.method === "POST" ? "#F97316" :
-    result.request.method === "DELETE" ? "#EF4444" : "#3B82F6";
+    result.request.method === "DELETE" ? "#EF4444" : "#2563EB";
+
+  const rowCount = result.hops.length + (result.response ? 1 : 0) + (result.hops.length === 0 ? 1 : 0);
+  const expandedHeight = Math.min(560, Math.max(220, 56 + 24 + 22 + rowCount * 30 + 18));
+
+  if (collapsed) {
+    return (
+      <div className="trace-waterfall trace-waterfall-collapsed">
+        <button
+          className="trace-waterfall-collapsed-btn"
+          onClick={() => setCollapsed(false)}
+          title="Expand trace details"
+        >
+          <span className="trace-waterfall-icon" aria-hidden="true">
+            <svg viewBox="0 0 16 16" className="trace-waterfall-icon-svg">
+              <line x1="1.5" y1="8" x2="5.5" y2="8" />
+              <circle cx="8" cy="8" r="2.1" />
+              <line x1="10.5" y1="8" x2="14.5" y2="8" />
+            </svg>
+          </span>
+          <span>Trace</span>
+          <span className="trace-waterfall-method" style={{ color: methodColor }}>
+            {result.request.method}
+          </span>
+          <span className="trace-waterfall-total">{formatLatency(result.totalTime)}</span>
+        </button>
+      </div>
+    );
+  }
 
   return (
-    <div
-      className="trace-waterfall"
-      style={{ height: collapsed ? 40 : panelHeight }}
-    >
-      {/* Resize handle */}
-      {!collapsed && (
-        <div className="trace-waterfall-resize" onMouseDown={handleDragStart} />
-      )}
-
+    <div className="trace-waterfall" style={{ height: expandedHeight }}>
       {/* Header */}
-      <div
-        className="trace-waterfall-header"
-        onClick={() => setCollapsed(!collapsed)}
-      >
+      <div className="trace-waterfall-header">
         <div className="trace-waterfall-title">
-          <span className="trace-waterfall-icon">&#x27E1;</span>
+          <span className="trace-waterfall-icon" aria-hidden="true">
+            <svg viewBox="0 0 16 16" className="trace-waterfall-icon-svg">
+              <line x1="1.5" y1="8" x2="5.5" y2="8" />
+              <circle cx="8" cy="8" r="2.1" />
+              <line x1="10.5" y1="8" x2="14.5" y2="8" />
+            </svg>
+          </span>
           <span>Trace:</span>
           <span className="trace-waterfall-method" style={{ color: methodColor }}>
             {result.request.method}
@@ -161,8 +186,17 @@ export function TraceWaterfall({ result, nodes, onHoverHop, onClickHop, onDismis
           </span>
           <button
             className="trace-waterfall-close"
+            onClick={(e) => { e.stopPropagation(); setCollapsed(true); }}
+            aria-label="Minimize trace"
+            title="Minimize"
+          >
+            &#x2212;
+          </button>
+          <button
+            className="trace-waterfall-close"
             onClick={(e) => { e.stopPropagation(); onDismiss(); }}
             aria-label="Close trace"
+            title="Close"
           >
             &#x2715;
           </button>
@@ -170,114 +204,122 @@ export function TraceWaterfall({ result, nodes, onHoverHop, onClickHop, onDismis
       </div>
 
       {/* Body */}
-      {!collapsed && (
-        <div className="trace-waterfall-body">
-          {/* Timeline axis */}
-          <div className="trace-waterfall-axis">
-            {[0, 0.25, 0.5, 0.75, 1].map((pct) => (
-              <span
-                key={pct}
-                className="trace-waterfall-tick"
-                style={{ left: `${pct * 100}%` }}
+      <div className="trace-waterfall-body">
+        {/* Timeline axis */}
+        <div className="trace-waterfall-axis">
+          {[0, 0.25, 0.5, 0.75, 1].map((pct) => (
+            <span
+              key={pct}
+              className="trace-waterfall-tick"
+              style={{ left: `${pct * 100}%` }}
+            >
+              {formatAxisTick(totalTime * pct, totalTime)}
+            </span>
+          ))}
+        </div>
+
+        {/* Legend */}
+        <div className="trace-waterfall-legend">
+          <span className="trace-waterfall-legend-item">
+            <span className="trace-waterfall-legend-line trace-waterfall-legend-solid" />
+            <span>Observed</span>
+          </span>
+          <span className="trace-waterfall-legend-item">
+            <span className="trace-waterfall-legend-line trace-waterfall-legend-dashed" />
+            <span>Inferred (~)</span>
+          </span>
+        </div>
+
+        {/* Hop rows */}
+        <div className="trace-waterfall-rows">
+          {result.hops.map((hop, i) => {
+            const isInferred = hop.inferred;
+            const barLeft = (hop.startTime / totalTime) * 100;
+            const barWidth = Math.max(1, (hop.latency / totalTime) * 100);
+            const isBottleneck = !isInferred && i === bottleneckIdx;
+            const color = isInferred ? "rgba(100, 116, 139, 0.5)" : getLatencyColor(hop.latency);
+            const target = getNodeInfo(hop.targetNodeId, nodes);
+
+            return (
+              <div
+                key={`${hop.sourceNodeId}-${hop.targetNodeId}`}
+                className={`trace-waterfall-row ${isBottleneck ? "trace-waterfall-row-bottleneck" : ""}`}
+                style={{ paddingLeft: depths[i] * 12 }}
+                onMouseEnter={() => onHoverHop(hop)}
+                onMouseLeave={() => onHoverHop(null)}
+                onClick={() => onClickHop(hop)}
               >
-                {formatLatency(totalTime * pct)}
-              </span>
-            ))}
-          </div>
-
-          {/* Legend */}
-          <div className="trace-waterfall-legend">
-            <span className="trace-waterfall-legend-item">
-              <span className="trace-waterfall-legend-line trace-waterfall-legend-solid" />
-              <span>Observed</span>
-            </span>
-            <span className="trace-waterfall-legend-item">
-              <span className="trace-waterfall-legend-line trace-waterfall-legend-dashed" />
-              <span>Inferred (~)</span>
-            </span>
-          </div>
-
-          {/* Hop rows */}
-          <div className="trace-waterfall-rows">
-            {result.hops.map((hop, i) => {
-              const isInferred = hop.inferred;
-              const barLeft = (hop.startTime / totalTime) * 100;
-              const barWidth = Math.max(1, (hop.latency / totalTime) * 100);
-              const isBottleneck = !isInferred && i === bottleneckIdx;
-              const color = isInferred ? "rgba(100, 116, 139, 0.5)" : getLatencyColor(hop.latency);
-
-              return (
-                <div
-                  key={`${hop.sourceNodeId}-${hop.targetNodeId}`}
-                  className={`trace-waterfall-row ${isBottleneck ? "trace-waterfall-row-bottleneck" : ""}`}
-                  style={{ paddingLeft: depths[i] * 16 }}
-                  onMouseEnter={() => onHoverHop(hop)}
-                  onMouseLeave={() => onHoverHop(null)}
-                  onClick={() => onClickHop(hop)}
-                >
-                  <div className="trace-waterfall-label">
-                    <span className="trace-waterfall-arrow">
-                      {isInferred ? "⇢" : "→"}
-                    </span>
-                    <span className="trace-waterfall-node-name">
-                      {getNodeName(hop.targetNodeId, nodes)}
-                    </span>
-                  </div>
-                  <div className="trace-waterfall-bar-area">
-                    <div
-                      className={`trace-waterfall-bar ${isBottleneck ? "trace-waterfall-bar-pulse" : ""}`}
-                      style={{
-                        left: `${barLeft}%`,
-                        width: `${barWidth}%`,
-                        background: color,
-                      }}
-                    />
-                  </div>
-                  <div className="trace-waterfall-latency" style={{ color: isInferred ? "#94A3B8" : color }}>
-                    {isInferred ? `~${formatLatency(hop.latency)}` : formatLatency(hop.latency)}
-                  </div>
-                </div>
-              );
-            })}
-
-            {/* Response row */}
-            {result.response && (
-              <div className="trace-waterfall-row trace-waterfall-row-response">
                 <div className="trace-waterfall-label">
-                  <span className="trace-waterfall-arrow">←</span>
-                  <span className="trace-waterfall-node-name">
-                    {result.response.status} {result.response.statusText}
+                  <span className="trace-waterfall-arrow">
+                    {isInferred ? "⇢" : "→"}
+                  </span>
+                  <span className="trace-waterfall-node-name-wrap">
+                    {target.isGraphNode && (
+                      <BrandIcon
+                        value={target.brand || target.name}
+                        className="trace-waterfall-node-icon"
+                        size={14}
+                      />
+                    )}
+                    <span className="trace-waterfall-node-name" title={target.name}>
+                      {target.name}
+                    </span>
                   </span>
                 </div>
                 <div className="trace-waterfall-bar-area">
                   <div
+                    className={`trace-waterfall-bar ${isBottleneck ? "trace-waterfall-bar-pulse" : ""}`}
+                    style={{
+                      left: `${barLeft}%`,
+                      width: `${barWidth}%`,
+                      background: color,
+                    }}
+                  />
+                </div>
+                <div className="trace-waterfall-latency" style={{ color: isInferred ? "#94A3B8" : color }}>
+                  {formatHopLatency(hop.latency, isInferred)}
+                </div>
+              </div>
+            );
+          })}
+
+          {/* Response row */}
+          {result.response && (
+            <div className="trace-waterfall-row trace-waterfall-row-response">
+              <div className="trace-waterfall-label">
+                <span className="trace-waterfall-arrow">←</span>
+                <span className="trace-waterfall-node-name">
+                  {result.response.status} {result.response.statusText}
+                </span>
+              </div>
+                <div className="trace-waterfall-bar-area">
+                  <div
                     className="trace-waterfall-bar"
                     style={{
-                      left: `${((totalTime - 2) / totalTime) * 100}%`,
-                      width: `${(2 / totalTime) * 100}%`,
+                      left: `${((totalTime - responseWindow) / totalTime) * 100}%`,
+                      width: `${(responseWindow / totalTime) * 100}%`,
                       background: getStatusColor(result.response.status),
                       minWidth: 4,
                     }}
                   />
                 </div>
-                <div
-                  className="trace-waterfall-latency"
-                  style={{ color: getStatusColor(result.response.status) }}
-                >
-                  {formatLatency(totalTime)}
-                </div>
+              <div
+                className="trace-waterfall-latency"
+                style={{ color: getStatusColor(result.response.status) }}
+              >
+                {formatLatency(totalTime)}
               </div>
-            )}
+            </div>
+          )}
 
-            {/* Empty state */}
-            {result.hops.length === 0 && (
-              <div className="trace-waterfall-empty">
-                No downstream hops detected — request was handled by the target service alone.
-              </div>
-            )}
-          </div>
+          {/* Empty state */}
+          {result.hops.length === 0 && (
+            <div className="trace-waterfall-empty">
+              No downstream hops detected — request was handled by the target service alone.
+            </div>
+          )}
         </div>
-      )}
+      </div>
     </div>
   );
 }

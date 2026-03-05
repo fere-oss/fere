@@ -92,8 +92,9 @@ const FlowServiceNodeInner = memo(function FlowServiceNodeInner({ data }: { data
   const dimmed = traceActive
     ? !isInTrace
     : hoveredNodeId !== null && !isConnected;
+  // Keep trace styling isolated to rf-node-trace-active (no hover highlight glow/scale while tracing).
   const highlighted = traceActive
-    ? isInTrace
+    ? false
     : hoveredNodeId !== null && isConnected;
 
   // Build the entry marker label: "▶ POST /api/orders"
@@ -116,10 +117,7 @@ const FlowServiceNodeInner = memo(function FlowServiceNodeInner({ data }: { data
     .filter(Boolean)
     .join(" ");
 
-  const methodColor =
-    traceResult?.request.method === "GET" ? "#22C55E" :
-    traceResult?.request.method === "POST" ? "#F97316" :
-    traceResult?.request.method === "DELETE" ? "#EF4444" : "#3B82F6";
+  const methodColor = "#FFFFFF";
 
   return (
     <div

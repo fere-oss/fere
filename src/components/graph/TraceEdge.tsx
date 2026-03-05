@@ -2,7 +2,6 @@ import { useEffect, useRef } from "react";
 import {
   getBezierPath,
   getSmoothStepPath,
-  Position,
   type EdgeProps,
 } from "reactflow";
 import type { ArrowEdgeData } from "./ArrowEdge";
@@ -16,13 +15,6 @@ export type TraceEdgeData = ArrowEdgeData & {
   /** Whether this hop was inferred rather than directly observed */
   inferred?: boolean;
 };
-
-function getLatencyColor(latency: number): string {
-  if (latency < 100) return "#22C55E";
-  if (latency < 300) return "#3B82F6";
-  if (latency < 1000) return "#EAB308";
-  return "#EF4444";
-}
 
 function formatLatency(ms: number): string {
   if (ms < 1000) return `${Math.round(ms)}ms`;
@@ -79,12 +71,12 @@ function TraceEdgePath({
   }, [isActiveHop, isDrawn, latency]);
 
   const showBadge = (isDrawn || isActiveHop) && latency !== undefined && latency >= 0 && labelX !== undefined && labelY !== undefined;
-  const badgeColor = inferred ? "rgba(100, 116, 139, 0.7)" : (latency !== undefined ? getLatencyColor(latency) : "#3B82F6");
+  const badgeColor = "#171717";
   const badgeText = latency !== undefined && latency >= 0 ? `${inferred ? "~" : ""}${formatLatency(latency)}` : "";
   const badgeWidth = Math.max(40, badgeText.length * 8 + 16);
 
   const markerId = `trace-arrow-${id.replace(/[^a-zA-Z0-9-_]/g, "_")}`;
-  const markerColor = inferred ? "rgba(100, 116, 139, 0.7)" : "#3B82F6";
+  const markerColor = inferred ? "rgba(100, 116, 139, 0.7)" : "#171717";
 
   return (
     <g className={isActiveHop || isDrawn ? "rf-trace-edge-active" : "rf-trace-edge-pending"}>
@@ -102,12 +94,12 @@ function TraceEdgePath({
           <path d="M0,0 L8,3 L0,6 Z" fill={markerColor} />
         </marker>
       </defs>
-      {/* Base glow stroke */}
+      {/* Base stroke */}
       <path
         ref={pathRef}
         d={edgePath}
         fill="none"
-        stroke="rgba(59, 130, 246, 0.3)"
+        stroke="rgba(23, 23, 23, 0.24)"
         strokeWidth={3}
         strokeLinecap="round"
         style={{ opacity: isActiveHop || isDrawn ? 1 : 0 }}
@@ -118,13 +110,13 @@ function TraceEdgePath({
         id={id}
         d={edgePath}
         fill="none"
-        stroke={inferred ? "rgba(100, 116, 139, 0.7)" : "#3B82F6"}
+        stroke={inferred ? "rgba(100, 116, 139, 0.7)" : "#171717"}
         strokeWidth={2}
         strokeLinecap="round"
         strokeDasharray={inferred ? "6 4" : "none"}
         markerEnd={isDrawn ? `url(#${markerId})` : undefined}
         className="react-flow__edge-path"
-        style={{ filter: inferred ? "none" : "drop-shadow(0 0 3px rgba(59, 130, 246, 0.5))" }}
+        style={{ filter: "none" }}
       />
       {/* Latency badge */}
       {showBadge && (

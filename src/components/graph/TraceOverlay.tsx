@@ -18,10 +18,7 @@ function formatLatency(ms: number): string {
 export function TraceOverlay({ result, phase }: TraceOverlayProps) {
   if (phase === "idle" || !result) return null;
 
-  const methodColor =
-    result.request.method === "GET" ? "#22C55E" :
-    result.request.method === "POST" ? "#F97316" :
-    result.request.method === "DELETE" ? "#EF4444" : "#3B82F6";
+  const methodColor = "#FFFFFF";
 
   const url = result.request.url.replace(/^https?:\/\//, "");
 
