@@ -133,12 +133,48 @@ function findTargetNode(url, graphNodes) {
   return fallback;
 }
 
+/** Data-layer node types that are always included as leaf nodes (no HTTP routes) */
+const DATA_LAYER_TYPES = new Set([
+  "database", "cache", "broker",
+]);
+
 /**
- * BFS from a starting node through graph edges to find downstream Docker container hops.
- * Only follows edges where the source is a Docker container (since host lsof already
- * handles native processes). Returns edges in BFS order.
+ * Check whether a service node has a route that plausibly matches the request path.
+ * e.g. request "/api/orders" matches a service with route "/api/orders" or "/api/orders/:id".
  */
-function bfsDockerHops(startNodeId, graphNodes, graphEdges) {
+function routeMatches(node, requestPath) {
+  const routes = node.routes;
+  if (!routes || routes.length === 0) return false;
+
+  // Normalise: strip trailing slash, lowercase
+  const rp = requestPath.replace(/\/+$/, "").toLowerCase();
+
+  for (const route of routes) {
+    // Normalise route path: strip param segments for prefix comparison
+    // e.g. "/api/orders/:id" → "/api/orders"
+    const routeBase = route.path
+      .replace(/\/+$/, "")
+      .toLowerCase()
+      .replace(/\/:[^/]+/g, "");   // strip :param segments
+
+    // Match if paths share a common prefix beyond just "/"
+    if (routeBase.length <= 1) continue;
+    if (rp.startsWith(routeBase) || routeBase.startsWith(rp)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Route-aware walk from a starting node through graph edges.
+ * Instead of blind BFS (which lights up every connected service), only follows
+ * edges to downstream nodes that either:
+ *   a) Have a route matching the request path (likely involved in this request)
+ *   b) Are data-layer nodes (database/cache/broker) directly connected to a matched service
+ * Returns edges in walk order.
+ */
+function bfsDockerHops(startNodeId, graphNodes, graphEdges, requestPath) {
   const nodeMap = new Map();
   for (const n of graphNodes) nodeMap.set(n.id, n);
 
@@ -158,13 +194,25 @@ function bfsDockerHops(startNodeId, graphNodes, graphEdges) {
     const outEdges = adj.get(current) || [];
     for (const edge of outEdges) {
       if (visited.has(edge.target)) continue;
-      visited.add(edge.target);
-      result.push(edge);
-      // Only continue BFS through non-external nodes
       const targetNode = nodeMap.get(edge.target);
-      if (targetNode && targetNode.type !== "external") {
-        queue.push(edge.target);
+      if (!targetNode) continue;
+
+      // Always include data-layer nodes as leaf nodes (they don't have routes)
+      if (DATA_LAYER_TYPES.has(targetNode.type)) {
+        visited.add(edge.target);
+        result.push(edge);
+        continue; // don't recurse further from data nodes
       }
+
+      // For service nodes, only include if they have a matching route
+      if (requestPath && routeMatches(targetNode, requestPath)) {
+        visited.add(edge.target);
+        result.push(edge);
+        queue.push(edge.target); // continue walking from this service
+        continue;
+      }
+
+      // Skip: this service's routes don't match the request path
     }
   }
 
@@ -325,8 +373,12 @@ async function executeTracedRequest(options, makeRequest) {
         "nodePorts=", graphNodes.map(n => `${n.name}:[${n.ports.map(p => p.port).join(",")}]`).join(", ")
       );
       if (targetNode) {
-        const inferredEdges = bfsDockerHops(targetNode.id, graphNodes, graphEdges);
-        console.log("[traceCapture] BFS found", inferredEdges.length, "edges from", targetNode.name,
+        // Extract request path for route-aware filtering
+        let requestPath = "/";
+        try { requestPath = new URL(options.url).pathname; } catch {}
+        const inferredEdges = bfsDockerHops(targetNode.id, graphNodes, graphEdges, requestPath);
+        console.log("[traceCapture] Route-aware BFS found", inferredEdges.length, "edges from", targetNode.name,
+          "for path", requestPath,
           "edges:", inferredEdges.map(e => `${e.source}->${e.target}`).join(", "));
         let time = 0;
         const hopInterval = totalTime / Math.max(1, inferredEdges.length + 1);
