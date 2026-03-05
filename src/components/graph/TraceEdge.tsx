@@ -63,7 +63,7 @@ function TraceEdgePath({
       // Force reflow
       path.getBoundingClientRect();
       // Animate
-      path.style.transition = `stroke-dashoffset ${Math.max(300, Math.min(1200, (latency || 300) * 0.8))}ms ease-out`;
+      path.style.transition = `stroke-dashoffset ${Math.max(800, Math.min(2500, (latency || 800) * 2))}ms ease-out`;
       path.style.strokeDashoffset = "0";
     } else if (isDrawn) {
       // Already drawn — show fully

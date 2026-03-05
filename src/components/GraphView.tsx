@@ -572,7 +572,7 @@ export function GraphView({
     const hop = traceState.result.hops[traceState.activeHopIndex];
     if (!hop) return;
 
-    const duration = Math.max(300, Math.min(1200, hop.latency * 0.8));
+    const duration = Math.max(800, Math.min(2500, hop.latency * 2));
     const timer = setTimeout(() => {
       traceDispatch({ type: "advance-hop" });
     }, duration);
