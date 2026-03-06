@@ -365,7 +365,7 @@ export function useDatabasePage(node: GraphNode): UseDatabasePageResult {
     return () => {
       isCancelled = true;
     };
-  }, [nodeId, containerId, containerImage, remoteMongoMode, savedUri]);
+  }, [nodeId, containerId, containerImage, remoteMongoMode, savedUri, node.name, node.ports]);
 
   const loadTableData = useCallback(async (tableName: string) => {
     if (!window.electronAPI?.getTableData) return;

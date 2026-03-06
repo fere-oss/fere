@@ -258,21 +258,21 @@ export const ServiceNode = React.memo(function ServiceNode({
   const remoteKind = getRemoteAccessKind(node);
   const remoteTarget = useMemo(
     () => getRemoteAccessTarget(node),
-    [node.command, node.name],
+    [node],
   );
   const tunnelSummary = useMemo(
     () => getTunnelSummary(node),
-    [node.remoteAccess],
+    [node],
   );
   const inboundSshSummary = useMemo(
     () => getInboundSshSummary(node),
-    [node.remoteAccess],
+    [node],
   );
   const remoteHealthSummary = useMemo(
     () => getRemoteHealthSummary(node),
-    [node.remoteAccess],
+    [node],
   );
-  const routes = node.routes || [];
+  const routes = useMemo(() => node.routes || [], [node.routes]);
   const visibleRoutes = useMemo(() => {
     if (routes.length <= 3) return routes;
 
