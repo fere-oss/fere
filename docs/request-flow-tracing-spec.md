@@ -17,6 +17,29 @@ When a multi-service request is slow or failing, developers currently have no wa
 
 Fere already knows the full service topology — which processes exist, which ports they listen on, which TCP connections they maintain, and which external APIs they call. Request Flow Tracing leverages this existing knowledge to detect and visualize request flow automatically by diffing TCP connection state before and after a request.
 
+### Current Implementation Notes (March 2026)
+
+The implementation in this branch is intentionally **approximate-only** (connection-level), with several UX/style updates from the original spec:
+
+- **Approximate mode only**: no Accuracy Mode toggle, no OTel/Jaeger ingestion path.
+- **Trace confidence messaging**: header includes an `Approximate` badge to clarify inferred behavior.
+- **Node highlight style**: trace nodes use a **thin black outline** (no blue ring/glow, no pulse animation).
+- **Trace edges style**: trace edges now match hover-edge style (dark, dotted, streaming), without arrowhead glow styling.
+- **Latency badges**: edge latency badges use a black background with light text for visual consistency.
+- **Entry/overlay pill styling**: request pills are monochrome (dark background, light text/icons).
+- **Waterfall panel placement**: panel is a **left-bottom floating panel**, not a full-width bottom drawer.
+- **Waterfall sizing**: panel height auto-sizes based on hop count (with min/max clamp); no drag-resize handle.
+- **Waterfall controls**: supports minimize (`-`) to a bottom-left chip and close (`x`).
+- **Waterfall readability**:
+  - service logos shown in rows (same brand icon inference used by graph nodes),
+  - fast traces use fractional axis labels,
+  - sub-millisecond hop labels render as `<1ms`,
+  - truncated names expose full values via tooltip.
+- **Failure visualization**:
+  - response row is color-coded by HTTP status (existing behavior),
+  - one **best-effort** intermediate hop is flagged as `likely error` on 5xx/timeout traces.
+- **Send split button polish**: trace toggle is static in active state (no glow), and split-button hover no longer causes pop-out/bulge.
+
 ---
 
 ## 2. User Journey
