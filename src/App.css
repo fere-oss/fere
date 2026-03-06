@@ -10225,7 +10225,7 @@ textarea {
 }
 
 .curl-trace-toggle.active svg {
-  filter: drop-shadow(0 0 3px rgba(59, 130, 246, 0.5));
+  filter: none;
 }
 
 /* Tab indicator for active trace */
