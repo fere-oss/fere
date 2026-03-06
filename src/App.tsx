@@ -12,7 +12,7 @@ import { ServiceDropdown } from "./components/checklist/ServiceDropdown";
 import { HEALTH_COLORS } from "./components/graph/constants";
 import { initAnalytics, capture, identifyWithMainProcess } from "./analytics";
 import { TraceContext, TraceDispatchContext, traceReducer } from "./components/graph/traceContext";
-import type { AlertEvent, GraphEdge, GraphNode, TraceResult } from "./types/electron";
+import type { AlertEvent, GraphEdge, GraphNode } from "./types/electron";
 import "./App.css";
 
 // Detect platform for default tab label

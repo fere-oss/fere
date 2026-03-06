@@ -94,16 +94,44 @@ function findBottleneck(hops: TraceHop[]): number {
   return maxIdx;
 }
 
-export function TraceWaterfall({ result, nodes, onHoverHop, onClickHop, onDismiss }: TraceWaterfallProps) {
-  const [collapsed, setCollapsed] = useState(false);
+/**
+ * Best-effort inference for which hop likely failed.
+ * We only know final request status, not per-hop HTTP status.
+ */
+function findLikelyFailingHop(
+  hops: TraceHop[],
+  response: TraceResult["response"],
+  timedOut: boolean,
+): number {
+  if (hops.length === 0) return -1;
+  const hasFailure = timedOut || (response ? response.status >= 500 : false);
+  if (!hasFailure) return -1;
 
-  const depths = computeDepths(result.hops);
-  const bottleneckIdx = findBottleneck(result.hops);
-  const totalTime = result.totalTime || 1;
-  const responseWindow = Math.min(
-    totalTime,
-    Math.max(0.2, Math.min(2, totalTime * 0.2)),
+  // Prefer the latest observed hop, fallback to the latest hop.
+  for (let i = hops.length - 1; i >= 0; i--) {
+    if (!hops[i].inferred) return i;
+  }
+  return hops.length - 1;
+}
+
+export function TraceWaterfall({
+  result,
+  nodes,
+  onHoverHop,
+  onClickHop,
+  onDismiss,
+}: TraceWaterfallProps) {
+  const [collapsed, setCollapsed] = useState(false);
+  const displayedHops = result.hops;
+  const depths = computeDepths(displayedHops);
+  const bottleneckIdx = findBottleneck(displayedHops);
+  const likelyFailingHopIdx = findLikelyFailingHop(
+    displayedHops,
+    result.response,
+    result.timedOut,
   );
+  const totalTime = Math.max(1, result.totalTime || 1);
+  const responseWindow = Math.min(totalTime, Math.max(0.2, Math.min(2, totalTime * 0.2)));
 
   // Keyboard dismiss
   useEffect(() => {
@@ -119,7 +147,7 @@ export function TraceWaterfall({ result, nodes, onHoverHop, onClickHop, onDismis
     result.request.method === "POST" ? "#F97316" :
     result.request.method === "DELETE" ? "#EF4444" : "#2563EB";
 
-  const rowCount = result.hops.length + (result.response ? 1 : 0) + (result.hops.length === 0 ? 1 : 0);
+  const rowCount = displayedHops.length + (result.response ? 1 : 0) + (displayedHops.length === 0 ? 1 : 0);
   const expandedHeight = Math.min(560, Math.max(220, 56 + 24 + 22 + rowCount * 30 + 18));
 
   if (collapsed) {
@@ -165,6 +193,12 @@ export function TraceWaterfall({ result, nodes, onHoverHop, onClickHop, onDismis
           </span>
           <span className="trace-waterfall-url">
             {result.request.url.replace(/^https?:\/\//, "")}
+          </span>
+          <span
+            className="trace-waterfall-mode-badge"
+            title="Connection-level trace. Hop timing/status may be inferred without service instrumentation."
+          >
+            Approximate
           </span>
         </div>
         <div className="trace-waterfall-meta">
@@ -222,22 +256,25 @@ export function TraceWaterfall({ result, nodes, onHoverHop, onClickHop, onDismis
         <div className="trace-waterfall-legend">
           <span className="trace-waterfall-legend-item">
             <span className="trace-waterfall-legend-line trace-waterfall-legend-solid" />
-            <span>Observed</span>
+            <span>Observed connection</span>
           </span>
           <span className="trace-waterfall-legend-item">
             <span className="trace-waterfall-legend-line trace-waterfall-legend-dashed" />
-            <span>Inferred (~)</span>
+            <span>Inferred hop/status (~)</span>
           </span>
         </div>
 
         {/* Hop rows */}
         <div className="trace-waterfall-rows">
-          {result.hops.map((hop, i) => {
+          {displayedHops.map((hop, i) => {
             const isInferred = hop.inferred;
             const barLeft = (hop.startTime / totalTime) * 100;
             const barWidth = Math.max(1, (hop.latency / totalTime) * 100);
             const isBottleneck = !isInferred && i === bottleneckIdx;
-            const color = isInferred ? "rgba(100, 116, 139, 0.5)" : getLatencyColor(hop.latency);
+            const isLikelyFailure = i === likelyFailingHopIdx;
+            const color = isLikelyFailure
+              ? "#EF4444"
+              : (isInferred ? "rgba(100, 116, 139, 0.5)" : getLatencyColor(hop.latency));
             const target = getNodeInfo(hop.targetNodeId, nodes);
 
             return (
@@ -276,6 +313,11 @@ export function TraceWaterfall({ result, nodes, onHoverHop, onClickHop, onDismis
                     }}
                   />
                 </div>
+                <div className="trace-waterfall-note">
+                  {isLikelyFailure && (
+                    <span className="trace-waterfall-failure-tag">likely error</span>
+                  )}
+                </div>
                 <div className="trace-waterfall-latency" style={{ color: isInferred ? "#94A3B8" : color }}>
                   {formatHopLatency(hop.latency, isInferred)}
                 </div>
@@ -292,17 +334,18 @@ export function TraceWaterfall({ result, nodes, onHoverHop, onClickHop, onDismis
                   {result.response.status} {result.response.statusText}
                 </span>
               </div>
-                <div className="trace-waterfall-bar-area">
-                  <div
-                    className="trace-waterfall-bar"
-                    style={{
-                      left: `${((totalTime - responseWindow) / totalTime) * 100}%`,
-                      width: `${(responseWindow / totalTime) * 100}%`,
-                      background: getStatusColor(result.response.status),
-                      minWidth: 4,
-                    }}
-                  />
-                </div>
+              <div className="trace-waterfall-bar-area">
+                <div
+                  className="trace-waterfall-bar"
+                  style={{
+                    left: `${((totalTime - responseWindow) / totalTime) * 100}%`,
+                    width: `${(responseWindow / totalTime) * 100}%`,
+                    background: getStatusColor(result.response.status),
+                    minWidth: 4,
+                  }}
+                />
+              </div>
+              <div className="trace-waterfall-note" />
               <div
                 className="trace-waterfall-latency"
                 style={{ color: getStatusColor(result.response.status) }}
@@ -313,7 +356,7 @@ export function TraceWaterfall({ result, nodes, onHoverHop, onClickHop, onDismis
           )}
 
           {/* Empty state */}
-          {result.hops.length === 0 && (
+          {displayedHops.length === 0 && (
             <div className="trace-waterfall-empty">
               No downstream hops detected — request was handled by the target service alone.
             </div>
