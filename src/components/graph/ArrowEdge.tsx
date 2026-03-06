@@ -4,6 +4,7 @@ import {
   Position,
   type EdgeProps,
 } from "reactflow";
+import { TraceBezierEdge, TraceStepEdge } from "./TraceEdge";
 
 export type ArrowEdgeData = {
   sx: number;
@@ -98,4 +99,6 @@ export function ArrowStepEdge({
 export const flowEdgeTypes = {
   arrowBezier: ArrowBezierEdge,
   arrowStep: ArrowStepEdge,
+  traceBezier: TraceBezierEdge,
+  traceStep: TraceStepEdge,
 } as const;

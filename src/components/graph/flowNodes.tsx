@@ -4,6 +4,7 @@ import type { MouseEvent as ReactMouseEvent } from "react";
 import { Handle, Position } from "reactflow";
 import { ServiceNode } from "./ServiceNodes";
 import { useHoverState } from "./hoverContext";
+import { useTraceState } from "./traceContext";
 
 export type { HoverState } from "./hoverContext";
 export { HoverContext } from "./hoverContext";
@@ -58,6 +59,7 @@ const FlowServiceNodeInner = memo(function FlowServiceNodeInner({ data }: { data
   const dataRef = useRef(data);
   dataRef.current = data;
   const { hoveredNodeId, connectedNodeIds } = useHoverState();
+  const { phase: tracePhase, traceNodeIds, entryNodeId, result: traceResult } = useTraceState();
 
   useEffect(() => {
     if (!nodeRef.current) return;
@@ -81,18 +83,41 @@ const FlowServiceNodeInner = memo(function FlowServiceNodeInner({ data }: { data
     };
   }, []);
 
+  const traceActive = tracePhase !== "idle";
+  const isInTrace = traceNodeIds.has(data.node.id);
+  const isTraceEntry = traceActive && entryNodeId === data.node.id;
+
+  // Trace takes priority over hover when a trace is active
   const isConnected = connectedNodeIds.has(data.node.id);
-  const dimmed = hoveredNodeId !== null && !isConnected;
-  const highlighted = hoveredNodeId !== null && isConnected;
+  const dimmed = traceActive
+    ? !isInTrace
+    : hoveredNodeId !== null && !isConnected;
+  // Keep trace styling isolated to rf-node-trace-active (no hover highlight glow/scale while tracing).
+  const highlighted = traceActive
+    ? false
+    : hoveredNodeId !== null && isConnected;
+
+  // Build the entry marker label: "▶ POST /api/orders"
+  let entryLabel = "";
+  if (isTraceEntry && traceResult) {
+    const method = traceResult.request.method;
+    let path = "/";
+    try { path = new URL(traceResult.request.url).pathname; } catch { /* ignore */ }
+    entryLabel = `${method} ${path}`;
+  }
 
   const wrapperClass = [
     "rf-node-wrapper",
     data.animate && "rf-node-animate",
     dimmed && "rf-node-dimmed",
     highlighted && "rf-node-highlighted",
+    traceActive && isInTrace && "rf-node-trace-active",
+    isTraceEntry && "rf-node-trace-entry",
   ]
     .filter(Boolean)
     .join(" ");
+
+  const methodColor = "#FFFFFF";
 
   return (
     <div
@@ -100,6 +125,29 @@ const FlowServiceNodeInner = memo(function FlowServiceNodeInner({ data }: { data
       className={wrapperClass}
       style={{ animationDelay: `${data.animationIndex * 40}ms` }}
     >
+      {/* Entry point marker — anchored above the node */}
+      {isTraceEntry && (
+        <div className="trace-entry-marker">
+          <div className="trace-entry-pill">
+            <span className="trace-entry-icon">▶</span>
+            <span className="trace-entry-method" style={{ color: methodColor }}>
+              {traceResult?.request.method}
+            </span>
+            <span className="trace-entry-path">{entryLabel.split(" ").slice(1).join(" ")}</span>
+            {tracePhase === "capturing" && (
+              <span className="trace-entry-status">
+                <span className="trace-entry-spinner" />
+              </span>
+            )}
+            {tracePhase === "complete" && traceResult && (
+              <span className="trace-entry-time">
+                {traceResult.timedOut ? "Timed out" : `${Math.round(traceResult.totalTime)}ms`}
+              </span>
+            )}
+          </div>
+          <div className="trace-entry-arrow" />
+        </div>
+      )}
       <Handle type="target" id="target-top" position={Position.Top} className="rf-handle rf-handle-target" />
       <Handle type="target" id="target-bottom" position={Position.Bottom} className="rf-handle rf-handle-target" />
       <Handle type="target" id="target-left" position={Position.Left} className="rf-handle rf-handle-target" />

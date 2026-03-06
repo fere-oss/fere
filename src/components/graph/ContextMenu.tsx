@@ -7,9 +7,10 @@ interface ContextMenuProps {
   width: number;
   height: number;
   onClose: () => void;
+  onTraceRequest?: (node: GraphNode) => void;
 }
 
-export function ContextMenu({ node, x, y, width, height, onClose }: ContextMenuProps) {
+export function ContextMenu({ node, x, y, width, height, onClose, onTraceRequest }: ContextMenuProps) {
   const isNotRunning =
     !!node.isGhost ||
     node.healthStatus === "red" ||
@@ -40,6 +41,7 @@ export function ContextMenu({ node, x, y, width, height, onClose }: ContextMenuP
   const remoteHostText = node.remoteAccess?.host
     ? `${node.remoteAccess.user ? `${node.remoteAccess.user}@` : ''}${node.remoteAccess.host}${node.remoteAccess.port ? `:${node.remoteAccess.port}` : ''}`
     : null;
+  const canTrace = hasPort && (node.routes?.length ?? 0) > 0 && !!onTraceRequest;
   const mainPort = node.ports[0]?.port;
 
   const menuWidth = 200;
@@ -47,6 +49,7 @@ export function ContextMenu({ node, x, y, width, height, onClose }: ContextMenuP
   if (hasPort) menuItems += 2; // open browser + copy port
   if (hasProjectPath) menuItems += 1; // open terminal
   if (canViewLogs) menuItems += 1; // view logs
+  if (canTrace) menuItems += 1; // trace request
   if (canStartService) menuItems += 1; // start service
   if (canCopyRemoteHost) menuItems += 1; // copy remote host
   if (canCopyRemoteCommand) menuItems += 1; // copy full command
@@ -218,6 +221,27 @@ export function ContextMenu({ node, x, y, width, height, onClose }: ContextMenuP
               </svg>
             </span>
             <span>View Logs</span>
+          </div>
+        )}
+        {canTrace && (
+          <div
+            className="context-menu-item"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onTraceRequest!(node);
+              onClose();
+            }}
+          >
+            <span className="context-menu-icon" aria-hidden="true">
+              <svg viewBox="0 0 20 20" width="14" height="14">
+                <circle cx="5" cy="10" r="2.5" fill="none" stroke="currentColor" strokeWidth="1.4" />
+                <circle cx="15" cy="5" r="2.5" fill="none" stroke="currentColor" strokeWidth="1.4" />
+                <circle cx="15" cy="15" r="2.5" fill="none" stroke="currentColor" strokeWidth="1.4" />
+                <path d="M7.5 9l5-3M7.5 11l5 3" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+              </svg>
+            </span>
+            <span>Trace Request</span>
           </div>
         )}
         {canStartService && (

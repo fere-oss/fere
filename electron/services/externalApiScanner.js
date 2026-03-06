@@ -216,12 +216,17 @@ function loadProviderFile(filePath) {
 function compilePatterns(patterns) {
   const compiled = [];
   for (const entry of patterns || []) {
-    if (typeof entry === 'string') {
-      compiled.push(new RegExp(entry, 'i'));
-      continue;
-    }
-    if (entry && typeof entry.pattern === 'string') {
-      compiled.push(new RegExp(entry.pattern, entry.flags || 'i'));
+    try {
+      if (typeof entry === 'string') {
+        compiled.push(new RegExp(entry, 'i'));
+        continue;
+      }
+      if (entry && typeof entry.pattern === 'string') {
+        compiled.push(new RegExp(entry.pattern, entry.flags || 'i'));
+      }
+    } catch (err) {
+      // Skip malformed regex patterns rather than crashing the scanner
+      console.error('[ExternalApiScanner] Invalid regex pattern, skipping:', entry, err.message);
     }
   }
   return compiled;

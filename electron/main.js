@@ -110,6 +110,7 @@ const {
 const analytics = require("./analytics");
 const { generateHTML } = require("./services/graphExporter");
 const { createGist, updateGist, buildPreviewUrl } = require("./services/gistPublisher");
+const { executeTracedRequest } = require("./services/traceCapture");
 
 app.setName("Fere");
 app.name = "Fere";
@@ -921,6 +922,94 @@ ipcMain.handle("execute-http-request", async (event, options) => {
     });
   } catch (error) {
     console.error("Error executing HTTP request:", error);
+    return { success: false, error: error.message };
+  }
+});
+
+// ============================================
+// IPC Handlers - Traced Request
+// ============================================
+
+ipcMain.handle("execute-traced-request", async (event, options) => {
+  try {
+    const { method, url, headers, body, graphNodes, graphEdges } = options;
+
+    if (!url || typeof url !== "string") {
+      return { success: false, error: "URL is required" };
+    }
+    if (!Array.isArray(graphNodes)) {
+      return { success: false, error: "graphNodes must be an array" };
+    }
+
+    // Reuse the same URL validation as execute-http-request
+    const allowPrivate = getNetworkPolicy() === "local";
+    const validation = validateHttpRequestUrl(url, allowPrivate);
+    if (!validation.valid) {
+      return { success: false, error: validation.reason };
+    }
+
+    const parsedUrl = validation.url;
+    const isHttps = parsedUrl.protocol === "https:";
+    const httpModule = isHttps ? require("https") : require("http");
+
+    const makeRequest = () => {
+      return new Promise((resolve, reject) => {
+        const startTime = Date.now();
+        const normalizedMethod = (method || "GET").toUpperCase();
+        const requestHeaders = { ...(headers || {}) };
+        const shouldSendBody =
+          typeof body === "string" &&
+          body.length > 0 &&
+          !["GET", "HEAD"].includes(normalizedMethod);
+
+        if (shouldSendBody && !Object.keys(requestHeaders).some((k) => k.toLowerCase() === "content-length")) {
+          requestHeaders["Content-Length"] = Buffer.byteLength(body, "utf8").toString();
+        }
+
+        const requestOptions = {
+          method: normalizedMethod,
+          hostname: parsedUrl.hostname,
+          port: parsedUrl.port || (isHttps ? 443 : 80),
+          path: parsedUrl.pathname + parsedUrl.search,
+          headers: requestHeaders,
+          timeout: 30000,
+        };
+
+        const req = httpModule.request(requestOptions, (res) => {
+          const chunks = [];
+          res.on("data", (chunk) => chunks.push(chunk));
+          res.on("end", () => {
+            resolve({
+              status: res.statusCode,
+              statusText: res.statusMessage,
+              headers: res.headers,
+              body: Buffer.concat(chunks).toString("utf8"),
+              duration: Date.now() - startTime,
+            });
+          });
+        });
+
+        req.on("error", reject);
+        req.on("timeout", () => {
+          req.destroy();
+          reject(new Error("Request timed out"));
+        });
+
+        if (shouldSendBody) {
+          req.write(body);
+        }
+        req.end();
+      });
+    };
+
+    const trace = await executeTracedRequest(
+      { method, url, headers, body, graphNodes, graphEdges: graphEdges || [] },
+      makeRequest
+    );
+
+    return { success: true, trace };
+  } catch (error) {
+    console.error("Error executing traced request:", error);
     return { success: false, error: error.message };
   }
 });

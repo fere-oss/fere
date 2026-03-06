@@ -48,6 +48,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // API testing
   executeHttpRequest: (options) => ipcRenderer.invoke('execute-http-request', options),
+  executeTracedRequest: (options) => ipcRenderer.invoke('execute-traced-request', options),
 
   // Request History
   loadRequestHistory: () => ipcRenderer.invoke('load-request-history'),
