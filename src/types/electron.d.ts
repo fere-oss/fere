@@ -591,6 +591,7 @@ export interface ElectronAPI {
   debugGetApiKeyStatus: () => Promise<{ hasKey: boolean }>;
   debugStart: (options: { problem: string }) => Promise<{ success: boolean; error?: string }>;
   debugStop: () => Promise<{ success: boolean }>;
+  debugFollowUp: (options: { message: string }) => Promise<{ success: boolean; error?: string }>;
   onDebugProgress: (callback: (progress: DebugProgress) => void) => () => void;
 
   // Platform info

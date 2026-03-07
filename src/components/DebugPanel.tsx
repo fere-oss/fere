@@ -8,10 +8,11 @@ interface DebugPanelProps {
 type DebugPhase = "setup" | "input" | "running" | "complete";
 
 interface InvestigationStep {
-  type: "thinking" | "tool_call" | "tool_result";
+  type: "thinking" | "tool_call" | "tool_result" | "follow_up";
   tool?: string;
   input?: Record<string, unknown>;
   summary?: string;
+  message?: string;
   iteration: number;
   timestamp: number;
 }
@@ -57,6 +58,7 @@ export function DebugPanel({ onClose }: DebugPanelProps) {
   const [diagnosis, setDiagnosis] = useState("");
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
+  const [followUpInput, setFollowUpInput] = useState("");
   const logRef = useRef<HTMLDivElement>(null);
 
   // Check API key on mount
@@ -158,6 +160,7 @@ export function DebugPanel({ onClose }: DebugPanelProps) {
     setSteps([]);
     setDiagnosis("");
     setError("");
+    setFollowUpInput("");
     setPhase("running");
     const result = await window.electronAPI.debugStart({ problem: trimmed });
     if (!result.success) {
@@ -178,12 +181,38 @@ export function DebugPanel({ onClose }: DebugPanelProps) {
     });
   }, [diagnosis]);
 
-  const handleRunAgain = useCallback(() => {
+  const handleNewInvestigation = useCallback(() => {
     setSteps([]);
     setDiagnosis("");
     setError("");
+    setFollowUpInput("");
+    setProblem("");
     setPhase("input");
   }, []);
+
+  const handleFollowUp = useCallback(async () => {
+    const trimmed = followUpInput.trim();
+    if (!trimmed) return;
+    // Inject a visual separator into the investigation log
+    setSteps((prev) => [
+      ...prev,
+      {
+        type: "follow_up",
+        message: trimmed,
+        iteration: 0,
+        timestamp: Date.now(),
+      },
+    ]);
+    setDiagnosis("");
+    setError("");
+    setFollowUpInput("");
+    setPhase("running");
+    const result = await window.electronAPI.debugFollowUp({ message: trimmed });
+    if (!result.success) {
+      setError(result.error || "Failed to send follow-up");
+      setPhase("complete");
+    }
+  }, [followUpInput]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -193,6 +222,16 @@ export function DebugPanel({ onClose }: DebugPanelProps) {
       }
     },
     [handleStart]
+  );
+
+  const handleFollowUpKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        handleFollowUp();
+      }
+    },
+    [handleFollowUp]
   );
 
   // Loading state
@@ -275,7 +314,7 @@ export function DebugPanel({ onClose }: DebugPanelProps) {
           </div>
         )}
 
-        {/* Running Phase */}
+        {/* Running + Complete Phases */}
         {(phase === "running" || phase === "complete") && (
           <>
             <div className="debug-panel-problem-summary">
@@ -289,6 +328,22 @@ export function DebugPanel({ onClose }: DebugPanelProps) {
                   Investigation Log
                 </div>
                 {steps.map((step, i) => {
+                  if (step.type === "follow_up") {
+                    return (
+                      <div
+                        className="debug-panel-step debug-panel-step-follow_up"
+                        key={i}
+                      >
+                        <div className="debug-panel-followup-marker">
+                          <span className="debug-panel-step-icon">{"\u276F"}</span>
+                          <span className="debug-panel-step-text">
+                            {step.message}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  }
+
                   const showIterationMarker =
                     step.type === "thinking" &&
                     step.iteration !== lastIteration;
@@ -360,7 +415,7 @@ export function DebugPanel({ onClose }: DebugPanelProps) {
               </div>
             )}
 
-            {/* Complete: Diagnosis */}
+            {/* Complete: Diagnosis + Follow-up */}
             {phase === "complete" && (
               <>
                 {error && (
@@ -377,12 +432,35 @@ export function DebugPanel({ onClose }: DebugPanelProps) {
                     </div>
                   </div>
                 )}
+
+                {/* Follow-up input (only when we have a diagnosis, not an error) */}
+                {diagnosis && !error && (
+                  <div className="debug-panel-followup">
+                    <textarea
+                      className="debug-panel-followup-textarea"
+                      placeholder="Ask a follow-up... (e.g. &quot;check Redis instead&quot;, &quot;try this payload: {...}&quot;)"
+                      value={followUpInput}
+                      onChange={(e) => setFollowUpInput(e.target.value)}
+                      onKeyDown={handleFollowUpKeyDown}
+                      rows={2}
+                      autoFocus
+                    />
+                    <button
+                      className="debug-panel-submit"
+                      onClick={handleFollowUp}
+                      disabled={!followUpInput.trim()}
+                    >
+                      Send
+                    </button>
+                  </div>
+                )}
+
                 <div className="debug-panel-actions">
                   <button
                     className="debug-panel-submit"
-                    onClick={handleRunAgain}
+                    onClick={handleNewInvestigation}
                   >
-                    Run Again
+                    New Investigation
                   </button>
                   {diagnosis && (
                     <button

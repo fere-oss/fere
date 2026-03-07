@@ -1583,8 +1583,13 @@ ipcMain.handle("debug-start", async (event, options) => {
     if (!sender.isDestroyed()) {
       sender.send("debug-progress", progress);
     }
-  }).then(() => {
-    if (activeDebugSession === session) activeDebugSession = null;
+  }).then((result) => {
+    // Persist conversation state for follow-ups
+    if (result?.state && activeDebugSession === session) {
+      session.state = result.state;
+      session.graphSnapshot = graphSnapshot;
+      session.apiKey = apiKey;
+    }
   }).catch((err) => {
     if (!session._cancelled && !event.sender.isDestroyed()) {
       event.sender.send("debug-progress", {
@@ -1592,7 +1597,51 @@ ipcMain.handle("debug-start", async (event, options) => {
         error: err.message,
       });
     }
-    if (activeDebugSession === session) activeDebugSession = null;
+  });
+
+  return { success: true };
+});
+
+ipcMain.handle("debug-follow-up", async (event, options) => {
+  if (typeof options?.message !== "string" || !options.message.trim()) {
+    return { success: false, error: "Follow-up message is required" };
+  }
+
+  if (!activeDebugSession?.state) {
+    return { success: false, error: "No active debug session to follow up on" };
+  }
+
+  const session = activeDebugSession;
+  session._cancelled = false;
+
+  const agentOptions = {
+    followUp: options.message,
+    resumeState: session.state,
+    graphSnapshot: session.graphSnapshot,
+    apiKey: session.apiKey,
+  };
+
+  Object.defineProperty(agentOptions, "_cancelled", {
+    get() { return session._cancelled; },
+  });
+
+  runDebugAgent(agentOptions, (progress) => {
+    if (session._cancelled) return;
+    const sender = event.sender;
+    if (!sender.isDestroyed()) {
+      sender.send("debug-progress", progress);
+    }
+  }).then((result) => {
+    if (result?.state && activeDebugSession === session) {
+      session.state = result.state;
+    }
+  }).catch((err) => {
+    if (!session._cancelled && !event.sender.isDestroyed()) {
+      event.sender.send("debug-progress", {
+        type: "error",
+        error: err.message,
+      });
+    }
   });
 
   return { success: true };

@@ -112,6 +112,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   debugGetApiKeyStatus: () => ipcRenderer.invoke('debug-get-api-key-status'),
   debugStart: (options) => ipcRenderer.invoke('debug-start', options),
   debugStop: () => ipcRenderer.invoke('debug-stop'),
+  debugFollowUp: (options) => ipcRenderer.invoke('debug-follow-up', options),
   onDebugProgress: (callback) => {
     const listener = (event, data) => callback(data);
     ipcRenderer.on('debug-progress', listener);

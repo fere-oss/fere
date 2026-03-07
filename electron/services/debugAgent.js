@@ -830,23 +830,33 @@ function trimConversationContext(messages, toolResultSummaries) {
 // --- Agent Loop ---
 
 async function runDebugAgent(options, onProgress) {
-  const { problem, graphSnapshot, apiKey } = options;
+  const { problem, followUp, graphSnapshot, apiKey, resumeState } = options;
 
-  // Session-level cache: avoids re-scanning routes and file trees within one investigation
-  const sessionCache = { routes: {}, files: {} };
-  // Map tool_call_id → human-readable summary for context trimming
-  const toolResultSummaries = new Map();
-  // Track recent tool calls for loop detection
+  // Resume from previous conversation or start fresh
+  let sessionCache, toolResultSummaries, systemPrompt, messages;
   const recentToolCalls = [];
 
-  const systemPrompt = buildSystemPrompt(graphSnapshot);
-  const messages = [
-    { role: 'user', content: problem },
-  ];
+  if (resumeState) {
+    sessionCache = resumeState.sessionCache;
+    toolResultSummaries = resumeState.toolResultSummaries;
+    systemPrompt = resumeState.systemPrompt;
+    messages = resumeState.messages;
+    messages.push({ role: 'user', content: followUp });
+  } else {
+    sessionCache = { routes: {}, files: {} };
+    toolResultSummaries = new Map();
+    systemPrompt = buildSystemPrompt(graphSnapshot);
+    messages = [{ role: 'user', content: problem }];
+  }
+
+  const makeResult = (base) => ({
+    ...base,
+    state: { messages, sessionCache, toolResultSummaries, systemPrompt },
+  });
 
   for (let i = 0; i < MAX_ITERATIONS; i++) {
     if (options._cancelled) {
-      return { success: false, error: 'Cancelled' };
+      return makeResult({ success: false, error: 'Cancelled' });
     }
 
     onProgress({ type: 'thinking', iteration: i + 1 });
@@ -863,56 +873,49 @@ async function runDebugAgent(options, onProgress) {
       response = await callOpenAI(apiKey, systemPrompt, messages, maxTokens);
     } catch (err) {
       onProgress({ type: 'error', error: err.message });
-      return { success: false, error: err.message };
+      return makeResult({ success: false, error: err.message });
     }
 
     const choice = response.choices?.[0];
     if (!choice) {
       onProgress({ type: 'error', error: 'No response from OpenAI' });
-      return { success: false, error: 'No response from OpenAI' };
+      return makeResult({ success: false, error: 'No response from OpenAI' });
     }
 
     // Handle finish_reason: "length" — response was truncated by token limit
     if (choice.finish_reason === 'length') {
-      // Retry once with full token budget if we were on the smaller budget
       if (maxTokens < MAX_TOKENS_FINAL) {
         try {
           response = await callOpenAI(apiKey, systemPrompt, messages, MAX_TOKENS_FINAL);
           const retryChoice = response.choices?.[0];
           if (retryChoice && retryChoice.finish_reason !== 'length') {
-            // Use the retry response
             const retryMessage = retryChoice.message;
             messages.push(retryMessage);
             const retryToolCalls = retryMessage.tool_calls;
             if (!retryToolCalls || retryToolCalls.length === 0) {
               const text = retryMessage.content || '';
               onProgress({ type: 'complete', diagnosis: text });
-              return { success: true, diagnosis: text, iterations: i + 1 };
+              return makeResult({ success: true, diagnosis: text, iterations: i + 1 });
             }
-            // Fall through to tool execution below with retryMessage
-            // (handled by re-reading from messages)
           }
         } catch { /* fall through to use original truncated response */ }
       }
-      // If retry also truncated or we were already at max, use what we got
     }
 
     const message = response.choices?.[0]?.message || choice.message;
 
-    // Append the full assistant message to conversation history (must include tool_calls)
     if (!messages.includes(message)) {
       messages.push(message);
     }
 
     const toolCalls = message.tool_calls;
     if (!toolCalls || toolCalls.length === 0) {
-      // Agent is done — return the text content
       const text = message.content || '';
       onProgress({ type: 'complete', diagnosis: text });
-      return { success: true, diagnosis: text, iterations: i + 1 };
+      return makeResult({ success: true, diagnosis: text, iterations: i + 1 });
     }
 
-    // Loop detection: check if the model is repeating the same tool calls
+    // Loop detection
     const callSignature = toolCalls
       .map(tc => `${tc.function.name}:${tc.function.arguments}`)
       .sort()
@@ -925,19 +928,18 @@ async function runDebugAgent(options, onProgress) {
       recentToolCalls.length === LOOP_DETECT_WINDOW &&
       recentToolCalls.every(sig => sig === callSignature)
     ) {
-      // Inject a nudge to break the loop
       messages.push({
         role: 'user',
         content: 'You have called the same tools with identical arguments multiple times. Please try a different approach, gather different evidence, or provide your diagnosis based on what you have so far.',
       });
-      recentToolCalls.length = 0; // Reset
-      continue; // Skip tool execution, let model reconsider
+      recentToolCalls.length = 0;
+      continue;
     }
 
-    // Execute all tool calls and append each result as a separate "tool" message
+    // Execute all tool calls
     for (const toolCall of toolCalls) {
       if (options._cancelled) {
-        return { success: false, error: 'Cancelled' };
+        return makeResult({ success: false, error: 'Cancelled' });
       }
 
       const fnName = toolCall.function.name;
@@ -945,7 +947,6 @@ async function runDebugAgent(options, onProgress) {
       try {
         fnArgs = JSON.parse(toolCall.function.arguments);
       } catch (parseErr) {
-        // Return the parse error to the model so it can self-correct
         const errorResult = `Failed to parse tool arguments: ${parseErr.message}. Raw: ${toolCall.function.arguments.slice(0, 200)}`;
         messages.push({
           role: 'tool',
@@ -990,7 +991,7 @@ async function runDebugAgent(options, onProgress) {
   }
 
   onProgress({ type: 'complete', diagnosis: 'Investigation reached maximum iterations without a definitive diagnosis.' });
-  return { success: false, error: 'Max iterations reached' };
+  return makeResult({ success: false, error: 'Max iterations reached' });
 }
 
 module.exports = {
