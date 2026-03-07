@@ -3,15 +3,15 @@ const path = require('path');
 
 // Patterns for different frameworks
 const ROUTE_PATTERNS = {
-  // FastAPI: @app.get("/path"), @router.post("/path")
+  // FastAPI: @app.get("/path"), @videos_router.post("/path"), @router.api_route(...)
   fastapi: [
-    /@(?:app|router)\.(get|post|put|delete|patch)\s*\(\s*["']([^"']+)["']/gi,
-    /@(?:app|router)\.api_route\s*\(\s*["']([^"']+)["']/gi,
+    /@(?:[A-Za-z_][A-Za-z0-9_]*)\.(get|post|put|delete|patch|head|options)\s*\(\s*["']([^"']+)["']/gi,
+    /@(?:[A-Za-z_][A-Za-z0-9_]*)\.(api_route)\s*\(\s*["']([^"']+)["'](?:\s*,\s*methods\s*=\s*\[([^\]]+)\])?/gi,
   ],
-  // Flask: @app.route("/path", methods=["GET"]) or @app.get("/path")
+  // Flask: @app.route("/path", methods=["GET"]) or @users_bp.get("/path")
   // Captures: 1=decorator type, 2=path, 3=optional methods list
   flask: [
-    /@(?:app|bp|blueprint)\.(route|get|post|put|delete|patch)\s*\(\s*["']([^"']+)["'](?:\s*,\s*methods\s*=\s*\[([^\]]+)\])?/gi,
+    /@(?:[A-Za-z_][A-Za-z0-9_]*)\.(route|get|post|put|delete|patch)\s*\(\s*["']([^"']+)["'](?:\s*,\s*methods\s*=\s*\[([^\]]+)\])?/gi,
   ],
   // Express: app.get("/path"), router.post("/path")
   express: [
@@ -275,7 +275,7 @@ function extractRoutes(filePath, content, framework) {
         continue;
       }
 
-      // Handle Flask routes with methods= parameter
+      // Handle Flask and FastAPI api_route decorators with methods= parameter
       if (framework === 'flask' && decoratorType === 'ROUTE') {
         if (methodsParam) {
           // Parse methods like "'GET', 'POST'" or '"GET", "POST"'
@@ -286,6 +286,16 @@ function extractRoutes(filePath, content, framework) {
           }
         } else {
           // @app.route() without methods= defaults to GET
+          routes.push({ method: 'GET', path: routePath, file: filePath, framework });
+        }
+      } else if (framework === 'fastapi' && decoratorType === 'API_ROUTE') {
+        if (methodsParam) {
+          const methods = methodsParam.match(/['"](\w+)['"]/g)
+            ?.map(m => m.replace(/['"]/g, '').toUpperCase()) || ['GET'];
+          for (const method of methods) {
+            routes.push({ method, path: routePath, file: filePath, framework });
+          }
+        } else {
           routes.push({ method: 'GET', path: routePath, file: filePath, framework });
         }
       } else {

@@ -406,6 +406,61 @@ const VALUE_FLAGS = new Set([
   "--url",
 ]);
 
+function isShellAssignmentToken(token: string): boolean {
+  return /^[A-Za-z_][A-Za-z0-9_]*=.*/.test(token);
+}
+
+function parseShellAssignment(
+  token: string,
+): { name: string; value: string } | null {
+  const eqIndex = token.indexOf("=");
+  if (eqIndex <= 0) {
+    return null;
+  }
+  const name = token.slice(0, eqIndex);
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
+    return null;
+  }
+  return { name, value: token.slice(eqIndex + 1) };
+}
+
+function substituteShellVariables(
+  token: string,
+  vars: Record<string, string>,
+): string {
+  return token.replace(/\$([A-Za-z_][A-Za-z0-9_]*)|\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (_match, plainName, bracedName) => {
+    const varName = plainName || bracedName;
+    if (!varName) {
+      return _match;
+    }
+    return Object.prototype.hasOwnProperty.call(vars, varName) ? vars[varName] : _match;
+  });
+}
+
+function getUnresolvedPathParams(requestUrl: string): string[] {
+  const params = new Set<string>();
+  const addMatches = (value: string) => {
+    const pattern = /\{([^{}\/]+)\}/g;
+    let match: RegExpExecArray | null;
+    while ((match = pattern.exec(value)) !== null) {
+      const name = match[1]?.trim();
+      if (name) {
+        params.add(name);
+      }
+    }
+  };
+
+  try {
+    const parsed = new URL(requestUrl);
+    const decodedPath = decodeURIComponent(parsed.pathname);
+    addMatches(decodedPath);
+  } catch {
+    addMatches(requestUrl);
+  }
+
+  return Array.from(params);
+}
+
 // Parse a curl command string into its components
 function parseCurlCommand(curlStr: string): {
   method: string;
@@ -413,16 +468,47 @@ function parseCurlCommand(curlStr: string): {
   headers: Record<string, string>;
   body?: string;
 } | null {
-  if (!curlStr || !curlStr.trim().startsWith("curl")) {
+  if (!curlStr || !curlStr.trim()) {
     return null;
   }
 
   // Normalize newlines and shell line continuations before tokenizing.
   const normalized = curlStr.replace(/\r\n/g, "\n").replace(/\\\n[ \t]*/g, " ");
   const tokens = tokenizeShellArgs(normalized);
-  if (!tokens || tokens[0] !== "curl") {
+  if (!tokens) {
     return null;
   }
+
+  // Accept common shell snippets that define env vars before invoking curl.
+  // Examples:
+  //   TOKEN=abc curl ...
+  //   TOKEN=abc\ncurl ...
+  const curlIndex = tokens.indexOf("curl");
+  if (curlIndex < 0) {
+    return null;
+  }
+
+  const shellVars: Record<string, string> = {};
+  for (let i = 0; i < curlIndex; i += 1) {
+    const token = tokens[i];
+    if (!isShellAssignmentToken(token)) {
+      return null;
+    }
+    const assignment = parseShellAssignment(token);
+    if (!assignment) {
+      return null;
+    }
+    shellVars[assignment.name] = assignment.value;
+  }
+
+  const curlTokens = tokens.slice(curlIndex);
+  if (curlTokens[0] !== "curl") {
+    return null;
+  }
+  const resolvedCurlTokens = [
+    curlTokens[0],
+    ...curlTokens.slice(1).map((token) => substituteShellVariables(token, shellVars)),
+  ];
 
   let method = "GET";
   let url = "";
@@ -430,11 +516,11 @@ function parseCurlCommand(curlStr: string): {
   let body: string | undefined;
   const bodyParts: string[] = [];
 
-  for (let i = 1; i < tokens.length; i += 1) {
-    const token = tokens[i];
+  for (let i = 1; i < resolvedCurlTokens.length; i += 1) {
+    const token = resolvedCurlTokens[i];
 
     if (token === "-X" || token === "--request") {
-      const next = tokens[i + 1];
+      const next = resolvedCurlTokens[i + 1];
       if (!next) {
         return null;
       }
@@ -454,7 +540,7 @@ function parseCurlCommand(curlStr: string): {
     }
 
     if (token === "-H" || token === "--header") {
-      const next = tokens[i + 1];
+      const next = resolvedCurlTokens[i + 1];
       if (!next) {
         return null;
       }
@@ -486,7 +572,7 @@ function parseCurlCommand(curlStr: string): {
     }
 
     if (DATA_FLAGS.includes(token)) {
-      const next = tokens[i + 1];
+      const next = resolvedCurlTokens[i + 1];
       if (!next) {
         return null;
       }
@@ -518,7 +604,7 @@ function parseCurlCommand(curlStr: string): {
     }
 
     if (VALUE_FLAGS.has(token)) {
-      const next = tokens[i + 1];
+      const next = resolvedCurlTokens[i + 1];
       if (!next) {
         return null;
       }
@@ -959,6 +1045,17 @@ export function CurlBuilder({ nodes, onTraceRequest }: CurlBuilderProps) {
         requestBody = ["POST", "PUT", "PATCH"].includes(method)
           ? body
           : undefined;
+      }
+
+      const unresolvedPathParams = getUnresolvedPathParams(requestUrl);
+      if (unresolvedPathParams.length > 0) {
+        const names = unresolvedPathParams.join(", ");
+        const plural = unresolvedPathParams.length > 1 ? "s" : "";
+        setRequestError(
+          `Unresolved path parameter${plural}: ${names}. Replace placeholder values before sending the request.`,
+        );
+        setIsLoading(false);
+        return;
       }
 
       // If trace is enabled, fire trace request and switch to graph
