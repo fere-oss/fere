@@ -1664,10 +1664,17 @@ ipcMain.handle("debug-follow-up", async (event, options) => {
   const session = activeDebugSession;
   session._cancelled = false;
 
+  // Refresh graph snapshot so the agent sees current topology
+  const freshSnapshot = await getSystemSnapshot();
+  const graphSnapshot = {
+    nodes: freshSnapshot.graph?.nodes || [],
+    edges: freshSnapshot.graph?.edges || [],
+  };
+
   const agentOptions = {
     followUp: options.message,
     resumeState: session.state,
-    graphSnapshot: session.graphSnapshot,
+    graphSnapshot,
     apiKey: session.apiKey,
   };
 
@@ -1684,6 +1691,7 @@ ipcMain.handle("debug-follow-up", async (event, options) => {
   }).then((result) => {
     if (result?.state && activeDebugSession === session) {
       session.state = result.state;
+      session.graphSnapshot = graphSnapshot;
     }
   }).catch((err) => {
     if (!session._cancelled && !event.sender.isDestroyed()) {

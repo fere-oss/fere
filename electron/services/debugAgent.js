@@ -844,7 +844,8 @@ async function runDebugAgent(options, onProgress) {
   if (resumeState) {
     sessionCache = resumeState.sessionCache;
     toolResultSummaries = resumeState.toolResultSummaries;
-    systemPrompt = resumeState.systemPrompt;
+    // Rebuild system prompt from fresh snapshot so topology changes are reflected
+    systemPrompt = buildSystemPrompt(graphSnapshot);
     messages = resumeState.messages;
     messages.push({ role: 'user', content: followUp });
   } else {
