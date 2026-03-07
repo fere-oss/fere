@@ -15,7 +15,7 @@ const execFileAsync = promisify(execFile);
 // --- Constants ---
 
 const MAX_ITERATIONS = 20;
-const MODEL = 'gpt-4.1-mini';
+const MODEL = 'gpt-4.1';
 const ENV_PATH = path.join(__dirname, '..', '..', '.env');
 
 // --- Token budget limits ---
