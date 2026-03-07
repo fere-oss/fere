@@ -586,6 +586,9 @@ export interface ElectronAPI {
   publishGraph: (options: PublishGraphOptions) => Promise<PublishGraphResult>;
   updateSharedGraph: (options: PublishGraphOptions) => Promise<PublishGraphResult>;
 
+  // Open file in editor
+  openInEditor: (filePath: string, line?: number) => Promise<{ success: boolean; editor?: string; error?: string }>;
+
   // Debug Agent
   debugSetApiKey: (key: string) => Promise<{ success: boolean; error?: string }>;
   debugGetApiKeyStatus: () => Promise<{ hasKey: boolean }>;

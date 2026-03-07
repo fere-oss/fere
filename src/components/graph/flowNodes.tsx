@@ -15,6 +15,7 @@ export type FlowServiceNodeData = {
   animate: boolean;
   animationIndex: number;
   onMeasure: (id: string, height: number) => void;
+  debugHighlightNodeIds?: Set<string>;
 };
 
 export function TierLabelNode({ data }: { data: { text: string } }) {
@@ -84,12 +85,14 @@ const FlowServiceNodeInner = memo(function FlowServiceNodeInner({ data }: { data
   const isConnected = connectedNodeIds.has(data.node.id);
   const dimmed = hoveredNodeId !== null && !isConnected;
   const highlighted = hoveredNodeId !== null && isConnected;
+  const isDebugHighlighted = data.debugHighlightNodeIds?.has(data.node.id) ?? false;
 
   const wrapperClass = [
     "rf-node-wrapper",
     data.animate && "rf-node-animate",
     dimmed && "rf-node-dimmed",
     highlighted && "rf-node-highlighted",
+    isDebugHighlighted && "rf-node-debug-highlighted",
   ]
     .filter(Boolean)
     .join(" ");

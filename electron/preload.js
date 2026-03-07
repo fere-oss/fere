@@ -107,6 +107,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   publishGraph: (options) => ipcRenderer.invoke('publish-graph', options),
   updateSharedGraph: (options) => ipcRenderer.invoke('update-shared-graph', options),
 
+  // Open file in editor
+  openInEditor: (filePath, line) => ipcRenderer.invoke('open-in-editor', filePath, line),
+
   // Debug Agent
   debugSetApiKey: (key) => ipcRenderer.invoke('debug-set-api-key', key),
   debugGetApiKeyStatus: () => ipcRenderer.invoke('debug-get-api-key-status'),

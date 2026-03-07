@@ -217,6 +217,7 @@ function App() {
 
   // Debug panel
   const [showDebugPanel, setShowDebugPanel] = useState(false);
+  const [debugHighlightNodeIds, setDebugHighlightNodeIds] = useState<Set<string>>(new Set());
 
   // Sub-tab for containers view
   const [containerSubTab, setContainerSubTab] =
@@ -371,6 +372,26 @@ function App() {
     return () =>
       window.removeEventListener("fere:view-container-logs", handleViewLogs);
   }, []);
+
+  // Debug agent: highlight services on graph and focus camera
+  useEffect(() => {
+    const handleDebugHighlight = (e: Event) => {
+      const { nodeIds } = (e as CustomEvent).detail;
+      setDebugHighlightNodeIds(new Set(nodeIds));
+    };
+    const handleDebugFocus = (e: Event) => {
+      const { nodeId } = (e as CustomEvent).detail;
+      if (nodeId && viewMode !== "graph") {
+        setViewMode("graph");
+      }
+    };
+    window.addEventListener("fere:debug-highlight-services", handleDebugHighlight);
+    window.addEventListener("fere:debug-focus-node", handleDebugFocus);
+    return () => {
+      window.removeEventListener("fere:debug-highlight-services", handleDebugHighlight);
+      window.removeEventListener("fere:debug-focus-node", handleDebugFocus);
+    };
+  }, [viewMode]);
 
   useEffect(() => {
     if (optimisticDownNodes.size === 0) return;
@@ -1309,6 +1330,7 @@ function App() {
                 key={selectedTab}
                 nodes={filteredData.nodes}
                 edges={filteredData.edges}
+                debugHighlightNodeIds={debugHighlightNodeIds}
               />
             )}
           </div>
@@ -1441,7 +1463,13 @@ function App() {
         />
       )}
       {showDebugPanel && (
-        <DebugPanel onClose={() => setShowDebugPanel(false)} />
+        <DebugPanel
+          onClose={() => {
+            setShowDebugPanel(false);
+            setDebugHighlightNodeIds(new Set());
+          }}
+          graphNodes={graph.nodes}
+        />
       )}
     </div>
   );

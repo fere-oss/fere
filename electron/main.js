@@ -1074,6 +1074,56 @@ ipcMain.handle("open-terminal", async (event, dirPath) => {
   }
 });
 
+// Open file in editor (VS Code preferred, fallback to macOS open)
+ipcMain.handle("open-in-editor", async (event, filePath, line) => {
+  try {
+    if (!filePath || typeof filePath !== "string") {
+      return { success: false, error: "Invalid file path" };
+    }
+
+    const resolvedPath = path.resolve(filePath);
+    if (!fs.existsSync(resolvedPath)) {
+      return { success: false, error: "File does not exist" };
+    }
+
+    const home = require("os").homedir();
+    if (!resolvedPath.startsWith(home) && !resolvedPath.startsWith("/tmp")) {
+      return { success: false, error: "Path outside home directory" };
+    }
+
+    const { spawn, execFileSync } = require("child_process");
+
+    // Try VS Code first
+    let hasCode = false;
+    try {
+      execFileSync("which", ["code"], { timeout: 2000, stdio: "ignore" });
+      hasCode = true;
+    } catch {}
+
+    if (hasCode) {
+      const lineNum = typeof line === "number" && line > 0 ? line : undefined;
+      const gotoArg = lineNum ? `${resolvedPath}:${lineNum}` : resolvedPath;
+      const child = spawn("code", ["--goto", gotoArg], {
+        detached: true,
+        stdio: "ignore",
+      });
+      child.unref();
+      return { success: true, editor: "vscode" };
+    }
+
+    // Fallback: macOS open
+    const child = spawn("open", [resolvedPath], {
+      detached: true,
+      stdio: "ignore",
+    });
+    child.unref();
+    return { success: true, editor: "default" };
+  } catch (error) {
+    console.error("Error opening file in editor:", error);
+    return { success: false, error: error.message };
+  }
+});
+
 // ============================================
 // IPC Handlers - Docker Monitoring
 // ============================================

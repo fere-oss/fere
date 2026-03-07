@@ -9948,8 +9948,87 @@ textarea {
   font-size: 13px;
   color: var(--text-primary);
   line-height: 1.6;
-  white-space: pre-wrap;
   word-break: break-word;
+}
+
+.debug-panel-diagnosis-content p {
+  margin: 0 0 8px;
+}
+
+.debug-panel-diagnosis-content p:last-child {
+  margin-bottom: 0;
+}
+
+.debug-panel-diagnosis-content strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.debug-panel-diagnosis-content code {
+  font-family: 'SF Mono', 'Fira Code', 'Menlo', monospace;
+  font-size: 12px;
+  padding: 1px 4px;
+  background: var(--bg-primary);
+  border-radius: 3px;
+  border: 1px solid var(--border-color);
+}
+
+.debug-panel-diagnosis-content pre {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 10px;
+  overflow-x: auto;
+  font-size: 12px;
+  margin: 8px 0;
+}
+
+.debug-panel-diagnosis-content pre code {
+  padding: 0;
+  background: none;
+  border: none;
+  font-size: inherit;
+}
+
+.debug-panel-diagnosis-content ul,
+.debug-panel-diagnosis-content ol {
+  margin: 4px 0;
+  padding-left: 20px;
+}
+
+.debug-panel-diagnosis-content li {
+  margin-bottom: 2px;
+}
+
+/* Clickable service names and file paths in diagnosis */
+.debug-clickable-service,
+.debug-clickable-file {
+  font-family: 'SF Mono', 'Fira Code', 'Menlo', monospace;
+  font-size: 12px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.debug-clickable-service {
+  background: rgba(0, 120, 212, 0.08);
+  color: #0078d4;
+  border: 1px solid rgba(0, 120, 212, 0.2);
+}
+
+.debug-clickable-service:hover {
+  background: rgba(0, 120, 212, 0.15);
+}
+
+.debug-clickable-file {
+  background: rgba(46, 160, 67, 0.08);
+  color: #2ea043;
+  border: 1px solid rgba(46, 160, 67, 0.2);
+}
+
+.debug-clickable-file:hover {
+  background: rgba(46, 160, 67, 0.15);
 }
 
 /* Actions bar */
@@ -10042,6 +10121,87 @@ textarea {
 
 .debug-panel-step-follow_up {
   padding: 0;
+}
+
+/* Evidence bar */
+.debug-evidence {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+}
+
+.debug-evidence-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.debug-evidence-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.debug-evidence-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.debug-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  font-size: 12px;
+  font-family: 'SF Mono', 'Fira Code', 'Menlo', monospace;
+  border-radius: 4px;
+  border: 1px solid;
+  cursor: pointer;
+  background: none;
+  transition: background 0.15s;
+}
+
+.debug-chip-service {
+  color: #0078d4;
+  border-color: rgba(0, 120, 212, 0.2);
+}
+
+.debug-chip-service:hover {
+  background: rgba(0, 120, 212, 0.1);
+}
+
+.debug-chip-file {
+  color: #2ea043;
+  border-color: rgba(46, 160, 67, 0.2);
+}
+
+.debug-chip-file:hover {
+  background: rgba(46, 160, 67, 0.1);
+}
+
+.debug-chip-endpoint {
+  color: #d29922;
+  border-color: rgba(210, 153, 34, 0.2);
+}
+
+.debug-chip-endpoint:hover {
+  background: rgba(210, 153, 34, 0.1);
+}
+
+.debug-chip-method {
+  font-weight: 600;
+  font-size: 10px;
+}
+
+.debug-chip-line {
+  opacity: 0.6;
 }
 
 /* Graph highlight for diagnosed services */

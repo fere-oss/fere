@@ -745,6 +745,11 @@ When you've identified the root cause, provide your diagnosis as a structured re
 **Suggested Fix**: What code changes would resolve the issue
 **Confidence**: High / Medium / Low with explanation
 
+When referencing services, file paths, or code identifiers in your diagnosis, always use backtick formatting:
+- Service names: \`express-api\`, \`postgres-db\`
+- File paths with service context: \`service-name/path/to/file.js:42\` (include line number when relevant)
+- Code identifiers: \`functionName\`, \`variableName\`
+
 ## Important
 - Be systematic. Don't guess — gather evidence.
 - Fire multiple requests if the bug is intermittent. Try at least 5 requests before concluding it's not reproducible.

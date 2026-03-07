@@ -5,6 +5,7 @@ export interface GraphViewProps {
   edges: GraphEdge[];
   isContainerView?: boolean;
   onDatabaseClick?: (node: GraphNode) => void;
+  debugHighlightNodeIds?: Set<string>;
 }
 
 export interface NodePosition {
