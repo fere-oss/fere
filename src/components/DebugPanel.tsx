@@ -400,6 +400,7 @@ export function DebugPanel({ onClose, graphNodes }: DebugPanelProps) {
 
   const handleStop = useCallback(async () => {
     await window.electronAPI.debugStop();
+    setError("Investigation cancelled");
     setPhase("complete");
   }, []);
 
