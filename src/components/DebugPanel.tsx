@@ -214,6 +214,34 @@ export function DebugPanel({ onClose, graphNodes }: DebugPanelProps) {
     [graphNodes, nodeByName],
   );
 
+  // Check if a file path reference can be resolved to an absolute path
+  const canResolveFile = useCallback(
+    (text: string) => {
+      // Absolute paths are always resolvable
+      if (text.startsWith("/")) return true;
+
+      // Strip trailing :lineNumber
+      let pathPart = text;
+      const colonIdx = text.lastIndexOf(":");
+      if (colonIdx > 0) {
+        const afterColon = text.slice(colonIdx + 1);
+        if (!isNaN(parseInt(afterColon, 10))) {
+          pathPart = text.slice(0, colonIdx);
+        }
+      }
+
+      // First segment must be a service name with a projectPath
+      const serviceName = pathPart.split("/")[0];
+      const node =
+        nodeByName.get(serviceName.toLowerCase()) ||
+        graphNodes.find((n) =>
+          n.name.toLowerCase().includes(serviceName.toLowerCase()),
+        );
+      return !!(node?.projectPath);
+    },
+    [graphNodes, nodeByName],
+  );
+
   // --- Markdown components with interactive code ---
 
   const markdownComponents = useMemo(
@@ -245,21 +273,25 @@ export function DebugPanel({ onClose, graphNodes }: DebugPanelProps) {
 
         // Check if it's a file path (contains / and optionally :line)
         if (text.includes("/")) {
-          return (
-            <span
-              className="debug-clickable-file"
-              onClick={() => handleFileClick(text)}
-              title="Click to open in editor"
-            >
-              {text}
-            </span>
-          );
+          if (canResolveFile(text)) {
+            return (
+              <span
+                className="debug-clickable-file"
+                onClick={() => handleFileClick(text)}
+                title="Click to open in editor"
+              >
+                {text}
+              </span>
+            );
+          }
+          // Unresolvable path — render as styled code, not clickable
+          return <code>{text}</code>;
         }
 
         return <code>{text}</code>;
       },
     }),
-    [serviceNameSet, handleServiceClick, handleFileClick],
+    [serviceNameSet, handleServiceClick, handleFileClick, canResolveFile],
   );
 
   // --- Lifecycle ---
@@ -710,25 +742,26 @@ export function DebugPanel({ onClose, graphNodes }: DebugPanelProps) {
                         <div className="debug-evidence-section">
                           <span className="debug-evidence-label">Files</span>
                           <div className="debug-evidence-chips">
-                            {evidence.files.map((f, i) => (
-                              <button
-                                key={i}
-                                className="debug-chip debug-chip-file"
-                                onClick={() =>
-                                  handleFileClick(
-                                    `${f.service}/${f.path}${f.line ? `:${f.line}` : ""}`,
-                                  )
-                                }
-                                title={`${f.service}/${f.path}`}
-                              >
-                                {f.path.split("/").pop()}
-                                {f.line && (
-                                  <span className="debug-chip-line">
-                                    :{f.line}
-                                  </span>
-                                )}
-                              </button>
-                            ))}
+                            {evidence.files.map((f, i) => {
+                              const ref = `${f.service}/${f.path}${f.line ? `:${f.line}` : ""}`;
+                              const resolvable = canResolveFile(ref);
+                              return (
+                                <button
+                                  key={i}
+                                  className={`debug-chip debug-chip-file${resolvable ? "" : " debug-chip-disabled"}`}
+                                  onClick={resolvable ? () => handleFileClick(ref) : undefined}
+                                  title={resolvable ? `${f.service}/${f.path}` : `${f.service}/${f.path} (no project path)`}
+                                  disabled={!resolvable}
+                                >
+                                  {f.path.split("/").pop()}
+                                  {f.line && (
+                                    <span className="debug-chip-line">
+                                      :{f.line}
+                                    </span>
+                                  )}
+                                </button>
+                              );
+                            })}
                           </div>
                         </div>
                       )}

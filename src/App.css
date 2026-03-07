@@ -10182,8 +10182,13 @@ textarea {
   border-color: rgba(46, 160, 67, 0.2);
 }
 
-.debug-chip-file:hover {
+.debug-chip-file:hover:not(:disabled) {
   background: rgba(46, 160, 67, 0.1);
+}
+
+.debug-chip-disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 
 .debug-chip-endpoint {
