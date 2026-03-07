@@ -10204,6 +10204,28 @@ textarea {
   opacity: 0.6;
 }
 
+/* File open error toast */
+.debug-file-toast {
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #d32f2f;
+  color: #fff;
+  font-size: 12px;
+  padding: 6px 14px;
+  border-radius: 6px;
+  white-space: nowrap;
+  pointer-events: none;
+  animation: debug-toast-in 0.15s ease-out;
+  z-index: 10;
+}
+
+@keyframes debug-toast-in {
+  from { opacity: 0; transform: translateX(-50%) translateY(6px); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
 /* Graph highlight for diagnosed services */
 .rf-node-debug-highlighted .service-node {
   box-shadow: 0 0 0 2px #0078d4, 0 0 12px rgba(0, 120, 212, 0.3);

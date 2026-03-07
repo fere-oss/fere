@@ -129,6 +129,7 @@ export function DebugPanel({ onClose, graphNodes }: DebugPanelProps) {
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
   const [followUpInput, setFollowUpInput] = useState("");
+  const [fileError, setFileError] = useState("");
   const logRef = useRef<HTMLDivElement>(null);
 
   // Build lookup maps from graph nodes
@@ -170,7 +171,7 @@ export function DebugPanel({ onClose, graphNodes }: DebugPanelProps) {
   );
 
   const handleFileClick = useCallback(
-    (fileRef: string) => {
+    async (fileRef: string) => {
       // Parse "service-name/path/to/file:line" or just "path/to/file:line"
       const colonIdx = fileRef.lastIndexOf(":");
       let pathPart = fileRef;
@@ -195,13 +196,19 @@ export function DebugPanel({ onClose, graphNodes }: DebugPanelProps) {
           n.name.toLowerCase().includes(serviceName.toLowerCase()),
         );
 
+      let result;
       if (node?.projectPath && relPath) {
-        window.electronAPI.openInEditor(
+        result = await window.electronAPI.openInEditor(
           `${node.projectPath}/${relPath}`,
           line,
         );
       } else {
-        window.electronAPI.openInEditor(pathPart, line);
+        result = await window.electronAPI.openInEditor(pathPart, line);
+      }
+
+      if (!result.success) {
+        setFileError(result.error || "Could not open file");
+        setTimeout(() => setFileError(""), 3000);
       }
     },
     [graphNodes, nodeByName],
@@ -805,6 +812,9 @@ export function DebugPanel({ onClose, graphNodes }: DebugPanelProps) {
           </>
         )}
       </div>
+      {fileError && (
+        <div className="debug-file-toast">{fileError}</div>
+      )}
     </div>
   );
 }
