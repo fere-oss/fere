@@ -30,9 +30,11 @@ const MAX_GREP_MATCHES = 25;
 const MAX_FILE_LIST = 40;
 const MAX_DB_ROWS = 30;
 // Context trimming: after this many messages, compress old tool results
-const CONTEXT_TRIM_THRESHOLD = 24;
+const CONTEXT_TRIM_THRESHOLD = 16;
 // Loop detection: if the last N tool calls are identical, nudge the model
 const LOOP_DETECT_WINDOW = 3;
+// Max chars for a single tool result stored in conversation history
+const MAX_TOOL_RESULT_CHARS = 4000;
 // Rate limiting: warn after this many iterations, minimum ms between API calls
 const ITERATION_WARN_THRESHOLD = 12;
 const MIN_API_CALL_INTERVAL_MS = 1000;
@@ -829,6 +831,130 @@ async function callOpenAI(apiKey, systemPrompt, messages, maxTokens = MAX_TOKENS
   });
 }
 
+// --- OpenAI Streaming API Call ---
+// Streams text tokens via onToken as they arrive. Buffers tool call chunks and
+// assembles them into the same response shape as callOpenAI so the caller is uniform.
+
+function callOpenAIStream(apiKey, systemPrompt, messages, maxTokens, onToken) {
+  const fullMessages = [
+    { role: 'system', content: systemPrompt },
+    ...messages,
+  ];
+
+  const body = JSON.stringify({
+    model: MODEL,
+    max_tokens: maxTokens,
+    messages: fullMessages,
+    tools: DEBUG_TOOLS,
+    stream: true,
+  });
+
+  return new Promise((resolve, reject) => {
+    const req = https.request({
+      hostname: 'api.openai.com',
+      path: '/v1/chat/completions',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+    }, (res) => {
+      if (res.statusCode !== 200) {
+        let errData = '';
+        res.on('data', chunk => { errData += chunk; });
+        res.on('end', () => {
+          if (res.statusCode === 400) {
+            try {
+              const parsed = JSON.parse(errData);
+              const errMsg = parsed?.error?.message || '';
+              if (errMsg.includes('context_length') || errMsg.includes('maximum context') || errMsg.includes('too many tokens') || errMsg.includes('max_tokens')) {
+                const err = new Error(`Context too large: ${errMsg}`);
+                err.isContextOverflow = true;
+                reject(err);
+                return;
+              }
+            } catch { /* fall through */ }
+          }
+          reject(new Error(`OpenAI API error ${res.statusCode}: ${errData}`));
+        });
+        return;
+      }
+
+      let sseBuffer = '';
+      let finishReason = null;
+      let messageContent = '';
+      const toolCallsMap = {}; // index → { id, function: { name, arguments } }
+
+      res.on('data', chunk => {
+        sseBuffer += chunk.toString();
+        const lines = sseBuffer.split('\n');
+        sseBuffer = lines.pop(); // keep the incomplete trailing line in buffer
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed.startsWith('data:')) continue;
+          const data = trimmed.slice(5).trim();
+          if (data === '[DONE]') continue;
+
+          let parsed;
+          try { parsed = JSON.parse(data); } catch { continue; }
+
+          const choice = parsed.choices?.[0];
+          if (!choice) continue;
+
+          if (choice.finish_reason) finishReason = choice.finish_reason;
+
+          const delta = choice.delta;
+          if (!delta) continue;
+
+          // Text tokens — stream immediately
+          if (typeof delta.content === 'string' && delta.content) {
+            messageContent += delta.content;
+            onToken(delta.content);
+          }
+
+          // Tool call chunks — accumulate across events
+          if (delta.tool_calls) {
+            for (const tc of delta.tool_calls) {
+              const idx = tc.index ?? 0;
+              if (!toolCallsMap[idx]) {
+                toolCallsMap[idx] = { id: '', type: 'function', function: { name: '', arguments: '' } };
+              }
+              if (tc.id) toolCallsMap[idx].id = tc.id;
+              if (tc.function?.name) toolCallsMap[idx].function.name += tc.function.name;
+              if (tc.function?.arguments) toolCallsMap[idx].function.arguments += tc.function.arguments;
+            }
+          }
+        }
+      });
+
+      res.on('end', () => {
+        const toolCalls = Object.keys(toolCallsMap).length > 0
+          ? Object.values(toolCallsMap)
+          : undefined;
+
+        resolve({
+          choices: [{
+            message: {
+              role: 'assistant',
+              content: messageContent || null,
+              tool_calls: toolCalls,
+            },
+            finish_reason: finishReason,
+          }],
+        });
+      });
+
+      res.on('error', reject);
+    });
+
+    req.on('error', reject);
+    req.setTimeout(60000, () => { req.destroy(); reject(new Error('OpenAI API timeout (60s)')); });
+    req.write(body);
+    req.end();
+  });
+}
+
 // --- Context Trimming ---
 // Replace verbose old tool results with structured summaries to keep context small
 // while preserving the key findings the model needs for its final diagnosis.
@@ -836,21 +962,28 @@ async function callOpenAI(apiKey, systemPrompt, messages, maxTokens = MAX_TOKENS
 function trimConversationContext(messages, toolResultSummaries) {
   if (messages.length < CONTEXT_TRIM_THRESHOLD) return;
 
-  // Keep first user message + last 12 messages intact; compress the middle
-  const keepTailCount = 12;
+  // Keep first user message + last 8 messages intact; compress the middle
+  const keepTailCount = 8;
   const compressEnd = messages.length - keepTailCount;
 
   for (let i = 1; i < compressEnd; i++) {
     const msg = messages[i];
     if (msg.role === 'tool' && typeof msg.content === 'string' && msg.content.length > 300) {
-      // Use the structured summary we captured during execution, falling back to a prefix
       const summary = toolResultSummaries.get(msg.tool_call_id);
       if (summary) {
         messages[i] = { ...msg, content: `[Summary: ${summary}]` };
       } else {
-        // Fallback: keep enough to preserve key error messages / status codes
         messages[i] = { ...msg, content: msg.content.slice(0, 400) + '\n... (trimmed)' };
       }
+    }
+  }
+
+  // Also cap large tool results in the tail to prevent gradual buildup
+  for (let i = Math.max(1, compressEnd); i < messages.length; i++) {
+    const msg = messages[i];
+    if (msg.role === 'tool' && typeof msg.content === 'string' && msg.content.length > 3000) {
+      const summary = toolResultSummaries.get(msg.tool_call_id);
+      messages[i] = { ...msg, content: summary ? `[Summary: ${summary}]\n${msg.content.slice(0, 1500)}\n... (trimmed)` : msg.content.slice(0, 1500) + '\n... (trimmed)' };
     }
   }
 }
@@ -943,12 +1076,17 @@ async function runDebugAgent(options, onProgress) {
     const isNearEnd = i >= MAX_ITERATIONS - 2;
     const maxTokens = isNearEnd ? MAX_TOKENS_FINAL : MAX_TOKENS_TOOL_TURN;
 
+    // Stream tokens to the renderer as they arrive
+    const onToken = (text) => {
+      if (!options._cancelled) onProgress({ type: 'diagnosis_delta', text });
+    };
+
     let response;
     try {
       lastApiCallTime = Date.now();
-      response = await callOpenAI(apiKey, systemPrompt, messages, maxTokens);
+      response = await callOpenAIStream(apiKey, systemPrompt, messages, maxTokens, onToken);
     } catch (err) {
-      // Context overflow: aggressively trim and retry once
+      // Context overflow: aggressively trim and retry once (non-streaming; complete will replace streamed partial text)
       if (err.isContextOverflow) {
         aggressiveTrimContext(messages, toolResultSummaries);
         try {
@@ -1068,7 +1206,10 @@ async function runDebugAgent(options, onProgress) {
         iteration: i + 1,
       });
 
-      const resultContent = typeof result === 'string' ? result : JSON.stringify(result);
+      const rawContent = typeof result === 'string' ? result : JSON.stringify(result);
+      const resultContent = rawContent.length > MAX_TOOL_RESULT_CHARS
+        ? rawContent.slice(0, MAX_TOOL_RESULT_CHARS) + '\n... (truncated for context)'
+        : rawContent;
       messages.push({
         role: 'tool',
         tool_call_id: toolCall.id,

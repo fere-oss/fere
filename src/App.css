@@ -9951,6 +9951,21 @@ textarea {
   word-break: break-word;
 }
 
+.debug-panel-diagnosis-streaming::after {
+  content: '▋';
+  display: inline-block;
+  opacity: 1;
+  animation: debug-cursor-blink 0.8s step-end infinite;
+  color: var(--text-muted);
+  font-size: 13px;
+  margin-left: 1px;
+}
+
+@keyframes debug-cursor-blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0; }
+}
+
 .debug-panel-diagnosis-content p {
   margin: 0 0 8px;
 }

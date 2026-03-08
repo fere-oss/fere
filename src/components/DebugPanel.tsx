@@ -328,6 +328,9 @@ export function DebugPanel({ onClose, graphNodes }: DebugPanelProps) {
       (progress: DebugProgress) => {
         switch (progress.type) {
           case "thinking":
+            // Clear any streamed text from the previous iteration — each
+            // new iteration starts fresh; the final iteration's tokens stay.
+            setDiagnosis("");
             setSteps((prev) => [
               ...prev,
               {
@@ -361,7 +364,11 @@ export function DebugPanel({ onClose, graphNodes }: DebugPanelProps) {
               },
             ]);
             break;
+          case "diagnosis_delta":
+            setDiagnosis((prev) => prev + progress.text);
+            break;
           case "complete":
+            // Authoritative final text — replaces any streamed partial content
             setDiagnosis(progress.diagnosis);
             setPhase("complete");
             break;
@@ -684,13 +691,25 @@ export function DebugPanel({ onClose, graphNodes }: DebugPanelProps) {
               </div>
             )}
 
-            {/* Running: Stop button */}
+            {/* Running: streaming diagnosis + Stop button */}
             {phase === "running" && (
-              <div className="debug-panel-actions">
-                <button className="debug-panel-stop" onClick={handleStop}>
-                  Stop Investigation
-                </button>
-              </div>
+              <>
+                {diagnosis && (
+                  <div className="debug-panel-diagnosis">
+                    <div className="debug-panel-section-header">Diagnosis</div>
+                    <div className="debug-panel-diagnosis-content debug-panel-diagnosis-streaming">
+                      <ReactMarkdown components={markdownComponents}>
+                        {diagnosis}
+                      </ReactMarkdown>
+                    </div>
+                  </div>
+                )}
+                <div className="debug-panel-actions">
+                  <button className="debug-panel-stop" onClick={handleStop}>
+                    Stop Investigation
+                  </button>
+                </div>
+              </>
             )}
 
             {/* Complete: Diagnosis + Evidence + Follow-up */}
