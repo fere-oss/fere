@@ -124,14 +124,14 @@ const DEBUG_TOOLS = [
     type: 'function',
     function: {
       name: 'fire_request',
-      description: 'Send an HTTP request to a local service and get the response. Use this to reproduce bugs, test endpoints, and observe behavior.',
+      description: 'Send an HTTP request to a local service.',
       parameters: {
         type: 'object',
         properties: {
           method: { type: 'string', enum: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'] },
-          url: { type: 'string', description: 'Full URL, e.g. http://localhost:3001/api/checkout' },
-          headers: { type: 'object', description: 'Request headers as key-value pairs', additionalProperties: { type: 'string' } },
-          body: { type: 'string', description: 'Request body (for POST/PUT/PATCH)' },
+          url: { type: 'string' },
+          headers: { type: 'object', additionalProperties: { type: 'string' } },
+          body: { type: 'string' },
         },
         required: ['method', 'url'],
       },
@@ -141,7 +141,7 @@ const DEBUG_TOOLS = [
     type: 'function',
     function: {
       name: 'fire_concurrent_requests',
-      description: 'Fire multiple identical requests concurrently to test for race conditions or intermittent failures. Returns all responses.',
+      description: 'Fire N identical requests concurrently to test race conditions.',
       parameters: {
         type: 'object',
         properties: {
@@ -149,7 +149,7 @@ const DEBUG_TOOLS = [
           url: { type: 'string' },
           headers: { type: 'object', additionalProperties: { type: 'string' } },
           body: { type: 'string' },
-          count: { type: 'number', description: 'Number of concurrent requests (2-20)', minimum: 2, maximum: 20 },
+          count: { type: 'number', minimum: 2, maximum: 20 },
         },
         required: ['method', 'url', 'count'],
       },
@@ -159,14 +159,14 @@ const DEBUG_TOOLS = [
     type: 'function',
     function: {
       name: 'get_container_logs',
-      description: 'Get recent logs from a Docker container. Use the container name or ID. Returns the last N lines.',
+      description: 'Get recent logs from a Docker container.',
       parameters: {
         type: 'object',
         properties: {
-          container_name: { type: 'string', description: 'Container name (from the topology)' },
-          tail: { type: 'number', description: 'Number of recent lines to fetch (default 100, max 500)', maximum: 500 },
-          since: { type: 'string', description: 'Only return logs after this timestamp (ISO 8601 or relative like "5m")' },
-          grep: { type: 'string', description: 'Filter log lines to only those containing this string (case-insensitive)' },
+          container_name: { type: 'string' },
+          tail: { type: 'number', maximum: 500 },
+          since: { type: 'string', description: 'ISO 8601 or relative e.g. "5m"' },
+          grep: { type: 'string', description: 'Case-insensitive filter string' },
         },
         required: ['container_name'],
       },
@@ -176,14 +176,14 @@ const DEBUG_TOOLS = [
     type: 'function',
     function: {
       name: 'read_source_file',
-      description: "Read a source code file from a service's project directory. Use this to understand implementations, check error handlers, read configuration files, etc.",
+      description: "Read a source file from a service's project. Also use for config files (.yml, .json, .env, Dockerfile).",
       parameters: {
         type: 'object',
         properties: {
-          service_name: { type: 'string', description: 'Name of the service (from topology) whose project to read from' },
-          file_path: { type: 'string', description: 'Relative file path within the project, e.g. "src/routes/checkout.js"' },
-          line_start: { type: 'number', description: 'Start reading from this line (1-indexed)' },
-          line_end: { type: 'number', description: 'Stop reading at this line (inclusive)' },
+          service_name: { type: 'string' },
+          file_path: { type: 'string', description: 'Relative path, e.g. "src/routes/checkout.js"' },
+          line_start: { type: 'number' },
+          line_end: { type: 'number' },
         },
         required: ['service_name', 'file_path'],
       },
@@ -193,12 +193,12 @@ const DEBUG_TOOLS = [
     type: 'function',
     function: {
       name: 'find_source_files',
-      description: "Search for source code files in a service's project directory by name pattern. Only indexes code files (.js, .ts, .py, .go, .rb, .java, .php) — config files like .yml, .json, .env, Dockerfile are not included. Use read_source_file to read config files directly if you know the path.",
+      description: "Find code files (.js/.ts/.py/.go/.rb/.java/.php) in a service's project by glob pattern.",
       parameters: {
         type: 'object',
         properties: {
-          service_name: { type: 'string', description: 'Name of the service (from topology)' },
-          pattern: { type: 'string', description: 'Glob pattern to match, e.g. "**/*.js", "**/checkout*", "src/routes/*.ts"' },
+          service_name: { type: 'string' },
+          pattern: { type: 'string', description: 'Glob, e.g. "**/checkout*"' },
         },
         required: ['service_name', 'pattern'],
       },
@@ -208,13 +208,13 @@ const DEBUG_TOOLS = [
     type: 'function',
     function: {
       name: 'grep_source',
-      description: "Search for a text pattern across source code files in a service's project. Returns matching lines with file paths and line numbers. Only searches code files (.js, .ts, .py, .go, .rb, .java, .php) — does not search config/YAML/JSON/.env files.",
+      description: "Search code files in a service's project for a text/regex pattern. Returns file paths and line numbers.",
       parameters: {
         type: 'object',
         properties: {
-          service_name: { type: 'string', description: 'Name of the service (from topology)' },
-          pattern: { type: 'string', description: 'Text or regex pattern to search for' },
-          file_glob: { type: 'string', description: 'Optional glob to limit search scope, e.g. "**/*.py"' },
+          service_name: { type: 'string' },
+          pattern: { type: 'string' },
+          file_glob: { type: 'string' },
         },
         required: ['service_name', 'pattern'],
       },
@@ -224,11 +224,11 @@ const DEBUG_TOOLS = [
     type: 'function',
     function: {
       name: 'get_service_routes',
-      description: 'Get all discovered API routes for a service. Shows method, path, and framework.',
+      description: 'Get discovered API routes (method, path, framework) for a service.',
       parameters: {
         type: 'object',
         properties: {
-          service_name: { type: 'string', description: 'Name of the service (from topology)' },
+          service_name: { type: 'string' },
         },
         required: ['service_name'],
       },
@@ -238,12 +238,12 @@ const DEBUG_TOOLS = [
     type: 'function',
     function: {
       name: 'run_database_query',
-      description: 'Execute a read-only SQL query against a running database container. Use this to check data state.',
+      description: 'Run a read-only SQL query (SELECT/SHOW/DESCRIBE/EXPLAIN) against a database container.',
       parameters: {
         type: 'object',
         properties: {
-          container_name: { type: 'string', description: 'Database container name' },
-          query: { type: 'string', description: 'SQL query (SELECT only — no mutations)' },
+          container_name: { type: 'string' },
+          query: { type: 'string' },
         },
         required: ['container_name', 'query'],
       },
