@@ -763,6 +763,7 @@ When referencing services, file paths, or code identifiers in your diagnosis, al
 
 ## Important
 - Be systematic. Don't guess — gather evidence.
+- **Call multiple tools in a single response whenever possible.** For example, fetch logs from service A and service B in the same turn rather than one at a time. This is strongly preferred.
 - Fire multiple requests if the bug is intermittent. Try at least 5 requests before concluding it's not reproducible.
 - Always check logs from ALL services in the chain, not just the entry point.
 - When reading source code, focus on error handlers, database queries, and inter-service calls.
