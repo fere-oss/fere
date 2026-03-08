@@ -5,6 +5,7 @@ import type { DebugProgress, GraphNode } from "../types/electron";
 interface DebugPanelProps {
   onClose: () => void;
   graphNodes: GraphNode[];
+  style?: React.CSSProperties;
 }
 
 type DebugPhase = "setup" | "input" | "running" | "complete";
@@ -118,7 +119,7 @@ function formatToolInput(
   }
 }
 
-export function DebugPanel({ onClose, graphNodes }: DebugPanelProps) {
+export function DebugPanel({ onClose, graphNodes, style }: DebugPanelProps) {
   const [phase, setPhase] = useState<DebugPhase>("input");
   const [hasApiKey, setHasApiKey] = useState<boolean | null>(null);
   const [apiKeyInput, setApiKeyInput] = useState("");
@@ -525,7 +526,7 @@ export function DebugPanel({ onClose, graphNodes }: DebugPanelProps) {
     phase === "complete" && diagnosis ? extractEvidence(steps) : null;
 
   return (
-    <div className="debug-panel">
+    <div className="debug-panel" style={style}>
       <div className="debug-panel-header">
         <span className="debug-panel-title">Debug Agent</span>
         <button className="debug-panel-close" onClick={handleClose}>

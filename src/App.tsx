@@ -216,8 +216,73 @@ function App() {
   const [databaseNode, setDatabaseNode] = useState<GraphNode | null>(null);
 
   // Debug panel
-  const [showDebugPanel, setShowDebugPanel] = useState(false);
+  // hasEverOpened: mounts panel once, keeps it alive (preserves conversation state)
+  // isPanelExpanded: controls flex width — changes instantly (no width transition)
+  // isPanelVisible: controls opacity/transform — animated via CSS transition
+  const [hasEverOpened, setHasEverOpened] = useState(false);
+  const [isPanelExpanded, setIsPanelExpanded] = useState(false);
+  const [isPanelVisible, setIsPanelVisible] = useState(false);
+  const [isResizing, setIsResizing] = useState(false);
   const [debugHighlightNodeIds, setDebugHighlightNodeIds] = useState<Set<string>>(new Set());
+  const [debugPanelWidth, setDebugPanelWidth] = useState(400);
+  const isDragging = useRef(false);
+  const dragStartX = useRef(0);
+  const dragStartWidth = useRef(0);
+  const panelCollapseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleOpenDebugPanel = useCallback(() => {
+    // Cancel any in-progress close animation
+    if (panelCollapseTimer.current) {
+      clearTimeout(panelCollapseTimer.current);
+      panelCollapseTimer.current = null;
+    }
+    setHasEverOpened(true);
+    setIsPanelExpanded(true); // give panel its width immediately (one-frame layout snap)
+    // Double rAF: wait for browser to paint the expanded-but-invisible state,
+    // then trigger the opacity/transform CSS transition.
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => setIsPanelVisible(true));
+    });
+  }, []);
+
+  const handleCloseDebugPanel = useCallback(() => {
+    setIsPanelVisible(false); // trigger fade-out transition
+    setDebugHighlightNodeIds(new Set());
+    // After fade completes, remove flex space so map snaps back to full width
+    panelCollapseTimer.current = setTimeout(() => {
+      setIsPanelExpanded(false);
+      panelCollapseTimer.current = null;
+    }, 220);
+  }, []);
+
+  const handleDividerMouseDown = useCallback((e: React.MouseEvent) => {
+    isDragging.current = true;
+    dragStartX.current = e.clientX;
+    dragStartWidth.current = debugPanelWidth;
+    setIsResizing(true);
+    e.preventDefault();
+  }, [debugPanelWidth]);
+
+  useEffect(() => {
+    const onMouseMove = (e: MouseEvent) => {
+      if (!isDragging.current) return;
+      const delta = dragStartX.current - e.clientX;
+      const next = Math.max(280, Math.min(720, dragStartWidth.current + delta));
+      setDebugPanelWidth(next);
+    };
+    const onMouseUp = () => {
+      if (isDragging.current) {
+        isDragging.current = false;
+        setIsResizing(false);
+      }
+    };
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
+    return () => {
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onMouseUp);
+    };
+  }, []);
 
   // Sub-tab for containers view
   const [containerSubTab, setContainerSubTab] =
@@ -1037,7 +1102,7 @@ function App() {
         <div className="app-header-actions">
           <button
             className="alert-toggle"
-            onClick={() => setShowDebugPanel(true)}
+            onClick={handleOpenDebugPanel}
             title="Debug Agent"
           >
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2">
@@ -1317,6 +1382,7 @@ function App() {
       )}
 
       {/* Main Content */}
+      <div className="app-body">
       <main className="main-content">
         <ErrorBoundary>
         <div
@@ -1449,6 +1515,31 @@ function App() {
         </div>
         </ErrorBoundary>
       </main>
+      {hasEverOpened && (
+        <>
+          <div
+            className={`debug-divider${isPanelVisible ? " debug-divider-open" : ""}`}
+            style={{ display: isPanelExpanded ? undefined : "none" }}
+            onMouseDown={handleDividerMouseDown}
+            role="separator"
+            aria-label="Resize debug panel"
+          />
+          <DebugPanel
+            style={{
+              width: isPanelExpanded ? debugPanelWidth : 0,
+              minWidth: 0,
+              overflow: "hidden",
+              opacity: isPanelVisible ? 1 : 0,
+              transform: isPanelVisible ? "translateX(0)" : "translateX(16px)",
+              transition: isResizing ? "none" : undefined,
+              pointerEvents: isPanelExpanded ? undefined : "none",
+            }}
+            onClose={handleCloseDebugPanel}
+            graphNodes={graph.nodes}
+          />
+        </>
+      )}
+      </div>
 
       {/* Welcome Modal */}
       {showWelcome && <WelcomeModal onClose={handleCloseWelcome} />}
@@ -1460,15 +1551,6 @@ function App() {
           graphNodes={filteredData.nodes}
           graphEdges={filteredData.edges}
           activeTabLabel={tabs.find((t) => t.id === selectedTab)?.label ?? SYSTEM_TAB_LABEL}
-        />
-      )}
-      {showDebugPanel && (
-        <DebugPanel
-          onClose={() => {
-            setShowDebugPanel(false);
-            setDebugHighlightNodeIds(new Set());
-          }}
-          graphNodes={graph.nodes}
         />
       )}
     </div>
