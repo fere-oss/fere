@@ -691,11 +691,10 @@ function buildSystemPrompt(graphSnapshot) {
     .filter(n => n.type !== 'external')
     .map(n => {
       const ports = (n.ports || []).map(p => p.port).join(', ');
-      const routes = (n.routes || []).map(r => `${r.method} ${r.path}`).join(', ');
       const health = n.healthStatus || 'unknown';
       const container = n.isDockerContainer ? ` [Docker: ${n.containerState || 'unknown'}]` : '';
       const project = n.projectPath ? ` [project: ${n.projectPath}]` : '';
-      return `- ${n.name} (ports: ${ports || 'none'}, health: ${health}${container}${project})${routes ? `\n  Routes: ${routes}` : ''}`;
+      return `- ${n.name} (ports: ${ports || 'none'}, health: ${health}${container}${project})`;
     })
     .join('\n');
 
