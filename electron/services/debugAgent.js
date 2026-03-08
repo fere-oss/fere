@@ -1165,60 +1165,59 @@ async function runDebugAgent(options, onProgress) {
       continue;
     }
 
-    // Execute all tool calls
-    for (const toolCall of toolCalls) {
-      if (options._cancelled) {
-        return makeResult({ success: false, error: 'Cancelled' });
-      }
+    if (options._cancelled) {
+      return makeResult({ success: false, error: 'Cancelled' });
+    }
 
+    // Parse all tool call arguments upfront; emit tool_call events before executing
+    const parsedCalls = toolCalls.map(toolCall => {
       const fnName = toolCall.function.name;
       let fnArgs;
       try {
         fnArgs = JSON.parse(toolCall.function.arguments);
       } catch (parseErr) {
-        const errorResult = `Failed to parse tool arguments: ${parseErr.message}. Raw: ${toolCall.function.arguments.slice(0, 200)}`;
-        messages.push({
-          role: 'tool',
-          tool_call_id: toolCall.id,
-          content: errorResult,
-        });
-        toolResultSummaries.set(toolCall.id, `Error: malformed arguments for ${fnName}`);
-        onProgress({
-          type: 'tool_result',
-          tool: fnName,
-          summary: `Error: malformed arguments`,
-          iteration: i + 1,
-        });
-        continue;
+        return { toolCall, fnName, fnArgs: null, parseErr };
       }
+      onProgress({ type: 'tool_call', tool: fnName, input: fnArgs, iteration: i + 1 });
+      return { toolCall, fnName, fnArgs, parseErr: null };
+    });
 
-      onProgress({
-        type: 'tool_call',
-        tool: fnName,
-        input: fnArgs,
-        iteration: i + 1,
-      });
+    // Execute all tool calls concurrently
+    const settled = await Promise.allSettled(
+      parsedCalls.map(({ fnName, fnArgs }) =>
+        fnArgs !== null
+          ? executeDebugTool(fnName, fnArgs, graphSnapshot, sessionCache)
+          : Promise.resolve({ error: 'Malformed arguments' })
+      )
+    );
 
-      const result = await executeDebugTool(fnName, fnArgs, graphSnapshot, sessionCache);
-      const summary = summarizeToolResult(fnName, result);
+    // Push results in the same order the model issued the calls
+    for (let j = 0; j < parsedCalls.length; j++) {
+      const { toolCall, fnName, parseErr } = parsedCalls[j];
+      const outcome = settled[j];
 
-      onProgress({
-        type: 'tool_result',
-        tool: fnName,
-        summary,
-        iteration: i + 1,
-      });
+      let result;
+      if (parseErr) {
+        result = `Failed to parse tool arguments: ${parseErr.message}. Raw: ${toolCall.function.arguments.slice(0, 200)}`;
+        toolResultSummaries.set(toolCall.id, `Error: malformed arguments for ${fnName}`);
+        onProgress({ type: 'tool_result', tool: fnName, summary: 'Error: malformed arguments', iteration: i + 1 });
+      } else if (outcome.status === 'rejected') {
+        result = { error: outcome.reason?.message || 'Tool execution failed' };
+        const summary = `Error: ${result.error}`;
+        toolResultSummaries.set(toolCall.id, summary);
+        onProgress({ type: 'tool_result', tool: fnName, summary, iteration: i + 1 });
+      } else {
+        result = outcome.value;
+        const summary = summarizeToolResult(fnName, result);
+        toolResultSummaries.set(toolCall.id, summary);
+        onProgress({ type: 'tool_result', tool: fnName, summary, iteration: i + 1 });
+      }
 
       const rawContent = typeof result === 'string' ? result : JSON.stringify(result);
       const resultContent = rawContent.length > MAX_TOOL_RESULT_CHARS
         ? rawContent.slice(0, MAX_TOOL_RESULT_CHARS) + '\n... (truncated for context)'
         : rawContent;
-      messages.push({
-        role: 'tool',
-        tool_call_id: toolCall.id,
-        content: resultContent,
-      });
-      toolResultSummaries.set(toolCall.id, summary);
+      messages.push({ role: 'tool', tool_call_id: toolCall.id, content: resultContent });
     }
   }
 
