@@ -33,6 +33,9 @@ const MAX_DB_ROWS = 30;
 const CONTEXT_TRIM_THRESHOLD = 24;
 // Loop detection: if the last N tool calls are identical, nudge the model
 const LOOP_DETECT_WINDOW = 3;
+// Rate limiting: warn after this many iterations, minimum ms between API calls
+const ITERATION_WARN_THRESHOLD = 12;
+const MIN_API_CALL_INTERVAL_MS = 1000;
 
 const DOCKER_BIN_CANDIDATES = [
   process.env.FERE_DOCKER_BIN,
@@ -591,10 +594,17 @@ async function executeGetRoutes(input, graphSnapshot, sessionCache) {
 async function executeDbQuery(input, graphSnapshot) {
   const { container_name, query } = input;
 
-  // Only allow read-only queries
-  const trimmed = query.trim().toUpperCase();
-  if (!trimmed.startsWith('SELECT') && !trimmed.startsWith('SHOW') && !trimmed.startsWith('DESCRIBE') && !trimmed.startsWith('EXPLAIN')) {
+  // Only allow a single read-only statement
+  const trimmed = query.trim();
+  const upper = trimmed.toUpperCase();
+  if (!upper.startsWith('SELECT') && !upper.startsWith('SHOW') && !upper.startsWith('DESCRIBE') && !upper.startsWith('EXPLAIN')) {
     return { error: 'Only read-only queries (SELECT, SHOW, DESCRIBE, EXPLAIN) are allowed' };
+  }
+  // Reject multiple statements — strip string literals then check for semicolons not at the end
+  const noStrings = trimmed.replace(/'[^']*'/g, '').replace(/"[^"]*"/g, '');
+  const withoutTrailing = noStrings.replace(/;\s*$/, '');
+  if (withoutTrailing.includes(';')) {
+    return { error: 'Multiple statements are not allowed' };
   }
 
   const node = graphSnapshot.nodes.find(n =>
@@ -789,6 +799,19 @@ async function callOpenAI(apiKey, systemPrompt, messages, maxTokens = MAX_TOKENS
       res.on('data', chunk => { data += chunk; });
       res.on('end', () => {
         if (res.statusCode !== 200) {
+          // Surface context-length errors distinctly so the caller can trim and retry
+          if (res.statusCode === 400) {
+            try {
+              const parsed = JSON.parse(data);
+              const errMsg = parsed?.error?.message || '';
+              if (errMsg.includes('context_length') || errMsg.includes('maximum context') || errMsg.includes('too many tokens') || errMsg.includes('max_tokens')) {
+                const err = new Error(`Context too large: ${errMsg}`);
+                err.isContextOverflow = true;
+                reject(err);
+                return;
+              }
+            } catch { /* fall through to generic error */ }
+          }
           reject(new Error(`OpenAI API error ${res.statusCode}: ${data}`));
           return;
         }
@@ -832,6 +855,28 @@ function trimConversationContext(messages, toolResultSummaries) {
   }
 }
 
+// Aggressive trim: compress ALL tool results except the last few, used on context overflow
+function aggressiveTrimContext(messages, toolResultSummaries) {
+  const keepTailCount = 6;
+  const compressEnd = messages.length - keepTailCount;
+
+  for (let i = 1; i < compressEnd; i++) {
+    const msg = messages[i];
+    if (msg.role === 'tool' && typeof msg.content === 'string' && msg.content.length > 100) {
+      const summary = toolResultSummaries.get(msg.tool_call_id);
+      messages[i] = { ...msg, content: summary ? `[Summary: ${summary}]` : '[trimmed]' };
+    }
+  }
+  // Also compress tool results in the tail that are very large
+  for (let i = Math.max(1, compressEnd); i < messages.length; i++) {
+    const msg = messages[i];
+    if (msg.role === 'tool' && typeof msg.content === 'string' && msg.content.length > 2000) {
+      const summary = toolResultSummaries.get(msg.tool_call_id);
+      messages[i] = { ...msg, content: summary ? `[Summary: ${summary}]` : msg.content.slice(0, 500) + '\n... (trimmed)' };
+    }
+  }
+}
+
 // --- Agent Loop ---
 
 async function runDebugAgent(options, onProgress) {
@@ -860,9 +905,26 @@ async function runDebugAgent(options, onProgress) {
     state: { messages, sessionCache, toolResultSummaries, systemPrompt },
   });
 
+  let lastApiCallTime = 0;
+
   for (let i = 0; i < MAX_ITERATIONS; i++) {
     if (options._cancelled) {
       return makeResult({ success: false, error: 'Cancelled' });
+    }
+
+    // Rate limiting: warn after threshold
+    if (i === ITERATION_WARN_THRESHOLD) {
+      onProgress({
+        type: 'tool_result',
+        tool: 'system',
+        summary: `Investigation is taking long (${i} iterations). Will wrap up soon.`,
+        iteration: i + 1,
+      });
+      // Nudge the model to conclude
+      messages.push({
+        role: 'user',
+        content: `You have used ${i} of ${MAX_ITERATIONS} iterations. Please provide your diagnosis based on the evidence gathered so far. If you need one more critical piece of evidence, get it now and then conclude.`,
+      });
     }
 
     onProgress({ type: 'thinking', iteration: i + 1 });
@@ -870,16 +932,36 @@ async function runDebugAgent(options, onProgress) {
     // Trim old tool results to keep context lean
     trimConversationContext(messages, toolResultSummaries);
 
+    // Throttle: ensure minimum interval between API calls
+    const now = Date.now();
+    const elapsed = now - lastApiCallTime;
+    if (elapsed < MIN_API_CALL_INTERVAL_MS && lastApiCallTime > 0) {
+      await new Promise(r => setTimeout(r, MIN_API_CALL_INTERVAL_MS - elapsed));
+    }
+
     // Use small token budget for intermediate turns, full budget near the end
     const isNearEnd = i >= MAX_ITERATIONS - 2;
     const maxTokens = isNearEnd ? MAX_TOKENS_FINAL : MAX_TOKENS_TOOL_TURN;
 
     let response;
     try {
+      lastApiCallTime = Date.now();
       response = await callOpenAI(apiKey, systemPrompt, messages, maxTokens);
     } catch (err) {
-      onProgress({ type: 'error', error: err.message });
-      return makeResult({ success: false, error: err.message });
+      // Context overflow: aggressively trim and retry once
+      if (err.isContextOverflow) {
+        aggressiveTrimContext(messages, toolResultSummaries);
+        try {
+          lastApiCallTime = Date.now();
+          response = await callOpenAI(apiKey, systemPrompt, messages, maxTokens);
+        } catch (retryErr) {
+          onProgress({ type: 'error', error: retryErr.message });
+          return makeResult({ success: false, error: retryErr.message });
+        }
+      } else {
+        onProgress({ type: 'error', error: err.message });
+        return makeResult({ success: false, error: err.message });
+      }
     }
 
     const choice = response.choices?.[0];
