@@ -19,7 +19,7 @@ const MODEL = 'gpt-4.1';
 const ENV_PATH = path.join(__dirname, '..', '..', '.env');
 
 // --- Token budget limits ---
-const MAX_TOKENS_TOOL_TURN = 2048; // Intermediate turns: enough for reasoning + 2-3 tool calls
+const MAX_TOKENS_TOOL_TURN = 1024; // Intermediate turns: enough for reasoning + 2-3 tool calls
 const MAX_TOKENS_FINAL = 4096;     // Final diagnosis gets full budget
 const TRUNCATE_BODY = 3000;        // HTTP response body chars
 const TRUNCATE_BODY_CONCURRENT = 800;
@@ -773,7 +773,7 @@ When referencing services, file paths, or code identifiers in your diagnosis, al
 
 // --- OpenAI API Call ---
 
-async function callOpenAI(apiKey, systemPrompt, messages, maxTokens = MAX_TOKENS_FINAL) {
+async function callOpenAI(apiKey, systemPrompt, messages, maxTokens = MAX_TOKENS_FINAL, tools = DEBUG_TOOLS) {
   // Prepend system message to the conversation
   const fullMessages = [
     { role: 'system', content: systemPrompt },
@@ -784,7 +784,7 @@ async function callOpenAI(apiKey, systemPrompt, messages, maxTokens = MAX_TOKENS
     model: MODEL,
     max_tokens: maxTokens,
     messages: fullMessages,
-    tools: DEBUG_TOOLS,
+    ...(tools ? { tools } : {}),
   });
 
   return new Promise((resolve, reject) => {
@@ -835,7 +835,7 @@ async function callOpenAI(apiKey, systemPrompt, messages, maxTokens = MAX_TOKENS
 // Streams text tokens via onToken as they arrive. Buffers tool call chunks and
 // assembles them into the same response shape as callOpenAI so the caller is uniform.
 
-function callOpenAIStream(apiKey, systemPrompt, messages, maxTokens, onToken) {
+function callOpenAIStream(apiKey, systemPrompt, messages, maxTokens, onToken, tools = DEBUG_TOOLS) {
   const fullMessages = [
     { role: 'system', content: systemPrompt },
     ...messages,
@@ -845,7 +845,7 @@ function callOpenAIStream(apiKey, systemPrompt, messages, maxTokens, onToken) {
     model: MODEL,
     max_tokens: maxTokens,
     messages: fullMessages,
-    tools: DEBUG_TOOLS,
+    ...(tools ? { tools } : {}),
     stream: true,
   });
 
@@ -1072,9 +1072,12 @@ async function runDebugAgent(options, onProgress) {
       await new Promise(r => setTimeout(r, MIN_API_CALL_INTERVAL_MS - elapsed));
     }
 
-    // Use small token budget for intermediate turns, full budget near the end
+    // Use small token budget for intermediate turns, full budget near the end.
+    // On final turns, omit tool definitions entirely to save input tokens — the
+    // model is writing its diagnosis and won't be calling tools.
     const isNearEnd = i >= MAX_ITERATIONS - 2;
     const maxTokens = isNearEnd ? MAX_TOKENS_FINAL : MAX_TOKENS_TOOL_TURN;
+    const tools = isNearEnd ? undefined : DEBUG_TOOLS;
 
     // Stream tokens to the renderer as they arrive
     const onToken = (text) => {
@@ -1084,14 +1087,14 @@ async function runDebugAgent(options, onProgress) {
     let response;
     try {
       lastApiCallTime = Date.now();
-      response = await callOpenAIStream(apiKey, systemPrompt, messages, maxTokens, onToken);
+      response = await callOpenAIStream(apiKey, systemPrompt, messages, maxTokens, onToken, tools);
     } catch (err) {
       // Context overflow: aggressively trim and retry once (non-streaming; complete will replace streamed partial text)
       if (err.isContextOverflow) {
         aggressiveTrimContext(messages, toolResultSummaries);
         try {
           lastApiCallTime = Date.now();
-          response = await callOpenAI(apiKey, systemPrompt, messages, maxTokens);
+          response = await callOpenAI(apiKey, systemPrompt, messages, maxTokens, tools);
         } catch (retryErr) {
           onProgress({ type: 'error', error: retryErr.message });
           return makeResult({ success: false, error: retryErr.message });
