@@ -954,6 +954,7 @@ export function DebugPanel({ isOpen, onClose, graphNodes }: DebugPanelProps) {
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
                 {diagnosis && (
                   <div className="debug-panel-diagnosis">
                     <div className="debug-panel-section-header">Diagnosis</div>
@@ -1066,6 +1067,10 @@ export function DebugPanel({ isOpen, onClose, graphNodes }: DebugPanelProps) {
                       rows={2}
                       autoFocus
                     />
+=======
+                {phase === "complete" && (
+                  <>
+>>>>>>> Stashed changes
 =======
                 {phase === "complete" && (
                   <>
