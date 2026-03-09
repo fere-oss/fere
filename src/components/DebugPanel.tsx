@@ -452,7 +452,7 @@ export function DebugPanel({ onClose, graphNodes, style }: DebugPanelProps) {
   }, []);
 
   const handleCopy = useCallback(() => {
-    navigator.clipboard.writeText(diagnosis).then(() => {
+    window.electronAPI.copyText(diagnosis).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });
@@ -803,7 +803,7 @@ export function DebugPanel({ onClose, graphNodes, style }: DebugPanelProps) {
                                   key={i}
                                   className="debug-chip debug-chip-endpoint"
                                   onClick={() =>
-                                    navigator.clipboard.writeText(
+                                    window.electronAPI.copyText(
                                       `${ep.method} ${ep.url}`,
                                     )
                                   }
