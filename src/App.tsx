@@ -1526,12 +1526,16 @@ function App() {
           />
           <DebugPanel
             style={{
-              width: isPanelExpanded ? debugPanelWidth : 0,
+              width: (isPanelExpanded && !isPanelVisible) ? 0 : (isPanelExpanded ? debugPanelWidth : 0),
               minWidth: 0,
               overflow: "hidden",
               opacity: isPanelVisible ? 1 : 0,
               transform: isPanelVisible ? "translateX(0)" : "translateX(16px)",
-              transition: isResizing ? "none" : undefined,
+              transition: isResizing
+                ? "none"
+                : (isPanelExpanded && !isPanelVisible)
+                  ? "width 0.25s ease-out, opacity 0.22s ease-out, transform 0.25s ease-out"
+                  : undefined,
               pointerEvents: isPanelExpanded ? undefined : "none",
             }}
             onClose={handleCloseDebugPanel}
