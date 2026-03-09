@@ -4,6 +4,10 @@ import type { DebugProgress, GraphNode } from "../types/electron";
 
 interface DebugPanelProps {
   isOpen: boolean;
+<<<<<<< Updated upstream
+  isOpen: boolean;
+=======
+>>>>>>> Stashed changes
   onClose: () => void;
   graphNodes: GraphNode[];
 }
@@ -854,6 +858,109 @@ export function DebugPanel({ isOpen, onClose, graphNodes }: DebugPanelProps) {
                     </div>
                   )}
 
+<<<<<<< Updated upstream
+                {/* Evidence bar */}
+                {evidence &&
+                  (evidence.services.size > 0 ||
+                    evidence.files.length > 0 ||
+                    evidence.endpoints.length > 0) && (
+                    <div className="debug-evidence">
+                      {evidence.services.size > 0 && (
+                        <div className="debug-evidence-section">
+                          <span className="debug-evidence-label">
+                            Services
+                          </span>
+                          <div className="debug-evidence-chips">
+                            {Array.from(evidence.services.values()).map((svc) => (
+                              <button
+                                key={svc.name}
+                                className="debug-chip debug-chip-service"
+                                onClick={() => handleServiceClick(svc.name)}
+                                title={`Tools used: ${svc.tools.join(", ")}`}
+                              >
+                                {svc.name}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {evidence.files.length > 0 && (
+                        <div className="debug-evidence-section">
+                          <span className="debug-evidence-label">Files</span>
+                          <div className="debug-evidence-chips">
+                            {evidence.files.map((f, i) => {
+                              const ref = `${f.service}/${f.path}${f.line ? `:${f.line}` : ""}`;
+                              const resolvable = canResolveFile(ref);
+                              return (
+                                <button
+                                  key={i}
+                                  className={`debug-chip debug-chip-file${resolvable ? "" : " debug-chip-disabled"}`}
+                                  onClick={resolvable ? () => handleFileClick(ref) : undefined}
+                                  title={resolvable ? `${f.service}/${f.path}` : `${f.service}/${f.path} (no project path)`}
+                                  disabled={!resolvable}
+                                >
+                                  {f.path.split("/").pop()}
+                                  {f.line && (
+                                    <span className="debug-chip-line">
+                                      :{f.line}
+                                    </span>
+                                  )}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                      {evidence.endpoints.length > 0 && (
+                        <div className="debug-evidence-section">
+                          <span className="debug-evidence-label">
+                            Endpoints
+                          </span>
+                          <div className="debug-evidence-chips">
+                            {evidence.endpoints.map((ep, i) => {
+                              let pathname: string;
+                              try {
+                                pathname = new URL(ep.url).pathname;
+                              } catch {
+                                pathname = ep.url;
+                              }
+                              return (
+                                <button
+                                  key={i}
+                                  className="debug-chip debug-chip-endpoint"
+                                  onClick={() =>
+                                    navigator.clipboard.writeText(
+                                      `${ep.method} ${ep.url}`,
+                                    )
+                                  }
+                                  title="Click to copy"
+                                >
+                                  <span className="debug-chip-method">
+                                    {ep.method}
+                                  </span>
+                                  {pathname}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                {/* Follow-up input (only when we have a diagnosis, not an error) */}
+                {diagnosis && !error && (
+                  <div className="debug-panel-followup">
+                    <textarea
+                      className="debug-panel-followup-textarea"
+                      placeholder='Ask a follow-up... (e.g. "check Redis instead", "try this payload: {...}")'
+                      value={followUpInput}
+                      onChange={(e) => setFollowUpInput(e.target.value)}
+                      onKeyDown={handleFollowUpKeyDown}
+                      rows={2}
+                      autoFocus
+                    />
+=======
                   {evidence &&
                     (evidence.services.size > 0 ||
                       evidence.files.length > 0 ||
@@ -950,145 +1057,6 @@ export function DebugPanel({ isOpen, onClose, graphNodes }: DebugPanelProps) {
                     Stop Investigation
                   </button>
                 )}
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-                {diagnosis && (
-                  <div className="debug-panel-diagnosis">
-                    <div className="debug-panel-section-header">Diagnosis</div>
-                    <div className="debug-panel-diagnosis-content">
-                      <ReactMarkdown components={markdownComponents}>
-                        {diagnosis}
-                      </ReactMarkdown>
-                    </div>
-                  </div>
-                )}
-
-                {/* Evidence bar */}
-                {evidence &&
-                  (evidence.services.size > 0 ||
-                    evidence.files.length > 0 ||
-                    evidence.endpoints.length > 0) && (
-                    <div className="debug-evidence">
-                      {evidence.services.size > 0 && (
-                        <div className="debug-evidence-section">
-                          <span className="debug-evidence-label">
-                            Services
-                          </span>
-                          <div className="debug-evidence-chips">
-                            {Array.from(evidence.services.values()).map((svc) => (
-                              <button
-                                key={svc.name}
-                                className="debug-chip debug-chip-service"
-                                onClick={() => handleServiceClick(svc.name)}
-                                title={`Tools used: ${svc.tools.join(", ")}`}
-                              >
-                                {svc.name}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                      {evidence.files.length > 0 && (
-                        <div className="debug-evidence-section">
-                          <span className="debug-evidence-label">Files</span>
-                          <div className="debug-evidence-chips">
-                            {evidence.files.map((f, i) => {
-                              const ref = `${f.service}/${f.path}${f.line ? `:${f.line}` : ""}`;
-                              const resolvable = canResolveFile(ref);
-                              return (
-                                <button
-                                  key={i}
-                                  className={`debug-chip debug-chip-file${resolvable ? "" : " debug-chip-disabled"}`}
-                                  onClick={resolvable ? () => handleFileClick(ref) : undefined}
-                                  title={resolvable ? `${f.service}/${f.path}` : `${f.service}/${f.path} (no project path)`}
-                                  disabled={!resolvable}
-                                >
-                                  {f.path.split("/").pop()}
-                                  {f.line && (
-                                    <span className="debug-chip-line">
-                                      :{f.line}
-                                    </span>
-                                  )}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
-                      {evidence.endpoints.length > 0 && (
-                        <div className="debug-evidence-section">
-                          <span className="debug-evidence-label">
-                            Endpoints
-                          </span>
-                          <div className="debug-evidence-chips">
-                            {evidence.endpoints.map((ep, i) => {
-                              let pathname: string;
-                              try {
-                                pathname = new URL(ep.url).pathname;
-                              } catch {
-                                pathname = ep.url;
-                              }
-                              return (
-                                <button
-                                  key={i}
-                                  className="debug-chip debug-chip-endpoint"
-                                  onClick={() =>
-                                    window.electronAPI.copyText(
-                                      `${ep.method} ${ep.url}`,
-                                    )
-                                  }
-                                  title="Click to copy"
-                                >
-                                  <span className="debug-chip-method">
-                                    {ep.method}
-                                  </span>
-                                  {pathname}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                {/* Follow-up input (only when we have a diagnosis, not an error) */}
-                {diagnosis && !error && (
-                  <div className="debug-panel-followup">
-                    <textarea
-                      className="debug-panel-followup-textarea"
-                      placeholder='Ask a follow-up... (e.g. "check Redis instead", "try this payload: {...}")'
-                      value={followUpInput}
-                      onChange={(e) => setFollowUpInput(e.target.value)}
-                      onKeyDown={handleFollowUpKeyDown}
-                      rows={2}
-                      autoFocus
-                    />
-=======
-                {phase === "complete" && (
-                  <>
->>>>>>> Stashed changes
-=======
-                {phase === "complete" && (
-                  <>
->>>>>>> Stashed changes
-=======
-                {phase === "complete" && (
-                  <>
->>>>>>> Stashed changes
-=======
-                {phase === "complete" && (
-                  <>
->>>>>>> Stashed changes
-=======
-                {phase === "complete" && (
-                  <>
->>>>>>> Stashed changes
-=======
                 {phase === "complete" && (
                   <>
 >>>>>>> Stashed changes
@@ -1110,6 +1078,18 @@ export function DebugPanel({ isOpen, onClose, graphNodes }: DebugPanelProps) {
                 )}
               </div>
             </div>
+          </div>
+        )}
+
+        {phase === "complete" && !showResultsPanel && (
+          <div className="debug-agent-dock-status">
+            Results are hidden.
+            <button
+              className="debug-panel-toggle-results"
+              onClick={() => setIsResultsVisible(true)}
+            >
+              View Results
+            </button>
           </div>
         )}
 
