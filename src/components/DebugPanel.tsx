@@ -3,9 +3,9 @@ import ReactMarkdown from "react-markdown";
 import type { DebugProgress, GraphNode } from "../types/electron";
 
 interface DebugPanelProps {
+  isOpen: boolean;
   onClose: () => void;
   graphNodes: GraphNode[];
-  style?: React.CSSProperties;
 }
 
 type DebugPhase = "setup" | "input" | "running" | "complete";
@@ -119,7 +119,7 @@ function formatToolInput(
   }
 }
 
-export function DebugPanel({ onClose, graphNodes, style }: DebugPanelProps) {
+export function DebugPanel({ isOpen, onClose, graphNodes }: DebugPanelProps) {
   const [phase, setPhase] = useState<DebugPhase>("input");
   const [hasApiKey, setHasApiKey] = useState<boolean | null>(null);
   const [apiKeyInput, setApiKeyInput] = useState("");
@@ -131,7 +131,10 @@ export function DebugPanel({ onClose, graphNodes, style }: DebugPanelProps) {
   const [copied, setCopied] = useState(false);
   const [followUpInput, setFollowUpInput] = useState("");
   const [fileError, setFileError] = useState("");
+  const [isResultsVisible, setIsResultsVisible] = useState(true);
   const logRef = useRef<HTMLDivElement>(null);
+  const problemInputRef = useRef<HTMLTextAreaElement>(null);
+  const followUpInputRef = useRef<HTMLTextAreaElement>(null);
 
   // Build lookup maps from graph nodes
   const serviceNameSet = useMemo(
@@ -316,12 +319,13 @@ export function DebugPanel({ onClose, graphNodes, style }: DebugPanelProps) {
   }, [onClose]);
 
   useEffect(() => {
+    if (!isOpen) return;
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === "Escape") handleClose();
     };
     window.addEventListener("keydown", handleEscape);
     return () => window.removeEventListener("keydown", handleEscape);
-  }, [handleClose]);
+  }, [isOpen, handleClose]);
 
   // Subscribe to progress events
   useEffect(() => {
@@ -437,6 +441,7 @@ export function DebugPanel({ onClose, graphNodes, style }: DebugPanelProps) {
     setDiagnosis("");
     setError("");
     setFollowUpInput("");
+    setIsResultsVisible(true);
     setPhase("running");
     const result = await window.electronAPI.debugStart({ problem: trimmed });
     if (!result.success) {
@@ -464,6 +469,7 @@ export function DebugPanel({ onClose, graphNodes, style }: DebugPanelProps) {
     setError("");
     setFollowUpInput("");
     setProblem("");
+    setIsResultsVisible(false);
     setPhase("input");
     window.dispatchEvent(
       new CustomEvent("fere:debug-highlight-services", {
@@ -487,6 +493,7 @@ export function DebugPanel({ onClose, graphNodes, style }: DebugPanelProps) {
     setDiagnosis("");
     setError("");
     setFollowUpInput("");
+    setIsResultsVisible(true);
     setPhase("running");
     const result = await window.electronAPI.debugFollowUp({ message: trimmed });
     if (!result.success) {
@@ -515,8 +522,31 @@ export function DebugPanel({ onClose, graphNodes, style }: DebugPanelProps) {
     [handleFollowUp],
   );
 
-  // Loading state
-  if (hasApiKey === null) return null;
+  const autoResizeTextarea = useCallback(
+    (el: HTMLTextAreaElement | null) => {
+      if (!el) return;
+      const minHeight = 64;
+      const maxHeight = 220;
+      el.style.height = "0px";
+      const next = Math.max(minHeight, Math.min(maxHeight, el.scrollHeight));
+      el.style.height = `${next}px`;
+      el.style.overflowY = el.scrollHeight > maxHeight ? "auto" : "hidden";
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (phase === "input") autoResizeTextarea(problemInputRef.current);
+  }, [phase, problem, autoResizeTextarea]);
+
+  useEffect(() => {
+    if (phase === "complete" && diagnosis && !error) {
+      autoResizeTextarea(followUpInputRef.current);
+    }
+  }, [phase, followUpInput, diagnosis, error, autoResizeTextarea]);
+
+  // Loading / hidden state
+  if (!isOpen || hasApiKey === null) return null;
 
   // Track iteration changes for markers
   let lastIteration = 0;
@@ -524,33 +554,37 @@ export function DebugPanel({ onClose, graphNodes, style }: DebugPanelProps) {
   // Evidence data for complete phase
   const evidence =
     phase === "complete" && diagnosis ? extractEvidence(steps) : null;
+  const showResultsPanel =
+    isResultsVisible && (phase === "running" || phase === "complete");
 
   return (
-    <div className="debug-panel" style={style}>
-      <div className="debug-panel-header">
-        <span className="debug-panel-title">Debug Agent</span>
-        <button className="debug-panel-close" onClick={handleClose}>
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 14 14"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-          >
-            <path d="M1 1l12 12M13 1L1 13" />
-          </svg>
-        </button>
-      </div>
+    <div className="debug-agent-shell">
+      <div className="debug-agent-dock">
+        <div className="debug-agent-dock-header">
+            <button
+              className="debug-panel-close"
+              onClick={handleClose}
+              title="Close Fere Agent"
+              aria-label="Close Fere Agent"
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 14 14"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+              >
+                <path d="M1 1l12 12M13 1L1 13" />
+              </svg>
+            </button>
+        </div>
 
-      <div className="debug-panel-body">
-        {/* Setup Phase */}
         {phase === "setup" && (
           <div className="debug-panel-setup">
             <p className="debug-panel-setup-text">
-              Enter your OpenAI API key to enable the debug agent, or set{" "}
+              Enter your OpenAI API key to enable the Fere Agent, or set{" "}
               <code>OPENAI_API_KEY</code> in the project root <code>.env</code>.
-              Your key is stored locally and never sent to the renderer.
             </p>
             <input
               type="password"
@@ -563,9 +597,7 @@ export function DebugPanel({ onClose, graphNodes, style }: DebugPanelProps) {
               }}
               autoFocus
             />
-            {apiKeyError && (
-              <p className="debug-panel-error">{apiKeyError}</p>
-            )}
+            {apiKeyError && <p className="debug-panel-error">{apiKeyError}</p>}
             <button
               className="debug-panel-submit"
               onClick={handleSaveApiKey}
@@ -576,152 +608,351 @@ export function DebugPanel({ onClose, graphNodes, style }: DebugPanelProps) {
           </div>
         )}
 
-        {/* Input Phase */}
         {phase === "input" && (
-          <div className="debug-panel-input">
-            <label className="debug-panel-label">Describe the issue:</label>
+          <div className="debug-panel-input debug-agent-composer">
+            <img
+              className="debug-agent-logo"
+              src={`${process.env.PUBLIC_URL || ""}/icon.png`}
+              alt="Fere logo"
+            />
             <textarea
+              ref={problemInputRef}
               className="debug-panel-textarea"
-              placeholder="My checkout endpoint returns 500 sometimes when multiple users order at the same time..."
+              placeholder="Ask Fere Agent to investigate an issue... (Shift+Enter for newline)"
               value={problem}
-              onChange={(e) => setProblem(e.target.value)}
+              onChange={(e) => {
+                setProblem(e.target.value);
+                autoResizeTextarea(e.currentTarget);
+              }}
               onKeyDown={handleKeyDown}
-              rows={4}
+              rows={1}
               autoFocus
             />
             <button
               className="debug-panel-submit"
               onClick={handleStart}
               disabled={!problem.trim()}
+              aria-label="Investigate"
             >
-              Investigate
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 16 16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M8 12.7V3.3" />
+                <path d="M3.8 7.5L8 3.3l4.2 4.2" />
+              </svg>
             </button>
           </div>
         )}
 
-        {/* Running + Complete Phases */}
-        {(phase === "running" || phase === "complete") && (
-          <>
-            <div className="debug-panel-problem-summary">
-              <span className="debug-panel-problem-label">Issue:</span>{" "}
-              {problem}
+        {phase === "running" && (
+          <div className="debug-agent-dock-status">
+            Investigating...
+            {!showResultsPanel && (
+              <button
+                className="debug-panel-toggle-results"
+                onClick={() => setIsResultsVisible(true)}
+              >
+                View Results
+              </button>
+            )}
+          </div>
+        )}
+
+        {phase === "complete" && diagnosis && !error && (
+          <div className="debug-panel-followup debug-agent-composer">
+            <img
+              className="debug-agent-logo"
+              src={`${process.env.PUBLIC_URL || ""}/icon.png`}
+              alt="Fere logo"
+            />
+            <textarea
+              ref={followUpInputRef}
+              className="debug-panel-followup-textarea"
+              placeholder='Ask a follow-up... (e.g. "check Redis instead", "try this payload: {...}")'
+              value={followUpInput}
+              onChange={(e) => {
+                setFollowUpInput(e.target.value);
+                autoResizeTextarea(e.currentTarget);
+              }}
+              onKeyDown={handleFollowUpKeyDown}
+              rows={1}
+              autoFocus
+            />
+            <button
+              className="debug-panel-submit"
+              onClick={handleFollowUp}
+              disabled={!followUpInput.trim()}
+              aria-label="Send"
+            >
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 16 16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M8 12.7V3.3" />
+                <path d="M3.8 7.5L8 3.3l4.2 4.2" />
+              </svg>
+            </button>
+          </div>
+        )}
+
+        {showResultsPanel && (
+          <div className="debug-panel debug-panel-inline">
+            <div className="debug-panel-header">
+              <span className="debug-panel-title">Fere Agent Response</span>
+              <button
+                className="debug-panel-close"
+                onClick={() => setIsResultsVisible(false)}
+                title="Hide results panel"
+                aria-label="Hide results panel"
+              >
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 14 14"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                >
+                  <path d="M1 1l12 12M13 1L1 13" />
+                </svg>
+              </button>
             </div>
 
-            {steps.length > 0 && (
-              <div className="debug-panel-investigation" ref={logRef}>
-                <div className="debug-panel-section-header">
-                  Investigation Log
-                </div>
-                {steps.map((step, i) => {
-                  if (step.type === "follow_up") {
-                    return (
-                      <div
-                        className="debug-panel-step debug-panel-step-follow_up"
-                        key={i}
-                      >
-                        <div className="debug-panel-followup-marker">
-                          <span className="debug-panel-step-icon">
-                            {"\u276F"}
-                          </span>
-                          <span className="debug-panel-step-text">
-                            {step.message}
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  }
+            <div className="debug-panel-body">
+              <div className="debug-panel-problem-summary">
+                <span className="debug-panel-problem-label">Issue:</span>{" "}
+                {problem}
+              </div>
 
-                  const showIterationMarker =
-                    step.type === "thinking" &&
-                    step.iteration !== lastIteration;
-                  if (step.type === "thinking")
-                    lastIteration = step.iteration;
-
-                  return (
-                    <div
-                      className={`debug-panel-step debug-panel-step-${step.type}`}
-                      key={i}
-                    >
-                      {showIterationMarker && (
-                        <span className="debug-panel-iteration-marker">
-                          #{step.iteration}
-                        </span>
-                      )}
-                      {step.type === "thinking" && (
-                        <div className="debug-panel-step-row">
-                          <span className="debug-panel-step-icon debug-panel-thinking-dot">
-                            {phase === "running" && i === steps.length - 1
-                              ? "\u25CF"
-                              : "\u25CB"}
-                          </span>
-                          <span className="debug-panel-step-text">
-                            Thinking...
-                          </span>
-                        </div>
-                      )}
-                      {step.type === "tool_call" && (
-                        <div className="debug-panel-step-row">
-                          <span className="debug-panel-step-icon debug-panel-tool-icon">
-                            {"\u25B6"}
-                          </span>
-                          <div className="debug-panel-step-detail">
-                            <span className="debug-panel-tool-name">
-                              {step.tool}
+              {steps.length > 0 && (
+                <div className="debug-panel-investigation" ref={logRef}>
+                  <div className="debug-panel-section-header">
+                    Investigation Log
+                  </div>
+                  {steps.map((step, i) => {
+                    if (step.type === "follow_up") {
+                      return (
+                        <div
+                          className="debug-panel-step debug-panel-step-follow_up"
+                          key={i}
+                        >
+                          <div className="debug-panel-followup-marker">
+                            <span className="debug-panel-step-icon">
+                              {"\u276F"}
                             </span>
-                            <span className="debug-panel-tool-input">
-                              {step.tool &&
-                                step.input &&
-                                formatToolInput(step.tool, step.input)}
+                            <span className="debug-panel-step-text">
+                              {step.message}
                             </span>
                           </div>
                         </div>
-                      )}
-                      {step.type === "tool_result" && (
-                        <div className="debug-panel-step-row">
-                          <span className="debug-panel-step-icon debug-panel-result-icon">
-                            {"\u2190"}
-                          </span>
-                          <span className="debug-panel-step-text debug-panel-result-text">
-                            {step.summary}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+                      );
+                    }
 
-            {/* Running: streaming diagnosis + Stop button */}
-            {phase === "running" && (
-              <>
-                {diagnosis && (
-                  <div className="debug-panel-diagnosis">
-                    <div className="debug-panel-section-header">Diagnosis</div>
-                    <div className="debug-panel-diagnosis-content debug-panel-diagnosis-streaming">
-                      <ReactMarkdown components={markdownComponents}>
-                        {diagnosis}
-                      </ReactMarkdown>
-                    </div>
+                    const showIterationMarker =
+                      step.type === "thinking" &&
+                      step.iteration !== lastIteration;
+                    if (step.type === "thinking")
+                      lastIteration = step.iteration;
+
+                    return (
+                      <div
+                        className={`debug-panel-step debug-panel-step-${step.type}`}
+                        key={i}
+                      >
+                        {showIterationMarker && (
+                          <span className="debug-panel-iteration-marker">
+                            #{step.iteration}
+                          </span>
+                        )}
+                        {step.type === "thinking" && (
+                          <div className="debug-panel-step-row">
+                            <span className="debug-panel-step-icon debug-panel-thinking-dot">
+                              {phase === "running" && i === steps.length - 1
+                                ? "\u25CF"
+                                : "\u25CB"}
+                            </span>
+                            <span className="debug-panel-step-text">
+                              Thinking...
+                            </span>
+                          </div>
+                        )}
+                        {step.type === "tool_call" && (
+                          <div className="debug-panel-step-row">
+                            <span className="debug-panel-step-icon debug-panel-tool-icon">
+                              {"\u25B6"}
+                            </span>
+                            <div className="debug-panel-step-detail">
+                              <span className="debug-panel-tool-name">
+                                {step.tool}
+                              </span>
+                              <span className="debug-panel-tool-input">
+                                {step.tool &&
+                                  step.input &&
+                                  formatToolInput(step.tool, step.input)}
+                              </span>
+                            </div>
+                          </div>
+                        )}
+                        {step.type === "tool_result" && (
+                          <div className="debug-panel-step-row">
+                            <span className="debug-panel-step-icon debug-panel-result-icon">
+                              {"\u2190"}
+                            </span>
+                            <span className="debug-panel-step-text debug-panel-result-text">
+                              {step.summary}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {phase === "running" && diagnosis && (
+                <div className="debug-panel-diagnosis">
+                  <div className="debug-panel-section-header">Diagnosis</div>
+                  <div className="debug-panel-diagnosis-content debug-panel-diagnosis-streaming">
+                    <ReactMarkdown components={markdownComponents}>
+                      {diagnosis}
+                    </ReactMarkdown>
                   </div>
-                )}
-                <div className="debug-panel-actions">
+                </div>
+              )}
+
+              {phase === "complete" && (
+                <>
+                  {error && (
+                    <div className="debug-panel-diagnosis">
+                      <div className="debug-panel-section-header">Error</div>
+                      <div className="debug-panel-error">{error}</div>
+                    </div>
+                  )}
+                  {diagnosis && (
+                    <div className="debug-panel-diagnosis">
+                      <div className="debug-panel-section-header">Diagnosis</div>
+                      <div className="debug-panel-diagnosis-content">
+                        <ReactMarkdown components={markdownComponents}>
+                          {diagnosis}
+                        </ReactMarkdown>
+                      </div>
+                    </div>
+                  )}
+
+                  {evidence &&
+                    (evidence.services.size > 0 ||
+                      evidence.files.length > 0 ||
+                      evidence.endpoints.length > 0) && (
+                      <div className="debug-evidence">
+                        {evidence.services.size > 0 && (
+                          <div className="debug-evidence-section">
+                            <span className="debug-evidence-label">
+                              Services
+                            </span>
+                            <div className="debug-evidence-chips">
+                              {Array.from(evidence.services.values()).map((svc) => (
+                                <button
+                                  key={svc.name}
+                                  className="debug-chip debug-chip-service"
+                                  onClick={() => handleServiceClick(svc.name)}
+                                  title={`Tools used: ${svc.tools.join(", ")}`}
+                                >
+                                  {svc.name}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {evidence.files.length > 0 && (
+                          <div className="debug-evidence-section">
+                            <span className="debug-evidence-label">Files</span>
+                            <div className="debug-evidence-chips">
+                              {evidence.files.map((f, i) => {
+                                const ref = `${f.service}/${f.path}${f.line ? `:${f.line}` : ""}`;
+                                const resolvable = canResolveFile(ref);
+                                return (
+                                  <button
+                                    key={i}
+                                    className={`debug-chip debug-chip-file${resolvable ? "" : " debug-chip-disabled"}`}
+                                    onClick={resolvable ? () => handleFileClick(ref) : undefined}
+                                    title={resolvable ? `${f.service}/${f.path}` : `${f.service}/${f.path} (no project path)`}
+                                    disabled={!resolvable}
+                                  >
+                                    {f.path.split("/").pop()}
+                                    {f.line && (
+                                      <span className="debug-chip-line">
+                                        :{f.line}
+                                      </span>
+                                    )}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                        {evidence.endpoints.length > 0 && (
+                          <div className="debug-evidence-section">
+                            <span className="debug-evidence-label">
+                              Endpoints
+                            </span>
+                            <div className="debug-evidence-chips">
+                              {evidence.endpoints.map((ep, i) => {
+                                let pathname: string;
+                                try {
+                                  pathname = new URL(ep.url).pathname;
+                                } catch {
+                                  pathname = ep.url;
+                                }
+                                return (
+                                  <button
+                                    key={i}
+                                    className="debug-chip debug-chip-endpoint"
+                                    onClick={() =>
+                                      navigator.clipboard.writeText(
+                                        `${ep.method} ${ep.url}`,
+                                      )
+                                    }
+                                    title="Click to copy"
+                                  >
+                                    <span className="debug-chip-method">
+                                      {ep.method}
+                                    </span>
+                                    {pathname}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                </>
+              )}
+
+              <div className="debug-panel-actions">
+                {phase === "running" && (
                   <button className="debug-panel-stop" onClick={handleStop}>
                     Stop Investigation
                   </button>
-                </div>
-              </>
-            )}
-
-            {/* Complete: Diagnosis + Evidence + Follow-up */}
-            {phase === "complete" && (
-              <>
-                {error && (
-                  <div className="debug-panel-diagnosis">
-                    <div className="debug-panel-section-header">Error</div>
-                    <div className="debug-panel-error">{error}</div>
-                  </div>
                 )}
+<<<<<<< Updated upstream
+<<<<<<< Updated upstream
+<<<<<<< Updated upstream
                 {diagnosis && (
                   <div className="debug-panel-diagnosis">
                     <div className="debug-panel-section-header">Diagnosis</div>
@@ -834,40 +1065,53 @@ export function DebugPanel({ onClose, graphNodes, style }: DebugPanelProps) {
                       rows={2}
                       autoFocus
                     />
+=======
+                {phase === "complete" && (
+                  <>
+>>>>>>> Stashed changes
+=======
+                {phase === "complete" && (
+                  <>
+>>>>>>> Stashed changes
+=======
+                {phase === "complete" && (
+                  <>
+>>>>>>> Stashed changes
                     <button
                       className="debug-panel-submit"
-                      onClick={handleFollowUp}
-                      disabled={!followUpInput.trim()}
+                      onClick={handleNewInvestigation}
                     >
-                      Send
+                      New Investigation
                     </button>
-                  </div>
+                    {diagnosis && (
+                      <button
+                        className="debug-panel-copy"
+                        onClick={handleCopy}
+                      >
+                        {copied ? "Copied!" : "Copy Report"}
+                      </button>
+                    )}
+                  </>
                 )}
+              </div>
+            </div>
+          </div>
+        )}
 
-                <div className="debug-panel-actions">
-                  <button
-                    className="debug-panel-submit"
-                    onClick={handleNewInvestigation}
-                  >
-                    New Investigation
-                  </button>
-                  {diagnosis && (
-                    <button
-                      className="debug-panel-copy"
-                      onClick={handleCopy}
-                    >
-                      {copied ? "Copied!" : "Copy Report"}
-                    </button>
-                  )}
-                </div>
-              </>
-            )}
-          </>
+        {phase === "complete" && !showResultsPanel && (
+          <div className="debug-agent-dock-status">
+            Results are hidden.
+            <button
+              className="debug-panel-toggle-results"
+              onClick={() => setIsResultsVisible(true)}
+            >
+              View Results
+            </button>
+          </div>
         )}
       </div>
-      {fileError && (
-        <div className="debug-file-toast">{fileError}</div>
-      )}
+
+      {fileError && <div className="debug-file-toast">{fileError}</div>}
     </div>
   );
 }

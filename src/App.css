@@ -9667,72 +9667,115 @@ textarea {
 }
 
 /* =====================================================
-   Debug Panel
+   Fere Agent (Bottom Dock + Floating Panel)
    ===================================================== */
 
-/* Draggable divider between map and debug panel */
-.debug-divider {
-  flex-shrink: 0;
-  width: 5px;
-  cursor: col-resize;
-  background: transparent;
-  border-radius: 3px;
-  transition: background 0.15s, opacity 0.22s ease-out;
-  position: relative;
-  opacity: 0;
+.debug-agent-shell {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 260;
 }
 
-.debug-divider-open {
-  opacity: 1;
-}
-
-.debug-divider:hover,
-.debug-divider:active {
-  background: var(--border-hover);
-}
-
-.debug-divider::after {
-  content: '';
+.debug-agent-dock {
   position: absolute;
-  top: 50%;
   left: 50%;
-  transform: translate(-50%, -50%);
-  width: 1px;
-  height: 32px;
-  background: var(--border-color);
-  border-radius: 1px;
+  bottom: 52px;
+  transform: translateX(-50%);
+  width: min(900px, calc(100vw - 32px));
+  pointer-events: auto;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  animation: debug-agent-dock-in 0.16s ease-out;
+}
+
+.debug-agent-dock-header {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.debug-agent-dock-status {
+  font-size: 13px;
+  color: #6b7280;
+  margin: 0;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(229, 231, 235, 0.9);
+  border-radius: 14px;
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.debug-panel-toggle-results {
+  border: 1px solid #111;
+  background: #111;
+  color: #fff;
+  border-radius: 10px;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.debug-panel-toggle-results:hover {
+  background: #000;
+  border-color: #000;
+}
+
+.debug-agent-composer {
+  position: relative;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 26px;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+}
+
+.debug-agent-logo {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  object-fit: cover;
+  pointer-events: none;
+  opacity: 0.95;
 }
 
 .debug-panel {
-  flex-shrink: 0;
-  /* Width is set by inline style (no width transition — avoids layout reflows)  */
-  /* opacity + transform are GPU-composited and always smooth                    */
-  opacity: 0;
-  transform: translateX(20px);
-  transition: opacity 0.22s ease-out,
-              transform 0.28s cubic-bezier(0.32, 0.72, 0, 1);
+  position: relative;
+  width: 100%;
+  max-height: min(52vh, 420px);
+  margin-top: 8px;
+  pointer-events: auto;
   background: var(--bg-white);
-  border-radius: 12px;
-  box-shadow: -2px 0 16px rgba(0, 0, 0, 0.1);
+  border-radius: 14px;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.12);
   border: 1px solid var(--border-color);
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  animation: debug-agent-panel-in 0.18s ease-out;
 }
 
-@media (max-width: 768px) {
-  .app-body {
-    flex-direction: column;
-  }
-  .debug-divider {
-    display: none;
-  }
-  .debug-panel {
-    width: 100% !important; /* override inline width on mobile */
-    max-width: 100%;
-    min-height: 320px;
-    border-radius: 12px 12px 0 0;
-  }
+@keyframes debug-agent-dock-in {
+  from { opacity: 0; transform: translateX(-50%) translateY(10px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+@keyframes debug-agent-panel-in {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .debug-panel-header {
@@ -9804,15 +9847,13 @@ textarea {
 }
 
 .debug-panel-api-input:focus {
-  border-color: #0078d4;
-  box-shadow: 0 0 0 2px rgba(0, 120, 212, 0.15);
+  border-color: #111;
+  box-shadow: 0 0 0 1px rgba(17, 17, 17, 0.15);
 }
 
 /* Input phase */
 .debug-panel-input {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+  position: relative;
 }
 
 .debug-panel-label {
@@ -9823,27 +9864,37 @@ textarea {
 
 .debug-panel-textarea {
   width: 100%;
-  padding: 10px 12px;
+  --composer-min-height: 84px;
+  padding-left: 72px;
+  padding-right: 84px;
+  padding-top: calc((var(--composer-min-height) - 1lh) / 2);
+  padding-bottom: calc((var(--composer-min-height) - 1lh) / 2);
   font-size: 13px;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
-  background: var(--bg-primary);
+  border: 0;
+  border-radius: 26px;
+  background: #ffffff;
   color: var(--text-primary);
-  resize: vertical;
-  min-height: 80px;
+  resize: none;
+  min-height: var(--composer-min-height);
   outline: none;
-  line-height: 1.5;
+  line-height: 1.55;
+  transition: color 0.15s ease;
   box-sizing: border-box;
+  max-height: 220px;
+}
+
+.debug-panel-textarea:hover {
+  background: #ffffff;
 }
 
 .debug-panel-textarea:focus {
-  border-color: #0078d4;
-  box-shadow: 0 0 0 2px rgba(0, 120, 212, 0.15);
+  background: #ffffff;
+  box-shadow: none;
 }
 
 .debug-panel-textarea::placeholder {
-  color: #a3a3a3;
+  color: #9ca3af;
 }
 
 .debug-panel-submit {
@@ -9851,7 +9902,7 @@ textarea {
   font-size: 13px;
   font-weight: 500;
   color: #fff;
-  background: #0078d4;
+  background: #111;
   border: none;
   border-radius: 6px;
   cursor: pointer;
@@ -9859,12 +9910,37 @@ textarea {
 }
 
 .debug-panel-submit:hover:not(:disabled) {
-  background: #006cbd;
+  background: #000;
 }
 
 .debug-panel-submit:disabled {
   opacity: 0.5;
   cursor: default;
+}
+
+.debug-panel-input .debug-panel-submit,
+.debug-panel-followup .debug-panel-submit {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 2;
+  width: 42px;
+  height: 42px;
+  min-width: 42px;
+  padding: 0;
+  border-radius: 999px;
+  background: #111;
+  color: #fff;
+  border: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.debug-panel-input .debug-panel-submit:hover:not(:disabled),
+.debug-panel-followup .debug-panel-submit:hover:not(:disabled) {
+  background: #000;
 }
 
 /* Problem summary (shown during running/complete) */
@@ -10106,6 +10182,7 @@ textarea {
 /* Actions bar */
 .debug-panel-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   padding-top: 8px;
   border-top: 1px solid var(--border-color);
@@ -10151,32 +10228,42 @@ textarea {
 
 /* Follow-up conversation */
 .debug-panel-followup {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding-top: 8px;
-  border-top: 1px solid var(--border-color);
+  position: relative;
 }
 
 .debug-panel-followup-textarea {
   width: 100%;
-  padding: 8px 10px;
+  --composer-min-height: 84px;
+  padding-left: 72px;
+  padding-right: 84px;
+  padding-top: calc((var(--composer-min-height) - 1lh) / 2);
+  padding-bottom: calc((var(--composer-min-height) - 1lh) / 2);
   font-size: 13px;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
-  background: var(--bg-primary);
+  border: 0;
+  border-radius: 26px;
+  background: #ffffff;
   color: var(--text-primary);
-  resize: vertical;
-  min-height: 48px;
+  resize: none;
+  min-height: var(--composer-min-height);
   outline: none;
-  line-height: 1.5;
+  line-height: 1.55;
+  transition: color 0.15s ease;
   box-sizing: border-box;
+  max-height: 220px;
+}
+
+.debug-panel-followup-textarea:hover {
+  background: #ffffff;
 }
 
 .debug-panel-followup-textarea:focus {
-  border-color: #0078d4;
-  box-shadow: 0 0 0 2px rgba(0, 120, 212, 0.15);
+  background: #ffffff;
+  box-shadow: none;
+}
+
+.debug-panel-followup-textarea::placeholder {
+  color: #9ca3af;
 }
 
 .debug-panel-followup-marker {
@@ -10283,8 +10370,8 @@ textarea {
 
 /* File open error toast */
 .debug-file-toast {
-  position: absolute;
-  bottom: 12px;
+  position: fixed;
+  bottom: 124px;
   left: 50%;
   transform: translateX(-50%);
   background: #d32f2f;
@@ -10301,6 +10388,54 @@ textarea {
 @keyframes debug-toast-in {
   from { opacity: 0; transform: translateX(-50%) translateY(6px); }
   to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+@media (max-width: 980px) {
+  .debug-panel {
+    width: 100%;
+    margin-top: 8px;
+    max-height: min(48vh, 380px);
+  }
+}
+
+@media (max-width: 768px) {
+  .debug-agent-dock {
+    bottom: 10px;
+    width: calc(100vw - 20px);
+    padding: 0;
+  }
+
+  .debug-panel {
+    width: 100%;
+    margin-top: 8px;
+    max-height: min(46vh, 340px);
+    border-radius: 12px;
+  }
+
+  .debug-panel-input,
+  .debug-panel-followup {
+    position: relative;
+  }
+
+  .debug-panel-textarea,
+  .debug-panel-followup-textarea {
+    width: 100%;
+    padding-right: 66px;
+    padding-bottom: 18px;
+    padding-left: 12px;
+  }
+
+  .debug-panel-input .debug-panel-submit,
+  .debug-panel-followup .debug-panel-submit {
+    right: 12px;
+    top: 50%;
+    bottom: auto;
+    min-width: 42px;
+  }
+
+  .debug-agent-logo {
+    display: none;
+  }
 }
 
 /* Graph highlight for diagnosed services */

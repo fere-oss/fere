@@ -215,73 +215,20 @@ function App() {
   // Database node for database page
   const [databaseNode, setDatabaseNode] = useState<GraphNode | null>(null);
 
-  // Debug panel
-  // hasEverOpened: mounts panel once, keeps it alive (preserves conversation state)
-  // isPanelExpanded: controls flex width — changes instantly (no width transition)
-  // isPanelVisible: controls opacity/transform — animated via CSS transition
+  // Fere Agent
+  // hasEverOpened: mounts once and preserves conversation state across open/close
   const [hasEverOpened, setHasEverOpened] = useState(false);
-  const [isPanelExpanded, setIsPanelExpanded] = useState(false);
-  const [isPanelVisible, setIsPanelVisible] = useState(false);
-  const [isResizing, setIsResizing] = useState(false);
+  const [isAgentOpen, setIsAgentOpen] = useState(false);
   const [debugHighlightNodeIds, setDebugHighlightNodeIds] = useState<Set<string>>(new Set());
-  const [debugPanelWidth, setDebugPanelWidth] = useState(400);
-  const isDragging = useRef(false);
-  const dragStartX = useRef(0);
-  const dragStartWidth = useRef(0);
-  const panelCollapseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleOpenDebugPanel = useCallback(() => {
-    // Cancel any in-progress close animation
-    if (panelCollapseTimer.current) {
-      clearTimeout(panelCollapseTimer.current);
-      panelCollapseTimer.current = null;
-    }
     setHasEverOpened(true);
-    setIsPanelExpanded(true); // give panel its width immediately (one-frame layout snap)
-    // Double rAF: wait for browser to paint the expanded-but-invisible state,
-    // then trigger the opacity/transform CSS transition.
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => setIsPanelVisible(true));
-    });
+    setIsAgentOpen(true);
   }, []);
 
   const handleCloseDebugPanel = useCallback(() => {
-    setIsPanelVisible(false); // trigger fade-out transition
+    setIsAgentOpen(false);
     setDebugHighlightNodeIds(new Set());
-    // After fade completes, remove flex space so map snaps back to full width
-    panelCollapseTimer.current = setTimeout(() => {
-      setIsPanelExpanded(false);
-      panelCollapseTimer.current = null;
-    }, 220);
-  }, []);
-
-  const handleDividerMouseDown = useCallback((e: React.MouseEvent) => {
-    isDragging.current = true;
-    dragStartX.current = e.clientX;
-    dragStartWidth.current = debugPanelWidth;
-    setIsResizing(true);
-    e.preventDefault();
-  }, [debugPanelWidth]);
-
-  useEffect(() => {
-    const onMouseMove = (e: MouseEvent) => {
-      if (!isDragging.current) return;
-      const delta = dragStartX.current - e.clientX;
-      const next = Math.max(280, Math.min(720, dragStartWidth.current + delta));
-      setDebugPanelWidth(next);
-    };
-    const onMouseUp = () => {
-      if (isDragging.current) {
-        isDragging.current = false;
-        setIsResizing(false);
-      }
-    };
-    window.addEventListener("mousemove", onMouseMove);
-    window.addEventListener("mouseup", onMouseUp);
-    return () => {
-      window.removeEventListener("mousemove", onMouseMove);
-      window.removeEventListener("mouseup", onMouseUp);
-    };
   }, []);
 
   // Sub-tab for containers view
@@ -457,6 +404,19 @@ function App() {
       window.removeEventListener("fere:debug-focus-node", handleDebugFocus);
     };
   }, [viewMode]);
+
+  // Cmd/Ctrl+K opens Fere Agent
+  useEffect(() => {
+    const handleShortcut = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setHasEverOpened(true);
+        setIsAgentOpen(true);
+      }
+    };
+    window.addEventListener("keydown", handleShortcut);
+    return () => window.removeEventListener("keydown", handleShortcut);
+  }, []);
 
   useEffect(() => {
     if (optimisticDownNodes.size === 0) return;
@@ -1103,7 +1063,7 @@ function App() {
           <button
             className="alert-toggle"
             onClick={handleOpenDebugPanel}
-            title="Debug Agent"
+            title="Fere Agent"
           >
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2">
               <circle cx="8" cy="6" r="4" />
@@ -1516,32 +1476,11 @@ function App() {
         </ErrorBoundary>
       </main>
       {hasEverOpened && (
-        <>
-          <div
-            className={`debug-divider${isPanelVisible ? " debug-divider-open" : ""}`}
-            style={{ display: isPanelExpanded ? undefined : "none" }}
-            onMouseDown={handleDividerMouseDown}
-            role="separator"
-            aria-label="Resize debug panel"
-          />
-          <DebugPanel
-            style={{
-              width: (isPanelExpanded && !isPanelVisible) ? 0 : (isPanelExpanded ? debugPanelWidth : 0),
-              minWidth: 0,
-              overflow: "hidden",
-              opacity: isPanelVisible ? 1 : 0,
-              transform: isPanelVisible ? "translateX(0)" : "translateX(16px)",
-              transition: isResizing
-                ? "none"
-                : (isPanelExpanded && !isPanelVisible)
-                  ? "width 0.25s ease-out, opacity 0.22s ease-out, transform 0.25s ease-out"
-                  : undefined,
-              pointerEvents: isPanelExpanded ? undefined : "none",
-            }}
-            onClose={handleCloseDebugPanel}
-            graphNodes={graph.nodes}
-          />
-        </>
+        <DebugPanel
+          isOpen={isAgentOpen}
+          onClose={handleCloseDebugPanel}
+          graphNodes={graph.nodes}
+        />
       )}
       </div>
 
