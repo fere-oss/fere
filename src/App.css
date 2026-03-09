@@ -9671,14 +9671,22 @@ textarea {
    ===================================================== */
 
 .debug-agent-shell {
-  position: fixed;
-  inset: 0;
+  position: relative;
+  flex: 0 0 0;
+  width: 0;
+  min-width: 0;
   pointer-events: none;
   z-index: 260;
 }
 
+.debug-agent-shell-with-results {
+  flex: 0 0 min(540px, 38vw);
+  width: min(540px, 38vw);
+  pointer-events: auto;
+}
+
 .debug-agent-dock {
-  position: absolute;
+  position: fixed;
   left: 50%;
   bottom: 52px;
   transform: translateX(-50%);
@@ -9693,6 +9701,51 @@ textarea {
   flex-direction: column;
   gap: 8px;
   animation: debug-agent-dock-in 0.16s ease-out;
+}
+
+.debug-agent-shell-with-results .debug-agent-dock {
+  left: 16px;
+  right: calc(min(540px, 38vw) + 16px);
+  transform: none;
+  width: min(760px, calc(100vw - min(540px, 38vw) - 32px));
+  margin-left: auto;
+  margin-right: auto;
+  max-width: none;
+}
+
+.debug-agent-shell-with-results .debug-agent-composer {
+  border-radius: 22px;
+}
+
+.debug-agent-shell-with-results .debug-agent-logo {
+  width: 38px;
+  height: 38px;
+  left: 12px;
+}
+
+.debug-agent-shell-with-results .debug-panel-textarea,
+.debug-agent-shell-with-results .debug-panel-followup-textarea {
+  --composer-min-height: 68px;
+  padding-left: 60px;
+  padding-right: 72px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.debug-agent-shell-with-results .debug-textarea-highlight {
+  --composer-min-height: 68px;
+  padding-left: 60px;
+  padding-right: 72px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.debug-agent-shell-with-results .debug-panel-input .debug-panel-submit,
+.debug-agent-shell-with-results .debug-panel-followup .debug-panel-submit {
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  right: 10px;
 }
 
 .debug-agent-dock-header {
@@ -9765,6 +9818,17 @@ textarea {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  animation: debug-agent-panel-in 0.18s ease-out;
+}
+
+.debug-panel-inline {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  max-height: none;
+  margin-top: 0;
+  pointer-events: auto;
+  z-index: auto;
   animation: debug-agent-panel-in 0.18s ease-out;
 }
 
@@ -10231,6 +10295,56 @@ textarea {
   position: relative;
 }
 
+.debug-textarea-wrap {
+  position: relative;
+  width: 100%;
+}
+
+.debug-textarea-highlight {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  white-space: pre-wrap;
+  word-break: break-word;
+  --composer-min-height: 84px;
+  padding-left: 72px;
+  padding-right: 84px;
+  padding-top: calc((var(--composer-min-height) - 1lh) / 2);
+  padding-bottom: calc((var(--composer-min-height) - 1lh) / 2);
+  font-size: 13px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  line-height: 1.55;
+  color: var(--text-primary);
+  box-sizing: border-box;
+}
+
+.debug-textarea-highlight-placeholder {
+  color: #9ca3af;
+}
+
+.debug-textarea-input {
+  position: relative;
+  z-index: 1;
+  background: transparent !important;
+  color: transparent;
+  caret-color: var(--text-primary);
+}
+
+.debug-textarea-input::placeholder {
+  color: transparent;
+}
+
+.debug-inline-mention {
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  font-weight: inherit;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+}
+
 .debug-panel-followup-textarea {
   width: 100%;
   --composer-min-height: 84px;
@@ -10264,6 +10378,74 @@ textarea {
 
 .debug-panel-followup-textarea::placeholder {
   color: #9ca3af;
+}
+
+.debug-mention-menu {
+  position: absolute;
+  left: 56px;
+  right: 56px;
+  bottom: calc(100% + 8px);
+  max-height: 220px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px;
+  background: #fff;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.14);
+  z-index: 6;
+}
+
+.debug-mention-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 12px;
+  font-family: 'SF Mono', 'Fira Code', 'Menlo', monospace;
+  border-radius: 8px;
+  padding: 7px 10px;
+  cursor: pointer;
+}
+
+.debug-mention-item:hover,
+.debug-mention-item-active {
+  background: rgba(17, 24, 39, 0.07);
+}
+
+.debug-mention-item-main {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.debug-mention-item-icon {
+  flex-shrink: 0;
+}
+
+.debug-mention-item-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.debug-mention-item-badge {
+  flex-shrink: 0;
+  border: 1px solid;
+  border-radius: 999px;
+  padding: 1px 7px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.4;
 }
 
 .debug-panel-followup-marker {
@@ -10391,10 +10573,30 @@ textarea {
 }
 
 @media (max-width: 980px) {
+  .debug-agent-shell,
+  .debug-agent-shell-with-results {
+    position: fixed;
+    inset: 0;
+    flex: none;
+    width: auto;
+    pointer-events: none;
+  }
+
   .debug-panel {
     width: 100%;
     margin-top: 8px;
     max-height: min(48vh, 380px);
+  }
+
+  .debug-panel-inline {
+    position: relative;
+    right: auto;
+    top: auto;
+    bottom: auto;
+    width: 100%;
+    max-height: min(48vh, 380px);
+    margin-top: 8px;
+    z-index: auto;
   }
 }
 
@@ -10412,6 +10614,11 @@ textarea {
     border-radius: 12px;
   }
 
+  .debug-panel-inline {
+    max-height: min(46vh, 340px);
+    border-radius: 12px;
+  }
+
   .debug-panel-input,
   .debug-panel-followup {
     position: relative;
@@ -10420,6 +10627,12 @@ textarea {
   .debug-panel-textarea,
   .debug-panel-followup-textarea {
     width: 100%;
+    padding-right: 66px;
+    padding-bottom: 18px;
+    padding-left: 12px;
+  }
+
+  .debug-textarea-highlight {
     padding-right: 66px;
     padding-bottom: 18px;
     padding-left: 12px;

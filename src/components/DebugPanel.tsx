@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import ReactMarkdown from "react-markdown";
 import type { DebugProgress, GraphNode } from "../types/electron";
+import { getServiceColor, getTypeBadge } from "./graph/constants";
+import { BrandIcon, inferServiceBrand } from "./graph/brandIcons";
 
 interface DebugPanelProps {
   isOpen: boolean;
@@ -24,6 +26,13 @@ interface EvidenceData {
   services: Map<string, { name: string; tools: string[] }>;
   files: Array<{ service: string; path: string; line?: number }>;
   endpoints: Array<{ method: string; url: string }>;
+}
+
+interface MentionContext {
+  target: "problem" | "followup";
+  start: number;
+  end: number;
+  query: string;
 }
 
 function extractEvidence(steps: InvestigationStep[]): EvidenceData {
@@ -132,16 +141,16 @@ export function DebugPanel({ isOpen, onClose, graphNodes }: DebugPanelProps) {
   const [followUpInput, setFollowUpInput] = useState("");
   const [fileError, setFileError] = useState("");
   const [isResultsVisible, setIsResultsVisible] = useState(true);
+  const [problemCaret, setProblemCaret] = useState(0);
+  const [followUpCaret, setFollowUpCaret] = useState(0);
+  const [mentionIndex, setMentionIndex] = useState(0);
   const logRef = useRef<HTMLDivElement>(null);
   const problemInputRef = useRef<HTMLTextAreaElement>(null);
   const followUpInputRef = useRef<HTMLTextAreaElement>(null);
+  const problemHighlightRef = useRef<HTMLDivElement>(null);
+  const followUpHighlightRef = useRef<HTMLDivElement>(null);
 
   // Build lookup maps from graph nodes
-  const serviceNameSet = useMemo(
-    () => new Set(graphNodes.map((n) => n.name.toLowerCase())),
-    [graphNodes],
-  );
-
   const nodeByName = useMemo(() => {
     const map = new Map<string, GraphNode>();
     for (const n of graphNodes) {
@@ -150,19 +159,58 @@ export function DebugPanel({ isOpen, onClose, graphNodes }: DebugPanelProps) {
     return map;
   }, [graphNodes]);
 
+  const mentionCandidates = useMemo(() => {
+    const isIpLike = (name: string) =>
+      /^(\d{1,3}\.){3}\d{1,3}(:\d+)?$/.test(name) ||
+      /^\[?[a-fA-F0-9:]+\]?(:\d+)?$/.test(name);
+
+    const byName = new Map<string, GraphNode>();
+    for (const node of graphNodes) {
+      const name = node.name.trim();
+      if (!name || isIpLike(name)) continue;
+      if (node.isGhost || node.type === "external") continue;
+      if (!byName.has(name)) byName.set(name, node);
+    }
+    return Array.from(byName.entries())
+      .map(([name, node]) => ({ name, node }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [graphNodes]);
+
   // --- Service & file click handlers ---
+
+  const normalizeServiceToken = useCallback((value: string) => {
+    return value
+      .trim()
+      .replace(/^`+|`+$/g, "")
+      .replace(/^@+/, "")
+      .replace(/^[([{"']+|[)\]}",.!?:;'"]+$/g, "")
+      .toLowerCase();
+  }, []);
+
+  const findServiceNode = useCallback(
+    (serviceToken: string) => {
+      const normalized = normalizeServiceToken(serviceToken);
+      if (!normalized) return undefined;
+      return (
+        nodeByName.get(normalized) ||
+        graphNodes.find(
+          (n) =>
+            n.name.toLowerCase() === normalized ||
+            n.name.toLowerCase().includes(normalized),
+        )
+      );
+    },
+    [graphNodes, nodeByName, normalizeServiceToken],
+  );
 
   const handleServiceClick = useCallback(
     (serviceName: string) => {
-      const node =
-        nodeByName.get(serviceName.toLowerCase()) ||
-        graphNodes.find((n) =>
-          n.name.toLowerCase().includes(serviceName.toLowerCase()),
-        );
+      const node = findServiceNode(serviceName);
       if (!node) return;
+      // Service clicks should navigate/focus without applying debug glow.
       window.dispatchEvent(
         new CustomEvent("fere:debug-highlight-services", {
-          detail: { nodeIds: [node.id] },
+          detail: { nodeIds: [] },
         }),
       );
       window.dispatchEvent(
@@ -171,7 +219,7 @@ export function DebugPanel({ isOpen, onClose, graphNodes }: DebugPanelProps) {
         }),
       );
     },
-    [graphNodes, nodeByName],
+    [findServiceNode],
   );
 
   const handleFileClick = useCallback(
@@ -246,6 +294,67 @@ export function DebugPanel({ isOpen, onClose, graphNodes }: DebugPanelProps) {
     [graphNodes, nodeByName],
   );
 
+  const getMentionContext = useCallback(
+    (
+      text: string,
+      caret: number,
+      target: "problem" | "followup",
+    ): MentionContext | null => {
+      const pos = Math.max(0, Math.min(caret, text.length));
+      const uptoCaret = text.slice(0, pos);
+      const tokenStart = Math.max(
+        uptoCaret.lastIndexOf(" "),
+        uptoCaret.lastIndexOf("\n"),
+        uptoCaret.lastIndexOf("\t"),
+      ) + 1;
+      const token = uptoCaret.slice(tokenStart);
+      if (!token.startsWith("@")) return null;
+      if (token.length > 1 && token.includes("@")) return null;
+      const query = token.slice(1);
+      if (!/^[a-zA-Z0-9._-]*$/.test(query)) return null;
+      return { target, start: tokenStart, end: pos, query };
+    },
+    [],
+  );
+
+  const activeMention = useMemo(() => {
+    if (phase === "input") {
+      return getMentionContext(problem, problemCaret, "problem");
+    }
+    if (phase === "complete" && diagnosis && !error) {
+      return getMentionContext(followUpInput, followUpCaret, "followup");
+    }
+    return null;
+  }, [
+    phase,
+    diagnosis,
+    error,
+    problem,
+    problemCaret,
+    followUpInput,
+    followUpCaret,
+    getMentionContext,
+  ]);
+
+  const mentionOptions = useMemo(() => {
+    if (!activeMention) return [];
+    const q = activeMention.query.toLowerCase();
+    return mentionCandidates
+      .filter((option) => option.name.toLowerCase().includes(q))
+      .slice(0, 8);
+  }, [activeMention, mentionCandidates]);
+
+  useEffect(() => {
+    setMentionIndex(0);
+  }, [activeMention?.target, activeMention?.query]);
+
+  useEffect(() => {
+    if (mentionOptions.length === 0) return;
+    if (mentionIndex >= mentionOptions.length) {
+      setMentionIndex(mentionOptions.length - 1);
+    }
+  }, [mentionIndex, mentionOptions]);
+
   // --- Markdown components with interactive code ---
 
   const markdownComponents = useMemo(
@@ -263,7 +372,7 @@ export function DebugPanel({ isOpen, onClose, graphNodes }: DebugPanelProps) {
         const text = String(children).replace(/\n$/, "");
 
         // Check if it's a service name
-        if (serviceNameSet.has(text.toLowerCase())) {
+        if (findServiceNode(text)) {
           return (
             <span
               className="debug-clickable-service"
@@ -294,8 +403,44 @@ export function DebugPanel({ isOpen, onClose, graphNodes }: DebugPanelProps) {
 
         return <code>{text}</code>;
       },
+      a({
+        href,
+        children,
+      }: {
+        href?: string;
+        children?: React.ReactNode;
+      }) {
+        const label = String(children ?? "").replace(/\n/g, " ").trim();
+        const matchedNode = findServiceNode(label) || findServiceNode(href || "");
+
+        if (matchedNode) {
+          return (
+            <a
+              href={href || "#"}
+              className="debug-clickable-service debug-markdown-service-link"
+              onClick={(e) => {
+                e.preventDefault();
+                handleServiceClick(matchedNode.name);
+              }}
+              title={`Focus ${matchedNode.name} on graph`}
+            >
+              {children}
+            </a>
+          );
+        }
+
+        return (
+          <a
+            href={href}
+            target={href?.startsWith("http") ? "_blank" : undefined}
+            rel={href?.startsWith("http") ? "noreferrer" : undefined}
+          >
+            {children}
+          </a>
+        );
+      },
     }),
-    [serviceNameSet, handleServiceClick, handleFileClick, canResolveFile],
+    [findServiceNode, handleServiceClick, handleFileClick, canResolveFile],
   );
 
   // --- Lifecycle ---
@@ -469,7 +614,7 @@ export function DebugPanel({ isOpen, onClose, graphNodes }: DebugPanelProps) {
     setError("");
     setFollowUpInput("");
     setProblem("");
-    setIsResultsVisible(false);
+    setIsResultsVisible(true);
     setPhase("input");
     window.dispatchEvent(
       new CustomEvent("fere:debug-highlight-services", {
@@ -502,26 +647,6 @@ export function DebugPanel({ isOpen, onClose, graphNodes }: DebugPanelProps) {
     }
   }, [followUpInput]);
 
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-      if (e.key === "Enter" && !e.shiftKey) {
-        e.preventDefault();
-        handleStart();
-      }
-    },
-    [handleStart],
-  );
-
-  const handleFollowUpKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-      if (e.key === "Enter" && !e.shiftKey) {
-        e.preventDefault();
-        handleFollowUp();
-      }
-    },
-    [handleFollowUp],
-  );
-
   const autoResizeTextarea = useCallback(
     (el: HTMLTextAreaElement | null) => {
       if (!el) return;
@@ -533,6 +658,161 @@ export function DebugPanel({ isOpen, onClose, graphNodes }: DebugPanelProps) {
       el.style.overflowY = el.scrollHeight > maxHeight ? "auto" : "hidden";
     },
     [],
+  );
+
+  const applyMention = useCallback(
+    (serviceName: string) => {
+      if (!activeMention) return;
+      const insertion = `@${serviceName} `;
+      const nextCursor = activeMention.start + insertion.length;
+      if (activeMention.target === "problem") {
+        const next =
+          problem.slice(0, activeMention.start) +
+          insertion +
+          problem.slice(activeMention.end);
+        setProblem(next);
+        setProblemCaret(nextCursor);
+        requestAnimationFrame(() => {
+          const el = problemInputRef.current;
+          if (!el) return;
+          el.focus();
+          el.setSelectionRange(nextCursor, nextCursor);
+          autoResizeTextarea(el);
+        });
+        return;
+      }
+      const next =
+        followUpInput.slice(0, activeMention.start) +
+        insertion +
+        followUpInput.slice(activeMention.end);
+      setFollowUpInput(next);
+      setFollowUpCaret(nextCursor);
+      requestAnimationFrame(() => {
+        const el = followUpInputRef.current;
+        if (!el) return;
+        el.focus();
+        el.setSelectionRange(nextCursor, nextCursor);
+        autoResizeTextarea(el);
+      });
+    },
+    [activeMention, problem, followUpInput, autoResizeTextarea],
+  );
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      if (mentionOptions.length > 0 && activeMention?.target === "problem") {
+        if (e.key === "ArrowDown") {
+          e.preventDefault();
+          setMentionIndex((prev) => (prev + 1) % mentionOptions.length);
+          return;
+        }
+        if (e.key === "ArrowUp") {
+          e.preventDefault();
+          setMentionIndex((prev) =>
+            (prev - 1 + mentionOptions.length) % mentionOptions.length,
+          );
+          return;
+        }
+        if (e.key === "Enter" || e.key === "Tab") {
+          e.preventDefault();
+          applyMention(
+            (mentionOptions[mentionIndex] || mentionOptions[0]).name,
+          );
+          return;
+        }
+      }
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        handleStart();
+      }
+    },
+    [handleStart, mentionOptions, mentionIndex, activeMention, applyMention],
+  );
+
+  const handleFollowUpKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      if (mentionOptions.length > 0 && activeMention?.target === "followup") {
+        if (e.key === "ArrowDown") {
+          e.preventDefault();
+          setMentionIndex((prev) => (prev + 1) % mentionOptions.length);
+          return;
+        }
+        if (e.key === "ArrowUp") {
+          e.preventDefault();
+          setMentionIndex((prev) =>
+            (prev - 1 + mentionOptions.length) % mentionOptions.length,
+          );
+          return;
+        }
+        if (e.key === "Enter" || e.key === "Tab") {
+          e.preventDefault();
+          applyMention(
+            (mentionOptions[mentionIndex] || mentionOptions[0]).name,
+          );
+          return;
+        }
+      }
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        handleFollowUp();
+      }
+    },
+    [handleFollowUp, mentionOptions, mentionIndex, activeMention, applyMention],
+  );
+
+  const syncHighlightScroll = useCallback(
+    (
+      e: React.UIEvent<HTMLTextAreaElement>,
+      ref: React.RefObject<HTMLDivElement | null>,
+    ) => {
+      if (!ref.current) return;
+      ref.current.scrollTop = e.currentTarget.scrollTop;
+      ref.current.scrollLeft = e.currentTarget.scrollLeft;
+    },
+    [],
+  );
+
+  const renderTextWithMentionHighlights = useCallback(
+    (text: string) => {
+      if (!text) return null;
+      const nodes: React.ReactNode[] = [];
+      const regex = /@([a-zA-Z0-9._-]+)/g;
+      let lastIndex = 0;
+      let match: RegExpExecArray | null;
+      while ((match = regex.exec(text)) !== null) {
+        const start = match.index;
+        const end = start + match[0].length;
+        if (start > lastIndex) {
+          nodes.push(text.slice(lastIndex, start));
+        }
+        const rawName = match[1];
+        const node = findServiceNode(rawName);
+        if (node) {
+          const typeColor = getServiceColor(node.type);
+          nodes.push(
+            <span
+              key={`${start}-${rawName}`}
+              className="debug-inline-mention"
+              style={{
+                color: typeColor,
+                borderColor: `${typeColor}40`,
+                background: `${typeColor}18`,
+              }}
+            >
+              @{rawName}
+            </span>,
+          );
+        } else {
+          nodes.push(match[0]);
+        }
+        lastIndex = end;
+      }
+      if (lastIndex < text.length) {
+        nodes.push(text.slice(lastIndex));
+      }
+      return nodes;
+    },
+    [findServiceNode],
   );
 
   useEffect(() => {
@@ -556,9 +836,15 @@ export function DebugPanel({ isOpen, onClose, graphNodes }: DebugPanelProps) {
     phase === "complete" && diagnosis ? extractEvidence(steps) : null;
   const showResultsPanel =
     isResultsVisible && (phase === "running" || phase === "complete");
+  const problemPlaceholder =
+    "Ask Fere Agent to investigate an issue... (Shift+Enter for newline)";
+  const followUpPlaceholder =
+    'Ask a follow-up... (e.g. "check Redis instead", "try this payload: {...}")';
 
   return (
-    <div className="debug-agent-shell">
+    <div
+      className={`debug-agent-shell${showResultsPanel ? " debug-agent-shell-with-results" : ""}`}
+    >
       <div className="debug-agent-dock">
         <div className="debug-agent-dock-header">
             <button
@@ -615,19 +901,77 @@ export function DebugPanel({ isOpen, onClose, graphNodes }: DebugPanelProps) {
               src={`${process.env.PUBLIC_URL || ""}/icon.png`}
               alt="Fere logo"
             />
-            <textarea
-              ref={problemInputRef}
-              className="debug-panel-textarea"
-              placeholder="Ask Fere Agent to investigate an issue... (Shift+Enter for newline)"
-              value={problem}
-              onChange={(e) => {
-                setProblem(e.target.value);
-                autoResizeTextarea(e.currentTarget);
-              }}
-              onKeyDown={handleKeyDown}
-              rows={1}
-              autoFocus
-            />
+            <div className="debug-textarea-wrap">
+              <div
+                ref={problemHighlightRef}
+                className="debug-textarea-highlight"
+                aria-hidden="true"
+              >
+                {problem ? (
+                  renderTextWithMentionHighlights(problem)
+                ) : (
+                  <span className="debug-textarea-highlight-placeholder">
+                    {problemPlaceholder}
+                  </span>
+                )}
+              </div>
+              <textarea
+                ref={problemInputRef}
+                className="debug-panel-textarea debug-textarea-input"
+                placeholder=""
+                value={problem}
+                onChange={(e) => {
+                  setProblem(e.target.value);
+                  setProblemCaret(e.target.selectionStart ?? e.target.value.length);
+                  autoResizeTextarea(e.currentTarget);
+                }}
+                onClick={(e) => setProblemCaret(e.currentTarget.selectionStart ?? 0)}
+                onKeyUp={(e) => setProblemCaret(e.currentTarget.selectionStart ?? 0)}
+                onKeyDown={handleKeyDown}
+                onScroll={(e) => syncHighlightScroll(e, problemHighlightRef)}
+                rows={1}
+                autoFocus
+              />
+            </div>
+            {mentionOptions.length > 0 && activeMention?.target === "problem" && (
+              <div className="debug-mention-menu" role="listbox">
+                {mentionOptions.map((option, idx) => {
+                  const typeColor = getServiceColor(option.node.type);
+                  const serviceBrand =
+                    option.node.isDockerContainer && option.node.type === "container"
+                      ? "docker"
+                      : inferServiceBrand(option.node) || option.name;
+                  return (
+                  <button
+                    key={option.name}
+                    type="button"
+                    className={`debug-mention-item${idx === mentionIndex ? " debug-mention-item-active" : ""}`}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => applyMention(option.name)}
+                  >
+                    <span className="debug-mention-item-main">
+                      <BrandIcon
+                        value={serviceBrand}
+                        size={14}
+                        className="debug-mention-item-icon"
+                      />
+                      <span className="debug-mention-item-name">@{option.name}</span>
+                    </span>
+                    <span
+                      className="debug-mention-item-badge"
+                      style={{
+                        color: typeColor,
+                        borderColor: `${typeColor}33`,
+                        background: `${typeColor}14`,
+                      }}
+                    >
+                      {getTypeBadge(option.node.type)}
+                    </span>
+                  </button>
+                  );
+                })}
+              </div>
+            )}
             <button
               className="debug-panel-submit"
               onClick={handleStart}
@@ -673,19 +1017,77 @@ export function DebugPanel({ isOpen, onClose, graphNodes }: DebugPanelProps) {
               src={`${process.env.PUBLIC_URL || ""}/icon.png`}
               alt="Fere logo"
             />
-            <textarea
-              ref={followUpInputRef}
-              className="debug-panel-followup-textarea"
-              placeholder='Ask a follow-up... (e.g. "check Redis instead", "try this payload: {...}")'
-              value={followUpInput}
-              onChange={(e) => {
-                setFollowUpInput(e.target.value);
-                autoResizeTextarea(e.currentTarget);
-              }}
-              onKeyDown={handleFollowUpKeyDown}
-              rows={1}
-              autoFocus
-            />
+            <div className="debug-textarea-wrap">
+              <div
+                ref={followUpHighlightRef}
+                className="debug-textarea-highlight"
+                aria-hidden="true"
+              >
+                {followUpInput ? (
+                  renderTextWithMentionHighlights(followUpInput)
+                ) : (
+                  <span className="debug-textarea-highlight-placeholder">
+                    {followUpPlaceholder}
+                  </span>
+                )}
+              </div>
+              <textarea
+                ref={followUpInputRef}
+                className="debug-panel-followup-textarea debug-textarea-input"
+                placeholder=""
+                value={followUpInput}
+                onChange={(e) => {
+                  setFollowUpInput(e.target.value);
+                  setFollowUpCaret(e.target.selectionStart ?? e.target.value.length);
+                  autoResizeTextarea(e.currentTarget);
+                }}
+                onClick={(e) => setFollowUpCaret(e.currentTarget.selectionStart ?? 0)}
+                onKeyUp={(e) => setFollowUpCaret(e.currentTarget.selectionStart ?? 0)}
+                onKeyDown={handleFollowUpKeyDown}
+                onScroll={(e) => syncHighlightScroll(e, followUpHighlightRef)}
+                rows={1}
+                autoFocus
+              />
+            </div>
+            {mentionOptions.length > 0 && activeMention?.target === "followup" && (
+              <div className="debug-mention-menu" role="listbox">
+                {mentionOptions.map((option, idx) => {
+                  const typeColor = getServiceColor(option.node.type);
+                  const serviceBrand =
+                    option.node.isDockerContainer && option.node.type === "container"
+                      ? "docker"
+                      : inferServiceBrand(option.node) || option.name;
+                  return (
+                  <button
+                    key={option.name}
+                    type="button"
+                    className={`debug-mention-item${idx === mentionIndex ? " debug-mention-item-active" : ""}`}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => applyMention(option.name)}
+                  >
+                    <span className="debug-mention-item-main">
+                      <BrandIcon
+                        value={serviceBrand}
+                        size={14}
+                        className="debug-mention-item-icon"
+                      />
+                      <span className="debug-mention-item-name">@{option.name}</span>
+                    </span>
+                    <span
+                      className="debug-mention-item-badge"
+                      style={{
+                        color: typeColor,
+                        borderColor: `${typeColor}33`,
+                        background: `${typeColor}14`,
+                      }}
+                    >
+                      {getTypeBadge(option.node.type)}
+                    </span>
+                  </button>
+                  );
+                })}
+              </div>
+            )}
             <button
               className="debug-panel-submit"
               onClick={handleFollowUp}
@@ -710,282 +1112,6 @@ export function DebugPanel({ isOpen, onClose, graphNodes }: DebugPanelProps) {
           </div>
         )}
 
-        {showResultsPanel && (
-          <div className="debug-panel debug-panel-inline">
-            <div className="debug-panel-header">
-              <span className="debug-panel-title">Fere Agent Response</span>
-              <button
-                className="debug-panel-close"
-                onClick={() => setIsResultsVisible(false)}
-                title="Hide results panel"
-                aria-label="Hide results panel"
-              >
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 14 14"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                >
-                  <path d="M1 1l12 12M13 1L1 13" />
-                </svg>
-              </button>
-            </div>
-
-            <div className="debug-panel-body">
-              <div className="debug-panel-problem-summary">
-                <span className="debug-panel-problem-label">Issue:</span>{" "}
-                {problem}
-              </div>
-
-              {steps.length > 0 && (
-                <div className="debug-panel-investigation" ref={logRef}>
-                  <div className="debug-panel-section-header">
-                    Investigation Log
-                  </div>
-                  {steps.map((step, i) => {
-                    if (step.type === "follow_up") {
-                      return (
-                        <div
-                          className="debug-panel-step debug-panel-step-follow_up"
-                          key={i}
-                        >
-                          <div className="debug-panel-followup-marker">
-                            <span className="debug-panel-step-icon">
-                              {"\u276F"}
-                            </span>
-                            <span className="debug-panel-step-text">
-                              {step.message}
-                            </span>
-                          </div>
-                        </div>
-                      );
-                    }
-
-                    const showIterationMarker =
-                      step.type === "thinking" &&
-                      step.iteration !== lastIteration;
-                    if (step.type === "thinking")
-                      lastIteration = step.iteration;
-
-                    return (
-                      <div
-                        className={`debug-panel-step debug-panel-step-${step.type}`}
-                        key={i}
-                      >
-                        {showIterationMarker && (
-                          <span className="debug-panel-iteration-marker">
-                            #{step.iteration}
-                          </span>
-                        )}
-                        {step.type === "thinking" && (
-                          <div className="debug-panel-step-row">
-                            <span className="debug-panel-step-icon debug-panel-thinking-dot">
-                              {phase === "running" && i === steps.length - 1
-                                ? "\u25CF"
-                                : "\u25CB"}
-                            </span>
-                            <span className="debug-panel-step-text">
-                              Thinking...
-                            </span>
-                          </div>
-                        )}
-                        {step.type === "tool_call" && (
-                          <div className="debug-panel-step-row">
-                            <span className="debug-panel-step-icon debug-panel-tool-icon">
-                              {"\u25B6"}
-                            </span>
-                            <div className="debug-panel-step-detail">
-                              <span className="debug-panel-tool-name">
-                                {step.tool}
-                              </span>
-                              <span className="debug-panel-tool-input">
-                                {step.tool &&
-                                  step.input &&
-                                  formatToolInput(step.tool, step.input)}
-                              </span>
-                            </div>
-                          </div>
-                        )}
-                        {step.type === "tool_result" && (
-                          <div className="debug-panel-step-row">
-                            <span className="debug-panel-step-icon debug-panel-result-icon">
-                              {"\u2190"}
-                            </span>
-                            <span className="debug-panel-step-text debug-panel-result-text">
-                              {step.summary}
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-
-              {phase === "running" && diagnosis && (
-                <div className="debug-panel-diagnosis">
-                  <div className="debug-panel-section-header">Diagnosis</div>
-                  <div className="debug-panel-diagnosis-content debug-panel-diagnosis-streaming">
-                    <ReactMarkdown components={markdownComponents}>
-                      {diagnosis}
-                    </ReactMarkdown>
-                  </div>
-                </div>
-              )}
-
-              {phase === "complete" && (
-                <>
-                  {error && (
-                    <div className="debug-panel-diagnosis">
-                      <div className="debug-panel-section-header">Error</div>
-                      <div className="debug-panel-error">{error}</div>
-                    </div>
-                  )}
-                  {diagnosis && (
-                    <div className="debug-panel-diagnosis">
-                      <div className="debug-panel-section-header">Diagnosis</div>
-                      <div className="debug-panel-diagnosis-content">
-                        <ReactMarkdown components={markdownComponents}>
-                          {diagnosis}
-                        </ReactMarkdown>
-                      </div>
-                    </div>
-                  )}
-
-                  {evidence &&
-                    (evidence.services.size > 0 ||
-                      evidence.files.length > 0 ||
-                      evidence.endpoints.length > 0) && (
-                      <div className="debug-evidence">
-                        {evidence.services.size > 0 && (
-                          <div className="debug-evidence-section">
-                            <span className="debug-evidence-label">
-                              Services
-                            </span>
-                            <div className="debug-evidence-chips">
-                              {Array.from(evidence.services.values()).map((svc) => (
-                                <button
-                                  key={svc.name}
-                                  className="debug-chip debug-chip-service"
-                                  onClick={() => handleServiceClick(svc.name)}
-                                  title={`Tools used: ${svc.tools.join(", ")}`}
-                                >
-                                  {svc.name}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                        {evidence.files.length > 0 && (
-                          <div className="debug-evidence-section">
-                            <span className="debug-evidence-label">Files</span>
-                            <div className="debug-evidence-chips">
-                              {evidence.files.map((f, i) => {
-                                const ref = `${f.service}/${f.path}${f.line ? `:${f.line}` : ""}`;
-                                const resolvable = canResolveFile(ref);
-                                return (
-                                  <button
-                                    key={i}
-                                    className={`debug-chip debug-chip-file${resolvable ? "" : " debug-chip-disabled"}`}
-                                    onClick={resolvable ? () => handleFileClick(ref) : undefined}
-                                    title={resolvable ? `${f.service}/${f.path}` : `${f.service}/${f.path} (no project path)`}
-                                    disabled={!resolvable}
-                                  >
-                                    {f.path.split("/").pop()}
-                                    {f.line && (
-                                      <span className="debug-chip-line">
-                                        :{f.line}
-                                      </span>
-                                    )}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        )}
-                        {evidence.endpoints.length > 0 && (
-                          <div className="debug-evidence-section">
-                            <span className="debug-evidence-label">
-                              Endpoints
-                            </span>
-                            <div className="debug-evidence-chips">
-                              {evidence.endpoints.map((ep, i) => {
-                                let pathname: string;
-                                try {
-                                  pathname = new URL(ep.url).pathname;
-                                } catch {
-                                  pathname = ep.url;
-                                }
-                                return (
-                                  <button
-                                    key={i}
-                                    className="debug-chip debug-chip-endpoint"
-                                    onClick={() =>
-                                      navigator.clipboard.writeText(
-                                        `${ep.method} ${ep.url}`,
-                                      )
-                                    }
-                                    title="Click to copy"
-                                  >
-                                    <span className="debug-chip-method">
-                                      {ep.method}
-                                    </span>
-                                    {pathname}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  {diagnosis && !error && (
-                    <div className="debug-panel-followup">
-                      <textarea
-                        className="debug-panel-followup-textarea"
-                        placeholder='Ask a follow-up... (e.g. "check Redis instead", "try this payload: {...}")'
-                        value={followUpInput}
-                        onChange={(e) => setFollowUpInput(e.target.value)}
-                        onKeyDown={handleFollowUpKeyDown}
-                        rows={2}
-                        autoFocus
-                      />
-                    </div>
-                  )}
-                </>
-              )}
-
-              <div className="debug-panel-actions">
-                {phase === "running" && (
-                  <button className="debug-panel-stop" onClick={handleStop}>
-                    Stop Investigation
-                  </button>
-                )}
-                {phase === "complete" && (
-                  <>
-                    <button
-                      className="debug-panel-submit"
-                      onClick={handleNewInvestigation}
-                    >
-                      New Investigation
-                    </button>
-                    {diagnosis && (
-                      <button
-                        className="debug-panel-copy"
-                        onClick={handleCopy}
-                      >
-                        {copied ? "Copied!" : "Copy Report"}
-                      </button>
-                    )}
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-
         {phase === "complete" && !showResultsPanel && (
           <div className="debug-agent-dock-status">
             Results are hidden.
@@ -998,6 +1124,269 @@ export function DebugPanel({ isOpen, onClose, graphNodes }: DebugPanelProps) {
           </div>
         )}
       </div>
+
+      {showResultsPanel && (
+        <div className="debug-panel debug-panel-inline">
+          <div className="debug-panel-header">
+            <span className="debug-panel-title">Fere Agent Response</span>
+            <button
+              className="debug-panel-close"
+              onClick={() => setIsResultsVisible(false)}
+              title="Hide results panel"
+              aria-label="Hide results panel"
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 14 14"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+              >
+                <path d="M1 1l12 12M13 1L1 13" />
+              </svg>
+            </button>
+          </div>
+
+          <div className="debug-panel-body">
+            <div className="debug-panel-problem-summary">
+              <span className="debug-panel-problem-label">Issue:</span>{" "}
+              {problem}
+            </div>
+
+            {steps.length > 0 && (
+              <div className="debug-panel-investigation" ref={logRef}>
+                <div className="debug-panel-section-header">
+                  Investigation Log
+                </div>
+                {steps.map((step, i) => {
+                  if (step.type === "follow_up") {
+                    return (
+                      <div
+                        className="debug-panel-step debug-panel-step-follow_up"
+                        key={i}
+                      >
+                        <div className="debug-panel-followup-marker">
+                          <span className="debug-panel-step-icon">
+                            {"\u276F"}
+                          </span>
+                          <span className="debug-panel-step-text">
+                            {step.message}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  const showIterationMarker =
+                    step.type === "thinking" &&
+                    step.iteration !== lastIteration;
+                  if (step.type === "thinking")
+                    lastIteration = step.iteration;
+
+                  return (
+                    <div
+                      className={`debug-panel-step debug-panel-step-${step.type}`}
+                      key={i}
+                    >
+                      {showIterationMarker && (
+                        <span className="debug-panel-iteration-marker">
+                          #{step.iteration}
+                        </span>
+                      )}
+                      {step.type === "thinking" && (
+                        <div className="debug-panel-step-row">
+                          <span className="debug-panel-step-icon debug-panel-thinking-dot">
+                            {phase === "running" && i === steps.length - 1
+                              ? "\u25CF"
+                              : "\u25CB"}
+                          </span>
+                          <span className="debug-panel-step-text">
+                            Thinking...
+                          </span>
+                        </div>
+                      )}
+                      {step.type === "tool_call" && (
+                        <div className="debug-panel-step-row">
+                          <span className="debug-panel-step-icon debug-panel-tool-icon">
+                            {"\u25B6"}
+                          </span>
+                          <div className="debug-panel-step-detail">
+                            <span className="debug-panel-tool-name">
+                              {step.tool}
+                            </span>
+                            <span className="debug-panel-tool-input">
+                              {step.tool &&
+                                step.input &&
+                                formatToolInput(step.tool, step.input)}
+                            </span>
+                          </div>
+                        </div>
+                      )}
+                      {step.type === "tool_result" && (
+                        <div className="debug-panel-step-row">
+                          <span className="debug-panel-step-icon debug-panel-result-icon">
+                            {"\u2190"}
+                          </span>
+                          <span className="debug-panel-step-text debug-panel-result-text">
+                            {step.summary}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {phase === "running" && diagnosis && (
+              <div className="debug-panel-diagnosis">
+                <div className="debug-panel-section-header">Diagnosis</div>
+                <div className="debug-panel-diagnosis-content debug-panel-diagnosis-streaming">
+                  <ReactMarkdown components={markdownComponents}>
+                    {diagnosis}
+                  </ReactMarkdown>
+                </div>
+              </div>
+            )}
+
+            {phase === "complete" && (
+              <>
+                {error && (
+                  <div className="debug-panel-diagnosis">
+                    <div className="debug-panel-section-header">Error</div>
+                    <div className="debug-panel-error">{error}</div>
+                  </div>
+                )}
+                {diagnosis && (
+                  <div className="debug-panel-diagnosis">
+                    <div className="debug-panel-section-header">Diagnosis</div>
+                    <div className="debug-panel-diagnosis-content">
+                      <ReactMarkdown components={markdownComponents}>
+                        {diagnosis}
+                      </ReactMarkdown>
+                    </div>
+                  </div>
+                )}
+
+                {evidence &&
+                  (evidence.services.size > 0 ||
+                    evidence.files.length > 0 ||
+                    evidence.endpoints.length > 0) && (
+                    <div className="debug-evidence">
+                      {evidence.services.size > 0 && (
+                        <div className="debug-evidence-section">
+                          <span className="debug-evidence-label">
+                            Services
+                          </span>
+                          <div className="debug-evidence-chips">
+                            {Array.from(evidence.services.values()).map((svc) => (
+                              <button
+                                key={svc.name}
+                                className="debug-chip debug-chip-service"
+                                onClick={() => handleServiceClick(svc.name)}
+                                title={`Tools used: ${svc.tools.join(", ")}`}
+                              >
+                                {svc.name}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {evidence.files.length > 0 && (
+                        <div className="debug-evidence-section">
+                          <span className="debug-evidence-label">Files</span>
+                          <div className="debug-evidence-chips">
+                            {evidence.files.map((f, i) => {
+                              const ref = `${f.service}/${f.path}${f.line ? `:${f.line}` : ""}`;
+                              const resolvable = canResolveFile(ref);
+                              return (
+                                <button
+                                  key={i}
+                                  className={`debug-chip debug-chip-file${resolvable ? "" : " debug-chip-disabled"}`}
+                                  onClick={resolvable ? () => handleFileClick(ref) : undefined}
+                                  title={resolvable ? `${f.service}/${f.path}` : `${f.service}/${f.path} (no project path)`}
+                                  disabled={!resolvable}
+                                >
+                                  {f.path.split("/").pop()}
+                                  {f.line && (
+                                    <span className="debug-chip-line">
+                                      :{f.line}
+                                    </span>
+                                  )}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                      {evidence.endpoints.length > 0 && (
+                        <div className="debug-evidence-section">
+                          <span className="debug-evidence-label">
+                            Endpoints
+                          </span>
+                          <div className="debug-evidence-chips">
+                            {evidence.endpoints.map((ep, i) => {
+                              let pathname: string;
+                              try {
+                                pathname = new URL(ep.url).pathname;
+                              } catch {
+                                pathname = ep.url;
+                              }
+                              return (
+                                <button
+                                  key={i}
+                                  className="debug-chip debug-chip-endpoint"
+                                  onClick={() =>
+                                    navigator.clipboard.writeText(
+                                      `${ep.method} ${ep.url}`,
+                                    )
+                                  }
+                                  title="Click to copy"
+                                >
+                                  <span className="debug-chip-method">
+                                    {ep.method}
+                                  </span>
+                                  {pathname}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+              </>
+            )}
+
+            <div className="debug-panel-actions">
+              {phase === "running" && (
+                <button className="debug-panel-stop" onClick={handleStop}>
+                  Stop Investigation
+                </button>
+              )}
+              {phase === "complete" && (
+                <>
+                  <button
+                    className="debug-panel-submit"
+                    onClick={handleNewInvestigation}
+                  >
+                    New Investigation
+                  </button>
+                  {diagnosis && (
+                    <button
+                      className="debug-panel-copy"
+                      onClick={handleCopy}
+                    >
+                      {copied ? "Copied!" : "Copy Report"}
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {fileError && <div className="debug-file-toast">{fileError}</div>}
     </div>

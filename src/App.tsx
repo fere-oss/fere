@@ -1479,7 +1479,7 @@ function App() {
         <DebugPanel
           isOpen={isAgentOpen}
           onClose={handleCloseDebugPanel}
-          graphNodes={graph.nodes}
+          graphNodes={filteredData.nodes}
         />
       )}
       </div>
