@@ -12,6 +12,68 @@ import { BrandIcon, inferServiceBrand } from "./brandIcons";
 // Hoisted to module level — avoids Set recreation on every ServiceNode render
 const DOCKER_BADGE_TYPES = new Set(["container", "cache", "database", "broker"]);
 
+function getRemoteAccessKind(node: GraphNode): "SSH" | "SFTP" | "SCP" | null {
+  const source = `${node.name || ""} ${node.command || ""}`.toLowerCase();
+  if (/(^|\s)sftp(\s|$)/.test(source)) return "SFTP";
+  if (/(^|\s)scp(\s|$)/.test(source)) return "SCP";
+  if (/(^|\s)(auto)?ssh(d)?(\s|$)/.test(source)) return "SSH";
+  return null;
+}
+
+function getRemoteAccessTarget(node: GraphNode): string | null {
+  if (node.remoteAccess?.host) {
+    const userPrefix = node.remoteAccess.user
+      ? `${node.remoteAccess.user}@`
+      : "";
+    const portSuffix = node.remoteAccess.port
+      ? `:${node.remoteAccess.port}`
+      : "";
+    return `${userPrefix}${node.remoteAccess.host}${portSuffix}`;
+  }
+
+  const command = node.command || "";
+  if (!command) return null;
+
+  const match = command.match(
+    /(?:^|\s)(?:sftp|scp|ssh|autossh)\s+(?:-[A-Za-z0-9-]+\s+)*(?:[^@\s]+@)?([A-Za-z0-9._-]+)(?::\S+)?/i,
+  );
+  if (!match?.[1]) return null;
+  return match[1];
+}
+
+function getTunnelSummary(node: GraphNode): string | null {
+  const tunnels = node.remoteAccess?.tunnels || [];
+  if (tunnels.length === 0) return null;
+
+  const summaries = tunnels.slice(0, 2).map((tunnel) => {
+    if (tunnel.mode === "D") {
+      return `D:${tunnel.listenPort ?? "?"}`;
+    }
+    const target = `${tunnel.targetHost ?? "?"}:${tunnel.targetPort ?? "?"}`;
+    return `${tunnel.mode}:${tunnel.listenPort ?? "?"}->${target}`;
+  });
+  const extra = tunnels.length > 2 ? ` +${tunnels.length - 2}` : "";
+  return `${summaries.join(", ")}${extra}`;
+}
+
+function getInboundSshSummary(node: GraphNode): string | null {
+  const sessions = node.remoteAccess?.inboundSessions || 0;
+  if (sessions <= 0) return null;
+  const clients = node.remoteAccess?.inboundClients || [];
+  if (clients.length === 0) {
+    return `${sessions}`;
+  }
+  const preview = clients.slice(0, 2).join(", ");
+  const extra = clients.length > 2 ? ` +${clients.length - 2}` : "";
+  return `${sessions} (${preview}${extra})`;
+}
+
+function getRemoteHealthSummary(node: GraphNode): string | null {
+  const notes = node.remoteAccess?.healthFlags?.notes || [];
+  if (notes.length === 0) return null;
+  return notes.join(", ");
+}
+
 export function CompactServiceNode({
   node,
   onClick,
@@ -25,6 +87,7 @@ export function CompactServiceNode({
 }) {
   const healthInfo = getHealthInfo(node.healthStatus);
   const mainPort = node.ports[0]?.port;
+  const remoteKind = getRemoteAccessKind(node);
 
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -63,7 +126,9 @@ export function CompactServiceNode({
             {healthInfo.label}
           </span>
         </div>
-        <span className="compact-node-badge">{getTypeBadge(node.type)}</span>
+        <span className="compact-node-badge">
+          {remoteKind || getTypeBadge(node.type)}
+        </span>
       </div>
 
       <h4 className="compact-node-name">{node.name}</h4>
@@ -190,7 +255,24 @@ export const ServiceNode = React.memo(function ServiceNode({
     node.isDockerContainer &&
     DOCKER_BADGE_TYPES.has((node.type || "").toLowerCase());
   const mainPort = node.ports[0]?.port;
-  const routes = node.routes || [];
+  const remoteKind = getRemoteAccessKind(node);
+  const remoteTarget = useMemo(
+    () => getRemoteAccessTarget(node),
+    [node],
+  );
+  const tunnelSummary = useMemo(
+    () => getTunnelSummary(node),
+    [node],
+  );
+  const inboundSshSummary = useMemo(
+    () => getInboundSshSummary(node),
+    [node],
+  );
+  const remoteHealthSummary = useMemo(
+    () => getRemoteHealthSummary(node),
+    [node],
+  );
+  const routes = useMemo(() => node.routes || [], [node.routes]);
   const visibleRoutes = useMemo(() => {
     if (routes.length <= 3) return routes;
 
@@ -358,7 +440,7 @@ export const ServiceNode = React.memo(function ServiceNode({
             color: accentColor,
           }}
         >
-          {getTypeBadge(node.type)}
+          {remoteKind || getTypeBadge(node.type)}
         </span>
       </div>
 
@@ -380,6 +462,38 @@ export const ServiceNode = React.memo(function ServiceNode({
       )}
       {!node.isDockerContainer && projectLabel && (
         <div className="service-node-project">{projectLabel}</div>
+      )}
+      {!node.isDockerContainer && !projectLabel && remoteTarget && (
+        <div className="service-node-port service-node-remote-target">
+          <span className="service-node-port-host">remote</span>
+          <span className="service-node-port-number" title={remoteTarget}>
+            {remoteTarget}
+          </span>
+        </div>
+      )}
+      {!node.isDockerContainer && tunnelSummary && (
+        <div className="service-node-remote-meta">
+          <span className="service-node-remote-meta-label">Tunnel</span>
+          <span className="service-node-remote-meta-value" title={tunnelSummary}>
+            {tunnelSummary}
+          </span>
+        </div>
+      )}
+      {!node.isDockerContainer && inboundSshSummary && (
+        <div className="service-node-remote-meta">
+          <span className="service-node-remote-meta-label">Inbound</span>
+          <span className="service-node-remote-meta-value" title={inboundSshSummary}>
+            {inboundSshSummary}
+          </span>
+        </div>
+      )}
+      {!node.isDockerContainer && remoteHealthSummary && (
+        <div className="service-node-remote-meta">
+          <span className="service-node-remote-meta-label">Status</span>
+          <span className="service-node-remote-meta-value" title={remoteHealthSummary}>
+            {remoteHealthSummary}
+          </span>
+        </div>
       )}
 
       {canStart && (

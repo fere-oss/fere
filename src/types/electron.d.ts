@@ -267,6 +267,31 @@ export interface GraphNode {
   containerMounts?: DockerMount[];
   containerPorts?: DockerPort[];
   memoryUsage?: string;
+  // Remote access metadata (SSH/SFTP/SCP session details)
+  remoteAccess?: {
+    tool: 'ssh' | 'sftp' | 'scp' | 'autossh';
+    alias?: string | null;
+    user: string | null;
+    host: string | null;
+    port: number | null;
+    source: 'command' | 'connection';
+    startTime: string | null;
+    tunnels?: Array<{
+      mode: 'L' | 'R' | 'D';
+      listenHost: string | null;
+      listenPort: number | null;
+      targetHost: string | null;
+      targetPort: number | null;
+    }>;
+    inboundSessions?: number;
+    inboundClients?: string[];
+    healthFlags?: {
+      missingConnection: boolean;
+      staleLikely: boolean;
+      duplicateSessions: number;
+      notes: string[];
+    };
+  };
   // Synthetic node for tracked services not currently running
   isGhost?: boolean;
   startCommand?: string;
@@ -383,6 +408,51 @@ export interface HistoryEntry {
 export interface HistoryResult {
   success: boolean;
   history?: HistoryEntry[];
+  error?: string;
+}
+
+// Trace types
+export interface TraceHop {
+  sourceNodeId: string;
+  targetNodeId: string;
+  startTime: number;
+  endTime: number;
+  latency: number;
+  connectionType: 'tcp' | 'external';
+  inferred: boolean;
+}
+
+export interface TraceResult {
+  id: string;
+  timestamp: number;
+  request: {
+    method: string;
+    url: string;
+    headers?: Record<string, string>;
+  };
+  response: {
+    status: number;
+    statusText: string;
+    time: number;
+  } | null;
+  hops: TraceHop[];
+  totalTime: number;
+  timedOut: boolean;
+  entryNodeId: string | null;
+}
+
+export interface TraceRequestOptions {
+  method: string;
+  url: string;
+  headers?: Record<string, string>;
+  body?: string;
+  graphNodes: GraphNode[];
+  graphEdges: GraphEdge[];
+}
+
+export interface TraceRequestResult {
+  success: boolean;
+  trace?: TraceResult;
   error?: string;
 }
 
@@ -546,6 +616,7 @@ export interface ElectronAPI {
 
   // API testing
   executeHttpRequest: (options: HttpRequestOptions) => Promise<HttpRequestResult>;
+  executeTracedRequest: (options: TraceRequestOptions) => Promise<TraceRequestResult>;
 
   // Request History
   loadRequestHistory: () => Promise<HistoryResult>;

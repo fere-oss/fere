@@ -184,6 +184,56 @@ test('scanRoutes detects Echo routes with dynamic params', async () => {
   }
 });
 
+test('scanRoutes detects FastAPI routes on custom APIRouter variable names', async () => {
+  const projectDir = makeTempProject();
+
+  try {
+    writeFile(
+      path.join(projectDir, 'main.py'),
+      [
+        'from fastapi import FastAPI',
+        'from app.routes import users_router',
+        'app = FastAPI()',
+        'app.include_router(users_router, prefix="/api/v1")',
+        '@app.get("/health")',
+        'def health():',
+        '    return {"status": "ok"}',
+      ].join('\n')
+    );
+
+    writeFile(
+      path.join(projectDir, 'app', 'routes.py'),
+      [
+        'from fastapi import APIRouter',
+        'users_router = APIRouter(prefix="/users")',
+        '@users_router.get("/")',
+        'def list_users():',
+        '    return []',
+        '@users_router.post("/")',
+        'def create_user():',
+        '    return {"ok": True}',
+      ].join('\n')
+    );
+
+    const routes = await scanRoutes(projectDir);
+    assert.ok(routes.some(r => r.framework === 'fastapi'), 'expected fastapi routes');
+    assert.ok(routes.some(r => r.method === 'GET' && r.path === '/health'), 'expected GET /health');
+    assert.ok(routes.some(r => r.method === 'GET' && r.path === '/'), 'expected GET / on custom router var');
+    assert.ok(routes.some(r => r.method === 'POST' && r.path === '/'), 'expected POST / on custom router var');
+
+    const fastapiService = {
+      projectPath: projectDir,
+      command: 'uvicorn main:app --reload',
+      name: 'python',
+    };
+    const matched = matchRoutesToService(routes, fastapiService);
+    assert.ok(matched.some(r => r.path === '/health'), 'expected /health matched to uvicorn service');
+    assert.ok(matched.some(r => r.method === 'POST' && r.path === '/'), 'expected APIRouter route matched');
+  } finally {
+    fs.rmSync(projectDir, { recursive: true, force: true });
+  }
+});
+
 test('scanRoutes detects Chi routes including MethodFunc', async () => {
   const projectDir = makeTempProject();
 

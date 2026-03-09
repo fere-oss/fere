@@ -9,6 +9,12 @@ import type {
 
 interface CurlBuilderProps {
   nodes: GraphNode[];
+  onTraceRequest?: (options: {
+    method: string;
+    url: string;
+    headers: Record<string, string>;
+    body?: string;
+  }) => void;
 }
 
 let headerIdCounter = 0;
@@ -400,6 +406,61 @@ const VALUE_FLAGS = new Set([
   "--url",
 ]);
 
+function isShellAssignmentToken(token: string): boolean {
+  return /^[A-Za-z_][A-Za-z0-9_]*=.*/.test(token);
+}
+
+function parseShellAssignment(
+  token: string,
+): { name: string; value: string } | null {
+  const eqIndex = token.indexOf("=");
+  if (eqIndex <= 0) {
+    return null;
+  }
+  const name = token.slice(0, eqIndex);
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
+    return null;
+  }
+  return { name, value: token.slice(eqIndex + 1) };
+}
+
+function substituteShellVariables(
+  token: string,
+  vars: Record<string, string>,
+): string {
+  return token.replace(/\$([A-Za-z_][A-Za-z0-9_]*)|\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (_match, plainName, bracedName) => {
+    const varName = plainName || bracedName;
+    if (!varName) {
+      return _match;
+    }
+    return Object.prototype.hasOwnProperty.call(vars, varName) ? vars[varName] : _match;
+  });
+}
+
+function getUnresolvedPathParams(requestUrl: string): string[] {
+  const params = new Set<string>();
+  const addMatches = (value: string) => {
+    const pattern = /\{([^{}\/]+)\}/g;
+    let match: RegExpExecArray | null;
+    while ((match = pattern.exec(value)) !== null) {
+      const name = match[1]?.trim();
+      if (name) {
+        params.add(name);
+      }
+    }
+  };
+
+  try {
+    const parsed = new URL(requestUrl);
+    const decodedPath = decodeURIComponent(parsed.pathname);
+    addMatches(decodedPath);
+  } catch {
+    addMatches(requestUrl);
+  }
+
+  return Array.from(params);
+}
+
 // Parse a curl command string into its components
 function parseCurlCommand(curlStr: string): {
   method: string;
@@ -407,16 +468,47 @@ function parseCurlCommand(curlStr: string): {
   headers: Record<string, string>;
   body?: string;
 } | null {
-  if (!curlStr || !curlStr.trim().startsWith("curl")) {
+  if (!curlStr || !curlStr.trim()) {
     return null;
   }
 
   // Normalize newlines and shell line continuations before tokenizing.
   const normalized = curlStr.replace(/\r\n/g, "\n").replace(/\\\n[ \t]*/g, " ");
   const tokens = tokenizeShellArgs(normalized);
-  if (!tokens || tokens[0] !== "curl") {
+  if (!tokens) {
     return null;
   }
+
+  // Accept common shell snippets that define env vars before invoking curl.
+  // Examples:
+  //   TOKEN=abc curl ...
+  //   TOKEN=abc\ncurl ...
+  const curlIndex = tokens.indexOf("curl");
+  if (curlIndex < 0) {
+    return null;
+  }
+
+  const shellVars: Record<string, string> = {};
+  for (let i = 0; i < curlIndex; i += 1) {
+    const token = tokens[i];
+    if (!isShellAssignmentToken(token)) {
+      return null;
+    }
+    const assignment = parseShellAssignment(token);
+    if (!assignment) {
+      return null;
+    }
+    shellVars[assignment.name] = assignment.value;
+  }
+
+  const curlTokens = tokens.slice(curlIndex);
+  if (curlTokens[0] !== "curl") {
+    return null;
+  }
+  const resolvedCurlTokens = [
+    curlTokens[0],
+    ...curlTokens.slice(1).map((token) => substituteShellVariables(token, shellVars)),
+  ];
 
   let method = "GET";
   let url = "";
@@ -424,11 +516,11 @@ function parseCurlCommand(curlStr: string): {
   let body: string | undefined;
   const bodyParts: string[] = [];
 
-  for (let i = 1; i < tokens.length; i += 1) {
-    const token = tokens[i];
+  for (let i = 1; i < resolvedCurlTokens.length; i += 1) {
+    const token = resolvedCurlTokens[i];
 
     if (token === "-X" || token === "--request") {
-      const next = tokens[i + 1];
+      const next = resolvedCurlTokens[i + 1];
       if (!next) {
         return null;
       }
@@ -448,7 +540,7 @@ function parseCurlCommand(curlStr: string): {
     }
 
     if (token === "-H" || token === "--header") {
-      const next = tokens[i + 1];
+      const next = resolvedCurlTokens[i + 1];
       if (!next) {
         return null;
       }
@@ -480,7 +572,7 @@ function parseCurlCommand(curlStr: string): {
     }
 
     if (DATA_FLAGS.includes(token)) {
-      const next = tokens[i + 1];
+      const next = resolvedCurlTokens[i + 1];
       if (!next) {
         return null;
       }
@@ -512,7 +604,7 @@ function parseCurlCommand(curlStr: string): {
     }
 
     if (VALUE_FLAGS.has(token)) {
-      const next = tokens[i + 1];
+      const next = resolvedCurlTokens[i + 1];
       if (!next) {
         return null;
       }
@@ -574,7 +666,7 @@ function generateHistoryId(): string {
   return `${Date.now()}-${historyIdCounter}-${Math.random().toString(36).substr(2, 9)}`;
 }
 
-export function CurlBuilder({ nodes }: CurlBuilderProps) {
+export function CurlBuilder({ nodes, onTraceRequest }: CurlBuilderProps) {
   // State for request configuration
   const [selectedNodeId, setSelectedNodeId] = useState<string>("");
   const [selectedPortIndex, setSelectedPortIndex] = useState<number>(0);
@@ -607,6 +699,9 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
 
   // State for network policy
   const [networkPolicy, setNetworkPolicyState] = useState<NetworkPolicy>("local");
+
+  // State for trace toggle
+  const [traceEnabled, setTraceEnabled] = useState(false);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -843,7 +938,13 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
   const copyToClipboard = useCallback(async () => {
     if (!displayCurl) return;
     try {
-      await navigator.clipboard.writeText(displayCurl);
+      if (!window.electronAPI?.copyText) {
+        throw new Error("Clipboard API unavailable");
+      }
+      const result = await window.electronAPI.copyText(displayCurl);
+      if (!result.success) {
+        throw new Error(result.error || "Failed to copy");
+      }
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
@@ -946,6 +1047,28 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
           : undefined;
       }
 
+      const unresolvedPathParams = getUnresolvedPathParams(requestUrl);
+      if (unresolvedPathParams.length > 0) {
+        const names = unresolvedPathParams.join(", ");
+        const plural = unresolvedPathParams.length > 1 ? "s" : "";
+        setRequestError(
+          `Unresolved path parameter${plural}: ${names}. Replace placeholder values before sending the request.`,
+        );
+        setIsLoading(false);
+        return;
+      }
+
+      // If trace is enabled, fire trace request and switch to graph
+      if (traceEnabled && onTraceRequest) {
+        onTraceRequest({
+          method: requestMethod,
+          url: requestUrl,
+          headers: requestHeaders,
+          body: requestBody,
+        });
+        // Still fire the normal request for response display
+      }
+
       const result = await window.electronAPI.executeHttpRequest({
         method: requestMethod,
         url: requestUrl,
@@ -987,7 +1110,7 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
     } finally {
       setIsLoading(false);
     }
-  }, [fullUrl, method, headers, body, isCurlModified, editedCurl]);
+  }, [fullUrl, method, headers, body, isCurlModified, editedCurl, traceEnabled, onTraceRequest]);
 
   // Format bytes to human readable
   const formatBytes = (bytes: number): string => {
@@ -1319,25 +1442,42 @@ export function CurlBuilder({ nodes }: CurlBuilderProps) {
             )}
           </div>
 
-          {/* Run Button */}
+          {/* Run Button + Trace Toggle */}
           {selectedNode && (
-            <button
-              className={`curl-run-btn ${isLoading ? "loading" : ""}`}
-              onClick={executeRequest}
-              disabled={(!fullUrl && !isCurlModified) || isLoading}
-            >
-              {isLoading ? (
-                <>
-                  <span className="curl-run-spinner" />
-                  Sending...
-                </>
-              ) : (
-                <>
-                  <span className="curl-run-icon">▶</span>
-                  Send Request
-                </>
+            <div className="curl-run-group">
+              <button
+                className={`curl-run-btn ${isLoading ? "loading" : ""}`}
+                onClick={executeRequest}
+                disabled={(!fullUrl && !isCurlModified) || isLoading}
+              >
+                {isLoading ? (
+                  <>
+                    <span className="curl-run-spinner" />
+                    {traceEnabled ? "Tracing..." : "Sending..."}
+                  </>
+                ) : (
+                  <>
+                    <span className="curl-run-icon">▶</span>
+                    {traceEnabled ? "Send & Trace" : "Send Request"}
+                  </>
+                )}
+              </button>
+              {onTraceRequest && (
+                <button
+                  className={`curl-trace-toggle ${traceEnabled ? "active" : ""}`}
+                  onClick={() => setTraceEnabled(!traceEnabled)}
+                  title={traceEnabled ? "Disable request tracing" : "Enable request tracing — visualize request flow on the service map"}
+                  aria-label="Toggle request tracing"
+                >
+                  <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                    <circle cx="4" cy="8" r="2" />
+                    <circle cx="12" cy="4" r="2" />
+                    <circle cx="12" cy="12" r="2" />
+                    <path d="M6 7l4-2M6 9l4 2" />
+                  </svg>
+                </button>
               )}
-            </button>
+            </div>
           )}
         </div>
 

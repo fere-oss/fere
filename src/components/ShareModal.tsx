@@ -93,13 +93,12 @@ export function ShareModal({ onClose, graphNodes, graphEdges, activeTabLabel }: 
   async function handleCopy() {
     if (!shareUrl) return;
     try {
-      if (window.electronAPI?.copyText) {
-        const result = await window.electronAPI.copyText(shareUrl);
-        if (!result.success) {
-          throw new Error(result.error || "Copy failed");
-        }
-      } else {
-        await navigator.clipboard.writeText(shareUrl);
+      if (!window.electronAPI?.copyText) {
+        throw new Error("Clipboard API unavailable");
+      }
+      const result = await window.electronAPI.copyText(shareUrl);
+      if (!result.success) {
+        throw new Error(result.error || "Copy failed");
       }
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
@@ -151,16 +150,15 @@ export function ShareModal({ onClose, graphNodes, graphEdges, activeTabLabel }: 
                 To publish your service map, enter a GitHub Personal Access Token with <strong>gist</strong> scope.
                 Stored locally in <code>~/.fere/settings.json</code> — never sent anywhere except the GitHub API.
               </p>
-              <a
+              <button
                 className="share-link"
-                href="#"
-                onClick={(e) => {
-                  e.preventDefault();
+                type="button"
+                onClick={() => {
                   window.electronAPI?.openUrl("https://github.com/settings/tokens/new?scopes=gist&description=Fere+Share");
                 }}
               >
                 Create a token on GitHub →
-              </a>
+              </button>
               <div className="share-token-row">
                 <div className="share-token-input-wrap">
                   <input

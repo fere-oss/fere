@@ -7,9 +7,10 @@ interface ContextMenuProps {
   width: number;
   height: number;
   onClose: () => void;
+  onTraceRequest?: (node: GraphNode) => void;
 }
 
-export function ContextMenu({ node, x, y, width, height, onClose }: ContextMenuProps) {
+export function ContextMenu({ node, x, y, width, height, onClose, onTraceRequest }: ContextMenuProps) {
   const isNotRunning =
     !!node.isGhost ||
     node.healthStatus === "red" ||
@@ -17,15 +18,30 @@ export function ContextMenu({ node, x, y, width, height, onClose }: ContextMenuP
   const hasPort = !isNotRunning && node.ports.length > 0;
   const hasProjectPath = !!node.projectPath;
   const isExternal = node.type === 'external';
+  const isRemoteAccessNode = Boolean(node.remoteAccess?.host || node.remoteAccess?.tool);
   const isDockerContainerNode = Boolean(node.isDockerContainer && node.containerId);
   const canStartService = Boolean(
     isNotRunning &&
       (isDockerContainerNode || ((node.startCommand || node.command) && (node.startProjectPath || node.projectPath))),
   );
   const canKillProcess =
-    !isExternal && !isNotRunning && (isDockerContainerNode || node.pid > 0);
+    !isExternal &&
+    !isNotRunning &&
+    !isRemoteAccessNode &&
+    (isDockerContainerNode || node.pid > 0);
+  const canKillRemoteSession =
+    isRemoteAccessNode &&
+    !isDockerContainerNode &&
+    !isNotRunning &&
+    node.pid > 0;
   const canViewLogs =
     isDockerContainerNode && node.containerState === 'running';
+  const canCopyRemoteHost = Boolean(node.remoteAccess?.host);
+  const canCopyRemoteCommand = Boolean(node.command);
+  const remoteHostText = node.remoteAccess?.host
+    ? `${node.remoteAccess.user ? `${node.remoteAccess.user}@` : ''}${node.remoteAccess.host}${node.remoteAccess.port ? `:${node.remoteAccess.port}` : ''}`
+    : null;
+  const canTrace = hasPort && (node.routes?.length ?? 0) > 0 && !!onTraceRequest;
   const mainPort = node.ports[0]?.port;
 
   const menuWidth = 200;
@@ -33,7 +49,11 @@ export function ContextMenu({ node, x, y, width, height, onClose }: ContextMenuP
   if (hasPort) menuItems += 2; // open browser + copy port
   if (hasProjectPath) menuItems += 1; // open terminal
   if (canViewLogs) menuItems += 1; // view logs
+  if (canTrace) menuItems += 1; // trace request
   if (canStartService) menuItems += 1; // start service
+  if (canCopyRemoteHost) menuItems += 1; // copy remote host
+  if (canCopyRemoteCommand) menuItems += 1; // copy full command
+  if (canKillRemoteSession) menuItems += 1; // kill remote session
   if (canKillProcess) menuItems += 1; // kill
   const menuHeight = 32 + menuItems * 34;
   const menuStyle: React.CSSProperties = {
@@ -79,6 +99,12 @@ export function ContextMenu({ node, x, y, width, height, onClose }: ContextMenuP
               needsRefresh = ensureSuccess(result, 'Kill Process');
             }
             break;
+          case 'kill-remote-session':
+            if (canKillRemoteSession) {
+              const result = await window.electronAPI.killProcess(node.pid);
+              needsRefresh = ensureSuccess(result, 'Kill Session');
+            }
+            break;
           case 'start-service':
             if (isDockerContainerNode && node.containerId) {
               const result = await window.electronAPI.startContainer(node.containerId);
@@ -112,6 +138,18 @@ export function ContextMenu({ node, x, y, width, height, onClose }: ContextMenuP
             } else {
               const result = await window.electronAPI.copyText(String(node.pid));
               ensureSuccess(result, 'Copy PID');
+            }
+            break;
+          case 'copy-remote-host':
+            if (canCopyRemoteHost && remoteHostText) {
+              const result = await window.electronAPI.copyText(remoteHostText);
+              ensureSuccess(result, 'Copy Remote Host');
+            }
+            break;
+          case 'copy-remote-command':
+            if (canCopyRemoteCommand) {
+              const result = await window.electronAPI.copyText(node.command);
+              ensureSuccess(result, 'Copy Session Command');
             }
             break;
         }
@@ -185,6 +223,27 @@ export function ContextMenu({ node, x, y, width, height, onClose }: ContextMenuP
             <span>View Logs</span>
           </div>
         )}
+        {canTrace && (
+          <div
+            className="context-menu-item"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onTraceRequest!(node);
+              onClose();
+            }}
+          >
+            <span className="context-menu-icon" aria-hidden="true">
+              <svg viewBox="0 0 20 20" width="14" height="14">
+                <circle cx="5" cy="10" r="2.5" fill="none" stroke="currentColor" strokeWidth="1.4" />
+                <circle cx="15" cy="5" r="2.5" fill="none" stroke="currentColor" strokeWidth="1.4" />
+                <circle cx="15" cy="15" r="2.5" fill="none" stroke="currentColor" strokeWidth="1.4" />
+                <path d="M7.5 9l5-3M7.5 11l5 3" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+              </svg>
+            </span>
+            <span>Trace Request</span>
+          </div>
+        )}
         {canStartService && (
           <div
             className="context-menu-item"
@@ -212,7 +271,21 @@ export function ContextMenu({ node, x, y, width, height, onClose }: ContextMenuP
             <span>Kill Process</span>
           </div>
         )}
-        {(hasPort || hasProjectPath || !isExternal) && (
+        {canKillRemoteSession && (
+          <div
+            className="context-menu-item context-menu-item-danger"
+            onClick={handleAction('kill-remote-session')}
+          >
+            <span className="context-menu-icon" aria-hidden="true">
+              <svg viewBox="0 0 20 20" width="14" height="14">
+                <circle cx="10" cy="10" r="6.5" fill="none" stroke="currentColor" strokeWidth="1.4" />
+                <path d="M7.2 7.2l5.6 5.6M12.8 7.2l-5.6 5.6" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+              </svg>
+            </span>
+            <span>Kill Session</span>
+          </div>
+        )}
+        {(hasPort || hasProjectPath || !isExternal || canCopyRemoteHost || canCopyRemoteCommand) && (
           <div className="context-menu-divider" />
         )}
         {hasPort && (
@@ -241,6 +314,34 @@ export function ContextMenu({ node, x, y, width, height, onClose }: ContextMenuP
           </span>
           <span>{isNotRunning ? `Copy Service Name (${node.name})` : `Copy PID (${node.pid})`}</span>
         </div>
+        {canCopyRemoteHost && remoteHostText && (
+          <div
+            className="context-menu-item"
+            onClick={handleAction('copy-remote-host')}
+          >
+            <span className="context-menu-icon" aria-hidden="true">
+              <svg viewBox="0 0 20 20" width="14" height="14">
+                <rect x="3" y="4" width="14" height="12" rx="2" fill="none" stroke="currentColor" strokeWidth="1.4" />
+                <path d="M6 10h8M10 7v6" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+              </svg>
+            </span>
+            <span>Copy Remote Host ({remoteHostText})</span>
+          </div>
+        )}
+        {canCopyRemoteCommand && (
+          <div
+            className="context-menu-item"
+            onClick={handleAction('copy-remote-command')}
+          >
+            <span className="context-menu-icon" aria-hidden="true">
+              <svg viewBox="0 0 20 20" width="14" height="14">
+                <rect x="2.5" y="4" width="15" height="12" rx="2" fill="none" stroke="currentColor" strokeWidth="1.4" />
+                <path d="M6 8l2 2-2 2M10 12h4" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </span>
+            <span>Copy Session Command</span>
+          </div>
+        )}
       </div>
     </>
   );

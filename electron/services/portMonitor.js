@@ -196,6 +196,7 @@ async function getProcessOnPort(port) {
  * Common dev ports and their typical services
  */
 const COMMON_DEV_PORTS = {
+  22: 'SSH',
   3000: 'React/Node Dev Server',
   3001: 'React Dev Server (alt)',
   4000: 'GraphQL/API Server',

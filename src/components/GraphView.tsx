@@ -8,7 +8,7 @@ import ReactFlow, {
   type ReactFlowInstance,
 } from "reactflow";
 import "reactflow/dist/style.css";
-import type { GraphEdge, GraphNode } from "../types/electron";
+import type { GraphEdge, GraphNode, TraceHop } from "../types/electron";
 import { ContextMenu } from "./graph/ContextMenu";
 import { NodeDetailPanel } from "./graph/NodeDetailPanel";
 import { flowNodeTypes, HoverContext } from "./graph/flowNodes";
@@ -18,6 +18,8 @@ import type { GraphViewProps } from "./graph/types";
 import { useExternalApis } from "./graph/useExternalApis";
 import { useGraphLayoutData } from "./graph/useGraphLayoutData";
 import { useNodeMeasurements } from "./graph/useNodeMeasurements";
+import { useTraceState, useTraceDispatch } from "./graph/traceContext";
+import { TraceWaterfall } from "./graph/TraceWaterfall";
 
 const NODE_TYPES = flowNodeTypes;
 const EDGE_TYPES = flowEdgeTypes;
@@ -515,6 +517,144 @@ export function GraphView({
     });
   }, [hoveredNodeId, hoverEdgeGeometry]);
 
+  // Trace state
+  const traceState = useTraceState();
+  const traceDispatch = useTraceDispatch();
+
+  // Build trace edges when trace is active
+  const traceEdges = useMemo(() => {
+    if (traceState.phase === "idle" || !traceState.result) return [];
+
+    return traceState.result.hops.flatMap((hop, i) => {
+      // Find graph edges matching this hop
+      const matchingLayoutEdges = layoutEdges.filter(
+        (e) =>
+          (e.source === hop.sourceNodeId && e.target === hop.targetNodeId) ||
+          (e.target === hop.sourceNodeId && e.source === hop.targetNodeId)
+      );
+
+      if (matchingLayoutEdges.length === 0) return [];
+
+      return matchingLayoutEdges.flatMap((edge) => {
+        const srcPos = hoverEdgeGeometry.posMap.get(edge.source);
+        const tgtPos = hoverEdgeGeometry.posMap.get(edge.target);
+        if (!srcPos || !tgtPos) return [];
+        const srcH = hoverEdgeGeometry.heightMap.get(edge.source) ?? FLOW_LAYOUT.NODE_MIN_HEIGHT;
+        const tgtH = hoverEdgeGeometry.heightMap.get(edge.target) ?? FLOW_LAYOUT.NODE_MIN_HEIGHT;
+        const dy = tgtPos.y - srcPos.y;
+        const dx = tgtPos.x - srcPos.x;
+        const sameLayer = Math.abs(dy) < 80;
+        let srcSide: "top" | "bottom" | "left" | "right" = dy > 0 ? "bottom" : "top";
+        let tgtSide: "top" | "bottom" | "left" | "right" = dy > 0 ? "top" : "bottom";
+        let edgeType: "traceBezier" | "traceStep" = "traceBezier";
+        if (sameLayer) {
+          if (dx > 0) { srcSide = "right"; tgtSide = "left"; }
+          else { srcSide = "left"; tgtSide = "right"; }
+          edgeType = "traceStep";
+        }
+        const src = hoverEdgeGeometry.endpoint(srcPos, srcH, srcSide);
+        const tgt = hoverEdgeGeometry.endpoint(tgtPos, tgtH, tgtSide);
+
+        const isActiveHop = traceState.phase === "animating" && i === traceState.activeHopIndex;
+        const isDrawn = traceState.phase === "complete" || (traceState.phase === "animating" && i < traceState.activeHopIndex);
+
+        return [{
+          id: `trace-${edge.id}`,
+          source: edge.source,
+          target: edge.target,
+          type: edgeType,
+          data: {
+            sx: src.x,
+            sy: src.y,
+            tx: tgt.x,
+            ty: tgt.y,
+            sourcePos: src.pos,
+            targetPos: tgt.pos,
+            latency: hop.latency,
+            isActiveHop,
+            isDrawn,
+            inferred: hop.inferred,
+          },
+        }];
+      });
+    });
+  }, [traceState, layoutEdges, hoverEdgeGeometry]);
+
+  // Combine hover edges and trace edges
+  const combinedEdges = useMemo(() => {
+    if (traceState.phase === "idle") return flowEdges;
+    return [...flowEdges, ...traceEdges];
+  }, [flowEdges, traceEdges, traceState.phase]);
+
+  // Advance trace animation
+  useEffect(() => {
+    if (traceState.phase !== "animating" || !traceState.result) return;
+    const hop = traceState.result.hops[traceState.activeHopIndex];
+    if (!hop) return;
+
+    const duration = Math.max(800, Math.min(2500, hop.latency * 2));
+    const timer = setTimeout(() => {
+      traceDispatch({ type: "advance-hop" });
+    }, duration);
+
+    return () => clearTimeout(timer);
+  }, [traceState.phase, traceState.activeHopIndex, traceState.result, traceDispatch]);
+
+  // Handle waterfall interactions
+  const handleWaterfallHoverHop = useCallback((hop: TraceHop | null) => {
+    if (!hop) {
+      setHoveredNodeId(null);
+      return;
+    }
+    setHoveredNodeId(hop.targetNodeId);
+  }, []);
+
+  const handleWaterfallClickHop = useCallback((hop: TraceHop) => {
+    const node = layoutNodes.find((n) => n.id === hop.targetNodeId);
+    if (node) {
+      setSelectedNode(node);
+      if (reactFlowInstance) {
+        const rfNode = reactFlowInstance.getNode(hop.targetNodeId);
+        if (rfNode) {
+          reactFlowInstance.setCenter(
+            rfNode.position.x + FLOW_LAYOUT.NODE_WIDTH / 2,
+            rfNode.position.y + 95,
+            { zoom: 1.2, duration: 400 },
+          );
+        }
+      }
+    }
+  }, [layoutNodes, reactFlowInstance]);
+
+  const handleTraceDismiss = useCallback(() => {
+    traceDispatch({ type: "dismiss" });
+  }, [traceDispatch]);
+
+  // Handle trace from context menu (fires GET to first route)
+  const handleContextMenuTrace = useCallback((node: GraphNode) => {
+    if (!node.routes?.length || !node.ports[0]) return;
+    const route = node.routes[0];
+    const port = node.ports[0].port;
+    const url = `http://localhost:${port}${route.path}`;
+
+    traceDispatch({ type: "start-capture", entryNodeId: node.id });
+
+    window.electronAPI.executeTracedRequest({
+      method: route.method || "GET",
+      url,
+      graphNodes: layoutNodes,
+      graphEdges: layoutEdges,
+    }).then((result) => {
+      if (result.success && result.trace) {
+        traceDispatch({ type: "set-result", result: result.trace });
+      } else {
+        traceDispatch({ type: "dismiss" });
+      }
+    }).catch(() => {
+      traceDispatch({ type: "dismiss" });
+    });
+  }, [layoutNodes, layoutEdges, traceDispatch]);
+
   const defaultEdgeOptions = useMemo(
     () => ({
       type: "arrowBezier" as const,
@@ -727,7 +867,7 @@ export function GraphView({
         <HoverContext.Provider value={hoverState}>
           <ReactFlow
             nodes={flowLayout.nodes}
-            edges={flowEdges}
+            edges={combinedEdges}
             nodeTypes={NODE_TYPES}
             edgeTypes={EDGE_TYPES}
             proOptions={{ hideAttribution: true }}
@@ -813,6 +953,7 @@ export function GraphView({
             contextMenuOpenRef.current = false;
             setContextMenu(null);
           }}
+          onTraceRequest={handleContextMenuTrace}
         />
       )}
 
@@ -823,6 +964,19 @@ export function GraphView({
           edges={layoutEdges}
           allNodes={layoutNodes}
           onClose={() => setSelectedNode(null)}
+        />
+      )}
+
+      {/* Entry point marker is now rendered directly on the node in flowNodes.tsx */}
+
+      {/* Trace Waterfall (bottom panel) */}
+      {traceState.phase === "complete" && traceState.result && (
+        <TraceWaterfall
+          result={traceState.result}
+          nodes={layoutNodes}
+          onHoverHop={handleWaterfallHoverHop}
+          onClickHop={handleWaterfallClickHop}
+          onDismiss={handleTraceDismiss}
         />
       )}
     </div>

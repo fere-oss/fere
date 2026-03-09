@@ -19,6 +19,11 @@ const shouldProfileLayout = (): boolean => {
   }
 };
 
+const isRemoteAccessNode = (node: GraphNode): boolean => {
+  const source = `${node.name || ""} ${node.command || ""}`.toLowerCase();
+  return /(^|\s)(ssh|autossh|sftp|scp|sshd)(\s|$)/.test(source);
+};
+
 export function useGraphLayoutData({
   nodes,
   edges,
@@ -235,7 +240,10 @@ export function useGraphLayoutData({
     standaloneLayout.forEach((ln) => {
       const type = ln.node.type || "service";
       // Separate Docker containers into their own group
-      const key = ln.node.isDockerContainer ? `docker:${type}` : type;
+      let key = ln.node.isDockerContainer ? `docker:${type}` : type;
+      if (!ln.node.isDockerContainer && isRemoteAccessNode(ln.node)) {
+        key = "remote-access";
+      }
       const existing = groupsByKey.get(key) || [];
       existing.push(ln.node);
       groupsByKey.set(key, existing);
@@ -249,7 +257,10 @@ export function useGraphLayoutData({
         if (aDocker !== bDocker) return aDocker - bDocker;
         const aType = a[0].replace("docker:", "");
         const bType = b[0].replace("docker:", "");
-        const priorityDiff = getTypePriority(aType) - getTypePriority(bType);
+        const aPriorityType = aType === "remote-access" ? "client" : aType;
+        const bPriorityType = bType === "remote-access" ? "client" : bType;
+        const priorityDiff =
+          getTypePriority(aPriorityType) - getTypePriority(bPriorityType);
         if (priorityDiff !== 0) return priorityDiff;
         return aType.localeCompare(bType);
       })
@@ -259,6 +270,8 @@ export function useGraphLayoutData({
         let groupName: string;
         if (isDocker) {
           groupName = "Docker Containers";
+        } else if (type === "remote-access") {
+          groupName = "Remote Access";
         } else if (type === "service") {
           groupName = "System Services";
         } else {
