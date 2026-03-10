@@ -8,6 +8,8 @@ interface DebugPanelProps {
   isOpen: boolean;
   onClose: () => void;
   graphNodes: GraphNode[];
+  initialProblem?: string;
+  initialProblemKey?: number;
 }
 
 type DebugPhase = "setup" | "input" | "running" | "complete";
@@ -170,7 +172,13 @@ function renderResultField(
   );
 }
 
-export function DebugPanel({ isOpen, onClose, graphNodes }: DebugPanelProps) {
+export function DebugPanel({
+  isOpen,
+  onClose,
+  graphNodes,
+  initialProblem,
+  initialProblemKey,
+}: DebugPanelProps) {
   const [phase, setPhase] = useState<DebugPhase>("input");
   const [hasApiKey, setHasApiKey] = useState<boolean | null>(null);
   const [apiKeyInput, setApiKeyInput] = useState("");
@@ -1084,6 +1092,26 @@ export function DebugPanel({ isOpen, onClose, graphNodes }: DebugPanelProps) {
       autoResizeTextarea(followUpInputRef.current);
     }
   }, [phase, followUpInput, diagnosis, error, autoResizeTextarea]);
+
+  useEffect(() => {
+    if (!initialProblemKey || !initialProblem) return;
+    setSteps([]);
+    setDiagnosis("");
+    setError("");
+    setFollowUpInput("");
+    setIsResultsVisible(true);
+    setExpandedToolResults({});
+    setProblem(initialProblem);
+    setPhase("input");
+    requestAnimationFrame(() => {
+      const el = problemInputRef.current;
+      if (!el) return;
+      el.focus();
+      const cursor = initialProblem.length;
+      el.setSelectionRange(cursor, cursor);
+      autoResizeTextarea(el);
+    });
+  }, [initialProblem, initialProblemKey, autoResizeTextarea]);
 
   // Loading / hidden state
   if (!isOpen || hasApiKey === null) return null;

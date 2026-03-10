@@ -2590,6 +2590,14 @@ textarea {
     color 0.15s;
 }
 
+.node-detail-ai-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .node-detail-ai-button:hover:not(:disabled) {
   border-color: var(--border-hover);
   background: var(--bg-primary);
@@ -2598,6 +2606,10 @@ textarea {
 .node-detail-ai-button:disabled {
   opacity: 0.6;
   cursor: default;
+}
+
+.node-detail-ai-button-secondary {
+  background: var(--bg-primary);
 }
 
 .node-detail-ai-copy,

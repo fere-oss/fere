@@ -119,6 +119,17 @@ export function NodeDetailContent({ node, edges, allNodes }: NodeDetailContentPr
     setServiceExplanationLoading(false);
   }, [node.id, node.name]);
 
+  const handleDiagnoseService = useCallback(() => {
+    window.dispatchEvent(
+      new CustomEvent('fere:debug-diagnose-service', {
+        detail: {
+          nodeId: node.id,
+          serviceName: node.name,
+        },
+      }),
+    );
+  }, [node.id, node.name]);
+
   return (
     <div className="node-detail-content">
       <div className="node-detail-section">
@@ -150,18 +161,27 @@ export function NodeDetailContent({ node, edges, allNodes }: NodeDetailContentPr
         <div className="node-detail-section">
           <div className="node-detail-section-title-row">
             <h3 className="node-detail-section-title">About</h3>
-            <button
-              type="button"
-              className="node-detail-ai-button"
-              onClick={handleExplainService}
-              disabled={serviceExplanationLoading}
-            >
-              {serviceExplanationLoading
-                ? 'Explaining…'
-                : serviceExplanation
-                  ? 'Refresh AI Explanation'
-                  : 'AI Explanation'}
-            </button>
+            <div className="node-detail-ai-actions">
+              <button
+                type="button"
+                className="node-detail-ai-button"
+                onClick={handleExplainService}
+                disabled={serviceExplanationLoading}
+              >
+                {serviceExplanationLoading
+                  ? 'Explaining…'
+                  : serviceExplanation
+                    ? 'Refresh AI Explanation'
+                    : 'AI Explanation'}
+              </button>
+              <button
+                type="button"
+                className="node-detail-ai-button node-detail-ai-button-secondary"
+                onClick={handleDiagnoseService}
+              >
+                Diagnose Service
+              </button>
+            </div>
           </div>
           {serviceExplanationError ? (
             <div className="node-detail-error">{serviceExplanationError}</div>

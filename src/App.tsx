@@ -232,6 +232,8 @@ function App() {
   const [hasEverOpened, setHasEverOpened] = useState(false);
   const [isAgentOpen, setIsAgentOpen] = useState(false);
   const [isStackQueryOpen, setIsStackQueryOpen] = useState(false);
+  const [debugInitialProblem, setDebugInitialProblem] = useState("");
+  const [debugInitialProblemKey, setDebugInitialProblemKey] = useState(0);
   const [debugHighlightNodeIds, setDebugHighlightNodeIds] = useState<Set<string>>(new Set());
 
   const handleOpenDebugPanel = useCallback(() => {
@@ -423,11 +425,27 @@ function App() {
         setViewMode("graph");
       }
     };
+    const handleDiagnoseService = (e: Event) => {
+      const { nodeId, serviceName } = (e as CustomEvent).detail;
+      const scopedProblem = `Diagnose issues with \`${serviceName}\`. Focus on its current health, incoming and outgoing dependencies, ports, routes, and any likely causes if it is failing, idle unexpectedly, or behaving inconsistently.`;
+      setDebugInitialProblem(scopedProblem);
+      setDebugInitialProblemKey((current) => current + 1);
+      setHasEverOpened(true);
+      setIsAgentOpen(true);
+      if (nodeId) {
+        setDebugHighlightNodeIds(new Set([nodeId]));
+      }
+      if (viewMode !== "graph") {
+        setViewMode("graph");
+      }
+    };
     window.addEventListener("fere:debug-highlight-services", handleDebugHighlight);
     window.addEventListener("fere:debug-focus-node", handleDebugFocus);
+    window.addEventListener("fere:debug-diagnose-service", handleDiagnoseService);
     return () => {
       window.removeEventListener("fere:debug-highlight-services", handleDebugHighlight);
       window.removeEventListener("fere:debug-focus-node", handleDebugFocus);
+      window.removeEventListener("fere:debug-diagnose-service", handleDiagnoseService);
     };
   }, [viewMode]);
 
@@ -1589,6 +1607,8 @@ function App() {
           isOpen={isAgentOpen}
           onClose={handleCloseDebugPanel}
           graphNodes={filteredData.nodes}
+          initialProblem={debugInitialProblem}
+          initialProblemKey={debugInitialProblemKey}
         />
       )}
       <StackQueryPanel
