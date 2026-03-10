@@ -1271,9 +1271,7 @@ async function runDebugAgent(options, onProgress) {
 
     const message = response.choices?.[0]?.message || choice.message;
 
-    if (!messages.includes(message)) {
-      messages.push(message);
-    }
+    messages.push(message);
 
     const toolCalls = message.tool_calls;
     if (!toolCalls || toolCalls.length === 0) {
