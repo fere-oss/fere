@@ -36,6 +36,25 @@ interface MentionContext {
   query: string;
 }
 
+interface ChatTurn {
+  id: string;
+  prompt: string;
+  response: string;
+  createdAt: number;
+}
+
+interface ChatThread {
+  id: string;
+  title: string;
+  turns: ChatTurn[];
+  createdAt: number;
+  updatedAt: number;
+}
+
+const CHAT_HISTORY_STORAGE_KEY = "fere-debug-chat-threads-v1";
+const CHAT_SELECTED_STORAGE_KEY = "fere-debug-chat-selected-v1";
+const CHAT_LEGACY_STORAGE_KEY = "fere-debug-chat-history-v1";
+
 function extractEvidence(steps: InvestigationStep[]): EvidenceData {
   const services = new Map<string, { name: string; tools: string[] }>();
   const files: EvidenceData["files"] = [];
@@ -189,11 +208,15 @@ export function DebugPanel({ isOpen, onClose, graphNodes }: DebugPanelProps) {
   const [problemCaret, setProblemCaret] = useState(0);
   const [followUpCaret, setFollowUpCaret] = useState(0);
   const [mentionIndex, setMentionIndex] = useState(0);
-  const logRef = useRef<HTMLDivElement>(null);
+  const [chatThreads, setChatThreads] = useState<ChatThread[]>([]);
+  const [selectedChatId, setSelectedChatId] = useState("");
+  const [isHistoryLoaded, setIsHistoryLoaded] = useState(false);
   const problemInputRef = useRef<HTMLTextAreaElement>(null);
   const followUpInputRef = useRef<HTMLTextAreaElement>(null);
   const problemHighlightRef = useRef<HTMLDivElement>(null);
   const followUpHighlightRef = useRef<HTMLDivElement>(null);
+  const pendingPromptRef = useRef("");
+  const selectedChatIdRef = useRef("");
 
   // Build lookup maps from graph nodes
   const nodeByName = useMemo(() => {
@@ -220,6 +243,22 @@ export function DebugPanel({ isOpen, onClose, graphNodes }: DebugPanelProps) {
       .map(([name, node]) => ({ name, node }))
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [graphNodes]);
+
+  const createChatThread = useCallback((title?: string): ChatThread => {
+    const now = Date.now();
+    return {
+      id: `${now}-${Math.random().toString(36).slice(2, 8)}`,
+      title: (title || "New Chat").trim() || "New Chat",
+      turns: [],
+      createdAt: now,
+      updatedAt: now,
+    };
+  }, []);
+
+  const selectedChat = useMemo(
+    () => chatThreads.find((thread) => thread.id === selectedChatId),
+    [chatThreads, selectedChatId],
+  );
 
   // --- Service & file click handlers ---
 
@@ -492,6 +531,14 @@ export function DebugPanel({ isOpen, onClose, graphNodes }: DebugPanelProps) {
     [findServiceNode, handleServiceClick, handleFileClick, canResolveFile],
   );
 
+  const linkifyServiceMentions = useCallback((text: string) => {
+    if (!text) return text;
+    return text.replace(
+      /(^|[\s([{"'])@([a-zA-Z0-9._-]+)/g,
+      (_, prefix: string, name: string) => `${prefix}[@${name}](#${name})`,
+    );
+  }, []);
+
   // --- Lifecycle ---
 
   // Check API key on mount
@@ -501,6 +548,122 @@ export function DebugPanel({ isOpen, onClose, graphNodes }: DebugPanelProps) {
       if (!result.hasKey) setPhase("setup");
     });
   }, []);
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(CHAT_HISTORY_STORAGE_KEY);
+      const selectedRaw = window.localStorage.getItem(CHAT_SELECTED_STORAGE_KEY);
+      const legacyRaw = window.localStorage.getItem(CHAT_LEGACY_STORAGE_KEY);
+
+      const normalizeTurn = (turn: unknown): ChatTurn | null => {
+        if (!turn || typeof turn !== "object") return null;
+        const t = turn as Partial<ChatTurn>;
+        if (typeof t.prompt !== "string" || typeof t.response !== "string") {
+          return null;
+        }
+        if (!t.prompt.trim() || !t.response.trim()) return null;
+        const createdAt = typeof t.createdAt === "number" ? t.createdAt : Date.now();
+        const id =
+          typeof t.id === "string"
+            ? t.id
+            : `${createdAt}-${Math.random().toString(36).slice(2, 8)}`;
+        return { id, prompt: t.prompt, response: t.response, createdAt };
+      };
+
+      const normalizeThread = (thread: unknown): ChatThread | null => {
+        if (!thread || typeof thread !== "object") return null;
+        const t = thread as Partial<ChatThread>;
+        const turns = Array.isArray(t.turns)
+          ? t.turns.map(normalizeTurn).filter((v): v is ChatTurn => !!v)
+          : [];
+        const createdAt =
+          typeof t.createdAt === "number" ? t.createdAt : turns[0]?.createdAt || Date.now();
+        const updatedAt =
+          typeof t.updatedAt === "number"
+            ? t.updatedAt
+            : turns[turns.length - 1]?.createdAt || createdAt;
+        const id =
+          typeof t.id === "string"
+            ? t.id
+            : `${createdAt}-${Math.random().toString(36).slice(2, 8)}`;
+        const title =
+          typeof t.title === "string" && t.title.trim()
+            ? t.title
+            : turns[0]?.prompt.slice(0, 72) || "New Chat";
+        return { id, title, turns, createdAt, updatedAt };
+      };
+
+      const parsed = raw ? JSON.parse(raw) : [];
+      const safeThreads = Array.isArray(parsed)
+        ? parsed.map(normalizeThread).filter((v): v is ChatThread => !!v)
+        : [];
+
+      if (safeThreads.length === 0 && !raw && legacyRaw) {
+        try {
+          const legacyParsed = JSON.parse(legacyRaw);
+          if (Array.isArray(legacyParsed)) {
+            const legacyTurns = legacyParsed
+              .map(normalizeTurn)
+              .filter((v): v is ChatTurn => !!v);
+            if (legacyTurns.length > 0) {
+              const imported = createChatThread(legacyTurns[0].prompt.slice(0, 72));
+              imported.turns = legacyTurns;
+              imported.createdAt = legacyTurns[0].createdAt;
+              imported.updatedAt = legacyTurns[legacyTurns.length - 1].createdAt;
+              safeThreads.push(imported);
+            }
+          }
+        } catch {
+          // ignore legacy parse errors
+        }
+      }
+
+      if (safeThreads.length > 0) {
+        setChatThreads(safeThreads);
+        const selected =
+          selectedRaw && safeThreads.some((t) => t.id === selectedRaw)
+            ? selectedRaw
+            : safeThreads[safeThreads.length - 1].id;
+        setSelectedChatId(selected);
+      } else {
+        const initial = createChatThread();
+        setChatThreads([initial]);
+        setSelectedChatId(initial.id);
+      }
+      setIsHistoryLoaded(true);
+    } catch {
+      const initial = createChatThread();
+      setChatThreads([initial]);
+      setSelectedChatId(initial.id);
+      setIsHistoryLoaded(true);
+    }
+  }, [createChatThread]);
+
+  useEffect(() => {
+    if (!isHistoryLoaded) return;
+    try {
+      window.localStorage.setItem(
+        CHAT_HISTORY_STORAGE_KEY,
+        JSON.stringify(chatThreads),
+      );
+      if (selectedChatId) {
+        window.localStorage.setItem(CHAT_SELECTED_STORAGE_KEY, selectedChatId);
+      }
+    } catch {
+      // ignore storage write failures
+    }
+  }, [chatThreads, selectedChatId, isHistoryLoaded]);
+
+  useEffect(() => {
+    if (chatThreads.length === 0) return;
+    if (!selectedChatId || !chatThreads.some((t) => t.id === selectedChatId)) {
+      setSelectedChatId(chatThreads[chatThreads.length - 1].id);
+    }
+  }, [chatThreads, selectedChatId]);
+
+  useEffect(() => {
+    selectedChatIdRef.current = selectedChatId;
+  }, [selectedChatId]);
 
   // Escape to close
   const handleClose = useCallback(() => {
@@ -527,13 +690,11 @@ export function DebugPanel({ isOpen, onClose, graphNodes }: DebugPanelProps) {
       (progress: DebugProgress) => {
         switch (progress.type) {
           case "thinking":
-            // Clear any streamed text from the previous iteration — each
-            // new iteration starts fresh; the final iteration's tokens stay.
-            setDiagnosis("");
             setSteps((prev) => [
               ...prev,
               {
                 type: "thinking",
+                message: "",
                 iteration: progress.iteration,
                 timestamp: Date.now(),
               },
@@ -567,13 +728,61 @@ export function DebugPanel({ isOpen, onClose, graphNodes }: DebugPanelProps) {
             break;
           case "diagnosis_delta":
             setDiagnosis((prev) => prev + progress.text);
+            setSteps((prev) => {
+              const next = [...prev];
+              for (let idx = next.length - 1; idx >= 0; idx -= 1) {
+                if (next[idx].type === "thinking") {
+                  const current = next[idx].message || "";
+                  next[idx] = { ...next[idx], message: current + progress.text };
+                  break;
+                }
+              }
+              return next;
+            });
             break;
           case "complete":
             // Authoritative final text — replaces any streamed partial content
             setDiagnosis(progress.diagnosis);
+            if (pendingPromptRef.current.trim() && progress.diagnosis.trim()) {
+              const promptText = pendingPromptRef.current.trim();
+              const responseText = progress.diagnosis.trim();
+              setChatThreads((prev) => {
+                const now = Date.now();
+                const targetId = selectedChatIdRef.current || selectedChatId;
+                const turn: ChatTurn = {
+                  id: `${now}-${Math.random().toString(36).slice(2, 8)}`,
+                  prompt: promptText,
+                  response: responseText,
+                  createdAt: now,
+                };
+                const idx = prev.findIndex((thread) => thread.id === targetId);
+                if (idx >= 0) {
+                  const next = [...prev];
+                  const existing = next[idx];
+                  next[idx] = {
+                    ...existing,
+                    title:
+                      existing.turns.length === 0
+                        ? promptText.slice(0, 72)
+                        : existing.title,
+                    turns: [...existing.turns, turn],
+                    updatedAt: now,
+                  };
+                  return next;
+                }
+                const fallback = createChatThread(promptText.slice(0, 72));
+                fallback.turns = [turn];
+                fallback.updatedAt = now;
+                setSelectedChatId(fallback.id);
+                selectedChatIdRef.current = fallback.id;
+                return [...prev, fallback];
+              });
+            }
+            pendingPromptRef.current = "";
             setPhase("complete");
             break;
           case "error":
+            pendingPromptRef.current = "";
             setError(progress.error);
             setPhase("complete");
             break;
@@ -581,14 +790,7 @@ export function DebugPanel({ isOpen, onClose, graphNodes }: DebugPanelProps) {
       },
     );
     return unsubscribe;
-  }, []);
-
-  // Auto-scroll investigation log
-  useEffect(() => {
-    if (logRef.current && phase === "running") {
-      logRef.current.scrollTop = logRef.current.scrollHeight;
-    }
-  }, [steps, phase]);
+  }, [createChatThread, selectedChatId]);
 
   // Auto-highlight investigated services when diagnosis completes
   useEffect(() => {
@@ -633,6 +835,15 @@ export function DebugPanel({ isOpen, onClose, graphNodes }: DebugPanelProps) {
   const handleStart = useCallback(async () => {
     const trimmed = problem.trim();
     if (!trimmed) return;
+    if (!selectedChatIdRef.current && !selectedChatId) {
+      const fresh = createChatThread(trimmed.slice(0, 72));
+      setChatThreads((prev) => [...prev, fresh]);
+      setSelectedChatId(fresh.id);
+      selectedChatIdRef.current = fresh.id;
+    } else if (selectedChatId) {
+      selectedChatIdRef.current = selectedChatId;
+    }
+    pendingPromptRef.current = trimmed;
     setSteps([]);
     setDiagnosis("");
     setError("");
@@ -642,25 +853,35 @@ export function DebugPanel({ isOpen, onClose, graphNodes }: DebugPanelProps) {
     setPhase("running");
     const result = await window.electronAPI.debugStart({ problem: trimmed });
     if (!result.success) {
+      pendingPromptRef.current = "";
       setError(result.error || "Failed to start investigation");
       setPhase("complete");
     }
-  }, [problem]);
+  }, [problem, selectedChatId, createChatThread]);
 
   const handleStop = useCallback(async () => {
     await window.electronAPI.debugStop();
+    pendingPromptRef.current = "";
     setError("Investigation cancelled");
     setPhase("complete");
   }, []);
 
   const handleCopy = useCallback(() => {
-    window.electronAPI.copyText(diagnosis).then(() => {
+    const latestResponse =
+      selectedChat?.turns?.[selectedChat.turns.length - 1]?.response || diagnosis;
+    if (!latestResponse) return;
+    window.electronAPI.copyText(latestResponse).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });
-  }, [diagnosis]);
+  }, [diagnosis, selectedChat]);
 
   const handleNewInvestigation = useCallback(() => {
+    pendingPromptRef.current = "";
+    const fresh = createChatThread();
+    setChatThreads((prev) => [...prev, fresh]);
+    setSelectedChatId(fresh.id);
+    selectedChatIdRef.current = fresh.id;
     setSteps([]);
     setDiagnosis("");
     setError("");
@@ -674,11 +895,12 @@ export function DebugPanel({ isOpen, onClose, graphNodes }: DebugPanelProps) {
         detail: { nodeIds: [] },
       }),
     );
-  }, []);
+  }, [createChatThread]);
 
   const handleFollowUp = useCallback(async () => {
     const trimmed = followUpInput.trim();
     if (!trimmed) return;
+    pendingPromptRef.current = trimmed;
     setSteps((prev) => [
       ...prev,
       {
@@ -696,10 +918,35 @@ export function DebugPanel({ isOpen, onClose, graphNodes }: DebugPanelProps) {
     setPhase("running");
     const result = await window.electronAPI.debugFollowUp({ message: trimmed });
     if (!result.success) {
+      pendingPromptRef.current = "";
       setError(result.error || "Failed to send follow-up");
       setPhase("complete");
     }
   }, [followUpInput]);
+
+  const handleSelectChat = useCallback((chatId: string) => {
+    setSelectedChatId(chatId);
+    selectedChatIdRef.current = chatId;
+  }, []);
+
+  const handleClearChat = useCallback(
+    (chatId: string) => {
+      setChatThreads((prev) => {
+        const remaining = prev.filter((thread) => thread.id !== chatId);
+        if (remaining.length > 0) return remaining;
+        const fresh = createChatThread();
+        setSelectedChatId(fresh.id);
+        selectedChatIdRef.current = fresh.id;
+        return [fresh];
+      });
+      if (selectedChatIdRef.current === chatId) {
+        selectedChatIdRef.current = "";
+      }
+      setProblem("");
+      setFollowUpInput("");
+    },
+    [createChatThread],
+  );
 
   const autoResizeTextarea = useCallback(
     (el: HTMLTextAreaElement | null) => {
@@ -1088,14 +1335,13 @@ export function DebugPanel({ isOpen, onClose, graphNodes }: DebugPanelProps) {
   // Loading / hidden state
   if (!isOpen || hasApiKey === null) return null;
 
-  // Track iteration changes for markers
-  let lastIteration = 0;
-
-  // Evidence data for complete phase
-  const evidence =
-    phase === "complete" && diagnosis ? extractEvidence(steps) : null;
+  const historyThreads = chatThreads;
+  const selectedHistoryChat = selectedChat;
+  const selectedChatTurns = selectedHistoryChat?.turns || [];
+  const hasSavedHistory = historyThreads.length > 0;
   const showResultsPanel =
-    isResultsVisible && (phase === "running" || phase === "complete");
+    isResultsVisible &&
+    (phase === "running" || phase === "complete" || hasSavedHistory);
   const problemPlaceholder =
     "Ask Fere Agent to investigate an issue... (Shift+Enter for newline)";
   const followUpPlaceholder =
@@ -1392,233 +1638,86 @@ export function DebugPanel({ isOpen, onClose, graphNodes }: DebugPanelProps) {
           </div>
 
           <div className="debug-panel-body">
-            <div className="debug-panel-problem-summary">
-              <span className="debug-panel-problem-label">Issue:</span>{" "}
-              {problem}
-            </div>
-
-            {steps.length > 0 && (
-              <div className="debug-panel-investigation" ref={logRef}>
-                <div className="debug-panel-section-header">
-                  Investigation Log
-                </div>
-                {steps.map((step, i) => {
-                  if (step.type === "follow_up") {
-                    return (
-                      <div
-                        className="debug-panel-step debug-panel-step-follow_up"
-                        key={i}
-                      >
-                        <div className="debug-panel-followup-marker">
-                          <span className="debug-panel-step-icon">
-                            {"\u276F"}
-                          </span>
-                          <span className="debug-panel-step-text">
-                            {step.message}
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  }
-
-                  const showIterationMarker =
-                    step.type === "thinking" &&
-                    step.iteration !== lastIteration;
-                  if (step.type === "thinking")
-                    lastIteration = step.iteration;
-                  const stepKey = `${step.type}-${i}`;
-                  const isExpanded = !!expandedToolResults[stepKey];
-
-                  return (
-                    <div
-                      className={`debug-panel-step debug-panel-step-${step.type}${step.type === "tool_result" ? " debug-panel-step-expandable" : ""}`}
-                      key={i}
+            {hasSavedHistory && (
+              <div className="debug-chat-history">
+                <div className="debug-panel-section-header">Chat History</div>
+                <div className="debug-chat-list">
+                  {historyThreads.map((thread) => (
+                    <button
+                      key={thread.id}
+                      type="button"
+                      className={`debug-chat-list-item${thread.id === selectedHistoryChat?.id ? " debug-chat-list-item-active" : ""}`}
+                      onClick={() => handleSelectChat(thread.id)}
                     >
-                      {showIterationMarker && (
-                        <span className="debug-panel-iteration-marker">
-                          #{step.iteration}
-                        </span>
-                      )}
-                      {step.type === "thinking" && (
-                        <div className="debug-panel-step-row">
-                          <span className="debug-panel-step-icon debug-panel-thinking-dot">
-                            {phase === "running" && i === steps.length - 1
-                              ? "\u25CF"
-                              : "\u25CB"}
-                          </span>
-                          <span className="debug-panel-step-text">
-                            Thinking...
-                          </span>
-                        </div>
-                      )}
-                      {step.type === "tool_call" && (
-                        <div className="debug-panel-step-row">
-                          <span className="debug-panel-step-icon debug-panel-tool-icon">
-                            {"\u25B6"}
-                          </span>
-                          <div className="debug-panel-step-detail">
-                            <span className="debug-panel-tool-name">
-                              {step.tool}
-                            </span>
-                            <span className="debug-panel-tool-input">
-                              {step.tool &&
-                                step.input &&
-                                formatToolInput(step.tool, step.input)}
-                            </span>
-                          </div>
-                        </div>
-                      )}
-                      {step.type === "tool_result" && (
-                        <>
-                          <button
-                            type="button"
-                            className="debug-panel-step-row debug-panel-step-row-button"
-                            onClick={() => toggleToolResult(stepKey)}
-                            aria-expanded={isExpanded}
-                          >
-                            <span className="debug-panel-step-icon debug-panel-result-icon">
-                              {"\u2190"}
-                            </span>
-                            <div className="debug-panel-step-detail debug-panel-step-detail-result">
-                              <span className="debug-panel-step-text debug-panel-result-text">
-                                {step.summary}
-                              </span>
-                              <span className="debug-panel-result-expand">
-                                {isExpanded ? "Hide details" : "Show details"}
-                              </span>
-                            </div>
-                          </button>
-                          {isExpanded && (
-                            <div className="debug-panel-step-expandable-body">
-                              {renderToolResultBody(step)}
-                            </div>
-                          )}
-                        </>
-                      )}
+                      <span className="debug-chat-list-title">{thread.title}</span>
+                      <span className="debug-chat-list-meta">
+                        {thread.turns.length} message
+                        {thread.turns.length === 1 ? "" : "s"}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+                {selectedHistoryChat && (
+                  <div className="debug-chat-history-actions">
+                    <button
+                      type="button"
+                      className="debug-chat-turn-clear"
+                      onClick={() => handleClearChat(selectedHistoryChat.id)}
+                    >
+                      Clear This Chat
+                    </button>
+                  </div>
+                )}
+                {selectedChatTurns.map((turn) => (
+                  <div className="debug-chat-turn" key={turn.id}>
+                    <div className="debug-chat-turn-header">
+                      <span className="debug-chat-turn-role">You</span>
                     </div>
-                  );
-                })}
+                    <div className="debug-chat-turn-prompt">{turn.prompt}</div>
+                    <div className="debug-chat-turn-header">
+                      <span className="debug-chat-turn-role">Assistant</span>
+                    </div>
+                    <div className="debug-chat-turn-response">
+                      <ReactMarkdown components={markdownComponents}>
+                        {linkifyServiceMentions(turn.response)}
+                      </ReactMarkdown>
+                    </div>
+                  </div>
+                ))}
+                {selectedChatTurns.length === 0 && (
+                  <div className="debug-chat-empty">
+                    No messages in this chat yet.
+                  </div>
+                )}
               </div>
             )}
 
-            {phase === "running" && diagnosis && (
-              <div className="debug-panel-diagnosis">
-                <div className="debug-panel-section-header">Diagnosis</div>
-                <div className="debug-panel-diagnosis-content debug-panel-diagnosis-streaming">
+            {phase === "running" && pendingPromptRef.current.trim() && (
+              <div className="debug-chat-turn debug-chat-turn-live">
+                <div className="debug-chat-turn-header">
+                  <span className="debug-chat-turn-role">You</span>
+                </div>
+                <div className="debug-chat-turn-prompt">
+                  {pendingPromptRef.current.trim()}
+                </div>
+                <div className="debug-chat-turn-header">
+                  <span className="debug-chat-turn-role">Assistant</span>
+                </div>
+                <div
+                  className={`debug-chat-turn-response${diagnosis ? " debug-chat-turn-response-streaming" : ""}`}
+                >
                   <ReactMarkdown components={markdownComponents}>
-                    {diagnosis}
+                    {linkifyServiceMentions(diagnosis || "Thinking...")}
                   </ReactMarkdown>
                 </div>
               </div>
             )}
 
-            {phase === "complete" && (
-              <>
-                {error && (
-                  <div className="debug-panel-diagnosis">
-                    <div className="debug-panel-section-header">Error</div>
-                    <div className="debug-panel-error">{error}</div>
-                  </div>
-                )}
-                {diagnosis && (
-                  <div className="debug-panel-diagnosis">
-                    <div className="debug-panel-section-header">Diagnosis</div>
-                    <div className="debug-panel-diagnosis-content">
-                      <ReactMarkdown components={markdownComponents}>
-                        {diagnosis}
-                      </ReactMarkdown>
-                    </div>
-                  </div>
-                )}
-
-                {evidence &&
-                  (evidence.services.size > 0 ||
-                    evidence.files.length > 0 ||
-                    evidence.endpoints.length > 0) && (
-                    <div className="debug-evidence">
-                      {evidence.services.size > 0 && (
-                        <div className="debug-evidence-section">
-                          <span className="debug-evidence-label">
-                            Services
-                          </span>
-                          <div className="debug-evidence-chips">
-                            {Array.from(evidence.services.values()).map((svc) => (
-                              <button
-                                key={svc.name}
-                                className="debug-chip debug-chip-service"
-                                onClick={() => handleServiceClick(svc.name)}
-                                title={`Tools used: ${svc.tools.join(", ")}`}
-                              >
-                                {svc.name}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                      {evidence.files.length > 0 && (
-                        <div className="debug-evidence-section">
-                          <span className="debug-evidence-label">Files</span>
-                          <div className="debug-evidence-chips">
-                            {evidence.files.map((f, i) => {
-                              const ref = `${f.service}/${f.path}${f.line ? `:${f.line}` : ""}`;
-                              const resolvable = canResolveFile(ref);
-                              return (
-                                <button
-                                  key={i}
-                                  className={`debug-chip debug-chip-file${resolvable ? "" : " debug-chip-disabled"}`}
-                                  onClick={resolvable ? () => handleFileClick(ref) : undefined}
-                                  title={resolvable ? `${f.service}/${f.path}` : `${f.service}/${f.path} (no project path)`}
-                                  disabled={!resolvable}
-                                >
-                                  {f.path.split("/").pop()}
-                                  {f.line && (
-                                    <span className="debug-chip-line">
-                                      :{f.line}
-                                    </span>
-                                  )}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
-                      {evidence.endpoints.length > 0 && (
-                        <div className="debug-evidence-section">
-                          <span className="debug-evidence-label">
-                            Endpoints
-                          </span>
-                          <div className="debug-evidence-chips">
-                            {evidence.endpoints.map((ep, i) => {
-                              let pathname: string;
-                              try {
-                                pathname = new URL(ep.url).pathname;
-                              } catch {
-                                pathname = ep.url;
-                              }
-                              return (
-                                <button
-                                  key={i}
-                                  className="debug-chip debug-chip-endpoint"
-                                  onClick={() =>
-                                    navigator.clipboard.writeText(
-                                      `${ep.method} ${ep.url}`,
-                                    )
-                                  }
-                                  title="Click to copy"
-                                >
-                                  <span className="debug-chip-method">
-                                    {ep.method}
-                                  </span>
-                                  {pathname}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-              </>
+            {phase === "complete" && error && (
+              <div className="debug-panel-diagnosis">
+                <div className="debug-panel-section-header">Error</div>
+                <div className="debug-panel-error">{error}</div>
+              </div>
             )}
 
             <div className="debug-panel-actions">
@@ -1635,7 +1734,7 @@ export function DebugPanel({ isOpen, onClose, graphNodes }: DebugPanelProps) {
                   >
                     New Investigation
                   </button>
-                  {diagnosis && (
+                  {(selectedHistoryChat?.turns?.length || diagnosis) && (
                     <button
                       className="debug-panel-copy"
                       onClick={handleCopy}
