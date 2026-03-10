@@ -1090,6 +1090,25 @@ textarea {
   }
 }
 
+/* Closing state — scale down the whole expanded panel smoothly */
+.graph-ports-closing {
+  animation: graph-ports-collapse 0.18s ease forwards;
+  pointer-events: none;
+}
+
+@keyframes graph-ports-collapse {
+  from {
+    opacity: 1;
+    transform: scale(1);
+    transform-origin: bottom right;
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.92);
+    transform-origin: bottom right;
+  }
+}
+
 .graph-ports-item {
   display: flex;
   align-items: center;
@@ -9873,6 +9892,18 @@ textarea {
   animation: debug-agent-dock-in 0.16s ease-out;
 }
 
+.debug-agent-shell-closing {
+  pointer-events: none;
+}
+
+.debug-agent-shell-closing .debug-agent-dock {
+  animation: debug-agent-dock-out 0.18s ease-in forwards;
+}
+
+.debug-agent-shell-with-results.debug-agent-shell-closing .debug-agent-dock {
+  animation: debug-agent-dock-out-wide 0.18s ease-in forwards;
+}
+
 .debug-agent-shell-with-results .debug-agent-dock {
   left: 16px;
   right: calc(min(540px, 38vw) + 16px);
@@ -10002,6 +10033,10 @@ textarea {
   animation: debug-agent-panel-in 0.18s ease-out;
 }
 
+.debug-agent-shell-closing .debug-panel {
+  animation: debug-agent-panel-out 0.18s ease-in forwards;
+}
+
 @keyframes debug-agent-dock-in {
   from {
     opacity: 0;
@@ -10013,6 +10048,28 @@ textarea {
   }
 }
 
+@keyframes debug-agent-dock-out {
+  from {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(-50%) translateY(10px);
+  }
+}
+
+@keyframes debug-agent-dock-out-wide {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+
 @keyframes debug-agent-panel-in {
   from {
     opacity: 0;
@@ -10021,6 +10078,17 @@ textarea {
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@keyframes debug-agent-panel-out {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-8px);
   }
 }
 

@@ -32,6 +32,15 @@ const ActivePorts = React.memo(function ActivePorts({
   reactFlowInstance: ReactFlowInstance | null;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [closing, setClosing] = useState(false);
+
+  const handleCollapse = useCallback(() => {
+    setClosing(true);
+    setTimeout(() => {
+      setExpanded(false);
+      setClosing(false);
+    }, 180);
+  }, []);
 
   const portEntries = useMemo(() => {
     const entries: {
@@ -73,7 +82,7 @@ const ActivePorts = React.memo(function ActivePorts({
 
   return (
     <div
-      className={`graph-ports${expanded ? " graph-ports-expanded" : ""}`}
+      className={`graph-ports${expanded ? " graph-ports-expanded" : ""}${closing ? " graph-ports-closing" : ""}`}
       onClick={() => {
         if (!expanded) setExpanded(true);
       }}
@@ -101,7 +110,7 @@ const ActivePorts = React.memo(function ActivePorts({
         className="graph-ports-header"
         onClick={(e) => {
           e.stopPropagation();
-          setExpanded(false);
+          handleCollapse();
         }}
       >
         <span className="graph-ports-title">Active Ports</span>

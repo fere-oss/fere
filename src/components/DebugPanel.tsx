@@ -129,6 +129,7 @@ function formatToolInput(
 }
 
 export function DebugPanel({ isOpen, onClose, graphNodes }: DebugPanelProps) {
+  const CLOSE_ANIMATION_MS = 180;
   const [phase, setPhase] = useState<DebugPhase>("input");
   const [hasApiKey, setHasApiKey] = useState<boolean | null>(null);
   const [apiKeyInput, setApiKeyInput] = useState("");
@@ -141,6 +142,8 @@ export function DebugPanel({ isOpen, onClose, graphNodes }: DebugPanelProps) {
   const [followUpInput, setFollowUpInput] = useState("");
   const [fileError, setFileError] = useState("");
   const [isResultsVisible, setIsResultsVisible] = useState(true);
+  const [shouldRender, setShouldRender] = useState(isOpen);
+  const [isClosing, setIsClosing] = useState(false);
   const [problemCaret, setProblemCaret] = useState(0);
   const [followUpCaret, setFollowUpCaret] = useState(0);
   const [mentionIndex, setMentionIndex] = useState(0);
@@ -149,6 +152,7 @@ export function DebugPanel({ isOpen, onClose, graphNodes }: DebugPanelProps) {
   const followUpInputRef = useRef<HTMLTextAreaElement>(null);
   const problemHighlightRef = useRef<HTMLDivElement>(null);
   const followUpHighlightRef = useRef<HTMLDivElement>(null);
+  const closeTimerRef = useRef<number | null>(null);
 
   // Build lookup maps from graph nodes
   const nodeByName = useMemo(() => {
@@ -452,6 +456,35 @@ export function DebugPanel({ isOpen, onClose, graphNodes }: DebugPanelProps) {
       if (!result.hasKey) setPhase("setup");
     });
   }, []);
+
+  useEffect(() => {
+    if (closeTimerRef.current !== null) {
+      window.clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+
+    if (isOpen) {
+      setShouldRender(true);
+      setIsClosing(false);
+      return;
+    }
+
+    if (!shouldRender) return;
+
+    setIsClosing(true);
+    closeTimerRef.current = window.setTimeout(() => {
+      setShouldRender(false);
+      setIsClosing(false);
+      closeTimerRef.current = null;
+    }, CLOSE_ANIMATION_MS);
+
+    return () => {
+      if (closeTimerRef.current !== null) {
+        window.clearTimeout(closeTimerRef.current);
+        closeTimerRef.current = null;
+      }
+    };
+  }, [isOpen, shouldRender]);
 
   // Escape to close
   const handleClose = useCallback(() => {
@@ -826,7 +859,7 @@ export function DebugPanel({ isOpen, onClose, graphNodes }: DebugPanelProps) {
   }, [phase, followUpInput, diagnosis, error, autoResizeTextarea]);
 
   // Loading / hidden state
-  if (!isOpen || hasApiKey === null) return null;
+  if (!shouldRender || hasApiKey === null) return null;
 
   // Track iteration changes for markers
   let lastIteration = 0;
@@ -843,7 +876,7 @@ export function DebugPanel({ isOpen, onClose, graphNodes }: DebugPanelProps) {
 
   return (
     <div
-      className={`debug-agent-shell${showResultsPanel ? " debug-agent-shell-with-results" : ""}`}
+      className={`debug-agent-shell${showResultsPanel ? " debug-agent-shell-with-results" : ""}${isClosing ? " debug-agent-shell-closing" : ""}`}
     >
       <div className="debug-agent-dock">
         <div className="debug-agent-dock-header">
