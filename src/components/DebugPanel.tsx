@@ -847,23 +847,6 @@ export function DebugPanel({ isOpen, onClose, graphNodes }: DebugPanelProps) {
     >
       <div className="debug-agent-dock">
         <div className="debug-agent-dock-header">
-            <button
-              className="debug-panel-close"
-              onClick={handleClose}
-              title="Close Fere Agent"
-              aria-label="Close Fere Agent"
-            >
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 14 14"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.5"
-              >
-                <path d="M1 1l12 12M13 1L1 13" />
-              </svg>
-            </button>
         </div>
 
         {phase === "setup" && (

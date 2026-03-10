@@ -233,9 +233,14 @@ function App() {
   const [debugHighlightNodeIds, setDebugHighlightNodeIds] = useState<Set<string>>(new Set());
 
   const handleOpenDebugPanel = useCallback(() => {
-    setHasEverOpened(true);
-    setIsAgentOpen(true);
-  }, []);
+    if (isAgentOpen) {
+      setIsAgentOpen(false);
+      setDebugHighlightNodeIds(new Set());
+    } else {
+      setHasEverOpened(true);
+      setIsAgentOpen(true);
+    }
+  }, [isAgentOpen]);
 
   const handleCloseDebugPanel = useCallback(() => {
     setIsAgentOpen(false);

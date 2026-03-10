@@ -9863,12 +9863,14 @@ textarea {
   min-width: 0;
   pointer-events: none;
   z-index: 260;
+  margin-left: -12px; /* cancel out .app-body gap so zero-width shell doesn't shift the map */
 }
 
 .debug-agent-shell-with-results {
   flex: 0 0 min(540px, 38vw);
   width: min(540px, 38vw);
   pointer-events: auto;
+  margin-left: 0; /* restore gap when results panel is visible */
 }
 
 .debug-agent-dock {
