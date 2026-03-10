@@ -19,7 +19,7 @@ const MODEL = 'gpt-4.1';
 const ENV_PATH = path.join(__dirname, '..', '..', '.env');
 
 // --- Token budget limits ---
-const MAX_TOKENS_TOOL_TURN = 1024; // Intermediate turns: enough for reasoning + 2-3 tool calls
+const MAX_TOKENS_TOOL_TURN = 768;  // Intermediate turns should stay concise and tool-focused
 const MAX_TOKENS_FINAL = 4096;     // Final diagnosis gets full budget
 const TRUNCATE_BODY = 3000;        // HTTP response body chars
 const TRUNCATE_BODY_CONCURRENT = 800;
@@ -29,6 +29,9 @@ const TRUNCATE_SOURCE_CHARS = 6000;
 const MAX_GREP_MATCHES = 25;
 const MAX_FILE_LIST = 40;
 const MAX_DB_ROWS = 30;
+const MAX_PROMPT_SERVICES = 18;
+const MAX_PROMPT_CONNECTIONS = 24;
+const MAX_PROMPT_EXTERNALS = 12;
 // Context trimming: after this many messages, compress old tool results
 const CONTEXT_TRIM_THRESHOLD = 16;
 // Loop detection: if the last N tool calls are identical, nudge the model
@@ -124,7 +127,7 @@ const DEBUG_TOOLS = [
     type: 'function',
     function: {
       name: 'fire_request',
-      description: 'Send an HTTP request to a local service.',
+      description: 'Send one HTTP request.',
       parameters: {
         type: 'object',
         properties: {
@@ -141,7 +144,7 @@ const DEBUG_TOOLS = [
     type: 'function',
     function: {
       name: 'fire_concurrent_requests',
-      description: 'Fire N identical requests concurrently to test race conditions.',
+      description: 'Send N identical requests concurrently.',
       parameters: {
         type: 'object',
         properties: {
@@ -159,14 +162,14 @@ const DEBUG_TOOLS = [
     type: 'function',
     function: {
       name: 'get_container_logs',
-      description: 'Get recent logs from a Docker container.',
+      description: 'Get recent Docker logs.',
       parameters: {
         type: 'object',
         properties: {
           container_name: { type: 'string' },
           tail: { type: 'number', maximum: 500 },
-          since: { type: 'string', description: 'ISO 8601 or relative e.g. "5m"' },
-          grep: { type: 'string', description: 'Case-insensitive filter string' },
+          since: { type: 'string', description: 'ISO time or relative like "5m"' },
+          grep: { type: 'string', description: 'Case-insensitive filter' },
         },
         required: ['container_name'],
       },
@@ -176,12 +179,12 @@ const DEBUG_TOOLS = [
     type: 'function',
     function: {
       name: 'read_source_file',
-      description: "Read a source file from a service's project. Also use for config files (.yml, .json, .env, Dockerfile).",
+      description: 'Read a project file, including config files.',
       parameters: {
         type: 'object',
         properties: {
           service_name: { type: 'string' },
-          file_path: { type: 'string', description: 'Relative path, e.g. "src/routes/checkout.js"' },
+          file_path: { type: 'string', description: 'Relative path' },
           line_start: { type: 'number' },
           line_end: { type: 'number' },
         },
@@ -193,12 +196,12 @@ const DEBUG_TOOLS = [
     type: 'function',
     function: {
       name: 'find_source_files',
-      description: "Find code files (.js/.ts/.py/.go/.rb/.java/.php) in a service's project by glob pattern.",
+      description: 'Find code files by glob.',
       parameters: {
         type: 'object',
         properties: {
           service_name: { type: 'string' },
-          pattern: { type: 'string', description: 'Glob, e.g. "**/checkout*"' },
+          pattern: { type: 'string', description: 'Glob pattern' },
         },
         required: ['service_name', 'pattern'],
       },
@@ -208,7 +211,7 @@ const DEBUG_TOOLS = [
     type: 'function',
     function: {
       name: 'grep_source',
-      description: "Search code files in a service's project for a text/regex pattern. Returns file paths and line numbers.",
+      description: 'Search code files for a regex or text pattern.',
       parameters: {
         type: 'object',
         properties: {
@@ -224,7 +227,7 @@ const DEBUG_TOOLS = [
     type: 'function',
     function: {
       name: 'get_service_routes',
-      description: 'Get discovered API routes (method, path, framework) for a service.',
+      description: 'Get discovered API routes for a service.',
       parameters: {
         type: 'object',
         properties: {
@@ -238,7 +241,7 @@ const DEBUG_TOOLS = [
     type: 'function',
     function: {
       name: 'run_database_query',
-      description: 'Run a read-only SQL query (SELECT/SHOW/DESCRIBE/EXPLAIN) against a database container.',
+      description: 'Run a read-only SQL query against a database container.',
       parameters: {
         type: 'object',
         properties: {
@@ -259,12 +262,33 @@ function truncate(str, maxLen) {
   return str.slice(0, maxLen) + '\n... (truncated)';
 }
 
+function sanitizeToolProgressResult(result) {
+  if (result == null) return result;
+  if (typeof result === 'string' || typeof result === 'number' || typeof result === 'boolean') {
+    return result;
+  }
+  try {
+    return JSON.parse(JSON.stringify(result));
+  } catch {
+    return { error: 'Tool result could not be serialized for display' };
+  }
+}
+
 // --- Helper: Find service node ---
 
 function findServiceNode(graphSnapshot, serviceName) {
-  return graphSnapshot.nodes.find(
-    n => n.name === serviceName || n.name.includes(serviceName)
-  );
+  const query = String(serviceName || '').trim().toLowerCase();
+  if (!query) return null;
+
+  const nodes = graphSnapshot.nodes.filter(n => n.type !== 'external');
+
+  const exact = nodes.find(n => n.name?.trim().toLowerCase() === query);
+  if (exact) return exact;
+
+  const prefix = nodes.find(n => n.name?.trim().toLowerCase().startsWith(query));
+  if (prefix) return prefix;
+
+  return nodes.find(n => n.name?.trim().toLowerCase().includes(query)) || null;
 }
 
 // --- Helper: Make HTTP request ---
@@ -455,8 +479,13 @@ async function executeReadSource(input, graphSnapshot) {
     return { error: `Service "${service_name}" not found or has no project path` };
   }
 
-  const fullPath = path.resolve(node.projectPath, file_path);
-  if (!fullPath.startsWith(path.resolve(node.projectPath))) {
+  const projectRoot = path.resolve(node.projectPath);
+  const fullPath = path.resolve(projectRoot, file_path);
+  const relativePath = path.relative(projectRoot, fullPath);
+  if (
+    relativePath.startsWith('..') ||
+    path.isAbsolute(relativePath)
+  ) {
     return { error: 'Path traversal not allowed' };
   }
 
@@ -572,7 +601,7 @@ async function executeGetRoutes(input, graphSnapshot, sessionCache) {
   }
 
   // Cache route scans per project path within the session
-  const cacheKey = `${node.projectPath}:${node.id}`;
+  const cacheKey = `${node.projectPath}:${node.name.toLowerCase()}`;
   if (sessionCache.routes[cacheKey]) {
     const matched = sessionCache.routes[cacheKey];
     return {
@@ -682,34 +711,182 @@ function summarizeToolResult(toolName, result) {
   }
 }
 
+function buildToolContextContent(toolName, result) {
+  const summary = summarizeToolResult(toolName, result);
+  if (result?.error) {
+    return `[Summary: ${summary}]`;
+  }
+
+  switch (toolName) {
+    case 'fire_request': {
+      const bodyPreview = typeof result.body === 'string'
+        ? truncate(result.body, 500)
+        : '';
+      return [
+        `[Summary: ${summary}]`,
+        result.headers ? `Headers: ${JSON.stringify(result.headers)}` : null,
+        bodyPreview ? `Body excerpt:\n${bodyPreview}` : null,
+      ].filter(Boolean).join('\n');
+    }
+    case 'fire_concurrent_requests':
+      return [
+        `[Summary: ${summary}]`,
+        result.statuses ? `Statuses: ${JSON.stringify(result.statuses)}` : null,
+        Array.isArray(result.errors) && result.errors.length
+          ? `Errors: ${JSON.stringify(result.errors.slice(0, 5))}`
+          : null,
+        Array.isArray(result.responses) && result.responses.length
+          ? `Response excerpts: ${JSON.stringify(result.responses.slice(0, 2))}`
+          : null,
+      ].filter(Boolean).join('\n');
+    case 'get_container_logs': {
+      const logExcerpt = typeof result.logs === 'string'
+        ? truncate(result.logs, 900)
+        : '';
+      return [
+        `[Summary: ${summary}]`,
+        logExcerpt ? `Log excerpt:\n${logExcerpt}` : null,
+      ].filter(Boolean).join('\n');
+    }
+    case 'read_source_file': {
+      const contentExcerpt = typeof result.content === 'string'
+        ? truncate(result.content, 1200)
+        : '';
+      return [
+        `[Summary: ${summary}]`,
+        contentExcerpt ? `Source excerpt:\n${contentExcerpt}` : null,
+      ].filter(Boolean).join('\n');
+    }
+    case 'find_source_files':
+      return [
+        `[Summary: ${summary}]`,
+        Array.isArray(result.files) && result.files.length
+          ? `Files: ${JSON.stringify(result.files.slice(0, 20))}`
+          : null,
+      ].filter(Boolean).join('\n');
+    case 'grep_source':
+      return [
+        `[Summary: ${summary}]`,
+        Array.isArray(result.matches) && result.matches.length
+          ? `Matches: ${JSON.stringify(result.matches.slice(0, 8))}`
+          : null,
+      ].filter(Boolean).join('\n');
+    case 'get_service_routes':
+      return [
+        `[Summary: ${summary}]`,
+        Array.isArray(result.routes) && result.routes.length
+          ? `Routes: ${JSON.stringify(result.routes.slice(0, 20))}`
+          : null,
+      ].filter(Boolean).join('\n');
+    case 'run_database_query':
+      return [
+        `[Summary: ${summary}]`,
+        Array.isArray(result.columns) && result.columns.length
+          ? `Columns: ${JSON.stringify(result.columns)}`
+          : null,
+        Array.isArray(result.rows) && result.rows.length
+          ? `Rows sample: ${JSON.stringify(result.rows.slice(0, 5))}`
+          : null,
+      ].filter(Boolean).join('\n');
+    default:
+      return `[Summary: ${summary}]`;
+  }
+}
+
+function summarizePromptList(items, maxItems, formatter) {
+  const visible = items.slice(0, maxItems).map(formatter);
+  const omitted = items.length - visible.length;
+  if (omitted > 0) {
+    visible.push(`- ... ${omitted} more omitted for brevity`);
+  }
+  return visible.join('\n');
+}
+
+function extractFocusTerms(graphSnapshot, inputText) {
+  const text = String(inputText || '').toLowerCase();
+  if (!text) return { serviceIds: new Set(), ports: new Set() };
+
+  const serviceIds = new Set();
+  const ports = new Set();
+
+  for (const node of graphSnapshot.nodes) {
+    if (node.type === 'external' || !node.name) continue;
+    const name = node.name.toLowerCase();
+    if (text.includes(`@${name}`) || text.includes(name)) {
+      serviceIds.add(node.id);
+    }
+  }
+
+  const portMatches = text.match(/\b\d{2,5}\b/g) || [];
+  for (const token of portMatches) {
+    const port = Number(token);
+    if (port > 0) ports.add(port);
+  }
+
+  for (const node of graphSnapshot.nodes) {
+    if ((node.ports || []).some((entry) => ports.has(entry.port))) {
+      serviceIds.add(node.id);
+    }
+  }
+
+  return { serviceIds, ports };
+}
+
 // --- System Prompt ---
 
-function buildSystemPrompt(graphSnapshot) {
+function buildSystemPrompt(graphSnapshot, focusText = '') {
   const { nodes, edges } = graphSnapshot;
+  const nodeById = new Map(nodes.map(node => [node.id, node]));
+  const focus = extractFocusTerms(graphSnapshot, focusText);
 
-  const services = nodes
+  const serviceNodes = nodes
     .filter(n => n.type !== 'external')
-    .map(n => {
+    .sort((a, b) => {
+      const aFocused = focus.serviceIds.has(a.id) ? 1 : 0;
+      const bFocused = focus.serviceIds.has(b.id) ? 1 : 0;
+      const aPorts = Array.isArray(a.ports) ? a.ports.length : 0;
+      const bPorts = Array.isArray(b.ports) ? b.ports.length : 0;
+      return bFocused - aFocused || bPorts - aPorts || a.name.localeCompare(b.name);
+    });
+
+  const services = summarizePromptList(
+    serviceNodes,
+    MAX_PROMPT_SERVICES,
+    (n) => {
       const ports = (n.ports || []).map(p => p.port).join(', ');
       const health = n.healthStatus || 'unknown';
       const container = n.isDockerContainer ? ` [Docker: ${n.containerState || 'unknown'}]` : '';
       const project = n.projectPath ? ` [project: ${n.projectPath}]` : '';
       return `- ${n.name} (ports: ${ports || 'none'}, health: ${health}${container}${project})`;
-    })
-    .join('\n');
+    },
+  );
 
-  const connections = edges
-    .map(e => {
-      const src = nodes.find(n => n.id === e.source);
-      const tgt = nodes.find(n => n.id === e.target);
+  const sortedEdges = [...edges].sort((a, b) => {
+    const aFocusBoost =
+      (focus.serviceIds.has(a.source) || focus.serviceIds.has(a.target) ? 2 : 0) +
+      (focus.ports.has(a.sourcePort) || focus.ports.has(a.targetPort) ? 1 : 0);
+    const bFocusBoost =
+      (focus.serviceIds.has(b.source) || focus.serviceIds.has(b.target) ? 2 : 0) +
+      (focus.ports.has(b.sourcePort) || focus.ports.has(b.targetPort) ? 1 : 0);
+    const aScore = aFocusBoost + (a.confidence || 0) + (a.targetPort ? 1 : 0);
+    const bScore = bFocusBoost + (b.confidence || 0) + (b.targetPort ? 1 : 0);
+    return bScore - aScore;
+  });
+  const connections = summarizePromptList(
+    sortedEdges,
+    MAX_PROMPT_CONNECTIONS,
+    (e) => {
+      const src = nodeById.get(e.source);
+      const tgt = nodeById.get(e.target);
       return `- ${src?.name || e.source} → ${tgt?.name || e.target} (port ${e.targetPort})`;
-    })
-    .join('\n');
+    },
+  );
 
-  const externals = nodes
-    .filter(n => n.type === 'external')
-    .map(n => `- ${n.name}`)
-    .join('\n');
+  const externals = summarizePromptList(
+    nodes.filter(n => n.type === 'external'),
+    MAX_PROMPT_EXTERNALS,
+    (n) => `- ${n.name}`,
+  );
 
   return `You are an expert debugging agent embedded in Fere, a development environment monitoring tool.
 You have access to the user's live local development environment including running services, container logs, source code, and the ability to fire HTTP requests.
@@ -745,6 +922,7 @@ The user will describe a bug or issue. Your job is to systematically investigate
 - If you find error messages, read the source code at the referenced file/line to understand why
 - Look for patterns: race conditions (intermittent), configuration issues (consistent), data issues (specific inputs)
 - Cross-reference timestamps in logs across services to trace request flow
+- Stay concise while investigating. Prefer tool calls over narrative until you are ready to conclude.
 
 ## Output Format
 When you've identified the root cause, provide your diagnosis as a structured report:
@@ -768,6 +946,7 @@ When referencing services, file paths, or code identifiers in your diagnosis, al
 - Always check logs from ALL services in the chain, not just the entry point.
 - When reading source code, focus on error handlers, database queries, and inter-service calls.
 - Keep your tool calls focused. Don't read entire codebases — target specific files mentioned in error logs.
+- During intermediate turns, avoid long prose. Either call tools or give a very short next-step note.
 - If a container is not running (health: red), note this as it may BE the bug.`;
 }
 
@@ -1023,13 +1202,13 @@ async function runDebugAgent(options, onProgress) {
     sessionCache = resumeState.sessionCache;
     toolResultSummaries = resumeState.toolResultSummaries;
     // Rebuild system prompt from fresh snapshot so topology changes are reflected
-    systemPrompt = buildSystemPrompt(graphSnapshot);
+    systemPrompt = buildSystemPrompt(graphSnapshot, followUp || '');
     messages = resumeState.messages;
     messages.push({ role: 'user', content: followUp });
   } else {
     sessionCache = { routes: {}, files: {} };
     toolResultSummaries = new Map();
-    systemPrompt = buildSystemPrompt(graphSnapshot);
+    systemPrompt = buildSystemPrompt(graphSnapshot, problem || '');
     messages = [{ role: 'user', content: problem }];
   }
 
@@ -1133,9 +1312,7 @@ async function runDebugAgent(options, onProgress) {
 
     const message = response.choices?.[0]?.message || choice.message;
 
-    if (!messages.includes(message)) {
-      messages.push(message);
-    }
+    messages.push(message);
 
     const toolCalls = message.tool_calls;
     if (!toolCalls || toolCalls.length === 0) {
@@ -1193,27 +1370,47 @@ async function runDebugAgent(options, onProgress) {
 
     // Push results in the same order the model issued the calls
     for (let j = 0; j < parsedCalls.length; j++) {
-      const { toolCall, fnName, parseErr } = parsedCalls[j];
+      const { toolCall, fnName, fnArgs, parseErr } = parsedCalls[j];
       const outcome = settled[j];
 
       let result;
       if (parseErr) {
         result = `Failed to parse tool arguments: ${parseErr.message}. Raw: ${toolCall.function.arguments.slice(0, 200)}`;
         toolResultSummaries.set(toolCall.id, `Error: malformed arguments for ${fnName}`);
-        onProgress({ type: 'tool_result', tool: fnName, summary: 'Error: malformed arguments', iteration: i + 1 });
+        onProgress({
+          type: 'tool_result',
+          tool: fnName,
+          summary: 'Error: malformed arguments',
+          result: { error: result },
+          iteration: i + 1,
+        });
       } else if (outcome.status === 'rejected') {
         result = { error: outcome.reason?.message || 'Tool execution failed' };
         const summary = `Error: ${result.error}`;
         toolResultSummaries.set(toolCall.id, summary);
-        onProgress({ type: 'tool_result', tool: fnName, summary, iteration: i + 1 });
+        onProgress({
+          type: 'tool_result',
+          tool: fnName,
+          input: fnArgs,
+          summary,
+          result: sanitizeToolProgressResult(result),
+          iteration: i + 1,
+        });
       } else {
         result = outcome.value;
         const summary = summarizeToolResult(fnName, result);
         toolResultSummaries.set(toolCall.id, summary);
-        onProgress({ type: 'tool_result', tool: fnName, summary, iteration: i + 1 });
+        onProgress({
+          type: 'tool_result',
+          tool: fnName,
+          input: fnArgs,
+          summary,
+          result: sanitizeToolProgressResult(result),
+          iteration: i + 1,
+        });
       }
 
-      const rawContent = typeof result === 'string' ? result : JSON.stringify(result);
+      const rawContent = buildToolContextContent(fnName, result);
       const resultContent = rawContent.length > MAX_TOOL_RESULT_CHARS
         ? rawContent.slice(0, MAX_TOOL_RESULT_CHARS) + '\n... (truncated for context)'
         : rawContent;
