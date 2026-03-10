@@ -467,8 +467,13 @@ async function executeReadSource(input, graphSnapshot) {
     return { error: `Service "${service_name}" not found or has no project path` };
   }
 
-  const fullPath = path.resolve(node.projectPath, file_path);
-  if (!fullPath.startsWith(path.resolve(node.projectPath))) {
+  const projectRoot = path.resolve(node.projectPath);
+  const fullPath = path.resolve(projectRoot, file_path);
+  const relativePath = path.relative(projectRoot, fullPath);
+  if (
+    relativePath.startsWith('..') ||
+    path.isAbsolute(relativePath)
+  ) {
     return { error: 'Path traversal not allowed' };
   }
 
@@ -1205,7 +1210,7 @@ async function runDebugAgent(options, onProgress) {
 
     // Push results in the same order the model issued the calls
     for (let j = 0; j < parsedCalls.length; j++) {
-      const { toolCall, fnName, parseErr } = parsedCalls[j];
+      const { toolCall, fnName, fnArgs, parseErr } = parsedCalls[j];
       const outcome = settled[j];
 
       let result;
