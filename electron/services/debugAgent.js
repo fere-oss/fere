@@ -711,6 +711,88 @@ function summarizeToolResult(toolName, result) {
   }
 }
 
+function buildToolContextContent(toolName, result) {
+  const summary = summarizeToolResult(toolName, result);
+  if (result?.error) {
+    return `[Summary: ${summary}]`;
+  }
+
+  switch (toolName) {
+    case 'fire_request': {
+      const bodyPreview = typeof result.body === 'string'
+        ? truncate(result.body, 500)
+        : '';
+      return [
+        `[Summary: ${summary}]`,
+        result.headers ? `Headers: ${JSON.stringify(result.headers)}` : null,
+        bodyPreview ? `Body excerpt:\n${bodyPreview}` : null,
+      ].filter(Boolean).join('\n');
+    }
+    case 'fire_concurrent_requests':
+      return [
+        `[Summary: ${summary}]`,
+        result.statuses ? `Statuses: ${JSON.stringify(result.statuses)}` : null,
+        Array.isArray(result.errors) && result.errors.length
+          ? `Errors: ${JSON.stringify(result.errors.slice(0, 5))}`
+          : null,
+        Array.isArray(result.responses) && result.responses.length
+          ? `Response excerpts: ${JSON.stringify(result.responses.slice(0, 2))}`
+          : null,
+      ].filter(Boolean).join('\n');
+    case 'get_container_logs': {
+      const logExcerpt = typeof result.logs === 'string'
+        ? truncate(result.logs, 900)
+        : '';
+      return [
+        `[Summary: ${summary}]`,
+        logExcerpt ? `Log excerpt:\n${logExcerpt}` : null,
+      ].filter(Boolean).join('\n');
+    }
+    case 'read_source_file': {
+      const contentExcerpt = typeof result.content === 'string'
+        ? truncate(result.content, 1200)
+        : '';
+      return [
+        `[Summary: ${summary}]`,
+        contentExcerpt ? `Source excerpt:\n${contentExcerpt}` : null,
+      ].filter(Boolean).join('\n');
+    }
+    case 'find_source_files':
+      return [
+        `[Summary: ${summary}]`,
+        Array.isArray(result.files) && result.files.length
+          ? `Files: ${JSON.stringify(result.files.slice(0, 20))}`
+          : null,
+      ].filter(Boolean).join('\n');
+    case 'grep_source':
+      return [
+        `[Summary: ${summary}]`,
+        Array.isArray(result.matches) && result.matches.length
+          ? `Matches: ${JSON.stringify(result.matches.slice(0, 8))}`
+          : null,
+      ].filter(Boolean).join('\n');
+    case 'get_service_routes':
+      return [
+        `[Summary: ${summary}]`,
+        Array.isArray(result.routes) && result.routes.length
+          ? `Routes: ${JSON.stringify(result.routes.slice(0, 20))}`
+          : null,
+      ].filter(Boolean).join('\n');
+    case 'run_database_query':
+      return [
+        `[Summary: ${summary}]`,
+        Array.isArray(result.columns) && result.columns.length
+          ? `Columns: ${JSON.stringify(result.columns)}`
+          : null,
+        Array.isArray(result.rows) && result.rows.length
+          ? `Rows sample: ${JSON.stringify(result.rows.slice(0, 5))}`
+          : null,
+      ].filter(Boolean).join('\n');
+    default:
+      return `[Summary: ${summary}]`;
+  }
+}
+
 function summarizePromptList(items, maxItems, formatter) {
   const visible = items.slice(0, maxItems).map(formatter);
   const omitted = items.length - visible.length;
@@ -1289,7 +1371,7 @@ async function runDebugAgent(options, onProgress) {
         });
       }
 
-      const rawContent = typeof result === 'string' ? result : JSON.stringify(result);
+      const rawContent = buildToolContextContent(fnName, result);
       const resultContent = rawContent.length > MAX_TOOL_RESULT_CHARS
         ? rawContent.slice(0, MAX_TOOL_RESULT_CHARS) + '\n... (truncated for context)'
         : rawContent;
