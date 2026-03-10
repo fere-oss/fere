@@ -601,7 +601,7 @@ async function executeGetRoutes(input, graphSnapshot, sessionCache) {
   }
 
   // Cache route scans per project path within the session
-  const cacheKey = `${node.projectPath}:${node.id}`;
+  const cacheKey = `${node.projectPath}:${node.name.toLowerCase()}`;
   if (sessionCache.routes[cacheKey]) {
     const matched = sessionCache.routes[cacheKey];
     return {
@@ -802,18 +802,51 @@ function summarizePromptList(items, maxItems, formatter) {
   return visible.join('\n');
 }
 
+function extractFocusTerms(graphSnapshot, inputText) {
+  const text = String(inputText || '').toLowerCase();
+  if (!text) return { serviceIds: new Set(), ports: new Set() };
+
+  const serviceIds = new Set();
+  const ports = new Set();
+
+  for (const node of graphSnapshot.nodes) {
+    if (node.type === 'external' || !node.name) continue;
+    const name = node.name.toLowerCase();
+    if (text.includes(`@${name}`) || text.includes(name)) {
+      serviceIds.add(node.id);
+    }
+  }
+
+  const portMatches = text.match(/\b\d{2,5}\b/g) || [];
+  for (const token of portMatches) {
+    const port = Number(token);
+    if (port > 0) ports.add(port);
+  }
+
+  for (const node of graphSnapshot.nodes) {
+    if ((node.ports || []).some((entry) => ports.has(entry.port))) {
+      serviceIds.add(node.id);
+    }
+  }
+
+  return { serviceIds, ports };
+}
+
 // --- System Prompt ---
 
-function buildSystemPrompt(graphSnapshot) {
+function buildSystemPrompt(graphSnapshot, focusText = '') {
   const { nodes, edges } = graphSnapshot;
   const nodeById = new Map(nodes.map(node => [node.id, node]));
+  const focus = extractFocusTerms(graphSnapshot, focusText);
 
   const serviceNodes = nodes
     .filter(n => n.type !== 'external')
     .sort((a, b) => {
+      const aFocused = focus.serviceIds.has(a.id) ? 1 : 0;
+      const bFocused = focus.serviceIds.has(b.id) ? 1 : 0;
       const aPorts = Array.isArray(a.ports) ? a.ports.length : 0;
       const bPorts = Array.isArray(b.ports) ? b.ports.length : 0;
-      return bPorts - aPorts || a.name.localeCompare(b.name);
+      return bFocused - aFocused || bPorts - aPorts || a.name.localeCompare(b.name);
     });
 
   const services = summarizePromptList(
@@ -829,8 +862,14 @@ function buildSystemPrompt(graphSnapshot) {
   );
 
   const sortedEdges = [...edges].sort((a, b) => {
-    const aScore = (a.confidence || 0) + (a.targetPort ? 1 : 0);
-    const bScore = (b.confidence || 0) + (b.targetPort ? 1 : 0);
+    const aFocusBoost =
+      (focus.serviceIds.has(a.source) || focus.serviceIds.has(a.target) ? 2 : 0) +
+      (focus.ports.has(a.sourcePort) || focus.ports.has(a.targetPort) ? 1 : 0);
+    const bFocusBoost =
+      (focus.serviceIds.has(b.source) || focus.serviceIds.has(b.target) ? 2 : 0) +
+      (focus.ports.has(b.sourcePort) || focus.ports.has(b.targetPort) ? 1 : 0);
+    const aScore = aFocusBoost + (a.confidence || 0) + (a.targetPort ? 1 : 0);
+    const bScore = bFocusBoost + (b.confidence || 0) + (b.targetPort ? 1 : 0);
     return bScore - aScore;
   });
   const connections = summarizePromptList(
@@ -883,6 +922,7 @@ The user will describe a bug or issue. Your job is to systematically investigate
 - If you find error messages, read the source code at the referenced file/line to understand why
 - Look for patterns: race conditions (intermittent), configuration issues (consistent), data issues (specific inputs)
 - Cross-reference timestamps in logs across services to trace request flow
+- Stay concise while investigating. Prefer tool calls over narrative until you are ready to conclude.
 
 ## Output Format
 When you've identified the root cause, provide your diagnosis as a structured report:
@@ -906,6 +946,7 @@ When referencing services, file paths, or code identifiers in your diagnosis, al
 - Always check logs from ALL services in the chain, not just the entry point.
 - When reading source code, focus on error handlers, database queries, and inter-service calls.
 - Keep your tool calls focused. Don't read entire codebases — target specific files mentioned in error logs.
+- During intermediate turns, avoid long prose. Either call tools or give a very short next-step note.
 - If a container is not running (health: red), note this as it may BE the bug.`;
 }
 
@@ -1161,13 +1202,13 @@ async function runDebugAgent(options, onProgress) {
     sessionCache = resumeState.sessionCache;
     toolResultSummaries = resumeState.toolResultSummaries;
     // Rebuild system prompt from fresh snapshot so topology changes are reflected
-    systemPrompt = buildSystemPrompt(graphSnapshot);
+    systemPrompt = buildSystemPrompt(graphSnapshot, followUp || '');
     messages = resumeState.messages;
     messages.push({ role: 'user', content: followUp });
   } else {
     sessionCache = { routes: {}, files: {} };
     toolResultSummaries = new Map();
-    systemPrompt = buildSystemPrompt(graphSnapshot);
+    systemPrompt = buildSystemPrompt(graphSnapshot, problem || '');
     messages = [{ role: 'user', content: problem }];
   }
 
