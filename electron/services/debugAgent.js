@@ -19,7 +19,7 @@ const MODEL = 'gpt-4.1';
 const ENV_PATH = path.join(__dirname, '..', '..', '.env');
 
 // --- Token budget limits ---
-const MAX_TOKENS_TOOL_TURN = 1024; // Intermediate turns: enough for reasoning + 2-3 tool calls
+const MAX_TOKENS_TOOL_TURN = 768;  // Intermediate turns should stay concise and tool-focused
 const MAX_TOKENS_FINAL = 4096;     // Final diagnosis gets full budget
 const TRUNCATE_BODY = 3000;        // HTTP response body chars
 const TRUNCATE_BODY_CONCURRENT = 800;
