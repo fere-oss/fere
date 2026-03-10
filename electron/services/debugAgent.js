@@ -127,7 +127,7 @@ const DEBUG_TOOLS = [
     type: 'function',
     function: {
       name: 'fire_request',
-      description: 'Send an HTTP request to a local service.',
+      description: 'Send one HTTP request.',
       parameters: {
         type: 'object',
         properties: {
@@ -144,7 +144,7 @@ const DEBUG_TOOLS = [
     type: 'function',
     function: {
       name: 'fire_concurrent_requests',
-      description: 'Fire N identical requests concurrently to test race conditions.',
+      description: 'Send N identical requests concurrently.',
       parameters: {
         type: 'object',
         properties: {
@@ -162,14 +162,14 @@ const DEBUG_TOOLS = [
     type: 'function',
     function: {
       name: 'get_container_logs',
-      description: 'Get recent logs from a Docker container.',
+      description: 'Get recent Docker logs.',
       parameters: {
         type: 'object',
         properties: {
           container_name: { type: 'string' },
           tail: { type: 'number', maximum: 500 },
-          since: { type: 'string', description: 'ISO 8601 or relative e.g. "5m"' },
-          grep: { type: 'string', description: 'Case-insensitive filter string' },
+          since: { type: 'string', description: 'ISO time or relative like "5m"' },
+          grep: { type: 'string', description: 'Case-insensitive filter' },
         },
         required: ['container_name'],
       },
@@ -179,12 +179,12 @@ const DEBUG_TOOLS = [
     type: 'function',
     function: {
       name: 'read_source_file',
-      description: "Read a source file from a service's project. Also use for config files (.yml, .json, .env, Dockerfile).",
+      description: 'Read a project file, including config files.',
       parameters: {
         type: 'object',
         properties: {
           service_name: { type: 'string' },
-          file_path: { type: 'string', description: 'Relative path, e.g. "src/routes/checkout.js"' },
+          file_path: { type: 'string', description: 'Relative path' },
           line_start: { type: 'number' },
           line_end: { type: 'number' },
         },
@@ -196,12 +196,12 @@ const DEBUG_TOOLS = [
     type: 'function',
     function: {
       name: 'find_source_files',
-      description: "Find code files (.js/.ts/.py/.go/.rb/.java/.php) in a service's project by glob pattern.",
+      description: 'Find code files by glob.',
       parameters: {
         type: 'object',
         properties: {
           service_name: { type: 'string' },
-          pattern: { type: 'string', description: 'Glob, e.g. "**/checkout*"' },
+          pattern: { type: 'string', description: 'Glob pattern' },
         },
         required: ['service_name', 'pattern'],
       },
@@ -211,7 +211,7 @@ const DEBUG_TOOLS = [
     type: 'function',
     function: {
       name: 'grep_source',
-      description: "Search code files in a service's project for a text/regex pattern. Returns file paths and line numbers.",
+      description: 'Search code files for a regex or text pattern.',
       parameters: {
         type: 'object',
         properties: {
@@ -227,7 +227,7 @@ const DEBUG_TOOLS = [
     type: 'function',
     function: {
       name: 'get_service_routes',
-      description: 'Get discovered API routes (method, path, framework) for a service.',
+      description: 'Get discovered API routes for a service.',
       parameters: {
         type: 'object',
         properties: {
@@ -241,7 +241,7 @@ const DEBUG_TOOLS = [
     type: 'function',
     function: {
       name: 'run_database_query',
-      description: 'Run a read-only SQL query (SELECT/SHOW/DESCRIBE/EXPLAIN) against a database container.',
+      description: 'Run a read-only SQL query against a database container.',
       parameters: {
         type: 'object',
         properties: {
