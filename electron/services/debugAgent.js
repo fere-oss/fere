@@ -274,9 +274,18 @@ function sanitizeToolProgressResult(result) {
 // --- Helper: Find service node ---
 
 function findServiceNode(graphSnapshot, serviceName) {
-  return graphSnapshot.nodes.find(
-    n => n.name === serviceName || n.name.includes(serviceName)
-  );
+  const query = String(serviceName || '').trim().toLowerCase();
+  if (!query) return null;
+
+  const nodes = graphSnapshot.nodes.filter(n => n.type !== 'external');
+
+  const exact = nodes.find(n => n.name?.trim().toLowerCase() === query);
+  if (exact) return exact;
+
+  const prefix = nodes.find(n => n.name?.trim().toLowerCase().startsWith(query));
+  if (prefix) return prefix;
+
+  return nodes.find(n => n.name?.trim().toLowerCase().includes(query)) || null;
 }
 
 // --- Helper: Make HTTP request ---
