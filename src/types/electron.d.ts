@@ -563,7 +563,14 @@ export interface ShareSettings {
 export type DebugProgress =
   | { type: 'thinking'; iteration: number }
   | { type: 'tool_call'; tool: string; input: Record<string, unknown>; iteration: number }
-  | { type: 'tool_result'; tool: string; summary: string; iteration: number }
+  | {
+      type: 'tool_result';
+      tool: string;
+      input?: Record<string, unknown>;
+      summary: string;
+      result?: unknown;
+      iteration: number;
+    }
   | { type: 'diagnosis_delta'; text: string }
   | { type: 'complete'; diagnosis: string }
   | { type: 'error'; error: string };

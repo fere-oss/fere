@@ -10238,6 +10238,19 @@ textarea {
   gap: 8px;
 }
 
+.debug-panel-step-row-button {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+}
+
+.debug-panel-step-row-button:hover .debug-panel-result-expand {
+  color: var(--text-primary);
+}
+
 .debug-panel-step-icon {
   flex-shrink: 0;
   width: 14px;
@@ -10294,6 +10307,10 @@ textarea {
   min-width: 0;
 }
 
+.debug-panel-step-detail-result {
+  gap: 4px;
+}
+
 .debug-panel-tool-name {
   font-size: 12px;
   font-weight: 500;
@@ -10307,6 +10324,116 @@ textarea {
   color: var(--text-muted);
   line-height: 1.3;
   word-break: break-all;
+}
+
+.debug-panel-step-expandable-body {
+  margin: 8px 0 4px 22px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bg-primary) 72%, transparent);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.debug-panel-result-expand {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.debug-panel-result-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.debug-panel-result-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.debug-panel-result-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.debug-panel-result-value,
+.debug-panel-result-inline-file {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-primary);
+  word-break: break-word;
+}
+
+.debug-panel-result-pre {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: "SF Mono", "Fira Code", "Menlo", monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.debug-panel-result-pre code {
+  font: inherit;
+}
+
+.debug-panel-result-chip-list,
+.debug-panel-result-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.debug-panel-result-list-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.debug-panel-result-route {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: var(--text-primary);
+}
+
+.debug-panel-result-route-method {
+  font-family: "SF Mono", "Fira Code", "Menlo", monospace;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.debug-panel-result-route-path {
+  font-family: "SF Mono", "Fira Code", "Menlo", monospace;
+}
+
+.debug-panel-result-route-framework {
+  font-size: 10px;
+  color: var(--text-muted);
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  padding: 2px 6px;
 }
 
 /* Iteration marker */

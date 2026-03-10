@@ -17,6 +17,7 @@ interface InvestigationStep {
   tool?: string;
   input?: Record<string, unknown>;
   summary?: string;
+  result?: unknown;
   message?: string;
   iteration: number;
   timestamp: number;
@@ -128,6 +129,47 @@ function formatToolInput(
   }
 }
 
+function stringifyToolValue(value: unknown): string {
+  if (value == null) return "—";
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
+
+function renderResultField(
+  label: string,
+  value: unknown,
+  options?: { code?: boolean },
+) {
+  if (
+    value == null ||
+    value === "" ||
+    (Array.isArray(value) && value.length === 0)
+  ) {
+    return null;
+  }
+
+  const text = stringifyToolValue(value);
+  return (
+    <div className="debug-panel-result-field" key={label}>
+      <div className="debug-panel-result-label">{label}</div>
+      {options?.code || text.includes("\n") ? (
+        <pre className="debug-panel-result-pre">
+          <code>{text}</code>
+        </pre>
+      ) : (
+        <div className="debug-panel-result-value">{text}</div>
+      )}
+    </div>
+  );
+}
+
 export function DebugPanel({ isOpen, onClose, graphNodes }: DebugPanelProps) {
   const [phase, setPhase] = useState<DebugPhase>("input");
   const [hasApiKey, setHasApiKey] = useState<boolean | null>(null);
@@ -141,6 +183,9 @@ export function DebugPanel({ isOpen, onClose, graphNodes }: DebugPanelProps) {
   const [followUpInput, setFollowUpInput] = useState("");
   const [fileError, setFileError] = useState("");
   const [isResultsVisible, setIsResultsVisible] = useState(true);
+  const [expandedToolResults, setExpandedToolResults] = useState<
+    Record<string, boolean>
+  >({});
   const [problemCaret, setProblemCaret] = useState(0);
   const [followUpCaret, setFollowUpCaret] = useState(0);
   const [mentionIndex, setMentionIndex] = useState(0);
@@ -265,6 +310,10 @@ export function DebugPanel({ isOpen, onClose, graphNodes }: DebugPanelProps) {
     },
     [graphNodes, nodeByName],
   );
+
+  const toggleToolResult = useCallback((key: string) => {
+    setExpandedToolResults((prev) => ({ ...prev, [key]: !prev[key] }));
+  }, []);
 
   // Check if a file path reference can be resolved to an absolute path
   const canResolveFile = useCallback(
@@ -508,7 +557,9 @@ export function DebugPanel({ isOpen, onClose, graphNodes }: DebugPanelProps) {
               {
                 type: "tool_result",
                 tool: progress.tool,
+                input: progress.input,
                 summary: progress.summary,
+                result: progress.result,
                 iteration: progress.iteration,
                 timestamp: Date.now(),
               },
@@ -587,6 +638,7 @@ export function DebugPanel({ isOpen, onClose, graphNodes }: DebugPanelProps) {
     setError("");
     setFollowUpInput("");
     setIsResultsVisible(true);
+    setExpandedToolResults({});
     setPhase("running");
     const result = await window.electronAPI.debugStart({ problem: trimmed });
     if (!result.success) {
@@ -615,6 +667,7 @@ export function DebugPanel({ isOpen, onClose, graphNodes }: DebugPanelProps) {
     setFollowUpInput("");
     setProblem("");
     setIsResultsVisible(true);
+    setExpandedToolResults({});
     setPhase("input");
     window.dispatchEvent(
       new CustomEvent("fere:debug-highlight-services", {
@@ -639,6 +692,7 @@ export function DebugPanel({ isOpen, onClose, graphNodes }: DebugPanelProps) {
     setError("");
     setFollowUpInput("");
     setIsResultsVisible(true);
+    setExpandedToolResults({});
     setPhase("running");
     const result = await window.electronAPI.debugFollowUp({ message: trimmed });
     if (!result.success) {
@@ -813,6 +867,212 @@ export function DebugPanel({ isOpen, onClose, graphNodes }: DebugPanelProps) {
       return nodes;
     },
     [findServiceNode],
+  );
+
+  const renderToolResultBody = useCallback(
+    (step: InvestigationStep) => {
+      if (!step.tool) return null;
+
+      const result =
+        step.result && typeof step.result === "object"
+          ? (step.result as Record<string, unknown>)
+          : {};
+      const input = step.input || {};
+      const serviceName =
+        typeof input.service_name === "string" ? input.service_name : null;
+
+      if (typeof step.result === "string") {
+        return renderResultField("Result", step.result, { code: true });
+      }
+
+      switch (step.tool) {
+        case "fire_request":
+          return (
+            <>
+              <div className="debug-panel-result-grid">
+                {renderResultField("Status", result.status)}
+                {renderResultField("Status Text", result.statusText)}
+                {renderResultField("Duration", result.duration)}
+                {renderResultField("Size", result.size)}
+              </div>
+              {renderResultField("Headers", result.headers, { code: true })}
+              {renderResultField("Body", result.body, { code: true })}
+              {renderResultField("Error", result.error)}
+            </>
+          );
+        case "fire_concurrent_requests":
+          return (
+            <>
+              <div className="debug-panel-result-grid">
+                {renderResultField("Total", result.total)}
+                {renderResultField("Succeeded", result.succeeded)}
+                {renderResultField("Failed", result.failed)}
+              </div>
+              {renderResultField("Statuses", result.statuses, { code: true })}
+              {renderResultField("Responses", result.responses, { code: true })}
+              {renderResultField("Errors", result.errors, { code: true })}
+            </>
+          );
+        case "get_container_logs":
+          return (
+            <>
+              <div className="debug-panel-result-grid">
+                {renderResultField("Container", result.container)}
+                {renderResultField("Line Count", result.lineCount)}
+              </div>
+              {renderResultField("Logs", result.logs, { code: true })}
+              {renderResultField("Error", result.error)}
+            </>
+          );
+        case "read_source_file":
+          return (
+            <>
+              <div className="debug-panel-result-grid">
+                {renderResultField("File", result.file)}
+                {renderResultField("Total Lines", result.totalLines)}
+              </div>
+              {renderResultField("Content", result.content, { code: true })}
+              {renderResultField("Error", result.error)}
+            </>
+          );
+        case "find_source_files":
+          return (
+            <>
+              <div className="debug-panel-result-grid">
+                {renderResultField("Total", result.total)}
+                {renderResultField("Truncated", result.truncated)}
+              </div>
+              {Array.isArray(result.files) && result.files.length > 0 ? (
+                <div className="debug-panel-result-field">
+                  <div className="debug-panel-result-label">Files</div>
+                  <div className="debug-panel-result-chip-list">
+                    {result.files.map((file, idx) => {
+                      const filePath =
+                        serviceName && typeof file === "string"
+                          ? `${serviceName}/${file}`
+                          : stringifyToolValue(file);
+                      const canOpen = canResolveFile(filePath);
+                      return (
+                        <button
+                          key={`${filePath}-${idx}`}
+                          className={`debug-chip debug-chip-file${canOpen ? "" : " debug-chip-disabled"}`}
+                          onClick={() => canOpen && handleFileClick(filePath)}
+                          disabled={!canOpen}
+                          type="button"
+                        >
+                          {String(file)}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
+              {renderResultField("Error", result.error)}
+            </>
+          );
+        case "grep_source":
+          return (
+            <>
+              <div className="debug-panel-result-grid">
+                {renderResultField("Pattern", result.pattern)}
+                {renderResultField("Matches", result.totalMatches)}
+              </div>
+              {Array.isArray(result.matches) && result.matches.length > 0 ? (
+                <div className="debug-panel-result-field">
+                  <div className="debug-panel-result-label">Matches</div>
+                  <div className="debug-panel-result-list">
+                    {result.matches.map((match, idx) => {
+                      const typedMatch =
+                        match as Record<string, string | number | undefined>;
+                      const fileRef =
+                        serviceName && typedMatch.file
+                          ? `${serviceName}/${typedMatch.file}:${typedMatch.line || 1}`
+                          : null;
+                      return (
+                        <div className="debug-panel-result-list-item" key={idx}>
+                          {fileRef && canResolveFile(fileRef) ? (
+                            <button
+                              type="button"
+                              className="debug-clickable-file debug-panel-result-inline-file"
+                              onClick={() => handleFileClick(fileRef)}
+                            >
+                              {typedMatch.file}:{typedMatch.line}
+                            </button>
+                          ) : (
+                            <div className="debug-panel-result-inline-file">
+                              {typedMatch.file}:{typedMatch.line}
+                            </div>
+                          )}
+                          <pre className="debug-panel-result-pre">
+                            <code>{typedMatch.content || ""}</code>
+                          </pre>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
+              {renderResultField("Error", result.error)}
+            </>
+          );
+        case "get_service_routes":
+          return (
+            <>
+              <div className="debug-panel-result-grid">
+                {renderResultField("Service", result.service)}
+                {renderResultField("Route Count", result.count)}
+              </div>
+              {Array.isArray(result.routes) && result.routes.length > 0 ? (
+                <div className="debug-panel-result-field">
+                  <div className="debug-panel-result-label">Routes</div>
+                  <div className="debug-panel-result-list">
+                    {result.routes.map((route, idx) => {
+                      const typedRoute =
+                        route as Record<string, string | undefined>;
+                      return (
+                        <div className="debug-panel-result-list-item" key={idx}>
+                          <div className="debug-panel-result-route">
+                            <span className="debug-panel-result-route-method">
+                              {typedRoute.method}
+                            </span>
+                            <span className="debug-panel-result-route-path">
+                              {typedRoute.path}
+                            </span>
+                            {typedRoute.framework ? (
+                              <span className="debug-panel-result-route-framework">
+                                {typedRoute.framework}
+                              </span>
+                            ) : null}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
+              {renderResultField("Error", result.error)}
+            </>
+          );
+        case "run_database_query":
+          return (
+            <>
+              <div className="debug-panel-result-grid">
+                {renderResultField(
+                  "Columns",
+                  Array.isArray(result.columns) ? result.columns.length : undefined,
+                )}
+                {renderResultField("Total Rows", result.totalRows)}
+              </div>
+              {renderResultField("Columns", result.columns, { code: true })}
+              {renderResultField("Rows", result.rows, { code: true })}
+              {renderResultField("Error", result.error)}
+            </>
+          );
+        default:
+          return renderResultField("Result", step.result, { code: true });
+      }
+    },
+    [canResolveFile, handleFileClick],
   );
 
   useEffect(() => {
@@ -1166,10 +1426,12 @@ export function DebugPanel({ isOpen, onClose, graphNodes }: DebugPanelProps) {
                     step.iteration !== lastIteration;
                   if (step.type === "thinking")
                     lastIteration = step.iteration;
+                  const stepKey = `${step.type}-${i}`;
+                  const isExpanded = !!expandedToolResults[stepKey];
 
                   return (
                     <div
-                      className={`debug-panel-step debug-panel-step-${step.type}`}
+                      className={`debug-panel-step debug-panel-step-${step.type}${step.type === "tool_result" ? " debug-panel-step-expandable" : ""}`}
                       key={i}
                     >
                       {showIterationMarker && (
@@ -1207,14 +1469,31 @@ export function DebugPanel({ isOpen, onClose, graphNodes }: DebugPanelProps) {
                         </div>
                       )}
                       {step.type === "tool_result" && (
-                        <div className="debug-panel-step-row">
-                          <span className="debug-panel-step-icon debug-panel-result-icon">
-                            {"\u2190"}
-                          </span>
-                          <span className="debug-panel-step-text debug-panel-result-text">
-                            {step.summary}
-                          </span>
-                        </div>
+                        <>
+                          <button
+                            type="button"
+                            className="debug-panel-step-row debug-panel-step-row-button"
+                            onClick={() => toggleToolResult(stepKey)}
+                            aria-expanded={isExpanded}
+                          >
+                            <span className="debug-panel-step-icon debug-panel-result-icon">
+                              {"\u2190"}
+                            </span>
+                            <div className="debug-panel-step-detail debug-panel-step-detail-result">
+                              <span className="debug-panel-step-text debug-panel-result-text">
+                                {step.summary}
+                              </span>
+                              <span className="debug-panel-result-expand">
+                                {isExpanded ? "Hide details" : "Show details"}
+                              </span>
+                            </div>
+                          </button>
+                          {isExpanded && (
+                            <div className="debug-panel-step-expandable-body">
+                              {renderToolResultBody(step)}
+                            </div>
+                          )}
+                        </>
                       )}
                     </div>
                   );

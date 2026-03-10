@@ -259,6 +259,18 @@ function truncate(str, maxLen) {
   return str.slice(0, maxLen) + '\n... (truncated)';
 }
 
+function sanitizeToolProgressResult(result) {
+  if (result == null) return result;
+  if (typeof result === 'string' || typeof result === 'number' || typeof result === 'boolean') {
+    return result;
+  }
+  try {
+    return JSON.parse(JSON.stringify(result));
+  } catch {
+    return { error: 'Tool result could not be serialized for display' };
+  }
+}
+
 // --- Helper: Find service node ---
 
 function findServiceNode(graphSnapshot, serviceName) {
@@ -1200,17 +1212,37 @@ async function runDebugAgent(options, onProgress) {
       if (parseErr) {
         result = `Failed to parse tool arguments: ${parseErr.message}. Raw: ${toolCall.function.arguments.slice(0, 200)}`;
         toolResultSummaries.set(toolCall.id, `Error: malformed arguments for ${fnName}`);
-        onProgress({ type: 'tool_result', tool: fnName, summary: 'Error: malformed arguments', iteration: i + 1 });
+        onProgress({
+          type: 'tool_result',
+          tool: fnName,
+          summary: 'Error: malformed arguments',
+          result: { error: result },
+          iteration: i + 1,
+        });
       } else if (outcome.status === 'rejected') {
         result = { error: outcome.reason?.message || 'Tool execution failed' };
         const summary = `Error: ${result.error}`;
         toolResultSummaries.set(toolCall.id, summary);
-        onProgress({ type: 'tool_result', tool: fnName, summary, iteration: i + 1 });
+        onProgress({
+          type: 'tool_result',
+          tool: fnName,
+          input: fnArgs,
+          summary,
+          result: sanitizeToolProgressResult(result),
+          iteration: i + 1,
+        });
       } else {
         result = outcome.value;
         const summary = summarizeToolResult(fnName, result);
         toolResultSummaries.set(toolCall.id, summary);
-        onProgress({ type: 'tool_result', tool: fnName, summary, iteration: i + 1 });
+        onProgress({
+          type: 'tool_result',
+          tool: fnName,
+          input: fnArgs,
+          summary,
+          result: sanitizeToolProgressResult(result),
+          iteration: i + 1,
+        });
       }
 
       const rawContent = typeof result === 'string' ? result : JSON.stringify(result);
