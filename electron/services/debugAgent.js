@@ -29,6 +29,9 @@ const TRUNCATE_SOURCE_CHARS = 6000;
 const MAX_GREP_MATCHES = 25;
 const MAX_FILE_LIST = 40;
 const MAX_DB_ROWS = 30;
+const MAX_PROMPT_SERVICES = 18;
+const MAX_PROMPT_CONNECTIONS = 24;
+const MAX_PROMPT_EXTERNALS = 12;
 // Context trimming: after this many messages, compress old tool results
 const CONTEXT_TRIM_THRESHOLD = 16;
 // Loop detection: if the last N tool calls are identical, nudge the model
@@ -708,34 +711,61 @@ function summarizeToolResult(toolName, result) {
   }
 }
 
+function summarizePromptList(items, maxItems, formatter) {
+  const visible = items.slice(0, maxItems).map(formatter);
+  const omitted = items.length - visible.length;
+  if (omitted > 0) {
+    visible.push(`- ... ${omitted} more omitted for brevity`);
+  }
+  return visible.join('\n');
+}
+
 // --- System Prompt ---
 
 function buildSystemPrompt(graphSnapshot) {
   const { nodes, edges } = graphSnapshot;
+  const nodeById = new Map(nodes.map(node => [node.id, node]));
 
-  const services = nodes
+  const serviceNodes = nodes
     .filter(n => n.type !== 'external')
-    .map(n => {
+    .sort((a, b) => {
+      const aPorts = Array.isArray(a.ports) ? a.ports.length : 0;
+      const bPorts = Array.isArray(b.ports) ? b.ports.length : 0;
+      return bPorts - aPorts || a.name.localeCompare(b.name);
+    });
+
+  const services = summarizePromptList(
+    serviceNodes,
+    MAX_PROMPT_SERVICES,
+    (n) => {
       const ports = (n.ports || []).map(p => p.port).join(', ');
       const health = n.healthStatus || 'unknown';
       const container = n.isDockerContainer ? ` [Docker: ${n.containerState || 'unknown'}]` : '';
       const project = n.projectPath ? ` [project: ${n.projectPath}]` : '';
       return `- ${n.name} (ports: ${ports || 'none'}, health: ${health}${container}${project})`;
-    })
-    .join('\n');
+    },
+  );
 
-  const connections = edges
-    .map(e => {
-      const src = nodes.find(n => n.id === e.source);
-      const tgt = nodes.find(n => n.id === e.target);
+  const sortedEdges = [...edges].sort((a, b) => {
+    const aScore = (a.confidence || 0) + (a.targetPort ? 1 : 0);
+    const bScore = (b.confidence || 0) + (b.targetPort ? 1 : 0);
+    return bScore - aScore;
+  });
+  const connections = summarizePromptList(
+    sortedEdges,
+    MAX_PROMPT_CONNECTIONS,
+    (e) => {
+      const src = nodeById.get(e.source);
+      const tgt = nodeById.get(e.target);
       return `- ${src?.name || e.source} → ${tgt?.name || e.target} (port ${e.targetPort})`;
-    })
-    .join('\n');
+    },
+  );
 
-  const externals = nodes
-    .filter(n => n.type === 'external')
-    .map(n => `- ${n.name}`)
-    .join('\n');
+  const externals = summarizePromptList(
+    nodes.filter(n => n.type === 'external'),
+    MAX_PROMPT_EXTERNALS,
+    (n) => `- ${n.name}`,
+  );
 
   return `You are an expert debugging agent embedded in Fere, a development environment monitoring tool.
 You have access to the user's live local development environment including running services, container logs, source code, and the ability to fire HTTP requests.
