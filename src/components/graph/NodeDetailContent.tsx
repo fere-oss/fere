@@ -157,32 +157,47 @@ export function NodeDetailContent({ node, edges, allNodes }: NodeDetailContentPr
         </div>
       </div>
 
+      <div className="node-detail-section">
+        <div className="node-detail-section-title-row">
+          <h3 className="node-detail-section-title">AI Tools</h3>
+        </div>
+        <div className="node-detail-actions-card">
+          <button
+            type="button"
+            className="node-detail-ai-button"
+            onClick={handleExplainService}
+            disabled={serviceExplanationLoading}
+          >
+            <span className="node-detail-ai-button-icon" aria-hidden="true">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M8 2.5L9.3 6.1L12.9 7.4L9.3 8.7L8 12.3L6.7 8.7L3.1 7.4L6.7 6.1L8 2.5Z" />
+              </svg>
+            </span>
+            {serviceExplanationLoading
+              ? 'Explaining...'
+              : serviceExplanation
+                ? 'Refresh explain'
+                : 'Explain service'}
+          </button>
+          <button
+            type="button"
+            className="node-detail-ai-button node-detail-ai-button-secondary"
+            onClick={handleDiagnoseService}
+          >
+            <span className="node-detail-ai-button-icon" aria-hidden="true">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 8H11" />
+                <path d="M8.5 4.8L11.7 8L8.5 11.2" />
+              </svg>
+            </span>
+            Diagnose service
+          </button>
+        </div>
+      </div>
+
       {(node.description || serviceExplanation || serviceExplanationError) && (
         <div className="node-detail-section">
-          <div className="node-detail-section-title-row">
-            <h3 className="node-detail-section-title">About</h3>
-            <div className="node-detail-ai-actions">
-              <button
-                type="button"
-                className="node-detail-ai-button"
-                onClick={handleExplainService}
-                disabled={serviceExplanationLoading}
-              >
-                {serviceExplanationLoading
-                  ? 'Explaining…'
-                  : serviceExplanation
-                    ? 'Refresh AI Explanation'
-                    : 'AI Explanation'}
-              </button>
-              <button
-                type="button"
-                className="node-detail-ai-button node-detail-ai-button-secondary"
-                onClick={handleDiagnoseService}
-              >
-                Diagnose Service
-              </button>
-            </div>
-          </div>
+          <h3 className="node-detail-section-title">About</h3>
           {serviceExplanationError ? (
             <div className="node-detail-error">{serviceExplanationError}</div>
           ) : serviceExplanation ? (

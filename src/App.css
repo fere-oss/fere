@@ -2554,9 +2554,22 @@ textarea {
   gap: 12px;
 }
 
+.node-detail-actions-card {
+  display: inline-flex;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 0;
+  align-self: flex-start;
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+  background: var(--bg-white);
+  overflow: hidden;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.9) inset;
+}
+
 .node-detail-section-title-row {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
 }
@@ -2574,42 +2587,78 @@ textarea {
 }
 
 .node-detail-ai-button {
-  border: 1px solid var(--border-color);
-  background: var(--bg-white);
+  border: 0;
+  border-right: 1px solid var(--border-color);
+  background: transparent;
   color: var(--text-primary);
-  border-radius: 999px;
-  padding: 7px 12px;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  border-radius: 0;
+  padding: 10px 14px;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-width: 0;
+  line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: var(--font-ui);
   transition:
     border-color 0.15s,
     background 0.15s,
-    color 0.15s;
-}
-
-.node-detail-ai-actions {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
+    color 0.15s,
+    transform 0.15s;
 }
 
 .node-detail-ai-button:hover:not(:disabled) {
-  border-color: var(--border-hover);
   background: var(--bg-primary);
+  color: var(--text-primary);
 }
 
 .node-detail-ai-button:disabled {
   opacity: 0.6;
   cursor: default;
+  transform: none;
 }
 
 .node-detail-ai-button-secondary {
-  background: var(--bg-primary);
+  color: var(--text-primary);
+  border-right: 0;
+}
+
+.node-detail-ai-button-secondary:hover:not(:disabled) {
+  background: rgba(0, 120, 212, 0.06);
+  color: var(--text-primary);
+}
+
+.node-detail-ai-button-icon {
+  width: 12px;
+  height: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--text-muted);
+  opacity: 1;
+}
+
+.node-detail-ai-button-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.node-detail-ai-button-secondary .node-detail-ai-button-icon {
+  color: var(--blue);
+}
+
+@media (max-width: 420px) {
+  .node-detail-actions-card {
+    flex-direction: column;
+  }
 }
 
 .node-detail-ai-copy,
