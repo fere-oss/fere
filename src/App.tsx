@@ -1594,6 +1594,7 @@ function App() {
       <StackQueryPanel
         isOpen={isStackQueryOpen}
         onClose={handleCloseStackQuery}
+        graphNodes={filteredData.nodes}
       />
       </div>
 

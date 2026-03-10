@@ -1,13 +1,18 @@
 import React, { useCallback, useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
-import type { QueryProgress } from "../types/electron";
+import type { GraphNode, QueryProgress } from "../types/electron";
 
 interface StackQueryPanelProps {
   isOpen: boolean;
   onClose: () => void;
+  graphNodes: GraphNode[];
 }
 
-export function StackQueryPanel({ isOpen, onClose }: StackQueryPanelProps) {
+export function StackQueryPanel({
+  isOpen,
+  onClose,
+  graphNodes,
+}: StackQueryPanelProps) {
   const [hasApiKey, setHasApiKey] = useState<boolean | null>(null);
   const [apiKeyInput, setApiKeyInput] = useState("");
   const [apiKeyError, setApiKeyError] = useState("");
@@ -15,6 +20,47 @@ export function StackQueryPanel({ isOpen, onClose }: StackQueryPanelProps) {
   const [answer, setAnswer] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  const normalizeServiceToken = useCallback((value: string) => {
+    return value
+      .trim()
+      .replace(/^`+|`+$/g, "")
+      .replace(/^@+/, "")
+      .replace(/^[([{"']+|[)\]}",.!?:;'"]+$/g, "")
+      .toLowerCase();
+  }, []);
+
+  const findServiceNode = useCallback(
+    (serviceToken: string) => {
+      const normalized = normalizeServiceToken(serviceToken);
+      if (!normalized) return undefined;
+      return graphNodes.find(
+        (node) =>
+          node.type !== "external" &&
+          (node.name.toLowerCase() === normalized ||
+            node.name.toLowerCase().includes(normalized)),
+      );
+    },
+    [graphNodes, normalizeServiceToken],
+  );
+
+  const handleServiceClick = useCallback(
+    (serviceName: string) => {
+      const node = findServiceNode(serviceName);
+      if (!node) return;
+      window.dispatchEvent(
+        new CustomEvent("fere:debug-highlight-services", {
+          detail: { nodeIds: [] },
+        }),
+      );
+      window.dispatchEvent(
+        new CustomEvent("fere:debug-focus-node", {
+          detail: { nodeId: node.id },
+        }),
+      );
+    },
+    [findServiceNode],
+  );
 
   useEffect(() => {
     window.electronAPI.debugGetApiKeyStatus().then((result) => {
@@ -82,6 +128,64 @@ export function StackQueryPanel({ isOpen, onClose }: StackQueryPanelProps) {
     window.electronAPI.queryStop();
     onClose();
   }, [onClose]);
+
+  const markdownComponents = {
+    code({
+      children,
+      className,
+    }: {
+      children?: React.ReactNode;
+      className?: string;
+    }) {
+      if (className) return <code className={className}>{children}</code>;
+      const text = String(children).replace(/\n$/, "");
+      const node = findServiceNode(text);
+      if (!node) return <code>{text}</code>;
+      return (
+        <span
+          className="debug-clickable-service"
+          onClick={() => handleServiceClick(node.name)}
+          title={`Focus ${node.name} on graph`}
+        >
+          {text}
+        </span>
+      );
+    },
+    a({
+      href,
+      children,
+    }: {
+      href?: string;
+      children?: React.ReactNode;
+    }) {
+      const label = String(children ?? "").replace(/\n/g, " ").trim();
+      const node = findServiceNode(label) || findServiceNode(href || "");
+      if (!node) {
+        return (
+          <a
+            href={href}
+            target={href?.startsWith("http") ? "_blank" : undefined}
+            rel={href?.startsWith("http") ? "noreferrer" : undefined}
+          >
+            {children}
+          </a>
+        );
+      }
+      return (
+        <a
+          href={href || "#"}
+          className="debug-clickable-service debug-markdown-service-link"
+          onClick={(e) => {
+            e.preventDefault();
+            handleServiceClick(node.name);
+          }}
+          title={`Focus ${node.name} on graph`}
+        >
+          {children}
+        </a>
+      );
+    },
+  };
 
   if (!isOpen || hasApiKey === null) return null;
 
@@ -189,7 +293,9 @@ export function StackQueryPanel({ isOpen, onClose }: StackQueryPanelProps) {
 
           {answer ? (
             <div className="stack-query-panel-answer">
-              <ReactMarkdown>{answer}</ReactMarkdown>
+              <ReactMarkdown components={markdownComponents}>
+                {answer}
+              </ReactMarkdown>
             </div>
           ) : null}
         </>
