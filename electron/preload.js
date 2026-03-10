@@ -123,6 +123,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('debug-progress', listener);
   },
 
+  // Stack Query Agent
+  queryStart: (options) => ipcRenderer.invoke('query-start', options),
+  queryStop: () => ipcRenderer.invoke('query-stop'),
+  onQueryProgress: (callback) => {
+    const listener = (event, data) => callback(data);
+    ipcRenderer.on('query-progress', listener);
+    return () => ipcRenderer.removeListener('query-progress', listener);
+  },
+
   // Platform info
   platform: process.platform,
 });

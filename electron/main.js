@@ -111,6 +111,7 @@ const analytics = require("./analytics");
 const { generateHTML } = require("./services/graphExporter");
 const { createGist, updateGist, buildPreviewUrl } = require("./services/gistPublisher");
 const { runDebugAgent, getApiKey, setApiKey } = require("./services/debugAgent");
+const { runQueryAgent } = require("./services/queryAgent");
 const { executeTracedRequest } = require("./services/traceCapture");
 
 app.setName("Fere");
@@ -1664,6 +1665,7 @@ ipcMain.handle("update-shared-graph", async (_, options) => {
 // --- Debug Agent ---
 
 let activeDebugSession = null;
+let activeQuerySession = null;
 
 ipcMain.handle("debug-set-api-key", async (_, key) => {
   if (typeof key !== "string" || key.length < 10) {
@@ -1798,6 +1800,73 @@ ipcMain.handle("debug-stop", async () => {
   if (activeDebugSession) {
     activeDebugSession._cancelled = true;
     activeDebugSession = null;
+  }
+  return { success: true };
+});
+
+// --- Stack Query Agent ---
+
+ipcMain.handle("query-start", async (event, options) => {
+  if (typeof options?.query !== "string" || !options.query.trim()) {
+    return { success: false, error: "Query is required" };
+  }
+
+  const apiKey = getApiKey();
+  if (!apiKey) {
+    return {
+      success: false,
+      error: "No OpenAI API key configured. Set OPENAI_API_KEY in .env",
+    };
+  }
+
+  const snapshot = await getSystemSnapshot();
+  const graphSnapshot = {
+    nodes: snapshot.graph?.nodes || [],
+    edges: snapshot.graph?.edges || [],
+  };
+
+  if (activeQuerySession) {
+    activeQuerySession._cancelled = true;
+  }
+
+  const session = { _cancelled: false };
+  activeQuerySession = session;
+
+  const agentOptions = {
+    query: options.query,
+    graphSnapshot,
+    apiKey,
+    _cancelled: false,
+  };
+
+  Object.defineProperty(agentOptions, "_cancelled", {
+    get() {
+      return session._cancelled;
+    },
+  });
+
+  runQueryAgent(agentOptions, (progress) => {
+    if (session._cancelled) return;
+    const sender = event.sender;
+    if (!sender.isDestroyed()) {
+      sender.send("query-progress", progress);
+    }
+  }).catch((err) => {
+    if (!session._cancelled && !event.sender.isDestroyed()) {
+      event.sender.send("query-progress", {
+        type: "error",
+        error: err.message,
+      });
+    }
+  });
+
+  return { success: true };
+});
+
+ipcMain.handle("query-stop", async () => {
+  if (activeQuerySession) {
+    activeQuerySession._cancelled = true;
+    activeQuerySession = null;
   }
   return { success: true };
 });

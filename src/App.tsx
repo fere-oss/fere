@@ -8,6 +8,7 @@ import { WelcomeModal } from "./components/WelcomeModal";
 import { ShareModal } from "./components/ShareModal";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { DebugPanel } from "./components/DebugPanel";
+import { StackQueryPanel } from "./components/StackQueryPanel";
 import { useKnownServices, serviceKey, nodeServiceKey, looseServiceIdentity } from "./components/checklist/useKnownServices";
 import { ServiceDropdown } from "./components/checklist/ServiceDropdown";
 import { HEALTH_COLORS } from "./components/graph/constants";
@@ -230,6 +231,7 @@ function App() {
   // hasEverOpened: mounts once and preserves conversation state across open/close
   const [hasEverOpened, setHasEverOpened] = useState(false);
   const [isAgentOpen, setIsAgentOpen] = useState(false);
+  const [isStackQueryOpen, setIsStackQueryOpen] = useState(false);
   const [debugHighlightNodeIds, setDebugHighlightNodeIds] = useState<Set<string>>(new Set());
 
   const handleOpenDebugPanel = useCallback(() => {
@@ -245,6 +247,14 @@ function App() {
   const handleCloseDebugPanel = useCallback(() => {
     setIsAgentOpen(false);
     setDebugHighlightNodeIds(new Set());
+  }, []);
+
+  const handleToggleStackQuery = useCallback(() => {
+    setIsStackQueryOpen((current) => !current);
+  }, []);
+
+  const handleCloseStackQuery = useCallback(() => {
+    setIsStackQueryOpen(false);
   }, []);
 
   // Sub-tab for containers view
@@ -1143,11 +1153,22 @@ function App() {
         {/* Header Actions */}
         <div className="app-header-actions">
           <button
-            className="alert-toggle"
+            className={`app-header-action${isStackQueryOpen ? " app-header-action-active" : ""}`}
+            onClick={handleToggleStackQuery}
+            title="Ask about your stack"
+          >
+            <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3.5 4.5C3.5 2.8 5.2 1.5 8 1.5C10.8 1.5 12.5 2.8 12.5 4.5C12.5 5.9 11.2 7 9.4 7.5C8.6 7.7 8 8.3 8 9.1V9.5" />
+              <circle cx="8" cy="12.4" r="0.7" fill="currentColor" stroke="none" />
+            </svg>
+            <span>Ask Fere</span>
+          </button>
+          <button
+            className={`app-header-action${isAgentOpen ? " app-header-action-active" : ""}`}
             onClick={handleOpenDebugPanel}
             title="Fere Agent"
           >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2">
+            <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2">
               <circle cx="8" cy="6" r="4" />
               <path d="M3 2L5.5 4.5" />
               <path d="M13 2L10.5 4.5" />
@@ -1158,19 +1179,21 @@ function App() {
               <path d="M6.5 10v4" />
               <path d="M9.5 10v4" />
             </svg>
+            <span>Debugger</span>
           </button>
           <button
-            className="alert-toggle"
+            className="app-header-action"
             onClick={() => setShowShare(true)}
             title="Share service map"
           >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="12" cy="3" r="1.5" />
               <circle cx="3" cy="8" r="1.5" />
               <circle cx="12" cy="13" r="1.5" />
               <line x1="4.4" y1="7.1" x2="10.6" y2="4.4" />
               <line x1="4.4" y1="8.9" x2="10.6" y2="11.6" />
             </svg>
+            <span>Share</span>
           </button>
           <div style={{ position: "relative" } as React.CSSProperties}>
             <button
@@ -1568,6 +1591,10 @@ function App() {
           graphNodes={filteredData.nodes}
         />
       )}
+      <StackQueryPanel
+        isOpen={isStackQueryOpen}
+        onClose={handleCloseStackQuery}
+      />
       </div>
 
       {/* Welcome Modal */}

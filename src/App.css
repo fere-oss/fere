@@ -85,6 +85,43 @@ textarea {
   -webkit-app-region: no-drag;
 }
 
+.app-header-action {
+  -webkit-app-region: no-drag;
+  background: none;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  padding: 6px 11px;
+  cursor: pointer;
+  color: var(--text-muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 500;
+  transition:
+    color 0.15s,
+    border-color 0.15s,
+    background 0.15s,
+    box-shadow 0.15s;
+}
+
+.app-header-action:hover {
+  color: var(--text-primary);
+  border-color: var(--border-hover);
+  background: var(--bg-white);
+}
+
+.app-header-action-active {
+  color: var(--text-primary);
+  border-color: var(--border-hover);
+  background: var(--bg-white);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
+}
+
+.app-header-action span {
+  white-space: nowrap;
+}
+
 /* Alert Toggle Button */
 .alert-toggle {
   -webkit-app-region: no-drag;
@@ -104,6 +141,12 @@ textarea {
 }
 
 .alert-toggle:hover {
+  color: var(--text-primary);
+  border-color: var(--border-hover);
+  background: var(--bg-white);
+}
+
+.alert-toggle-active {
   color: var(--text-primary);
   border-color: var(--border-hover);
   background: var(--bg-white);
@@ -9846,6 +9889,204 @@ textarea {
   pointer-events: none;
   z-index: 260;
   margin-left: -12px; /* cancel out .app-body gap so zero-width shell doesn't shift the map */
+}
+
+.stack-query-panel {
+  position: fixed;
+  top: 82px;
+  right: 24px;
+  width: min(420px, calc(100vw - 32px));
+  max-height: calc(100vh - 110px);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 16px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-white);
+  box-shadow:
+    0 24px 80px rgba(0, 0, 0, 0.12),
+    0 4px 18px rgba(0, 0, 0, 0.05);
+  z-index: 2200;
+  overflow: hidden;
+  pointer-events: auto;
+  backdrop-filter: none;
+  -webkit-app-region: no-drag;
+  animation: debug-agent-panel-in 0.18s ease-out;
+}
+
+.stack-query-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.stack-query-panel-title-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.stack-query-panel-title {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+}
+
+.stack-query-panel-close {
+  flex-shrink: 0;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 7px;
+  background: var(--bg-primary);
+  position: relative;
+  z-index: 1;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+}
+
+.stack-query-panel-composer {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  background: var(--bg-primary);
+  padding: 12px;
+}
+
+.stack-query-panel-textarea {
+  min-height: 92px;
+  width: 100%;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  border-radius: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  resize: none;
+  outline: none;
+  color: var(--text-primary);
+  font-family: inherit;
+  -webkit-app-region: no-drag;
+}
+
+.stack-query-panel-textarea:hover,
+.stack-query-panel-textarea:focus {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.stack-query-panel-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-color);
+}
+
+.stack-query-panel-submit {
+  min-width: 82px;
+  flex-shrink: 0;
+  height: 34px;
+  padding: 0 14px;
+}
+
+.stack-query-panel-status {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 500;
+  padding: 0 2px;
+}
+
+.stack-query-panel-answer {
+  overflow: auto;
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 14px;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  background: var(--bg-primary);
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--text-primary);
+}
+
+.stack-query-panel-suggestions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.stack-query-panel-suggestion {
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  background: var(--bg-white);
+  padding: 6px 10px;
+  text-align: left;
+  color: var(--text-primary);
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+  -webkit-app-region: no-drag;
+  transition:
+    border-color 0.15s,
+    background 0.15s;
+}
+
+.stack-query-panel-suggestion:hover {
+  border-color: var(--border-hover);
+  background: var(--bg-white);
+}
+
+.stack-query-panel-answer p {
+  margin: 0 0 10px;
+}
+
+.stack-query-panel-answer p:last-child {
+  margin-bottom: 0;
+}
+
+.stack-query-panel-answer code {
+  font-family: "SF Mono", "Fira Code", "Menlo", monospace;
+  font-size: 12px;
+  padding: 1px 4px;
+  background: color-mix(in srgb, var(--bg-elevated) 84%, white 16%);
+  border-radius: 4px;
+  border: 1px solid var(--border-color);
+}
+
+@media (max-width: 900px) {
+  .stack-query-panel {
+    top: 72px;
+    right: 12px;
+    left: 12px;
+    width: auto;
+    max-height: calc(100vh - 88px);
+    padding: 14px;
+  }
+
+  .stack-query-panel-footer {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .stack-query-panel-suggestions {
+    width: 100%;
+  }
+
+  .stack-query-panel-submit {
+    width: 100%;
+  }
 }
 
 .debug-agent-shell-with-results {

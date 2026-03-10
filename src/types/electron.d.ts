@@ -575,6 +575,12 @@ export type DebugProgress =
   | { type: 'complete'; diagnosis: string }
   | { type: 'error'; error: string };
 
+export type QueryProgress =
+  | { type: 'thinking' }
+  | { type: 'answer_delta'; text: string }
+  | { type: 'complete'; answer: string }
+  | { type: 'error'; error: string };
+
 // Electron API interface
 export interface ElectronAPI {
   // Process monitoring
@@ -675,6 +681,11 @@ export interface ElectronAPI {
   debugStop: () => Promise<{ success: boolean }>;
   debugFollowUp: (options: { message: string }) => Promise<{ success: boolean; error?: string }>;
   onDebugProgress: (callback: (progress: DebugProgress) => void) => () => void;
+
+  // Stack Query Agent
+  queryStart: (options: { query: string }) => Promise<{ success: boolean; error?: string }>;
+  queryStop: () => Promise<{ success: boolean }>;
+  onQueryProgress: (callback: (progress: QueryProgress) => void) => () => void;
 
   // Platform info
   platform: string;
