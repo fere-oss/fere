@@ -112,6 +112,7 @@ const { generateHTML } = require("./services/graphExporter");
 const { createGist, updateGist, buildPreviewUrl } = require("./services/gistPublisher");
 const { runDebugAgent, getApiKey, setApiKey } = require("./services/debugAgent");
 const { runQueryAgent } = require("./services/queryAgent");
+const { explainService } = require("./services/explainAgent");
 const { executeTracedRequest } = require("./services/traceCapture");
 
 app.setName("Fere");
@@ -1869,4 +1870,41 @@ ipcMain.handle("query-stop", async () => {
     activeQuerySession = null;
   }
   return { success: true };
+});
+
+ipcMain.handle("explain-service", async (_, options) => {
+  const apiKey = getApiKey();
+  if (!apiKey) {
+    return {
+      success: false,
+      error: "No OpenAI API key configured. Set OPENAI_API_KEY in .env",
+    };
+  }
+
+  if (
+    typeof options?.serviceId !== "string" ||
+    typeof options?.serviceName !== "string"
+  ) {
+    return { success: false, error: "Service id and name are required" };
+  }
+
+  try {
+    const snapshot = await getSystemSnapshot();
+    const graphSnapshot = {
+      nodes: snapshot.graph?.nodes || [],
+      edges: snapshot.graph?.edges || [],
+    };
+    const result = await explainService({
+      graphSnapshot,
+      serviceId: options.serviceId,
+      serviceName: options.serviceName,
+      apiKey,
+    });
+    return { success: true, ...result };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to explain service",
+    };
+  }
 });

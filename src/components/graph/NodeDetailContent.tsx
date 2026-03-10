@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo, useCallback } from 'react';
+import ReactMarkdown from 'react-markdown';
 import type { GraphNode, GraphEdge, ExternalApi } from '../../types/electron';
 import { DatabaseViewer } from '../DatabaseViewer';
 import { getHealthInfo, getServiceColor } from './constants';
@@ -23,6 +24,9 @@ export function NodeDetailContent({ node, edges, allNodes }: NodeDetailContentPr
   const [externalApis, setExternalApis] = useState<ExternalApi[]>([]);
   const [externalApiLoading, setExternalApiLoading] = useState(false);
   const [externalApiError, setExternalApiError] = useState<string | null>(null);
+  const [serviceExplanation, setServiceExplanation] = useState<string | null>(null);
+  const [serviceExplanationLoading, setServiceExplanationLoading] = useState(false);
+  const [serviceExplanationError, setServiceExplanationError] = useState<string | null>(null);
 
   const formatLastSeen = (timestamp: number) => {
     const now = Date.now();
@@ -93,6 +97,28 @@ export function NodeDetailContent({ node, edges, allNodes }: NodeDetailContentPr
     };
   }, [node.projectPath, shouldShowExternalApis]);
 
+  useEffect(() => {
+    setServiceExplanation(null);
+    setServiceExplanationError(null);
+    setServiceExplanationLoading(false);
+  }, [node.id]);
+
+  const handleExplainService = useCallback(async () => {
+    setServiceExplanationLoading(true);
+    setServiceExplanationError(null);
+    const result = await window.electronAPI.explainService({
+      serviceId: node.id,
+      serviceName: node.name,
+    });
+    if (!result.success) {
+      setServiceExplanationError(result.error || 'Failed to explain service');
+      setServiceExplanationLoading(false);
+      return;
+    }
+    setServiceExplanation(result.explanation || '');
+    setServiceExplanationLoading(false);
+  }, [node.id, node.name]);
+
   return (
     <div className="node-detail-content">
       <div className="node-detail-section">
@@ -120,10 +146,36 @@ export function NodeDetailContent({ node, edges, allNodes }: NodeDetailContentPr
         </div>
       </div>
 
-      {node.description && (
+      {(node.description || serviceExplanation || serviceExplanationError) && (
         <div className="node-detail-section">
-          <h3 className="node-detail-section-title">About</h3>
-          <p className="node-detail-description">{node.description}</p>
+          <div className="node-detail-section-title-row">
+            <h3 className="node-detail-section-title">About</h3>
+            <button
+              type="button"
+              className="node-detail-ai-button"
+              onClick={handleExplainService}
+              disabled={serviceExplanationLoading}
+            >
+              {serviceExplanationLoading
+                ? 'Explaining…'
+                : serviceExplanation
+                  ? 'Refresh AI Explanation'
+                  : 'AI Explanation'}
+            </button>
+          </div>
+          {serviceExplanationError ? (
+            <div className="node-detail-error">{serviceExplanationError}</div>
+          ) : serviceExplanation ? (
+            <div className="node-detail-ai-copy">
+              <ReactMarkdown>{serviceExplanation}</ReactMarkdown>
+            </div>
+          ) : node.description ? (
+            <p className="node-detail-description">{node.description}</p>
+          ) : (
+            <div className="node-detail-ai-placeholder">
+              Generate a concise explanation of how this service fits into the current stack.
+            </div>
+          )}
         </div>
       )}
 

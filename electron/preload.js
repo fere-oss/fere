@@ -132,6 +132,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('query-progress', listener);
   },
 
+  explainService: (options) => ipcRenderer.invoke('explain-service', options),
+
   // Platform info
   platform: process.platform,
 });

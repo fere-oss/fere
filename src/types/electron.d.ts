@@ -686,6 +686,16 @@ export interface ElectronAPI {
   queryStart: (options: { query: string }) => Promise<{ success: boolean; error?: string }>;
   queryStop: () => Promise<{ success: boolean }>;
   onQueryProgress: (callback: (progress: QueryProgress) => void) => () => void;
+  explainService: (options: {
+    serviceId: string;
+    serviceName: string;
+  }) => Promise<{
+    success: boolean;
+    serviceId?: string;
+    serviceName?: string;
+    explanation?: string;
+    error?: string;
+  }>;
 
   // Platform info
   platform: string;
