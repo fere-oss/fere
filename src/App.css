@@ -10407,7 +10407,7 @@ textarea {
 .debug-agent-dock {
   position: fixed;
   left: 50%;
-  bottom: 52px;
+  bottom: 28px;
   transform: translateX(-50%);
   width: min(900px, calc(100vw - 32px));
   pointer-events: auto;
@@ -10456,7 +10456,7 @@ textarea {
 
 .debug-agent-shell-with-results .debug-panel-textarea,
 .debug-agent-shell-with-results .debug-panel-followup-textarea {
-  --composer-min-height: 68px;
+  --composer-min-height: 44px;
   padding-left: 60px;
   padding-right: 72px;
   font-size: 12px;
@@ -10464,7 +10464,7 @@ textarea {
 }
 
 .debug-agent-shell-with-results .debug-textarea-highlight {
-  --composer-min-height: 68px;
+  --composer-min-height: 44px;
   padding-left: 60px;
   padding-right: 72px;
   font-size: 12px;
@@ -10483,6 +10483,156 @@ textarea {
   display: flex;
   align-items: center;
   justify-content: flex-end;
+  gap: 2px;
+}
+
+.debug-dock-btn {
+  border: none;
+  background: none;
+  cursor: pointer;
+  padding: 5px;
+  border-radius: 6px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.12s, color 0.12s;
+}
+
+.debug-dock-btn:hover {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+.debug-dock-btn-active {
+  color: var(--text-primary);
+  background: var(--bg-primary);
+}
+
+.debug-dock-remaining {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-left: auto;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--bg-primary);
+  white-space: nowrap;
+  user-select: none;
+}
+
+.debug-dock-remaining-zero {
+  color: #e06c75;
+  background: rgba(224, 108, 117, 0.12);
+}
+
+/* History dropdown — floats above the dock */
+.debug-history-dropdown {
+  background: var(--bg-white);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.10);
+  max-height: 280px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  padding: 6px;
+  gap: 2px;
+  animation: debug-dropdown-in 0.14s ease-out;
+}
+
+@keyframes debug-dropdown-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.debug-history-dropdown-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.debug-history-new-btn {
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: inherit;
+  color: #0078d4;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.debug-history-new-btn:hover {
+  background: rgba(0, 120, 212, 0.08);
+}
+
+.debug-history-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  padding: 7px 8px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+  font-family: inherit;
+  gap: 8px;
+  text-align: left;
+  transition: background 0.1s;
+}
+
+.debug-history-item:hover {
+  background: var(--bg-primary);
+}
+
+.debug-history-item-active {
+  background: var(--bg-primary);
+}
+
+.debug-history-item-title {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-primary);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.debug-history-item-meta {
+  font-size: 10px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.debug-history-item-delete {
+  opacity: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 4px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  transition: opacity 0.1s, color 0.1s;
+}
+
+.debug-history-item:hover .debug-history-item-delete {
+  opacity: 1;
+}
+
+.debug-history-item-delete:hover {
+  color: #ef4444;
 }
 
 .debug-agent-dock-status {
@@ -10708,7 +10858,7 @@ textarea {
 
 .debug-panel-textarea {
   width: 100%;
-  --composer-min-height: 84px;
+  --composer-min-height: 48px;
   padding-left: 72px;
   padding-right: 84px;
   padding-top: calc((var(--composer-min-height) - 1lh) / 2);
@@ -10775,17 +10925,26 @@ textarea {
   min-width: 42px;
   padding: 0;
   border-radius: 999px;
-  background: #111;
+  background: #000;
   color: #fff;
   border: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  opacity: 1;
+}
+
+.debug-panel-input .debug-panel-submit:disabled,
+.debug-panel-followup .debug-panel-submit:disabled {
+  background: #000;
+  color: #fff;
+  opacity: 0.6;
+  cursor: default;
 }
 
 .debug-panel-input .debug-panel-submit:hover:not(:disabled),
 .debug-panel-followup .debug-panel-submit:hover:not(:disabled) {
-  background: #000;
+  background: #222;
 }
 
 /* Problem summary (shown during running/complete) */
@@ -11398,7 +11557,7 @@ textarea {
   pointer-events: none;
   white-space: pre-wrap;
   word-break: break-word;
-  --composer-min-height: 84px;
+  --composer-min-height: 48px;
   padding-left: 72px;
   padding-right: 84px;
   padding-top: calc((var(--composer-min-height) - 1lh) / 2);
@@ -11439,7 +11598,7 @@ textarea {
 
 .debug-panel-followup-textarea {
   width: 100%;
-  --composer-min-height: 84px;
+  --composer-min-height: 48px;
   padding-left: 72px;
   padding-right: 84px;
   padding-top: calc((var(--composer-min-height) - 1lh) / 2);
