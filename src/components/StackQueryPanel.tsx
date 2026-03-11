@@ -41,6 +41,7 @@ export function StackQueryPanel({
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const textareaRef = React.useRef<HTMLTextAreaElement | null>(null);
+  const pendingAutoSubmitRef = React.useRef(false);
 
   const normalizeServiceToken = useCallback((value: string) => {
     return value
@@ -212,6 +213,7 @@ export function StackQueryPanel({
     setOptimizationSignals([]);
     setError("");
     setLoading(false);
+    pendingAutoSubmitRef.current = true;
     window.requestAnimationFrame(() => {
       textareaRef.current?.focus();
       const length = textareaRef.current?.value.length ?? 0;
@@ -269,6 +271,7 @@ export function StackQueryPanel({
   const handleSubmit = useCallback(async () => {
     const trimmed = query.trim();
     if (!trimmed) return;
+    pendingAutoSubmitRef.current = false;
     setAnswer("");
     setReferences(null);
     setOptimizationSignals([]);
@@ -286,6 +289,12 @@ export function StackQueryPanel({
       setLoading(false);
     }
   }, [graphEdges, graphNodes, query]);
+
+  useEffect(() => {
+    if (!isOpen || !hasApiKey || !pendingAutoSubmitRef.current || loading) return;
+    if (!query.trim()) return;
+    handleSubmit();
+  }, [handleSubmit, hasApiKey, isOpen, loading, query]);
 
   const handleClose = useCallback(() => {
     window.electronAPI.queryStop();
