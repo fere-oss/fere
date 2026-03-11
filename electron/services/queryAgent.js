@@ -88,6 +88,66 @@ function getProjectLabel(node) {
   return parts.join(", ");
 }
 
+function buildOptimizationSignals(nodes) {
+  const signals = [];
+  const duplicateBuckets = new Map();
+
+  for (const node of nodes) {
+    if (node.type === "external") continue;
+
+    const memory = Number(node.memory || 0);
+    const cpu = Number(node.cpu || 0);
+    const health = node.healthStatus || "unknown";
+    const projectLabel =
+      node.project ||
+      (node.projectPath ? path.basename(node.projectPath) : null) ||
+      (node.repoPath ? path.basename(node.repoPath) : null);
+
+    if (health === "yellow" && memory >= 5) {
+      signals.push({
+        priority: 4 + memory,
+        text: `${node.name} is idle but using ${memory.toFixed(1)}% memory${
+          projectLabel ? ` in ${projectLabel}` : ""
+        }.`,
+      });
+    }
+
+    if (cpu >= 20 || memory >= 12) {
+      signals.push({
+        priority: 3 + cpu + memory,
+        text: `${node.name} is resource-heavy right now (${formatResourceState(node)})${
+          projectLabel ? ` in ${projectLabel}` : ""
+        }.`,
+      });
+    }
+
+    const duplicateKey = `${(projectLabel || "global").toLowerCase()}::${node.name.toLowerCase()}`;
+    const bucket = duplicateBuckets.get(duplicateKey) || {
+      name: node.name,
+      projectLabel,
+      count: 0,
+      running: 0,
+    };
+    bucket.count += 1;
+    if (health === "green") bucket.running += 1;
+    duplicateBuckets.set(duplicateKey, bucket);
+  }
+
+  for (const bucket of duplicateBuckets.values()) {
+    if (bucket.count < 2) continue;
+    signals.push({
+      priority: 5 + bucket.count,
+      text: `${bucket.count} instances of ${bucket.name} are visible${
+        bucket.projectLabel ? ` in ${bucket.projectLabel}` : ""
+      } (${bucket.running} active).`,
+    });
+  }
+
+  return signals
+    .sort((a, b) => b.priority - a.priority || a.text.localeCompare(b.text))
+    .map((entry) => entry.text);
+}
+
 function buildQueryPrompt(graphSnapshot, query) {
   const nodes = graphSnapshot.nodes || [];
   const edges = graphSnapshot.edges || [];
@@ -231,6 +291,11 @@ function buildQueryPrompt(graphSnapshot, query) {
         Array.from(project.ports).sort((a, b) => a - b).join(", ") || "none"
       })`,
   );
+  const optimizationSignals = summarizePromptList(
+    buildOptimizationSignals(nodes),
+    8,
+    (signal) => `- ${signal}`,
+  );
 
   const routeOwners = summarizePromptList(
     nodes
@@ -358,6 +423,9 @@ ${portOwners || "No port-specific matches"}
 
 ## Idle / Heavy Services
 ${idleOrHeavyServices || "No notable idle or heavy services"}
+
+## Optimization Signals
+${optimizationSignals || "No obvious optimization signals"}
 
 ## External APIs
 ${externalApis || "None detected"}
