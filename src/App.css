@@ -2492,8 +2492,7 @@ textarea {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  padding: 20px 0 0;
-  border-bottom: 1px solid var(--border-color);
+  padding: 20px 0 18px;
   background: #f5f5f5;
   border-radius: 12px 12px 0 0;
   flex-shrink: 0;
@@ -2590,23 +2589,24 @@ textarea {
 }
 
 .node-detail-actions-card {
-  display: inline-flex;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: stretch;
-  justify-content: flex-start;
-  gap: 0;
+  gap: 1px;
   align-self: stretch;
-  border: 0;
-  border-radius: 0;
-  background: var(--bg-white);
+  border: 1px solid var(--border-color);
+  border-top: 0;
+  border-radius: 0 0 12px 12px;
+  background: var(--border-color);
   overflow: hidden;
   padding: 0;
-  box-shadow: none;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
 }
 
 .node-detail-actions-card-header {
   width: 100%;
   margin: 0;
-  border-top: 1px solid var(--border-color);
+  margin-top: -1px;
 }
 
 .node-detail-section-title-row {
@@ -2630,8 +2630,8 @@ textarea {
 
 .node-detail-ai-button {
   border: 0;
-  background: transparent;
-  color: var(--text-primary);
+  background: var(--bg-white);
+  color: var(--text-secondary);
   border-radius: 0;
   padding: 12px 14px;
   font-size: 12px;
@@ -2648,21 +2648,24 @@ textarea {
   overflow: hidden;
   text-overflow: ellipsis;
   font-family: var(--font-ui);
-  flex: 1 1 0;
   transition:
+    border-color 0.15s,
     background 0.15s,
-    color 0.15s;
+    color 0.15s,
+    box-shadow 0.15s;
 }
 
 .node-detail-ai-button:hover:not(:disabled) {
-  background: #111111;
-  color: #ffffff;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  box-shadow: none;
 }
 
 .node-detail-ai-button-active,
 .node-detail-ai-button-active:hover:not(:disabled) {
-  background: #111111;
-  color: #ffffff;
+  background: var(--text-primary);
+  color: var(--bg-white);
+  box-shadow: none;
 }
 
 .node-detail-ai-button:disabled {
@@ -2671,8 +2674,8 @@ textarea {
   box-shadow: none;
 }
 
-.node-detail-ai-button + .node-detail-ai-button {
-  box-shadow: inset 1px 0 0 var(--border-color);
+.node-detail-ai-button-wide {
+  grid-column: 1 / -1;
 }
 
 .node-detail-ai-button-secondary {
@@ -2680,8 +2683,8 @@ textarea {
 }
 
 .node-detail-ai-button-secondary:hover:not(:disabled) {
-  background: #111111;
-  color: #ffffff;
+  background: var(--bg-primary);
+  color: var(--text-primary);
 }
 
 .node-detail-ai-button-icon {
@@ -2691,7 +2694,7 @@ textarea {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  color: rgba(17, 17, 17, 0.82);
+  color: var(--text-muted);
   opacity: 1;
 }
 
@@ -2701,19 +2704,23 @@ textarea {
 }
 
 .node-detail-ai-button-secondary .node-detail-ai-button-icon {
-  color: rgba(17, 17, 17, 0.92);
+  color: var(--text-secondary);
 }
 
 .node-detail-ai-button:hover:not(:disabled) .node-detail-ai-button-icon,
 .node-detail-ai-button-active .node-detail-ai-button-icon,
 .node-detail-ai-button-secondary:hover:not(:disabled)
   .node-detail-ai-button-icon {
-  color: #ffffff;
+  color: currentColor;
 }
 
 @media (max-width: 420px) {
   .node-detail-actions-card {
-    flex-direction: column;
+    grid-template-columns: 1fr;
+  }
+
+  .node-detail-ai-button-wide {
+    grid-column: auto;
   }
 }
 

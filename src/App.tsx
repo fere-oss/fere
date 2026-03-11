@@ -232,6 +232,8 @@ function App() {
   const [hasEverOpened, setHasEverOpened] = useState(false);
   const [isAgentOpen, setIsAgentOpen] = useState(false);
   const [isStackQueryOpen, setIsStackQueryOpen] = useState(false);
+  const [stackQueryInitialQuery, setStackQueryInitialQuery] = useState("");
+  const [stackQueryInitialQueryKey, setStackQueryInitialQueryKey] = useState(0);
   const [debugInitialProblem, setDebugInitialProblem] = useState("");
   const [debugInitialProblemKey, setDebugInitialProblemKey] = useState(0);
   const [debugHighlightNodeIds, setDebugHighlightNodeIds] = useState<Set<string>>(new Set());
@@ -439,13 +441,25 @@ function App() {
         setViewMode("graph");
       }
     };
+    const handleQueryAboutService = (e: Event) => {
+      const { nodeId, serviceName } = (e as CustomEvent).detail;
+      const scopedQuery = `What does \`${serviceName}\` do, what depends on it, and what does it depend on?`;
+      setStackQueryInitialQuery(scopedQuery);
+      setStackQueryInitialQueryKey((current) => current + 1);
+      setIsStackQueryOpen(true);
+      if (nodeId) {
+        setDebugHighlightNodeIds(new Set([nodeId]));
+      }
+    };
     window.addEventListener("fere:debug-highlight-services", handleDebugHighlight);
     window.addEventListener("fere:debug-focus-node", handleDebugFocus);
     window.addEventListener("fere:debug-diagnose-service", handleDiagnoseService);
+    window.addEventListener("fere:query-about-service", handleQueryAboutService);
     return () => {
       window.removeEventListener("fere:debug-highlight-services", handleDebugHighlight);
       window.removeEventListener("fere:debug-focus-node", handleDebugFocus);
       window.removeEventListener("fere:debug-diagnose-service", handleDiagnoseService);
+      window.removeEventListener("fere:query-about-service", handleQueryAboutService);
     };
   }, [viewMode]);
 
@@ -1616,6 +1630,8 @@ function App() {
         onClose={handleCloseStackQuery}
         graphNodes={filteredData.nodes}
         graphEdges={filteredData.edges}
+        initialQuery={stackQueryInitialQuery}
+        initialQueryKey={stackQueryInitialQueryKey}
       />
       </div>
 

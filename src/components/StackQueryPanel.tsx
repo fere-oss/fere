@@ -7,6 +7,8 @@ interface StackQueryPanelProps {
   onClose: () => void;
   graphNodes: GraphNode[];
   graphEdges: GraphEdge[];
+  initialQuery?: string;
+  initialQueryKey?: number;
 }
 
 export function StackQueryPanel({
@@ -14,6 +16,8 @@ export function StackQueryPanel({
   onClose,
   graphNodes,
   graphEdges,
+  initialQuery,
+  initialQueryKey,
 }: StackQueryPanelProps) {
   const [hasApiKey, setHasApiKey] = useState<boolean | null>(null);
   const [apiKeyInput, setApiKeyInput] = useState("");
@@ -31,6 +35,7 @@ export function StackQueryPanel({
   >([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const textareaRef = React.useRef<HTMLTextAreaElement | null>(null);
 
   const normalizeServiceToken = useCallback((value: string) => {
     return value
@@ -134,6 +139,21 @@ export function StackQueryPanel({
       setHasApiKey(result.hasKey);
     });
   }, []);
+
+  useEffect(() => {
+    if (!initialQueryKey || !initialQuery) return;
+    setQuery(initialQuery);
+    setAnswer("");
+    setReferences(null);
+    setOptimizationSignals([]);
+    setError("");
+    setLoading(false);
+    window.requestAnimationFrame(() => {
+      textareaRef.current?.focus();
+      const length = textareaRef.current?.value.length ?? 0;
+      textareaRef.current?.setSelectionRange(length, length);
+    });
+  }, [initialQuery, initialQueryKey]);
 
   useEffect(() => {
     const unsubscribe = window.electronAPI.onQueryProgress(
@@ -320,6 +340,7 @@ export function StackQueryPanel({
         <>
           <div className="stack-query-panel-composer">
             <textarea
+              ref={textareaRef}
               className="stack-query-panel-textarea"
               placeholder="What is using port 3001? What depends on Redis? Which services are idle?"
               value={query}
