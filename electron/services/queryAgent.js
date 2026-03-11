@@ -260,6 +260,74 @@ ${externalApis || "None detected"}
 `;
 }
 
+function buildQueryReferences(graphSnapshot, query) {
+  const nodes = graphSnapshot.nodes || [];
+  const focus = extractFocusTerms(graphSnapshot, query);
+  const serviceNames = [];
+  const seenServices = new Set();
+  const ports = Array.from(focus.ports).sort((a, b) => a - b).slice(0, 6);
+  const routes = [];
+  const seenRoutes = new Set();
+  const projects = [];
+  const seenProjects = new Set();
+
+  for (const node of nodes) {
+    if (node.type === "external") continue;
+    const focused = focus.serviceIds.has(node.id);
+    const routeMatches = (node.routes || []).filter((route) =>
+      Array.from(focus.routeTerms).some((term) =>
+        String(route.path || "").toLowerCase().includes(term),
+      ),
+    );
+    if (focused && !seenServices.has(node.name)) {
+      seenServices.add(node.name);
+      serviceNames.push(node.name);
+    }
+    const projectName =
+      node.project ||
+      (node.projectPath ? path.basename(node.projectPath) : null) ||
+      (node.repoPath ? path.basename(node.repoPath) : null);
+    if (
+      projectName &&
+      (focus.projectTerms.has(String(projectName).toLowerCase()) || focused) &&
+      !seenProjects.has(projectName)
+    ) {
+      seenProjects.add(projectName);
+      projects.push(projectName);
+    }
+    for (const route of routeMatches) {
+      const key = `${node.name}:${route.method}:${route.path}`;
+      if (seenRoutes.has(key)) continue;
+      seenRoutes.add(key);
+      routes.push({
+        serviceName: node.name,
+        method: route.method,
+        path: route.path,
+      });
+    }
+  }
+
+  if (serviceNames.length === 0) {
+    const topNodes = nodes
+      .filter((node) => node.type !== "external")
+      .sort((a, b) => (b.ports?.length || 0) - (a.ports?.length || 0))
+      .slice(0, 3);
+    for (const node of topNodes) {
+      if (!seenServices.has(node.name)) {
+        seenServices.add(node.name);
+        serviceNames.push(node.name);
+      }
+    }
+  }
+
+  return {
+    services: serviceNames.slice(0, 6),
+    ports,
+    routes: routes.slice(0, 6),
+    projects: projects.slice(0, 4),
+  };
+}
+
 function callOpenAIStream(apiKey, systemPrompt, query, onToken) {
   const body = JSON.stringify({
     model: MODEL,
@@ -342,6 +410,7 @@ function callOpenAIStream(apiKey, systemPrompt, query, onToken) {
 async function runQueryAgent(options, onProgress) {
   const { query, graphSnapshot, apiKey } = options;
   const systemPrompt = buildQueryPrompt(graphSnapshot, query);
+  const references = buildQueryReferences(graphSnapshot, query);
 
   onProgress({ type: "thinking" });
 
@@ -355,7 +424,7 @@ async function runQueryAgent(options, onProgress) {
     return { success: false, error: "Cancelled" };
   }
 
-  onProgress({ type: "complete", answer: text });
+  onProgress({ type: "complete", answer: text, references });
   return { success: true, answer: text };
 }
 

@@ -578,7 +578,16 @@ export type DebugProgress =
 export type QueryProgress =
   | { type: 'thinking' }
   | { type: 'answer_delta'; text: string }
-  | { type: 'complete'; answer: string }
+  | {
+      type: 'complete';
+      answer: string;
+      references?: {
+        services?: string[];
+        ports?: number[];
+        routes?: Array<{ serviceName: string; method: string; path: string }>;
+        projects?: string[];
+      };
+    }
   | { type: 'error'; error: string };
 
 // Electron API interface

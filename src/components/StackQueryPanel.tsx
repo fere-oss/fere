@@ -18,6 +18,12 @@ export function StackQueryPanel({
   const [apiKeyError, setApiKeyError] = useState("");
   const [query, setQuery] = useState("");
   const [answer, setAnswer] = useState("");
+  const [references, setReferences] = useState<{
+    services?: string[];
+    ports?: number[];
+    routes?: Array<{ serviceName: string; method: string; path: string }>;
+    projects?: string[];
+  } | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -62,6 +68,62 @@ export function StackQueryPanel({
     [findServiceNode],
   );
 
+  const handlePortClick = useCallback(
+    (port: number) => {
+      const node = graphNodes.find(
+        (candidate) =>
+          candidate.type !== "external" &&
+          (candidate.ports || []).some((entry) => entry.port === port),
+      );
+      if (!node) return;
+      handleServiceClick(node.name);
+    },
+    [graphNodes, handleServiceClick],
+  );
+
+  const handleRouteClick = useCallback(
+    (serviceName: string, routePath: string) => {
+      const node =
+        findServiceNode(serviceName) ||
+        graphNodes.find(
+          (candidate) =>
+            candidate.type !== "external" &&
+            (candidate.routes || []).some((route) => route.path === routePath),
+        );
+      if (!node) return;
+      handleServiceClick(node.name);
+    },
+    [findServiceNode, graphNodes, handleServiceClick],
+  );
+
+  const handleProjectClick = useCallback(
+    (projectName: string) => {
+      const matched = graphNodes.filter((node) => {
+        if (node.type === "external") return false;
+        const labels = [
+          node.project,
+          node.projectPath?.split("/").pop(),
+          node.repoPath?.split("/").pop(),
+        ]
+          .filter(Boolean)
+          .map((value) => String(value).toLowerCase());
+        return labels.includes(projectName.toLowerCase());
+      });
+      if (matched.length === 0) return;
+      window.dispatchEvent(
+        new CustomEvent("fere:debug-highlight-services", {
+          detail: { nodeIds: matched.map((node) => node.id) },
+        }),
+      );
+      window.dispatchEvent(
+        new CustomEvent("fere:debug-focus-node", {
+          detail: { nodeId: matched[0].id },
+        }),
+      );
+    },
+    [graphNodes],
+  );
+
   useEffect(() => {
     window.electronAPI.debugGetApiKeyStatus().then((result) => {
       setHasApiKey(result.hasKey);
@@ -75,6 +137,7 @@ export function StackQueryPanel({
           case "thinking":
             setLoading(true);
             setAnswer("");
+            setReferences(null);
             setError("");
             break;
           case "answer_delta":
@@ -82,6 +145,7 @@ export function StackQueryPanel({
             break;
           case "complete":
             setAnswer(progress.answer);
+            setReferences(progress.references || null);
             setLoading(false);
             break;
           case "error":
@@ -115,6 +179,7 @@ export function StackQueryPanel({
     const trimmed = query.trim();
     if (!trimmed) return;
     setAnswer("");
+    setReferences(null);
     setError("");
     setLoading(true);
     const result = await window.electronAPI.queryStart({ query: trimmed });
@@ -292,11 +357,102 @@ export function StackQueryPanel({
           {error ? <div className="debug-panel-error">{error}</div> : null}
 
           {answer ? (
-            <div className="stack-query-panel-answer">
-              <ReactMarkdown components={markdownComponents}>
-                {answer}
-              </ReactMarkdown>
-            </div>
+            <>
+              <div className="stack-query-panel-answer">
+                <ReactMarkdown components={markdownComponents}>
+                  {answer}
+                </ReactMarkdown>
+              </div>
+              {references &&
+              ((references.services && references.services.length > 0) ||
+                (references.ports && references.ports.length > 0) ||
+                (references.routes && references.routes.length > 0) ||
+                (references.projects && references.projects.length > 0)) ? (
+                <div className="stack-query-panel-references">
+                  {references.services && references.services.length > 0 ? (
+                    <div className="stack-query-panel-reference-group">
+                      <span className="stack-query-panel-reference-label">
+                        Services
+                      </span>
+                      <div className="stack-query-panel-reference-chips">
+                        {references.services.map((service) => (
+                          <button
+                            key={service}
+                            type="button"
+                            className="stack-query-panel-chip"
+                            onClick={() => handleServiceClick(service)}
+                          >
+                            {service}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                  {references.ports && references.ports.length > 0 ? (
+                    <div className="stack-query-panel-reference-group">
+                      <span className="stack-query-panel-reference-label">
+                        Ports
+                      </span>
+                      <div className="stack-query-panel-reference-chips">
+                        {references.ports.map((port) => (
+                          <button
+                            key={port}
+                            type="button"
+                            className="stack-query-panel-chip stack-query-panel-chip-mono"
+                            onClick={() => handlePortClick(port)}
+                          >
+                            :{port}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                  {references.routes && references.routes.length > 0 ? (
+                    <div className="stack-query-panel-reference-group">
+                      <span className="stack-query-panel-reference-label">
+                        Routes
+                      </span>
+                      <div className="stack-query-panel-reference-chips">
+                        {references.routes.map((route) => (
+                          <button
+                            key={`${route.serviceName}:${route.method}:${route.path}`}
+                            type="button"
+                            className="stack-query-panel-chip stack-query-panel-chip-route"
+                            onClick={() =>
+                              handleRouteClick(route.serviceName, route.path)
+                            }
+                          >
+                            <span className="stack-query-panel-chip-method">
+                              {route.method}
+                            </span>
+                            <span>{route.path}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                  {references.projects && references.projects.length > 0 ? (
+                    <div className="stack-query-panel-reference-group">
+                      <span className="stack-query-panel-reference-label">
+                        Projects
+                      </span>
+                      <div className="stack-query-panel-reference-chips">
+                        {references.projects.map((project) => (
+                          <button
+                            key={project}
+                            type="button"
+                            className="stack-query-panel-chip"
+                            onClick={() => handleProjectClick(project)}
+                          >
+                            {project}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+            </>
           ) : null}
         </>
       )}
