@@ -1631,13 +1631,14 @@ export function DebugPanel({ isOpen, onClose, graphNodes }: DebugPanelProps) {
               onClick={handleStart}
               disabled={!problem.trim()}
               aria-label="Investigate"
+              style={{ background: problem.trim() ? "#000" : "#888", color: "#fff", opacity: 1 }}
             >
               <svg
                 width="20"
                 height="20"
                 viewBox="0 0 16 16"
                 fill="none"
-                stroke="currentColor"
+                stroke="#fff"
                 strokeWidth="1.8"
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -1747,13 +1748,14 @@ export function DebugPanel({ isOpen, onClose, graphNodes }: DebugPanelProps) {
               onClick={handleFollowUp}
               disabled={!followUpInput.trim()}
               aria-label="Send"
+              style={{ background: followUpInput.trim() ? "#000" : "#888", color: "#fff", opacity: 1 }}
             >
               <svg
                 width="20"
                 height="20"
                 viewBox="0 0 16 16"
                 fill="none"
-                stroke="currentColor"
+                stroke="#fff"
                 strokeWidth="1.8"
                 strokeLinecap="round"
                 strokeLinejoin="round"
