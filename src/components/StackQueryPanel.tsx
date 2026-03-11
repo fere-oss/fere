@@ -9,6 +9,7 @@ interface StackQueryPanelProps {
   graphEdges: GraphEdge[];
   initialQuery?: string;
   initialQueryKey?: number;
+  initialServiceName?: string;
 }
 
 interface OptimizationHint {
@@ -23,6 +24,7 @@ export function StackQueryPanel({
   graphEdges,
   initialQuery,
   initialQueryKey,
+  initialServiceName,
 }: StackQueryPanelProps) {
   const [hasApiKey, setHasApiKey] = useState<boolean | null>(null);
   const [apiKeyInput, setApiKeyInput] = useState("");
@@ -366,6 +368,11 @@ export function StackQueryPanel({
       <div className="stack-query-panel-header">
         <div className="stack-query-panel-title-wrap">
           <div className="stack-query-panel-title">Ask Fere</div>
+          {initialServiceName ? (
+            <div className="stack-query-panel-scope">
+              Scoped to <span>{initialServiceName}</span>
+            </div>
+          ) : null}
         </div>
         <button
           type="button"

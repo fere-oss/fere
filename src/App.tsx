@@ -234,6 +234,7 @@ function App() {
   const [isStackQueryOpen, setIsStackQueryOpen] = useState(false);
   const [stackQueryInitialQuery, setStackQueryInitialQuery] = useState("");
   const [stackQueryInitialQueryKey, setStackQueryInitialQueryKey] = useState(0);
+  const [stackQueryInitialServiceName, setStackQueryInitialServiceName] = useState("");
   const [debugInitialProblem, setDebugInitialProblem] = useState("");
   const [debugInitialProblemKey, setDebugInitialProblemKey] = useState(0);
   const [debugHighlightNodeIds, setDebugHighlightNodeIds] = useState<Set<string>>(new Set());
@@ -259,6 +260,7 @@ function App() {
 
   const handleCloseStackQuery = useCallback(() => {
     setIsStackQueryOpen(false);
+    setStackQueryInitialServiceName("");
   }, []);
 
   // Sub-tab for containers view
@@ -446,6 +448,7 @@ function App() {
       const scopedQuery = `What does \`${serviceName}\` do, what depends on it, and what does it depend on?`;
       setStackQueryInitialQuery(scopedQuery);
       setStackQueryInitialQueryKey((current) => current + 1);
+      setStackQueryInitialServiceName(serviceName);
       setIsStackQueryOpen(true);
       if (nodeId) {
         setDebugHighlightNodeIds(new Set([nodeId]));
@@ -1632,6 +1635,7 @@ function App() {
         graphEdges={filteredData.edges}
         initialQuery={stackQueryInitialQuery}
         initialQueryKey={stackQueryInitialQueryKey}
+        initialServiceName={stackQueryInitialServiceName}
       />
       </div>
 
