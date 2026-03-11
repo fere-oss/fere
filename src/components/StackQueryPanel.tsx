@@ -31,6 +31,12 @@ export function StackQueryPanel({
   const [apiKeyError, setApiKeyError] = useState("");
   const [query, setQuery] = useState("");
   const [answer, setAnswer] = useState("");
+  const [structuredAnswer, setStructuredAnswer] = useState<{
+    kind: string;
+    directAnswer: string;
+    supportingFacts: string[];
+    uncertainty?: string[];
+  } | null>(null);
   const [references, setReferences] = useState<{
     services?: string[];
     ports?: number[];
@@ -230,6 +236,7 @@ export function StackQueryPanel({
           case "thinking":
             setLoading(true);
             setAnswer("");
+            setStructuredAnswer(null);
             setReferences(null);
             setOptimizationSignals([]);
             setError("");
@@ -239,6 +246,7 @@ export function StackQueryPanel({
             break;
           case "complete":
             setAnswer(progress.answer);
+            setStructuredAnswer(progress.structuredAnswer || null);
             setReferences(progress.references || null);
             setOptimizationSignals(progress.optimizationSignals || []);
             setLoading(false);
@@ -275,6 +283,7 @@ export function StackQueryPanel({
     if (!trimmed) return;
     pendingAutoSubmitRef.current = false;
     setAnswer("");
+    setStructuredAnswer(null);
     setReferences(null);
     setOptimizationSignals([]);
     setError("");
@@ -508,7 +517,142 @@ export function StackQueryPanel({
             </div>
           ) : null}
 
-          {answer ? (
+          {structuredAnswer ? (
+            <>
+              <div className="stack-query-panel-structured-answer">
+                <div className="stack-query-panel-structured-section">
+                  <div className="stack-query-panel-structured-label">Answer</div>
+                  <div className="stack-query-panel-structured-primary">
+                    <ReactMarkdown components={markdownComponents}>
+                      {structuredAnswer.directAnswer}
+                    </ReactMarkdown>
+                  </div>
+                </div>
+                {structuredAnswer.supportingFacts.length > 0 ? (
+                  <div className="stack-query-panel-structured-section">
+                    <div className="stack-query-panel-structured-label">
+                      Supporting Facts
+                    </div>
+                    <ul className="stack-query-panel-structured-list">
+                      {structuredAnswer.supportingFacts.map((fact) => (
+                        <li key={fact}>
+                          <ReactMarkdown components={markdownComponents}>
+                            {fact}
+                          </ReactMarkdown>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+                {structuredAnswer.uncertainty &&
+                structuredAnswer.uncertainty.length > 0 ? (
+                  <div className="stack-query-panel-structured-section">
+                    <div className="stack-query-panel-structured-label">
+                      Uncertainty
+                    </div>
+                    <ul className="stack-query-panel-structured-list">
+                      {structuredAnswer.uncertainty.map((fact) => (
+                        <li key={fact}>
+                          <ReactMarkdown components={markdownComponents}>
+                            {fact}
+                          </ReactMarkdown>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+              </div>
+              {references &&
+              ((references.services && references.services.length > 0) ||
+                (references.ports && references.ports.length > 0) ||
+                (references.routes && references.routes.length > 0) ||
+                (references.projects && references.projects.length > 0)) ? (
+                <div className="stack-query-panel-references">
+                  {references.services && references.services.length > 0 ? (
+                    <div className="stack-query-panel-reference-group">
+                      <span className="stack-query-panel-reference-label">
+                        Services
+                      </span>
+                      <div className="stack-query-panel-reference-chips">
+                        {references.services.map((service) => (
+                          <button
+                            key={service}
+                            type="button"
+                            className="stack-query-panel-chip"
+                            onClick={() => handleServiceClick(service)}
+                          >
+                            {service}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                  {references.ports && references.ports.length > 0 ? (
+                    <div className="stack-query-panel-reference-group">
+                      <span className="stack-query-panel-reference-label">
+                        Ports
+                      </span>
+                      <div className="stack-query-panel-reference-chips">
+                        {references.ports.map((port) => (
+                          <button
+                            key={port}
+                            type="button"
+                            className="stack-query-panel-chip stack-query-panel-chip-mono"
+                            onClick={() => handlePortClick(port)}
+                          >
+                            :{port}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                  {references.routes && references.routes.length > 0 ? (
+                    <div className="stack-query-panel-reference-group">
+                      <span className="stack-query-panel-reference-label">
+                        Routes
+                      </span>
+                      <div className="stack-query-panel-reference-chips">
+                        {references.routes.map((route) => (
+                          <button
+                            key={`${route.serviceName}:${route.method}:${route.path}`}
+                            type="button"
+                            className="stack-query-panel-chip stack-query-panel-chip-route"
+                            onClick={() =>
+                              handleRouteClick(route.serviceName, route.path)
+                            }
+                          >
+                            <span className="stack-query-panel-chip-method">
+                              {route.method}
+                            </span>
+                            <span>{route.path}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                  {references.projects && references.projects.length > 0 ? (
+                    <div className="stack-query-panel-reference-group">
+                      <span className="stack-query-panel-reference-label">
+                        Projects
+                      </span>
+                      <div className="stack-query-panel-reference-chips">
+                        {references.projects.map((project) => (
+                          <button
+                            key={project}
+                            type="button"
+                            className="stack-query-panel-chip"
+                            onClick={() => handleProjectClick(project)}
+                          >
+                            {project}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+            </>
+          ) : answer ? (
             <>
               <div className="stack-query-panel-answer">
                 <ReactMarkdown components={markdownComponents}>

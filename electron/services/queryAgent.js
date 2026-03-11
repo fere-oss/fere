@@ -519,6 +519,336 @@ function buildQueryReferences(graphSnapshot, query) {
   };
 }
 
+function classifyQueryIntent(graphSnapshot, query, focus) {
+  const text = String(query || "").toLowerCase();
+  if (
+    focus.routeTerms.size > 0 ||
+    /\b(route|routes|endpoint|endpoints|path|paths|url)\b/.test(text)
+  ) {
+    return "route_owner";
+  }
+  if (
+    focus.ports.size > 0 &&
+    /\b(port|ports|using|uses|owner|owns|what is on|what's on)\b/.test(text)
+  ) {
+    return "port_owner";
+  }
+  if (
+    /\b(idle|active|inactive|heavy|resource|resources|memory|cpu)\b/.test(text)
+  ) {
+    return "resource_summary";
+  }
+  if (
+    /\b(project|repo|repository|stack)\b/.test(text) &&
+    (focus.projectTerms.size > 0 || focus.serviceIds.size > 0)
+  ) {
+    return "project_summary";
+  }
+  if (
+    /\bwhat depends on\b|\bdepends on\b|\bwho depends on\b|\bwhat uses\b/.test(text) &&
+    focus.serviceIds.size > 0
+  ) {
+    if (/\bwhat does\b|\bdoes .* depend on\b|\bdependencies\b/.test(text)) {
+      return "dependencies";
+    }
+    return "dependents";
+  }
+  if (
+    (/\b(flow|path|between|from)\b/.test(text) && focus.serviceIds.size >= 2) ||
+    /\bhow does .* get to\b/.test(text)
+  ) {
+    return "path_trace";
+  }
+  if (
+    focus.serviceIds.size === 1 &&
+    /\b(what does|what is|tell me about|about|explain)\b/.test(text)
+  ) {
+    return "service_summary";
+  }
+  return null;
+}
+
+function buildGraphIndexes(graphSnapshot) {
+  const nodes = (graphSnapshot.nodes || []).filter((node) => node.type !== "external");
+  const edges = graphSnapshot.edges || [];
+  const nodeById = new Map(nodes.map((node) => [node.id, node]));
+  const outgoing = new Map();
+  const incoming = new Map();
+  for (const edge of edges) {
+    if (!nodeById.has(edge.source) || !nodeById.has(edge.target)) continue;
+    const out = outgoing.get(edge.source) || [];
+    out.push(edge);
+    outgoing.set(edge.source, out);
+    const inc = incoming.get(edge.target) || [];
+    inc.push(edge);
+    incoming.set(edge.target, inc);
+  }
+  return { nodes, edges, nodeById, outgoing, incoming };
+}
+
+function buildStructuredResult(kind, directAnswer, supportingFacts, uncertainty) {
+  return {
+    kind,
+    directAnswer,
+    supportingFacts: supportingFacts.filter(Boolean).slice(0, 6),
+    uncertainty: (uncertainty || []).filter(Boolean).slice(0, 3),
+  };
+}
+
+function formatStructuredAnswer(result) {
+  const lines = [result.directAnswer];
+  if (result.supportingFacts.length > 0) {
+    lines.push("", "Supporting facts");
+    for (const fact of result.supportingFacts) lines.push(`- ${fact}`);
+  }
+  if (result.uncertainty && result.uncertainty.length > 0) {
+    lines.push("", "Uncertainty");
+    for (const item of result.uncertainty) lines.push(`- ${item}`);
+  }
+  return lines.join("\n");
+}
+
+function resolveDeterministicQuery(graphSnapshot, query) {
+  const focus = extractFocusTerms(graphSnapshot, query);
+  const intent = classifyQueryIntent(graphSnapshot, query, focus);
+  if (!intent) return null;
+
+  const indexes = buildGraphIndexes(graphSnapshot);
+  const focusedNodes = indexes.nodes.filter((node) => focus.serviceIds.has(node.id));
+  const firstNode = focusedNodes[0];
+
+  if (intent === "port_owner" && focus.ports.size > 0) {
+    const ports = Array.from(focus.ports).sort((a, b) => a - b);
+    const owners = indexes.nodes.filter((node) =>
+      (node.ports || []).some((entry) => focus.ports.has(entry.port)),
+    );
+    const directAnswer =
+      owners.length === 0
+        ? `No visible service in this scope owns ${ports.map((port) => `\`:${port}\``).join(", ")}.`
+        : owners.length === 1
+          ? `${ports.map((port) => `\`:${port}\``).join(", ")} ${
+              ports.length === 1 ? "is" : "are"
+            } owned by \`${owners[0].name}\`.`
+          : `${ports.map((port) => `\`:${port}\``).join(", ")} map to multiple services in this scope.`;
+    return {
+      structuredAnswer: buildStructuredResult(
+        "port_owner",
+        directAnswer,
+        owners.map(
+          (node) =>
+            `\`${node.name}\` listens on ${(node.ports || [])
+              .filter((entry) => focus.ports.has(entry.port))
+              .map((entry) => `\`:${entry.port}\``)
+              .join(", ")} with health \`${node.healthStatus}\`.`,
+        ),
+        owners.length === 0 ? ["The port may belong to a system service or a service outside the current filtered graph."] : [],
+      ),
+      references: buildQueryReferences(graphSnapshot, query),
+    };
+  }
+
+  if (intent === "route_owner" && focus.routeTerms.size > 0) {
+    const matches = indexes.nodes.flatMap((node) =>
+      (node.routes || [])
+        .filter((route) =>
+          Array.from(focus.routeTerms).some((term) =>
+            String(route.path || "").toLowerCase().includes(term),
+          ),
+        )
+        .map((route) => ({ node, route })),
+    );
+    const directAnswer =
+      matches.length === 0
+        ? `No matching route owner was found in the current scope.`
+        : matches.length === 1
+          ? `\`${matches[0].route.method} ${matches[0].route.path}\` is owned by \`${matches[0].node.name}\`.`
+          : `I found multiple route matches in the current scope.`;
+    return {
+      structuredAnswer: buildStructuredResult(
+        "route_owner",
+        directAnswer,
+        matches.map(
+          ({ node, route }) =>
+            `\`${node.name}\` exposes \`${route.method} ${route.path}\`${node.ports?.length ? ` on ${(node.ports || []).map((entry) => `\`:${entry.port}\``).join(", ")}` : ""}.`,
+        ),
+        matches.length === 0 ? ["The route may not have been discovered yet, or it belongs to a service outside the current scope."] : [],
+      ),
+      references: buildQueryReferences(graphSnapshot, query),
+    };
+  }
+
+  if (intent === "dependents" && firstNode) {
+    const incoming = indexes.incoming.get(firstNode.id) || [];
+    const sources = incoming
+      .map((edge) => indexes.nodeById.get(edge.source))
+      .filter(Boolean);
+    return {
+      structuredAnswer: buildStructuredResult(
+        "dependents",
+        sources.length > 0
+          ? `\`${firstNode.name}\` is used by ${sources.map((node) => `\`${node.name}\``).join(", ")}.`
+          : `No visible services in this scope currently depend on \`${firstNode.name}\`.`,
+        incoming.map(
+          (edge) =>
+            `\`${indexes.nodeById.get(edge.source)?.name}\` connects to \`${firstNode.name}\` on \`:${edge.targetPort}\`.`,
+        ),
+        sources.length === 0 ? ["Only visible edges in the current filtered graph are considered."] : [],
+      ),
+      references: buildQueryReferences(graphSnapshot, query),
+    };
+  }
+
+  if (intent === "dependencies" && firstNode) {
+    const outgoing = indexes.outgoing.get(firstNode.id) || [];
+    const targets = outgoing
+      .map((edge) => indexes.nodeById.get(edge.target))
+      .filter(Boolean);
+    return {
+      structuredAnswer: buildStructuredResult(
+        "dependencies",
+        targets.length > 0
+          ? `\`${firstNode.name}\` depends on ${targets.map((node) => `\`${node.name}\``).join(", ")}.`
+          : `No visible downstream dependencies were found for \`${firstNode.name}\` in this scope.`,
+        outgoing.map(
+          (edge) =>
+            `\`${firstNode.name}\` connects to \`${indexes.nodeById.get(edge.target)?.name}\` on \`:${edge.targetPort}\`.`,
+        ),
+        targets.length === 0 ? ["Only visible edges in the current filtered graph are considered."] : [],
+      ),
+      references: buildQueryReferences(graphSnapshot, query),
+    };
+  }
+
+  if (intent === "resource_summary") {
+    const ranked = indexes.nodes
+      .filter(
+        (node) =>
+          node.healthStatus === "yellow" ||
+          Number(node.cpu || 0) >= 5 ||
+          Number(node.memory || 0) >= 5,
+      )
+      .sort((a, b) => {
+        const aScore =
+          (a.healthStatus === "yellow" ? 3 : 0) + Number(a.cpu || 0) + Number(a.memory || 0);
+        const bScore =
+          (b.healthStatus === "yellow" ? 3 : 0) + Number(b.cpu || 0) + Number(b.memory || 0);
+        return bScore - aScore;
+      })
+      .slice(0, 5);
+    return {
+      structuredAnswer: buildStructuredResult(
+        "resource_summary",
+        ranked.length > 0
+          ? `The most notable services right now are ${ranked.map((node) => `\`${node.name}\``).join(", ")}.`
+          : `There are no standout idle or resource-heavy services in the current scope.`,
+        ranked.map(
+          (node) =>
+            `\`${node.name}\` is \`${node.healthStatus}\` with ${formatResourceState(node)}${getProjectLabel(node) ? `, ${getProjectLabel(node)}` : ""}.`,
+        ),
+      ),
+      references: buildQueryReferences(graphSnapshot, query),
+      optimizationSignals: buildOptimizationSignals(graphSnapshot.nodes || []).slice(0, 6),
+    };
+  }
+
+  if (intent === "project_summary") {
+    const projectNames = new Set(focus.projectTerms);
+    for (const node of focusedNodes) {
+      if (node.project) projectNames.add(String(node.project).toLowerCase());
+      if (node.projectPath) projectNames.add(path.basename(node.projectPath).toLowerCase());
+      if (node.repoPath) projectNames.add(path.basename(node.repoPath).toLowerCase());
+    }
+    const matchedNodes = indexes.nodes.filter((node) => {
+      const labels = [
+        node.project,
+        node.projectPath ? path.basename(node.projectPath) : null,
+        node.repoPath ? path.basename(node.repoPath) : null,
+      ]
+        .filter(Boolean)
+        .map((value) => String(value).toLowerCase());
+      return labels.some((label) => projectNames.has(label));
+    });
+    const projectLabel =
+      matchedNodes[0]?.project ||
+      (matchedNodes[0]?.projectPath ? path.basename(matchedNodes[0].projectPath) : null) ||
+      (matchedNodes[0]?.repoPath ? path.basename(matchedNodes[0].repoPath) : null);
+    return {
+      structuredAnswer: buildStructuredResult(
+        "project_summary",
+        matchedNodes.length > 0
+          ? `\`${projectLabel || "This project"}\` contains ${matchedNodes.length} visible services.`
+          : `No matching project was found in the current scope.`,
+        matchedNodes.slice(0, 6).map(
+          (node) =>
+            `\`${node.name}\` is a \`${node.type}\` service${node.ports?.length ? ` on ${(node.ports || []).map((entry) => `\`:${entry.port}\``).join(", ")}` : ""} with health \`${node.healthStatus}\`.`,
+        ),
+      ),
+      references: buildQueryReferences(graphSnapshot, query),
+    };
+  }
+
+  if (intent === "service_summary" && firstNode) {
+    const incoming = indexes.incoming.get(firstNode.id) || [];
+    const outgoing = indexes.outgoing.get(firstNode.id) || [];
+    return {
+      structuredAnswer: buildStructuredResult(
+        "service_summary",
+        `\`${firstNode.name}\` is a \`${firstNode.type}\` service${firstNode.ports?.length ? ` listening on ${(firstNode.ports || []).map((entry) => `\`:${entry.port}\``).join(", ")}` : ""}.`,
+        [
+          `Health is \`${firstNode.healthStatus}\` with ${formatResourceState(firstNode)}.`,
+          `${incoming.length} incoming and ${outgoing.length} outgoing visible connection${incoming.length + outgoing.length === 1 ? "" : "s"}.`,
+          Array.isArray(firstNode.routes) && firstNode.routes.length > 0
+            ? `${firstNode.routes.length} discovered route${firstNode.routes.length === 1 ? "" : "s"}.`
+            : `No discovered API routes in the current snapshot.`,
+          getProjectLabel(firstNode) ? `${getProjectLabel(firstNode)}.` : "",
+        ],
+      ),
+      references: buildQueryReferences(graphSnapshot, query),
+    };
+  }
+
+  if (intent === "path_trace" && focusedNodes.length >= 2) {
+    const source = focusedNodes[0];
+    const target = focusedNodes[1];
+    const queue = [[source.id]];
+    const visited = new Set([source.id]);
+    let foundPath = null;
+    while (queue.length > 0) {
+      const currentPath = queue.shift();
+      const last = currentPath[currentPath.length - 1];
+      if (last === target.id) {
+        foundPath = currentPath;
+        break;
+      }
+      for (const edge of indexes.outgoing.get(last) || []) {
+        if (visited.has(edge.target)) continue;
+        visited.add(edge.target);
+        queue.push([...currentPath, edge.target]);
+      }
+    }
+    const pathNodes = foundPath
+      ? foundPath.map((id) => indexes.nodeById.get(id)).filter(Boolean)
+      : [];
+    return {
+      structuredAnswer: buildStructuredResult(
+        "path_trace",
+        pathNodes.length > 0
+          ? `The visible path from \`${source.name}\` to \`${target.name}\` is ${pathNodes.map((node) => `\`${node.name}\``).join(" -> ")}.`
+          : `No visible path from \`${source.name}\` to \`${target.name}\` was found in this scope.`,
+        pathNodes.slice(0, -1).map((node, index) => {
+          const next = pathNodes[index + 1];
+          const edge = (indexes.outgoing.get(node.id) || []).find((candidate) => candidate.target === next.id);
+          return `\`${node.name}\` connects to \`${next.name}\`${edge?.targetPort ? ` on \`:${edge.targetPort}\`` : ""}.`;
+        }),
+        pathNodes.length === 0 ? ["Only currently visible directed connections are considered."] : [],
+      ),
+      references: buildQueryReferences(graphSnapshot, query),
+    };
+  }
+
+  return null;
+}
+
 function callOpenAIStream(apiKey, systemPrompt, query, onToken) {
   const body = JSON.stringify({
     model: MODEL,
@@ -600,6 +930,21 @@ function callOpenAIStream(apiKey, systemPrompt, query, onToken) {
 
 async function runQueryAgent(options, onProgress) {
   const { query, graphSnapshot, apiKey } = options;
+  const deterministic = resolveDeterministicQuery(graphSnapshot, query);
+  if (deterministic) {
+    onProgress({ type: "thinking" });
+    onProgress({
+      type: "complete",
+      answer: formatStructuredAnswer(deterministic.structuredAnswer),
+      structuredAnswer: deterministic.structuredAnswer,
+      references: deterministic.references,
+      optimizationSignals:
+        deterministic.optimizationSignals ||
+        buildOptimizationSignals(graphSnapshot.nodes || []).slice(0, 6),
+    });
+    return { success: true, answer: deterministic.structuredAnswer.directAnswer };
+  }
+
   const systemPrompt = buildQueryPrompt(graphSnapshot, query);
   const references = buildQueryReferences(graphSnapshot, query);
   const optimizationSignals = buildOptimizationSignals(graphSnapshot.nodes || []).slice(0, 6);

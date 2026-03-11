@@ -581,6 +581,12 @@ export type QueryProgress =
   | {
       type: 'complete';
       answer: string;
+      structuredAnswer?: {
+        kind: string;
+        directAnswer: string;
+        supportingFacts: string[];
+        uncertainty?: string[];
+      };
       references?: {
         services?: string[];
         ports?: number[];

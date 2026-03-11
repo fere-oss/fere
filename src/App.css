@@ -10286,6 +10286,52 @@ textarea {
   color: var(--text-primary);
 }
 
+.stack-query-panel-structured-answer {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+.stack-query-panel-structured-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.stack-query-panel-structured-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.stack-query-panel-structured-primary {
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.stack-query-panel-structured-primary p,
+.stack-query-panel-structured-list p {
+  margin: 0;
+}
+
+.stack-query-panel-structured-list {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
 .stack-query-panel-references {
   display: flex;
   flex-direction: column;
