@@ -1469,12 +1469,12 @@ export function DebugPanel({ isOpen, onClose, graphNodes }: DebugPanelProps) {
     }
   }, [phase, followUpInput, diagnosis, error, autoResizeTextarea]);
 
-  // Loading / hidden state
-  if (!shouldRender || hasApiKey === null) return null;
-
   const historyThreads = chatThreads;
   const selectedHistoryChat = selectedChat;
-  const selectedChatTurns = selectedHistoryChat?.turns || [];
+  const selectedChatTurns = useMemo(
+    () => selectedHistoryChat?.turns ?? [],
+    [selectedHistoryChat],
+  );
   const hasSavedHistory = historyThreads.length > 0;
   const showResultsPanel =
     isResultsVisible &&
@@ -1483,6 +1483,31 @@ export function DebugPanel({ isOpen, onClose, graphNodes }: DebugPanelProps) {
     "Ask Fere Agent to investigate an issue... (Shift+Enter for newline)";
   const followUpPlaceholder =
     'Ask a follow-up... (e.g. "check Redis instead", "try this payload: {...}")';
+
+  const renderedChatTurns = useMemo(() => {
+    return selectedChatTurns.map((turn) => (
+      <div className="debug-chat-turn" key={turn.id}>
+        <div className="debug-chat-turn-header">
+          <span className="debug-chat-turn-role">You</span>
+        </div>
+        <div className="debug-chat-turn-prompt">{turn.prompt}</div>
+        <div className="debug-chat-turn-header">
+          <span className="debug-chat-turn-role">Assistant</span>
+        </div>
+        <div className="debug-chat-turn-response">
+          <ReactMarkdown
+            components={markdownComponents}
+            rehypePlugins={[[rehypeHighlight, { detect: true, ignoreMissing: true }]]}
+          >
+            {linkifyServiceMentions(turn.response)}
+          </ReactMarkdown>
+        </div>
+      </div>
+    ));
+  }, [selectedChatTurns, markdownComponents, linkifyServiceMentions]);
+
+  // Loading / hidden state
+  if (!shouldRender || hasApiKey === null) return null;
 
   return (
     <div
@@ -1833,25 +1858,7 @@ export function DebugPanel({ isOpen, onClose, graphNodes }: DebugPanelProps) {
           </div>
 
           <div className="debug-panel-body">
-            {selectedChatTurns.map((turn) => (
-              <div className="debug-chat-turn" key={turn.id}>
-                <div className="debug-chat-turn-header">
-                  <span className="debug-chat-turn-role">You</span>
-                </div>
-                <div className="debug-chat-turn-prompt">{turn.prompt}</div>
-                <div className="debug-chat-turn-header">
-                  <span className="debug-chat-turn-role">Assistant</span>
-                </div>
-                <div className="debug-chat-turn-response">
-                  <ReactMarkdown
-                    components={markdownComponents}
-                    rehypePlugins={[[rehypeHighlight, { detect: true, ignoreMissing: true }]]}
-                  >
-                    {linkifyServiceMentions(turn.response)}
-                  </ReactMarkdown>
-                </div>
-              </div>
-            ))}
+            {renderedChatTurns}
 
             {phase === "running" && pendingPromptRef.current.trim() && (
               <div className="debug-chat-turn debug-chat-turn-live">
