@@ -10347,6 +10347,10 @@ textarea {
   transition: color 0.15s ease;
   box-sizing: border-box;
   max-height: 220px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-all;
+  overflow-x: hidden;
 }
 
 .debug-panel-textarea:hover {
@@ -10891,45 +10895,220 @@ textarea {
   margin-bottom: 0;
 }
 
-.debug-panel-diagnosis-content strong {
-  color: var(--text-primary);
-  font-weight: 600;
+.debug-panel-diagnosis-content h1,
+.debug-panel-diagnosis-content h2,
+.debug-panel-diagnosis-content h3,
+.debug-panel-diagnosis-content h4,
+.debug-chat-turn-response h1,
+.debug-chat-turn-response h2,
+.debug-chat-turn-response h3,
+.debug-chat-turn-response h4 {
+  margin: 14px 0 8px;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+  color: #0f172a;
 }
 
-.debug-panel-diagnosis-content code {
+.debug-panel-diagnosis-content h1,
+.debug-chat-turn-response h1 {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.debug-panel-diagnosis-content h2,
+.debug-chat-turn-response h2 {
+  font-size: 17px;
+  font-weight: 700;
+  color: #0f3a7a;
+}
+
+.debug-panel-diagnosis-content h3,
+.debug-chat-turn-response h3 {
+  font-size: 15px;
+  font-weight: 650;
+  color: #1e3a8a;
+}
+
+.debug-panel-diagnosis-content h4,
+.debug-chat-turn-response h4 {
+  font-size: 13px;
+  font-weight: 650;
+  color: #334155;
+}
+
+.debug-panel-diagnosis-content strong {
+  color: #0f172a;
+  font-weight: 700;
+}
+
+.debug-panel-diagnosis-content code,
+.debug-chat-turn-response code {
   font-family: "SF Mono", "Fira Code", "Menlo", monospace;
   font-size: 12px;
-  padding: 1px 4px;
-  background: var(--bg-primary);
-  border-radius: 3px;
-  border: 1px solid var(--border-color);
+  padding: 1px 6px;
+  background: #edf2ff;
+  color: #312e81;
+  border-radius: 5px;
+  border: 1px solid #c7d2fe;
 }
 
-.debug-panel-diagnosis-content pre {
-  background: var(--bg-primary);
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
-  padding: 10px;
+.debug-panel-diagnosis-content pre,
+.debug-chat-turn-response pre {
+  background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+  border: 1px solid #dbe3ef;
+  border-radius: 10px;
+  padding: 12px 14px;
   overflow-x: auto;
   font-size: 12px;
-  margin: 8px 0;
+  margin: 10px 0;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
 
-.debug-panel-diagnosis-content pre code {
+.debug-panel-diagnosis-content pre code,
+.debug-chat-turn-response pre code {
   padding: 0;
   background: none;
   border: none;
   font-size: inherit;
+  color: #0f172a;
+}
+
+.debug-panel-diagnosis-content pre code.hljs,
+.debug-chat-turn-response pre code.hljs {
+  color: #0f172a;
+}
+
+.debug-panel-diagnosis-content .hljs-comment,
+.debug-chat-turn-response .hljs-comment,
+.debug-panel-diagnosis-content .hljs-quote,
+.debug-chat-turn-response .hljs-quote {
+  color: #64748b;
+  font-style: italic;
+}
+
+.debug-panel-diagnosis-content .hljs-keyword,
+.debug-chat-turn-response .hljs-keyword,
+.debug-panel-diagnosis-content .hljs-selector-tag,
+.debug-chat-turn-response .hljs-selector-tag,
+.debug-panel-diagnosis-content .hljs-literal,
+.debug-chat-turn-response .hljs-literal {
+  color: #7c3aed;
+  font-weight: 600;
+}
+
+.debug-panel-diagnosis-content .hljs-string,
+.debug-chat-turn-response .hljs-string,
+.debug-panel-diagnosis-content .hljs-attr,
+.debug-chat-turn-response .hljs-attr,
+.debug-panel-diagnosis-content .hljs-template-tag,
+.debug-chat-turn-response .hljs-template-tag,
+.debug-panel-diagnosis-content .hljs-template-variable,
+.debug-chat-turn-response .hljs-template-variable {
+  color: #047857;
+}
+
+.debug-panel-diagnosis-content .hljs-number,
+.debug-chat-turn-response .hljs-number,
+.debug-panel-diagnosis-content .hljs-params,
+.debug-chat-turn-response .hljs-params,
+.debug-panel-diagnosis-content .hljs-variable,
+.debug-chat-turn-response .hljs-variable {
+  color: #b45309;
+}
+
+.debug-panel-diagnosis-content .hljs-title,
+.debug-chat-turn-response .hljs-title,
+.debug-panel-diagnosis-content .hljs-function,
+.debug-chat-turn-response .hljs-function,
+.debug-panel-diagnosis-content .hljs-section,
+.debug-chat-turn-response .hljs-section {
+  color: #1d4ed8;
+}
+
+.debug-panel-diagnosis-content .hljs-built_in,
+.debug-chat-turn-response .hljs-built_in,
+.debug-panel-diagnosis-content .hljs-type,
+.debug-chat-turn-response .hljs-type,
+.debug-panel-diagnosis-content .hljs-class,
+.debug-chat-turn-response .hljs-class {
+  color: #be185d;
+}
+
+.debug-panel-diagnosis-content .hljs-meta,
+.debug-chat-turn-response .hljs-meta,
+.debug-panel-diagnosis-content .hljs-symbol,
+.debug-chat-turn-response .hljs-symbol,
+.debug-panel-diagnosis-content .hljs-bullet,
+.debug-chat-turn-response .hljs-bullet {
+  color: #0f766e;
 }
 
 .debug-panel-diagnosis-content ul,
-.debug-panel-diagnosis-content ol {
+.debug-panel-diagnosis-content ol,
+.debug-chat-turn-response ul,
+.debug-chat-turn-response ol {
   margin: 4px 0;
-  padding-left: 20px;
+  padding-left: 22px;
 }
 
-.debug-panel-diagnosis-content li {
-  margin-bottom: 2px;
+.debug-panel-diagnosis-content li,
+.debug-chat-turn-response li {
+  margin-bottom: 4px;
+}
+
+.debug-panel-diagnosis-content li::marker,
+.debug-chat-turn-response li::marker {
+  color: #2563eb;
+}
+
+.debug-panel-diagnosis-content blockquote,
+.debug-chat-turn-response blockquote {
+  margin: 10px 0;
+  padding: 8px 12px;
+  border-left: 3px solid #93c5fd;
+  background: #eff6ff;
+  color: #1e3a8a;
+  border-radius: 0 8px 8px 0;
+}
+
+.debug-panel-diagnosis-content a,
+.debug-chat-turn-response a {
+  color: #1d4ed8;
+  text-decoration: underline;
+  text-decoration-color: rgba(29, 78, 216, 0.35);
+}
+
+.debug-panel-diagnosis-content a:hover,
+.debug-chat-turn-response a:hover {
+  color: #1e40af;
+  text-decoration-color: rgba(30, 64, 175, 0.55);
+}
+
+.debug-panel-diagnosis-content table,
+.debug-chat-turn-response table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 10px 0;
+  border: 1px solid #dbe3ef;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.debug-panel-diagnosis-content th,
+.debug-panel-diagnosis-content td,
+.debug-chat-turn-response th,
+.debug-chat-turn-response td {
+  border: 1px solid #e2e8f0;
+  padding: 6px 8px;
+  text-align: left;
+  font-size: 12px;
+}
+
+.debug-panel-diagnosis-content th,
+.debug-chat-turn-response th {
+  background: #f1f5f9;
+  color: #0f172a;
+  font-weight: 650;
 }
 
 /* Clickable service names and file paths in diagnosis */
@@ -11026,7 +11205,7 @@ textarea {
   overflow: hidden;
   pointer-events: none;
   white-space: pre-wrap;
-  word-break: break-word;
+  word-break: break-all;
   --composer-min-height: 48px;
   padding-left: 72px;
   padding-right: 84px;
@@ -11038,6 +11217,9 @@ textarea {
   line-height: 1.55;
   color: var(--text-primary);
   box-sizing: border-box;
+  overflow-wrap: anywhere;
+  word-break: break-all;
+  overflow-x: hidden;
 }
 
 .debug-textarea-highlight-placeholder {
@@ -11050,6 +11232,7 @@ textarea {
   background: transparent !important;
   color: transparent;
   caret-color: var(--text-primary);
+  overflow-x: hidden;
 }
 
 .debug-textarea-input::placeholder {
@@ -11064,6 +11247,9 @@ textarea {
   font-family: inherit;
   font-size: inherit;
   line-height: inherit;
+  white-space: inherit;
+  overflow-wrap: anywhere;
+  word-break: break-all;
 }
 
 .debug-panel-followup-textarea {
@@ -11087,6 +11273,10 @@ textarea {
   transition: color 0.15s ease;
   box-sizing: border-box;
   max-height: 220px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-all;
+  overflow-x: hidden;
 }
 
 .debug-panel-followup-textarea:hover {
@@ -11838,9 +12028,7 @@ textarea {
 
 /* Graph highlight for diagnosed services */
 .rf-node-debug-highlighted .service-node {
-  box-shadow:
-    0 0 0 2px #0078d4,
-    0 0 12px rgba(0, 120, 212, 0.3);
+  box-shadow: 0 0 0 1px #171717;
 }
 
 .trace-waterfall-node-name-wrap {

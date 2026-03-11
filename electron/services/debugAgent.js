@@ -2,7 +2,7 @@ const https = require('https');
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
-const { execFile } = require('child_process');
+const { execFile, exec } = require('child_process');
 const { promisify } = require('util');
 const picomatch = require('picomatch');
 
@@ -11,16 +11,17 @@ const { executeQuery } = require('./databaseQuery');
 const { validateHttpRequestUrl } = require('../security');
 
 const execFileAsync = promisify(execFile);
+const execAsync = promisify(exec);
 
 // --- Constants ---
 
 const MAX_ITERATIONS = 20;
-const MODEL = 'gpt-4.1';
+const MODEL = 'gpt-4o';
 const ENV_PATH = path.join(__dirname, '..', '..', '.env');
 
 // --- Token budget limits ---
-const MAX_TOKENS_TOOL_TURN = 768;  // Intermediate turns should stay concise and tool-focused
-const MAX_TOKENS_FINAL = 4096;     // Final diagnosis gets full budget
+const MAX_TOKENS_TOOL_TURN = 320;  // Intermediate turns should stay concise and tool-focused
+const MAX_TOKENS_FINAL = 1400;     // Final diagnosis stays structured but TPM-friendly
 const TRUNCATE_BODY = 3000;        // HTTP response body chars
 const TRUNCATE_BODY_CONCURRENT = 800;
 const TRUNCATE_LOG_LINES = 150;
@@ -29,9 +30,10 @@ const TRUNCATE_SOURCE_CHARS = 6000;
 const MAX_GREP_MATCHES = 25;
 const MAX_FILE_LIST = 40;
 const MAX_DB_ROWS = 30;
-const MAX_PROMPT_SERVICES = 18;
-const MAX_PROMPT_CONNECTIONS = 24;
-const MAX_PROMPT_EXTERNALS = 12;
+const MAX_PROMPT_SERVICES = 12;
+const MAX_PROMPT_CONNECTIONS = 14;
+const MAX_PROMPT_EXTERNALS = 8;
+const TRUNCATE_CMD_OUTPUT = 4000;
 // Context trimming: after this many messages, compress old tool results
 const CONTEXT_TRIM_THRESHOLD = 16;
 // Loop detection: if the last N tool calls are identical, nudge the model
@@ -178,6 +180,23 @@ const DEBUG_TOOLS = [
   {
     type: 'function',
     function: {
+      name: 'get_local_service_logs',
+      description: 'Get recent logs for a locally running non-Docker service by service name.',
+      parameters: {
+        type: 'object',
+        properties: {
+          service_name: { type: 'string' },
+          tail: { type: 'number', maximum: 500 },
+          since: { type: 'string', description: 'Relative duration like "10m", "1h"' },
+          grep: { type: 'string', description: 'Case-insensitive filter' },
+        },
+        required: ['service_name'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'read_source_file',
       description: 'Read a project file, including config files.',
       parameters: {
@@ -252,6 +271,40 @@ const DEBUG_TOOLS = [
       },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'run_project_command',
+      description: 'Run a safe verification command in a service project (tests/lint/build).',
+      parameters: {
+        type: 'object',
+        properties: {
+          service_name: { type: 'string' },
+          command: { type: 'string' },
+          timeout_ms: { type: 'number', minimum: 1000, maximum: 300000 },
+        },
+        required: ['service_name', 'command'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'apply_source_edit',
+      description: 'Apply a controlled text replacement to a source file in a service project.',
+      parameters: {
+        type: 'object',
+        properties: {
+          service_name: { type: 'string' },
+          file_path: { type: 'string', description: 'Relative path inside the service project root' },
+          find_text: { type: 'string', description: 'Exact text to find' },
+          replace_text: { type: 'string', description: 'Replacement text' },
+          replace_all: { type: 'boolean' },
+        },
+        required: ['service_name', 'file_path', 'find_text', 'replace_text'],
+      },
+    },
+  },
 ];
 
 // --- Helper: Truncate ---
@@ -272,6 +325,32 @@ function sanitizeToolProgressResult(result) {
   } catch {
     return { error: 'Tool result could not be serialized for display' };
   }
+}
+
+function parseRateLimitRetryMs(message) {
+  const text = String(message || '');
+  const match = text.match(/try again in\s+([0-9]+(?:\.[0-9]+)?)s/i);
+  if (!match) return null;
+  const seconds = Number(match[1]);
+  if (!Number.isFinite(seconds) || seconds <= 0) return null;
+  return Math.ceil(seconds * 1000);
+}
+
+function buildRateLimitError(data, statusCode) {
+  let message = `OpenAI API error ${statusCode}: ${data}`;
+  try {
+    const parsed = JSON.parse(data);
+    message = parsed?.error?.message || message;
+  } catch {
+    // ignore parse errors
+  }
+  const err = new Error(message);
+  const retryAfterMs = parseRateLimitRetryMs(message);
+  if (retryAfterMs) {
+    err.isRateLimited = true;
+    err.retryAfterMs = retryAfterMs;
+  }
+  return err;
 }
 
 // --- Helper: Find service node ---
@@ -437,7 +516,11 @@ async function executeGetLogs(input, graphSnapshot) {
 
   const dockerBin = await resolveDockerBinary();
   if (!dockerBin) {
-    return { error: 'Docker not available' };
+    // Fall back to local process logs so non-Docker setups still work.
+    return executeGetLocalServiceLogs(
+      { service_name: container_name, tail, since, grep },
+      graphSnapshot
+    );
   }
 
   const args = ['logs', '--timestamps'];
@@ -448,7 +531,17 @@ async function executeGetLogs(input, graphSnapshot) {
   return new Promise((resolve) => {
     execFile(dockerBin, args, { maxBuffer: 2 * 1024 * 1024, timeout: 10000 }, (err, stdout, stderr) => {
       if (err) {
-        resolve({ error: `Failed to get logs: ${err.message}` });
+        // If Docker log retrieval fails, still attempt local logs.
+        executeGetLocalServiceLogs(
+          { service_name: container_name, tail, since, grep },
+          graphSnapshot
+        ).then((fallback) => {
+          if (!fallback.error) {
+            resolve(fallback);
+            return;
+          }
+          resolve({ error: `Failed to get logs: ${err.message}` });
+        });
         return;
       }
       let lines = (stdout + stderr).split('\n').filter(Boolean);
@@ -466,6 +559,62 @@ async function executeGetLogs(input, graphSnapshot) {
         container: container_name,
         lineCount: lines.length,
         logs: lines.join('\n'),
+        source: 'docker',
+      });
+    });
+  });
+}
+
+async function executeGetLocalServiceLogs(input, graphSnapshot) {
+  const { service_name, tail = 120, since = '10m', grep } = input;
+  const node = findServiceNode(graphSnapshot, service_name);
+  if (!node) {
+    return { error: `Service "${service_name}" not found` };
+  }
+
+  const pid = Number(node.pid);
+  if (!pid || Number.isNaN(pid)) {
+    return { error: `Service "${service_name}" has no valid PID for local log lookup` };
+  }
+
+  const maxTail = Math.max(1, Math.min(Number(tail) || 120, 500));
+  const args = [
+    'show',
+    '--style',
+    'syslog',
+    '--last',
+    String(since || '10m'),
+    '--predicate',
+    `processID == ${pid}`,
+  ];
+
+  return new Promise((resolve) => {
+    execFile('log', args, { maxBuffer: 3 * 1024 * 1024, timeout: 12000 }, (err, stdout, stderr) => {
+      if (err) {
+        resolve({ error: `Failed to get local logs: ${err.message}` });
+        return;
+      }
+
+      let lines = (stdout + stderr)
+        .split('\n')
+        .map((line) => line.trimEnd())
+        .filter(Boolean);
+
+      if (grep) {
+        const lower = String(grep).toLowerCase();
+        lines = lines.filter((line) => line.toLowerCase().includes(lower));
+      }
+
+      if (lines.length > maxTail) {
+        lines = lines.slice(-maxTail);
+      }
+
+      resolve({
+        service: node.name || service_name,
+        pid,
+        lineCount: lines.length,
+        logs: lines.join('\n'),
+        source: 'local-process',
       });
     });
   });
@@ -659,6 +808,128 @@ async function executeDbQuery(input, graphSnapshot) {
   }
 }
 
+const SAFE_COMMAND_PREFIXES = [
+  'npm test',
+  'npm run test',
+  'npm run lint',
+  'npm run build',
+  'pnpm test',
+  'pnpm run test',
+  'pnpm run lint',
+  'pnpm run build',
+  'yarn test',
+  'yarn lint',
+  'yarn build',
+  'bun test',
+  'pytest',
+  'go test',
+  'cargo test',
+  'npx vitest',
+];
+
+function isSafeProjectCommand(rawCommand) {
+  const command = String(rawCommand || '').trim().toLowerCase();
+  if (!command) return false;
+  return SAFE_COMMAND_PREFIXES.some((prefix) => command === prefix || command.startsWith(`${prefix} `));
+}
+
+async function executeRunProjectCommand(input, graphSnapshot) {
+  const { service_name, command, timeout_ms } = input;
+  const node = findServiceNode(graphSnapshot, service_name);
+  if (!node?.projectPath) {
+    return { error: `Service "${service_name}" not found or has no project path` };
+  }
+
+  if (!isSafeProjectCommand(command)) {
+    return {
+      error: `Command not allowed. Use one of: ${SAFE_COMMAND_PREFIXES.join(', ')}`,
+    };
+  }
+
+  const timeout = Math.max(1000, Math.min(Number(timeout_ms) || 120000, 300000));
+  try {
+    const { stdout, stderr } = await execAsync(command, {
+      cwd: node.projectPath,
+      timeout,
+      maxBuffer: 4 * 1024 * 1024,
+    });
+    return {
+      service: node.name || service_name,
+      command,
+      success: true,
+      stdout: truncate(stdout || '', TRUNCATE_CMD_OUTPUT),
+      stderr: truncate(stderr || '', TRUNCATE_CMD_OUTPUT),
+    };
+  } catch (err) {
+    return {
+      service: node.name || service_name,
+      command,
+      success: false,
+      exitCode: typeof err.code === 'number' ? err.code : null,
+      stdout: truncate(err.stdout || '', TRUNCATE_CMD_OUTPUT),
+      stderr: truncate(err.stderr || err.message || '', TRUNCATE_CMD_OUTPUT),
+      error: err.message,
+    };
+  }
+}
+
+async function executeApplySourceEdit(input, graphSnapshot) {
+  const { service_name, file_path, find_text, replace_text, replace_all = false } = input;
+
+  const node = findServiceNode(graphSnapshot, service_name);
+  if (!node?.projectPath) {
+    return { error: `Service "${service_name}" not found or has no project path` };
+  }
+
+  if (typeof find_text !== 'string' || find_text.length === 0) {
+    return { error: 'find_text must be a non-empty string' };
+  }
+
+  const projectRoot = path.resolve(node.projectPath);
+  const fullPath = path.resolve(projectRoot, file_path);
+  const relativePath = path.relative(projectRoot, fullPath);
+  if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
+    return { error: 'Path traversal not allowed' };
+  }
+
+  let content;
+  try {
+    content = fs.readFileSync(fullPath, 'utf8');
+  } catch (err) {
+    return { error: `Cannot read file: ${err.message}` };
+  }
+
+  const occurrences = content.split(find_text).length - 1;
+  if (occurrences <= 0) {
+    return { error: `find_text not found in ${file_path}` };
+  }
+
+  let next;
+  let replacedCount = 0;
+  if (replace_all) {
+    next = content.split(find_text).join(String(replace_text));
+    replacedCount = occurrences;
+  } else {
+    next = content.replace(find_text, String(replace_text));
+    replacedCount = 1;
+  }
+
+  try {
+    fs.writeFileSync(fullPath, next, 'utf8');
+  } catch (err) {
+    return { error: `Cannot write file: ${err.message}` };
+  }
+
+  return {
+    service: node.name || service_name,
+    file: file_path,
+    replacedCount,
+    totalMatches: occurrences,
+    replaceAll: !!replace_all,
+    success: true,
+  };
+}
+
 // --- Tool Dispatcher ---
 
 async function executeDebugTool(toolName, input, graphSnapshot, sessionCache) {
@@ -669,6 +940,8 @@ async function executeDebugTool(toolName, input, graphSnapshot, sessionCache) {
       return await executeConcurrentRequests(input);
     case 'get_container_logs':
       return await executeGetLogs(input, graphSnapshot);
+    case 'get_local_service_logs':
+      return await executeGetLocalServiceLogs(input, graphSnapshot);
     case 'read_source_file':
       return await executeReadSource(input, graphSnapshot);
     case 'find_source_files':
@@ -679,6 +952,10 @@ async function executeDebugTool(toolName, input, graphSnapshot, sessionCache) {
       return await executeGetRoutes(input, graphSnapshot, sessionCache);
     case 'run_database_query':
       return await executeDbQuery(input, graphSnapshot);
+    case 'run_project_command':
+      return await executeRunProjectCommand(input, graphSnapshot);
+    case 'apply_source_edit':
+      return await executeApplySourceEdit(input, graphSnapshot);
     default:
       return { error: `Unknown tool: ${toolName}` };
   }
@@ -695,7 +972,9 @@ function summarizeToolResult(toolName, result) {
     case 'fire_concurrent_requests':
       return `${result.succeeded}/${result.total} succeeded — statuses: ${JSON.stringify(result.statuses)}`;
     case 'get_container_logs':
-      return `${result.lineCount} log lines from ${result.container}`;
+      return `${result.lineCount} log lines from ${result.container || result.service} (${result.source || 'unknown'})`;
+    case 'get_local_service_logs':
+      return `${result.lineCount} local log lines from ${result.service || 'service'} (pid ${result.pid || 'unknown'})`;
     case 'read_source_file':
       return `Read ${result.file} (${result.totalLines} lines)`;
     case 'find_source_files':
@@ -706,6 +985,10 @@ function summarizeToolResult(toolName, result) {
       return `${result.count} routes for ${result.service}`;
     case 'run_database_query':
       return `${result.totalRows || 0} rows returned`;
+    case 'run_project_command':
+      return `${result.success ? 'Command passed' : 'Command failed'}: ${result.command}`;
+    case 'apply_source_edit':
+      return `Edited ${result.file} (${result.replacedCount}/${result.totalMatches} replacements)`;
     default:
       return 'Done';
   }
@@ -720,7 +1003,7 @@ function buildToolContextContent(toolName, result) {
   switch (toolName) {
     case 'fire_request': {
       const bodyPreview = typeof result.body === 'string'
-        ? truncate(result.body, 500)
+        ? truncate(result.body, 260)
         : '';
       return [
         `[Summary: ${summary}]`,
@@ -741,16 +1024,26 @@ function buildToolContextContent(toolName, result) {
       ].filter(Boolean).join('\n');
     case 'get_container_logs': {
       const logExcerpt = typeof result.logs === 'string'
-        ? truncate(result.logs, 900)
+        ? truncate(result.logs, 420)
         : '';
       return [
         `[Summary: ${summary}]`,
+        result.source ? `Log source: ${result.source}` : null,
         logExcerpt ? `Log excerpt:\n${logExcerpt}` : null,
+      ].filter(Boolean).join('\n');
+    }
+    case 'get_local_service_logs': {
+      const logExcerpt = typeof result.logs === 'string'
+        ? truncate(result.logs, 420)
+        : '';
+      return [
+        `[Summary: ${summary}]`,
+        logExcerpt ? `Local log excerpt:\n${logExcerpt}` : null,
       ].filter(Boolean).join('\n');
     }
     case 'read_source_file': {
       const contentExcerpt = typeof result.content === 'string'
-        ? truncate(result.content, 1200)
+        ? truncate(result.content, 520)
         : '';
       return [
         `[Summary: ${summary}]`,
@@ -787,6 +1080,17 @@ function buildToolContextContent(toolName, result) {
         Array.isArray(result.rows) && result.rows.length
           ? `Rows sample: ${JSON.stringify(result.rows.slice(0, 5))}`
           : null,
+      ].filter(Boolean).join('\n');
+    case 'run_project_command':
+      return [
+        `[Summary: ${summary}]`,
+        result.stdout ? `stdout:\n${truncate(result.stdout, 520)}` : null,
+        result.stderr ? `stderr:\n${truncate(result.stderr, 520)}` : null,
+      ].filter(Boolean).join('\n');
+    case 'apply_source_edit':
+      return [
+        `[Summary: ${summary}]`,
+        result.file ? `File: ${result.file}` : null,
       ].filter(Boolean).join('\n');
     default:
       return `[Summary: ${summary}]`;
@@ -908,31 +1212,61 @@ When calling tools that accept a \`service_name\` parameter, use the service nam
 \`find_source_files\` and \`grep_source\` only index code files (.js, .ts, .py, .go, .rb, .java, .php). To read config files (.yml, .json, .env, Dockerfile), use \`read_source_file\` directly with the known file path.
 
 ## Your Goal
-The user will describe a bug or issue. Your job is to systematically investigate and diagnose the root cause by:
+The user will describe a bug or issue. Your job is to investigate, fix, and verify when possible:
 1. Understanding which services are involved from the topology
 2. Firing HTTP requests to reproduce the issue
-3. Reading container logs from involved services to find errors
+3. Reading logs from involved services to find errors (Docker logs for containers, local logs for host services)
 4. Reading relevant source code files to understand the implementation
 5. Correlating evidence across services to identify the root cause
+6. Applying targeted source edits when the fix is clear
+7. Running safe verification commands/tests and re-checking the failing request
 
 ## Investigation Strategy
 - Start by identifying which services handle the affected endpoint (check routes and topology)
 - Fire a few requests to reproduce the issue and observe behavior
-- Check container logs from ALL services in the request path for errors/warnings
+- Check logs from ALL services in the request path for errors/warnings
+- If requests return 307/401/403, treat that as an auth/session lead, not a stopping point.
+- Continue by locating auth middleware/guards in code and retrying with the expected auth/session headers or cookie flow.
 - If you find error messages, read the source code at the referenced file/line to understand why
 - Look for patterns: race conditions (intermittent), configuration issues (consistent), data issues (specific inputs)
 - Cross-reference timestamps in logs across services to trace request flow
+- When root cause is clear, apply minimal edits with \`apply_source_edit\`, then validate with \`run_project_command\` and request replay.
 - Stay concise while investigating. Prefer tool calls over narrative until you are ready to conclude.
 
 ## Output Format
-When you've identified the root cause, provide your diagnosis as a structured report:
+When you've identified the root cause, respond in strict markdown using this exact section structure:
 
-**Diagnosis**: One-line summary of the bug
-**Root Cause**: Detailed explanation of what's happening and why
-**Evidence**: List the specific logs, responses, and code that prove your diagnosis
-**Affected Services**: Which services are involved
-**Suggested Fix**: What code changes would resolve the issue
-**Confidence**: High / Medium / Low with explanation
+## Diagnosis
+- One-line summary of the bug.
+
+## Root Cause
+- Clear explanation of why it happens.
+- Include auth/session assumptions if relevant.
+
+## Evidence
+- HTTP observations (status codes, key headers, timings).
+- Log evidence (service + message excerpts).
+- Code evidence with file references and line numbers.
+
+## Affected Services
+- List each affected service.
+
+## Fix Applied
+- If changed: list each file and exact change in bullets.
+- If not changed: write "No code changes applied" and why.
+
+## Verification
+- Use a markdown table with columns:
+| Check | Before | After | Result |
+|---|---|---|---|
+- Include requests and test/lint/build commands run.
+
+## Rollback
+- Exact file-level rollback steps.
+
+## Confidence
+- High / Medium / Low
+- One sentence explaining uncertainty (if any).
 
 When referencing services, file paths, or code identifiers in your diagnosis, always use backtick formatting:
 - Service names: \`express-api\`, \`postgres-db\`
@@ -947,7 +1281,9 @@ When referencing services, file paths, or code identifiers in your diagnosis, al
 - When reading source code, focus on error handlers, database queries, and inter-service calls.
 - Keep your tool calls focused. Don't read entire codebases — target specific files mentioned in error logs.
 - During intermediate turns, avoid long prose. Either call tools or give a very short next-step note.
-- If a container is not running (health: red), note this as it may BE the bug.`;
+- If a container is not running (health: red), note this as it may BE the bug.
+- Prefer applying a concrete fix + verification when evidence is sufficient instead of stopping at advice.
+- Do not ask the user for permission to continue during an active investigation; proceed autonomously until fixed or hard-blocked.`;
 }
 
 // --- OpenAI API Call ---
@@ -980,6 +1316,10 @@ async function callOpenAI(apiKey, systemPrompt, messages, maxTokens = MAX_TOKENS
       res.on('data', chunk => { data += chunk; });
       res.on('end', () => {
         if (res.statusCode !== 200) {
+          if (res.statusCode === 429) {
+            reject(buildRateLimitError(data, res.statusCode));
+            return;
+          }
           // Surface context-length errors distinctly so the caller can trim and retry
           if (res.statusCode === 400) {
             try {
@@ -1042,6 +1382,10 @@ function callOpenAIStream(apiKey, systemPrompt, messages, maxTokens, onToken, to
         let errData = '';
         res.on('data', chunk => { errData += chunk; });
         res.on('end', () => {
+          if (res.statusCode === 429) {
+            reject(buildRateLimitError(errData, res.statusCode));
+            return;
+          }
           if (res.statusCode === 400) {
             try {
               const parsed = JSON.parse(errData);
@@ -1192,7 +1536,7 @@ function aggressiveTrimContext(messages, toolResultSummaries) {
 // --- Agent Loop ---
 
 async function runDebugAgent(options, onProgress) {
-  const { problem, followUp, graphSnapshot, apiKey, resumeState } = options;
+  const { problem, followUp, graphSnapshot, apiKey, resumeState, resumeMessages } = options;
 
   // Resume from previous conversation or start fresh
   let sessionCache, toolResultSummaries, systemPrompt, messages;
@@ -1209,7 +1553,15 @@ async function runDebugAgent(options, onProgress) {
     sessionCache = { routes: {}, files: {} };
     toolResultSummaries = new Map();
     systemPrompt = buildSystemPrompt(graphSnapshot, problem || '');
-    messages = [{ role: 'user', content: problem }];
+    const seedMessages = Array.isArray(resumeMessages)
+      ? resumeMessages.filter((m) =>
+        m &&
+        (m.role === 'user' || m.role === 'assistant') &&
+        typeof m.content === 'string' &&
+        m.content.trim().length > 0
+      )
+      : [];
+    messages = [...seedMessages, { role: 'user', content: problem }];
   }
 
   const makeResult = (base) => ({
@@ -1268,6 +1620,18 @@ async function runDebugAgent(options, onProgress) {
       lastApiCallTime = Date.now();
       response = await callOpenAIStream(apiKey, systemPrompt, messages, maxTokens, onToken, tools);
     } catch (err) {
+      if (err.isRateLimited && err.retryAfterMs) {
+        const waitMs = Math.min(Math.max(err.retryAfterMs + 250, 500), 15000);
+        onProgress({
+          type: 'tool_result',
+          tool: 'system',
+          summary: `Rate limited by OpenAI TPM. Retrying in ${(waitMs / 1000).toFixed(1)}s.`,
+          iteration: i + 1,
+        });
+        await new Promise((resolve) => setTimeout(resolve, waitMs));
+        i -= 1;
+        continue;
+      }
       // Context overflow: aggressively trim and retry once (non-streaming; complete will replace streamed partial text)
       if (err.isContextOverflow) {
         aggressiveTrimContext(messages, toolResultSummaries);
@@ -1284,7 +1648,7 @@ async function runDebugAgent(options, onProgress) {
       }
     }
 
-    const choice = response.choices?.[0];
+    let choice = response.choices?.[0];
     if (!choice) {
       onProgress({ type: 'error', error: 'No response from OpenAI' });
       return makeResult({ success: false, error: 'No response from OpenAI' });
@@ -1294,23 +1658,18 @@ async function runDebugAgent(options, onProgress) {
     if (choice.finish_reason === 'length') {
       if (maxTokens < MAX_TOKENS_FINAL) {
         try {
-          response = await callOpenAI(apiKey, systemPrompt, messages, MAX_TOKENS_FINAL);
+          response = await callOpenAI(apiKey, systemPrompt, messages, MAX_TOKENS_FINAL, tools);
           const retryChoice = response.choices?.[0];
           if (retryChoice && retryChoice.finish_reason !== 'length') {
-            const retryMessage = retryChoice.message;
-            messages.push(retryMessage);
-            const retryToolCalls = retryMessage.tool_calls;
-            if (!retryToolCalls || retryToolCalls.length === 0) {
-              const text = retryMessage.content || '';
-              onProgress({ type: 'complete', diagnosis: text });
-              return makeResult({ success: true, diagnosis: text, iterations: i + 1 });
-            }
+            // Replace the truncated streamed choice with the full retry choice.
+            // Avoid pushing both messages, which can leave orphaned tool_call_ids.
+            choice = retryChoice;
           }
         } catch { /* fall through to use original truncated response */ }
       }
     }
 
-    const message = response.choices?.[0]?.message || choice.message;
+    const message = choice.message;
 
     messages.push(message);
 
@@ -1416,6 +1775,38 @@ async function runDebugAgent(options, onProgress) {
         : rawContent;
       messages.push({ role: 'tool', tool_call_id: toolCall.id, content: resultContent });
     }
+  }
+
+  // Forced synthesis fallback: produce the best possible diagnosis from collected evidence
+  // instead of ending with a generic max-iterations message.
+  try {
+    aggressiveTrimContext(messages, toolResultSummaries);
+    const synthesisMessages = [
+      ...messages,
+      {
+        role: 'user',
+        content: 'Stop using tools. Produce your best final diagnosis now from existing evidence only. If uncertain, clearly label assumptions and list the highest-value next verification step.',
+      },
+    ];
+    const synthesis = await callOpenAI(
+      apiKey,
+      systemPrompt,
+      synthesisMessages,
+      Math.min(MAX_TOKENS_FINAL, 1200),
+      undefined
+    );
+    const finalText = synthesis?.choices?.[0]?.message?.content?.trim();
+    if (finalText) {
+      onProgress({ type: 'complete', diagnosis: finalText });
+      return makeResult({ success: true, diagnosis: finalText, iterations: MAX_ITERATIONS, synthesized: true });
+    }
+  } catch (err) {
+    onProgress({
+      type: 'tool_result',
+      tool: 'system',
+      summary: `Final synthesis failed: ${err.message}`,
+      iteration: MAX_ITERATIONS,
+    });
   }
 
   onProgress({ type: 'complete', diagnosis: 'Investigation reached maximum iterations without a definitive diagnosis.' });

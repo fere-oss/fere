@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import ReactMarkdown from "react-markdown";
+import rehypeHighlight from "rehype-highlight";
 import type { DebugProgress, GraphNode } from "../types/electron";
 import { getServiceColor, getTypeBadge } from "./graph/constants";
 import { BrandIcon, inferServiceBrand } from "./graph/brandIcons";
@@ -50,6 +51,11 @@ interface ChatThread {
   createdAt: number;
   updatedAt: number;
 }
+
+type DebugHistoryTurn = {
+  prompt: string;
+  response: string;
+};
 
 const CHAT_HISTORY_STORAGE_KEY = "fere-debug-chat-threads-v1";
 const CHAT_SELECTED_STORAGE_KEY = "fere-debug-chat-selected-v1";
@@ -166,6 +172,12 @@ function formatToolInput(
       if (input.grep) s += ` grep: "${input.grep}"`;
       return s;
     }
+    case "get_local_service_logs": {
+      let s = String(input.service_name);
+      if (input.tail) s += ` (last ${input.tail} lines)`;
+      if (input.grep) s += ` grep: "${input.grep}"`;
+      return s;
+    }
     case "read_source_file": {
       let s = String(input.file_path);
       if (input.line_start || input.line_end)
@@ -180,6 +192,10 @@ function formatToolInput(
       return String(input.service_name);
     case "run_database_query":
       return `${input.container_name}: ${String(input.query).slice(0, 60)}`;
+    case "run_project_command":
+      return `${input.service_name}: ${String(input.command)}`;
+    case "apply_source_edit":
+      return `${input.file_path} in ${input.service_name}`;
     default:
       return JSON.stringify(input).slice(0, 80);
   }
@@ -938,13 +954,19 @@ export function DebugPanel({ isOpen, onClose, graphNodes }: DebugPanelProps) {
     setViewingHistory(false);
     setShowHistory(false);
     setPhase("running");
-    const result = await window.electronAPI.debugStart({ problem: trimmed });
+    const historyTurns: DebugHistoryTurn[] = (selectedChat?.turns || [])
+      .slice(-6)
+      .map((turn) => ({ prompt: turn.prompt, response: turn.response }));
+    const result = await window.electronAPI.debugStart({
+      problem: trimmed,
+      historyTurns,
+    });
     if (!result.success) {
       pendingPromptRef.current = "";
       setError(result.error || "Failed to start investigation");
       setPhase("complete");
     }
-  }, [problem, selectedChatId, createChatThread]);
+  }, [problem, selectedChatId, createChatThread, selectedChat]);
 
   const handleStop = useCallback(async () => {
     await window.electronAPI.debugStop();
@@ -1010,13 +1032,19 @@ export function DebugPanel({ isOpen, onClose, graphNodes }: DebugPanelProps) {
     setIsResultsVisible(true);
     setExpandedToolResults({});
     setPhase("running");
-    const result = await window.electronAPI.debugFollowUp({ message: trimmed });
+    const historyTurns: DebugHistoryTurn[] = (selectedChat?.turns || [])
+      .slice(-6)
+      .map((turn) => ({ prompt: turn.prompt, response: turn.response }));
+    const result = await window.electronAPI.debugFollowUp({
+      message: trimmed,
+      historyTurns,
+    });
     if (!result.success) {
       pendingPromptRef.current = "";
       setError(result.error || "Failed to send follow-up");
       setPhase("complete");
     }
-  }, [followUpInput]);
+  }, [followUpInput, selectedChat]);
 
   const handleSelectChat = useCallback((chatId: string) => {
     setSelectedChatId(chatId);
@@ -1815,7 +1843,10 @@ export function DebugPanel({ isOpen, onClose, graphNodes }: DebugPanelProps) {
                   <span className="debug-chat-turn-role">Assistant</span>
                 </div>
                 <div className="debug-chat-turn-response">
-                  <ReactMarkdown components={markdownComponents}>
+                  <ReactMarkdown
+                    components={markdownComponents}
+                    rehypePlugins={[[rehypeHighlight, { detect: true, ignoreMissing: true }]]}
+                  >
                     {linkifyServiceMentions(turn.response)}
                   </ReactMarkdown>
                 </div>
@@ -1836,7 +1867,10 @@ export function DebugPanel({ isOpen, onClose, graphNodes }: DebugPanelProps) {
                 <div
                   className={`debug-chat-turn-response${diagnosis ? " debug-chat-turn-response-streaming" : ""}`}
                 >
-                  <ReactMarkdown components={markdownComponents}>
+                  <ReactMarkdown
+                    components={markdownComponents}
+                    rehypePlugins={[[rehypeHighlight, { detect: true, ignoreMissing: true }]]}
+                  >
                     {linkifyServiceMentions(diagnosis || "Thinking...")}
                   </ReactMarkdown>
                 </div>
