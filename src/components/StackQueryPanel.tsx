@@ -1,17 +1,19 @@
 import React, { useCallback, useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
-import type { GraphNode, QueryProgress } from "../types/electron";
+import type { GraphEdge, GraphNode, QueryProgress } from "../types/electron";
 
 interface StackQueryPanelProps {
   isOpen: boolean;
   onClose: () => void;
   graphNodes: GraphNode[];
+  graphEdges: GraphEdge[];
 }
 
 export function StackQueryPanel({
   isOpen,
   onClose,
   graphNodes,
+  graphEdges,
 }: StackQueryPanelProps) {
   const [hasApiKey, setHasApiKey] = useState<boolean | null>(null);
   const [apiKeyInput, setApiKeyInput] = useState("");
@@ -188,12 +190,18 @@ export function StackQueryPanel({
     setOptimizationSignals([]);
     setError("");
     setLoading(true);
-    const result = await window.electronAPI.queryStart({ query: trimmed });
+    const result = await window.electronAPI.queryStart({
+      query: trimmed,
+      graphSnapshot: {
+        nodes: graphNodes,
+        edges: graphEdges,
+      },
+    });
     if (!result.success) {
       setError(result.error || "Failed to start query");
       setLoading(false);
     }
-  }, [query]);
+  }, [graphEdges, graphNodes, query]);
 
   const handleClose = useCallback(() => {
     window.electronAPI.queryStop();

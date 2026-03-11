@@ -696,7 +696,13 @@ export interface ElectronAPI {
   onDebugProgress: (callback: (progress: DebugProgress) => void) => () => void;
 
   // Stack Query Agent
-  queryStart: (options: { query: string }) => Promise<{ success: boolean; error?: string }>;
+  queryStart: (options: {
+    query: string;
+    graphSnapshot?: {
+      nodes: GraphNode[];
+      edges: GraphEdge[];
+    };
+  }) => Promise<{ success: boolean; error?: string }>;
   queryStop: () => Promise<{ success: boolean }>;
   onQueryProgress: (callback: (progress: QueryProgress) => void) => () => void;
   explainService: (options: {

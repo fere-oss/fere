@@ -1615,6 +1615,7 @@ function App() {
         isOpen={isStackQueryOpen}
         onClose={handleCloseStackQuery}
         graphNodes={filteredData.nodes}
+        graphEdges={filteredData.edges}
       />
       </div>
 

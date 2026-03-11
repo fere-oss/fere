@@ -1692,11 +1692,23 @@ ipcMain.handle("debug-start", async (event, options) => {
   }
 
   // Get current graph snapshot
-  const snapshot = await getSystemSnapshot();
-  const graphSnapshot = {
-    nodes: snapshot.graph?.nodes || [],
-    edges: snapshot.graph?.edges || [],
-  };
+  let graphSnapshot = null;
+  if (
+    options?.graphSnapshot &&
+    Array.isArray(options.graphSnapshot.nodes) &&
+    Array.isArray(options.graphSnapshot.edges)
+  ) {
+    graphSnapshot = {
+      nodes: options.graphSnapshot.nodes,
+      edges: options.graphSnapshot.edges,
+    };
+  } else {
+    const snapshot = await getSystemSnapshot();
+    graphSnapshot = {
+      nodes: snapshot.graph?.nodes || [],
+      edges: snapshot.graph?.edges || [],
+    };
+  }
 
   // Cancel any existing session
   if (activeDebugSession) {
