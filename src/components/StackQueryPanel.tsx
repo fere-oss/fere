@@ -17,6 +17,11 @@ interface OptimizationHint {
   serviceName?: string;
 }
 
+interface QuerySuggestion {
+  label: string;
+  query: string;
+}
+
 export function StackQueryPanel({
   isOpen,
   onClose,
@@ -118,6 +123,67 @@ export function StackQueryPanel({
 
     return hints.slice(0, 6);
   }, [graphNodes]);
+
+  const adaptiveSuggestions = React.useMemo<QuerySuggestion[]>(() => {
+    const suggestions: QuerySuggestion[] = [];
+    const pushSuggestion = (label: string, value: string) => {
+      if (!value.trim()) return;
+      if (suggestions.some((item) => item.query === value)) return;
+      suggestions.push({ label, query: value });
+    };
+
+    if (initialServiceName) {
+      pushSuggestion(
+        "This service",
+        `What does \`${initialServiceName}\` do, what depends on it, and what does it depend on?`,
+      );
+      pushSuggestion(
+        "Health",
+        `What is the current health and resource state of \`${initialServiceName}\`?`,
+      );
+    }
+
+    const visiblePorts = Array.from(
+      new Set(
+        graphNodes.flatMap((node) => (node.ports || []).map((entry) => entry.port)),
+      ),
+    )
+      .sort((a, b) => a - b)
+      .slice(0, 2);
+    for (const port of visiblePorts) {
+      pushSuggestion(`Port ${port}`, `What is using port ${port}?`);
+    }
+
+    const redisLike = graphNodes.find((node) =>
+      /redis/i.test(node.name) || node.type === "cache",
+    );
+    if (redisLike) {
+      pushSuggestion("Cache deps", `What depends on \`${redisLike.name}\`?`);
+    }
+
+    const routeOwner = graphNodes.find((node) => (node.routes || []).length > 0);
+    const firstRoute = routeOwner?.routes?.[0];
+    if (routeOwner && firstRoute) {
+      pushSuggestion(
+        "Route owner",
+        `Which service owns \`${firstRoute.path}\`?`,
+      );
+    }
+
+    if (graphNodes.some((node) => node.healthStatus === "yellow")) {
+      pushSuggestion("Idle services", "Which services are idle right now?");
+    }
+
+    const projectName =
+      graphNodes.find((node) => node.project)?.project ||
+      graphNodes.find((node) => node.projectPath)?.projectPath?.split("/").pop() ||
+      graphNodes.find((node) => node.repoPath)?.repoPath?.split("/").pop();
+    if (projectName) {
+      pushSuggestion("This project", `What services make up \`${projectName}\`?`);
+    }
+
+    return suggestions.slice(0, 4);
+  }, [graphNodes, initialServiceName]);
 
   const findServiceNode = useCallback(
     (serviceToken: string) => {
@@ -447,27 +513,16 @@ export function StackQueryPanel({
             />
             <div className="stack-query-panel-footer">
               <div className="stack-query-panel-suggestions">
-                <button
-                  type="button"
-                  className="stack-query-panel-suggestion"
-                  onClick={() => setQuery("What is using port 3001?")}
-                >
-                  Port 3001
-                </button>
-                <button
-                  type="button"
-                  className="stack-query-panel-suggestion"
-                  onClick={() => setQuery("What depends on Redis?")}
-                >
-                  Redis deps
-                </button>
-                <button
-                  type="button"
-                  className="stack-query-panel-suggestion"
-                  onClick={() => setQuery("Which services are idle right now?")}
-                >
-                  Idle services
-                </button>
+                {adaptiveSuggestions.map((suggestion) => (
+                  <button
+                    key={suggestion.query}
+                    type="button"
+                    className="stack-query-panel-suggestion"
+                    onClick={() => setQuery(suggestion.query)}
+                  >
+                    {suggestion.label}
+                  </button>
+                ))}
               </div>
               <button
                 type="button"
