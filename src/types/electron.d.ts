@@ -587,7 +587,10 @@ export type QueryProgress =
         routes?: Array<{ serviceName: string; method: string; path: string }>;
         projects?: string[];
       };
-      optimizationSignals?: string[];
+      optimizationSignals?: Array<{
+        text: string;
+        serviceName?: string;
+      }>;
     }
   | { type: 'error'; error: string };
 

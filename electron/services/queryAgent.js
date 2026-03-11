@@ -106,6 +106,7 @@ function buildOptimizationSignals(nodes) {
     if (health === "yellow" && memory >= 5) {
       signals.push({
         priority: 4 + memory,
+        serviceName: node.name,
         text: `${node.name} is idle but using ${memory.toFixed(1)}% memory${
           projectLabel ? ` in ${projectLabel}` : ""
         }.`,
@@ -115,6 +116,7 @@ function buildOptimizationSignals(nodes) {
     if (cpu >= 20 || memory >= 12) {
       signals.push({
         priority: 3 + cpu + memory,
+        serviceName: node.name,
         text: `${node.name} is resource-heavy right now (${formatResourceState(node)})${
           projectLabel ? ` in ${projectLabel}` : ""
         }.`,
@@ -137,6 +139,7 @@ function buildOptimizationSignals(nodes) {
     if (bucket.count < 2) continue;
     signals.push({
       priority: 5 + bucket.count,
+      serviceName: bucket.name,
       text: `${bucket.count} instances of ${bucket.name} are visible${
         bucket.projectLabel ? ` in ${bucket.projectLabel}` : ""
       } (${bucket.running} active).`,
@@ -145,7 +148,10 @@ function buildOptimizationSignals(nodes) {
 
   return signals
     .sort((a, b) => b.priority - a.priority || a.text.localeCompare(b.text))
-    .map((entry) => entry.text);
+    .map((entry) => ({
+      text: entry.text,
+      serviceName: entry.serviceName || null,
+    }));
 }
 
 function buildQueryPrompt(graphSnapshot, query) {
@@ -295,7 +301,7 @@ function buildQueryPrompt(graphSnapshot, query) {
   const optimizationSignals = summarizePromptList(
     optimizationSignalList,
     8,
-    (signal) => `- ${signal}`,
+    (signal) => `- ${signal.text}`,
   );
 
   const routeOwners = summarizePromptList(

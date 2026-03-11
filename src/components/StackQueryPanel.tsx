@@ -24,7 +24,9 @@ export function StackQueryPanel({
     routes?: Array<{ serviceName: string; method: string; path: string }>;
     projects?: string[];
   } | null>(null);
-  const [optimizationSignals, setOptimizationSignals] = useState<string[]>([]);
+  const [optimizationSignals, setOptimizationSignals] = useState<
+    Array<{ text: string; serviceName?: string }>
+  >([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -367,9 +369,24 @@ export function StackQueryPanel({
               </div>
               <div className="stack-query-panel-optimization-list">
                 {optimizationSignals.map((signal) => (
-                  <div key={signal} className="stack-query-panel-optimization-card">
-                    {signal}
-                  </div>
+                  <button
+                    key={signal.text}
+                    type="button"
+                    className={`stack-query-panel-optimization-card${
+                      signal.serviceName ? " stack-query-panel-optimization-card-actionable" : ""
+                    }`}
+                    onClick={() =>
+                      signal.serviceName ? handleServiceClick(signal.serviceName) : undefined
+                    }
+                    disabled={!signal.serviceName}
+                  >
+                    <span>{signal.text}</span>
+                    {signal.serviceName ? (
+                      <span className="stack-query-panel-optimization-action">
+                        Focus
+                      </span>
+                    ) : null}
+                  </button>
                 ))}
               </div>
             </div>

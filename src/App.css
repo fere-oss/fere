@@ -10207,6 +10207,11 @@ textarea {
 }
 
 .stack-query-panel-optimization-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
   padding: 10px 12px;
   border: 1px solid var(--border-color);
   border-radius: 10px;
@@ -10214,6 +10219,33 @@ textarea {
   color: var(--text-primary);
   font-size: 12px;
   line-height: 1.55;
+  text-align: left;
+}
+
+.stack-query-panel-optimization-card-actionable {
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s,
+    background 0.15s;
+}
+
+.stack-query-panel-optimization-card-actionable:hover:not(:disabled) {
+  border-color: var(--text-primary);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+.stack-query-panel-optimization-card:disabled {
+  cursor: default;
+}
+
+.stack-query-panel-optimization-action {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
 }
 
 .stack-query-panel-answer {
