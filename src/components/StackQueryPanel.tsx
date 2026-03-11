@@ -24,6 +24,7 @@ export function StackQueryPanel({
     routes?: Array<{ serviceName: string; method: string; path: string }>;
     projects?: string[];
   } | null>(null);
+  const [optimizationSignals, setOptimizationSignals] = useState<string[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -138,6 +139,7 @@ export function StackQueryPanel({
             setLoading(true);
             setAnswer("");
             setReferences(null);
+            setOptimizationSignals([]);
             setError("");
             break;
           case "answer_delta":
@@ -146,6 +148,7 @@ export function StackQueryPanel({
           case "complete":
             setAnswer(progress.answer);
             setReferences(progress.references || null);
+            setOptimizationSignals(progress.optimizationSignals || []);
             setLoading(false);
             break;
           case "error":
@@ -180,6 +183,7 @@ export function StackQueryPanel({
     if (!trimmed) return;
     setAnswer("");
     setReferences(null);
+    setOptimizationSignals([]);
     setError("");
     setLoading(true);
     const result = await window.electronAPI.queryStart({ query: trimmed });
@@ -355,6 +359,21 @@ export function StackQueryPanel({
 
           {loading ? <div className="stack-query-panel-status">Thinking…</div> : null}
           {error ? <div className="debug-panel-error">{error}</div> : null}
+
+          {optimizationSignals.length > 0 ? (
+            <div className="stack-query-panel-optimizations">
+              <div className="stack-query-panel-reference-label">
+                Optimization Signals
+              </div>
+              <div className="stack-query-panel-optimization-list">
+                {optimizationSignals.map((signal) => (
+                  <div key={signal} className="stack-query-panel-optimization-card">
+                    {signal}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
 
           {answer ? (
             <>

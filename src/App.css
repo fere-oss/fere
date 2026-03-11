@@ -10190,6 +10190,32 @@ textarea {
   padding: 0 2px;
 }
 
+.stack-query-panel-optimizations {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  background: var(--bg-primary);
+}
+
+.stack-query-panel-optimization-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.stack-query-panel-optimization-card {
+  padding: 10px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  background: var(--bg-white);
+  color: var(--text-primary);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
 .stack-query-panel-answer {
   overflow: auto;
   flex: 0 1 auto;

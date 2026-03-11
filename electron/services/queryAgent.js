@@ -291,8 +291,9 @@ function buildQueryPrompt(graphSnapshot, query) {
         Array.from(project.ports).sort((a, b) => a - b).join(", ") || "none"
       })`,
   );
+  const optimizationSignalList = buildOptimizationSignals(nodes);
   const optimizationSignals = summarizePromptList(
-    buildOptimizationSignals(nodes),
+    optimizationSignalList,
     8,
     (signal) => `- ${signal}`,
   );
@@ -583,6 +584,7 @@ async function runQueryAgent(options, onProgress) {
   const { query, graphSnapshot, apiKey } = options;
   const systemPrompt = buildQueryPrompt(graphSnapshot, query);
   const references = buildQueryReferences(graphSnapshot, query);
+  const optimizationSignals = buildOptimizationSignals(graphSnapshot.nodes || []).slice(0, 6);
 
   onProgress({ type: "thinking" });
 
@@ -596,7 +598,7 @@ async function runQueryAgent(options, onProgress) {
     return { success: false, error: "Cancelled" };
   }
 
-  onProgress({ type: "complete", answer: text, references });
+  onProgress({ type: "complete", answer: text, references, optimizationSignals });
   return { success: true, answer: text };
 }
 
