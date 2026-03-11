@@ -2488,20 +2488,31 @@ textarea {
 }
 
 .node-detail-header {
+  position: relative;
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  padding: 20px 20px;
+  flex-direction: column;
+  gap: 14px;
+  padding: 20px 0 0;
   border-bottom: 1px solid var(--border-color);
   background: #f5f5f5;
   border-radius: 12px 12px 0 0;
   flex-shrink: 0;
 }
 
+.node-detail-header-main {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
 .node-detail-title-row {
   display: flex;
   align-items: center;
   gap: 14px;
+  min-width: 0;
+  padding: 0 20px;
+  padding-right: 58px;
 }
 
 .node-detail-dot {
@@ -2515,6 +2526,7 @@ textarea {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  min-width: 0;
 }
 
 .node-detail-name {
@@ -2524,6 +2536,7 @@ textarea {
   color: var(--text-primary);
   margin: 0;
   word-break: break-word;
+  line-height: 1.1;
 }
 
 .node-detail-badge {
@@ -2537,6 +2550,9 @@ textarea {
 }
 
 .node-detail-close {
+  position: absolute;
+  top: 18px;
+  right: 18px;
   width: 32px;
   height: 32px;
   border: none;
@@ -2578,12 +2594,19 @@ textarea {
   align-items: stretch;
   justify-content: flex-start;
   gap: 0;
-  align-self: flex-start;
-  border: 1px solid var(--border-color);
-  border-radius: 14px;
+  align-self: stretch;
+  border: 0;
+  border-radius: 0;
   background: var(--bg-white);
   overflow: hidden;
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.9) inset;
+  padding: 0;
+  box-shadow: none;
+}
+
+.node-detail-actions-card-header {
+  width: 100%;
+  margin: 0;
+  border-top: 1px solid var(--border-color);
 }
 
 .node-detail-section-title-row {
@@ -2607,11 +2630,10 @@ textarea {
 
 .node-detail-ai-button {
   border: 0;
-  border-right: 1px solid var(--border-color);
   background: transparent;
   color: var(--text-primary);
   border-radius: 0;
-  padding: 10px 14px;
+  padding: 12px 14px;
   font-size: 12px;
   font-weight: 500;
   letter-spacing: -0.01em;
@@ -2626,42 +2648,50 @@ textarea {
   overflow: hidden;
   text-overflow: ellipsis;
   font-family: var(--font-ui);
+  flex: 1 1 0;
   transition:
-    border-color 0.15s,
     background 0.15s,
-    color 0.15s,
-    transform 0.15s;
+    color 0.15s;
 }
 
 .node-detail-ai-button:hover:not(:disabled) {
-  background: var(--bg-primary);
-  color: var(--text-primary);
+  background: #111111;
+  color: #ffffff;
+}
+
+.node-detail-ai-button-active,
+.node-detail-ai-button-active:hover:not(:disabled) {
+  background: #111111;
+  color: #ffffff;
 }
 
 .node-detail-ai-button:disabled {
   opacity: 0.6;
   cursor: default;
-  transform: none;
+  box-shadow: none;
+}
+
+.node-detail-ai-button + .node-detail-ai-button {
+  box-shadow: inset 1px 0 0 var(--border-color);
 }
 
 .node-detail-ai-button-secondary {
   color: var(--text-primary);
-  border-right: 0;
 }
 
 .node-detail-ai-button-secondary:hover:not(:disabled) {
-  background: rgba(0, 120, 212, 0.06);
-  color: var(--text-primary);
+  background: #111111;
+  color: #ffffff;
 }
 
 .node-detail-ai-button-icon {
-  width: 12px;
-  height: 12px;
+  width: 13px;
+  height: 13px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  color: var(--text-muted);
+  color: rgba(17, 17, 17, 0.82);
   opacity: 1;
 }
 
@@ -2671,7 +2701,14 @@ textarea {
 }
 
 .node-detail-ai-button-secondary .node-detail-ai-button-icon {
-  color: var(--blue);
+  color: rgba(17, 17, 17, 0.92);
+}
+
+.node-detail-ai-button:hover:not(:disabled) .node-detail-ai-button-icon,
+.node-detail-ai-button-active .node-detail-ai-button-icon,
+.node-detail-ai-button-secondary:hover:not(:disabled)
+  .node-detail-ai-button-icon {
+  color: #ffffff;
 }
 
 @media (max-width: 420px) {
@@ -11347,7 +11384,9 @@ textarea {
   color: var(--text-primary);
   text-align: left;
   cursor: pointer;
-  transition: background 0.14s ease, border-color 0.14s ease;
+  transition:
+    background 0.14s ease,
+    border-color 0.14s ease;
 }
 /* ============================================
    Request Flow Tracing
