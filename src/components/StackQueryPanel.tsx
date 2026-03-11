@@ -11,6 +11,11 @@ interface StackQueryPanelProps {
   initialQueryKey?: number;
 }
 
+interface OptimizationHint {
+  text: string;
+  serviceName?: string;
+}
+
 export function StackQueryPanel({
   isOpen,
   onClose,
@@ -45,6 +50,65 @@ export function StackQueryPanel({
       .replace(/^[([{"']+|[)\]}",.!?:;'"]+$/g, "")
       .toLowerCase();
   }, []);
+
+  const optimizationHints = React.useMemo<OptimizationHint[]>(() => {
+    const hints: OptimizationHint[] = [];
+    const duplicateBuckets = new Map<
+      string,
+      { name: string; count: number; active: number; project?: string }
+    >();
+
+    for (const node of graphNodes) {
+      if (node.type === "external") continue;
+
+      const memory = Number(node.memory || 0);
+      const cpu = Number(node.cpu || 0);
+      const health = node.healthStatus || "unknown";
+      const project =
+        node.project ||
+        node.projectPath?.split("/").pop() ||
+        node.repoPath?.split("/").pop();
+
+      if (health === "yellow" && memory >= 5) {
+        hints.push({
+          text: `${node.name} is idle but using ${memory.toFixed(1)}% memory${
+            project ? ` in ${project}` : ""
+          }.`,
+          serviceName: node.name,
+        });
+      } else if (cpu >= 20 || memory >= 12) {
+        hints.push({
+          text: `${node.name} is resource-heavy right now (cpu ${cpu.toFixed(
+            1,
+          )}%, memory ${memory.toFixed(1)}%)${project ? ` in ${project}` : ""}.`,
+          serviceName: node.name,
+        });
+      }
+
+      const duplicateKey = `${(project || "global").toLowerCase()}::${node.name.toLowerCase()}`;
+      const existing = duplicateBuckets.get(duplicateKey) || {
+        name: node.name,
+        count: 0,
+        active: 0,
+        project,
+      };
+      existing.count += 1;
+      if (health === "green") existing.active += 1;
+      duplicateBuckets.set(duplicateKey, existing);
+    }
+
+    for (const bucket of Array.from(duplicateBuckets.values())) {
+      if (bucket.count < 2) continue;
+      hints.push({
+        text: `${bucket.count} instances of ${bucket.name} are visible${
+          bucket.project ? ` in ${bucket.project}` : ""
+        } (${bucket.active} active).`,
+        serviceName: bucket.name,
+      });
+    }
+
+    return hints.slice(0, 6);
+  }, [graphNodes]);
 
   const findServiceNode = useCallback(
     (serviceToken: string) => {
@@ -391,13 +455,17 @@ export function StackQueryPanel({
           {loading ? <div className="stack-query-panel-status">Thinking…</div> : null}
           {error ? <div className="debug-panel-error">{error}</div> : null}
 
-          {optimizationSignals.length > 0 ? (
+          {(optimizationSignals.length > 0 ||
+            (!answer && !loading && !error && optimizationHints.length > 0)) ? (
             <div className="stack-query-panel-optimizations">
               <div className="stack-query-panel-reference-label">
                 Optimization Signals
               </div>
               <div className="stack-query-panel-optimization-list">
-                {optimizationSignals.map((signal) => (
+                {(optimizationSignals.length > 0
+                  ? optimizationSignals
+                  : optimizationHints
+                ).map((signal) => (
                   <button
                     key={signal.text}
                     type="button"
