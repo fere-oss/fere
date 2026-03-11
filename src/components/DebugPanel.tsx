@@ -1500,7 +1500,7 @@ export function DebugPanel({
     isResultsVisible &&
     (phase === "running" || phase === "complete" || viewingHistory);
   const problemPlaceholder =
-    "Ask Fere Agent to investigate an issue... (Shift+Enter for newline)";
+    "Describe an issue to diagnose... (Shift+Enter for newline)";
   const followUpPlaceholder =
     'Ask a follow-up... (e.g. "check Redis instead", "try this payload: {...}")';
 
@@ -1883,7 +1883,10 @@ export function DebugPanel({
       {showResultsPanel && (
         <div className="debug-panel debug-panel-inline">
           <div className="debug-panel-header">
-            <span className="debug-panel-title">Fere Agent Response</span>
+            <div className="debug-panel-title-wrap">
+              <span className="debug-panel-title">Debugger</span>
+              <span className="debug-panel-subtitle">Issue diagnosis</span>
+            </div>
             <button
               className="debug-panel-close"
               onClick={() => setIsResultsVisible(false)}

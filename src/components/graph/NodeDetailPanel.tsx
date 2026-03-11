@@ -133,20 +133,16 @@ export function NodeDetailPanel({ node, edges, allNodes, onClose }: NodeDetailPa
             onClick={handleExplainService}
             disabled={serviceExplanationLoading}
           >
-            <span className="node-detail-ai-button-icon" aria-hidden="true">
-              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="3" y="2.75" width="10" height="10.5" rx="2.2" />
-                <path d="M6 6.25h4" />
-                <path d="M6 8.25h4" />
-                <path d="M6 10.25h2.5" />
-              </svg>
-            </span>
-            {serviceExplanationLoading
-              ? 'Explaining...'
-              : serviceExplanation
-                ? 'Refresh Explain'
-                : 'Explain Service'}
-          </button>
+                <span className="node-detail-ai-button-icon" aria-hidden="true">
+                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="3" y="2.75" width="10" height="10.5" rx="2.2" />
+                    <path d="M6 6.25h4" />
+                    <path d="M6 8.25h4" />
+                    <path d="M6 10.25h2.5" />
+                  </svg>
+                </span>
+                {serviceExplanationLoading ? 'Explaining...' : 'Explain Service'}
+              </button>
           <button
             type="button"
             className="node-detail-ai-button node-detail-ai-button-secondary node-detail-ai-button-wide"

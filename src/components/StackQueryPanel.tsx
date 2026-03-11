@@ -368,6 +368,9 @@ export function StackQueryPanel({
       <div className="stack-query-panel-header">
         <div className="stack-query-panel-title-wrap">
           <div className="stack-query-panel-title">Ask Fere</div>
+          <div className="stack-query-panel-subtitle">
+            General stack questions
+          </div>
           {initialServiceName ? (
             <div className="stack-query-panel-scope">
               Scoped to <span>{initialServiceName}</span>

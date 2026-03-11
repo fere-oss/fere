@@ -10127,6 +10127,12 @@ textarea {
   letter-spacing: -0.01em;
 }
 
+.stack-query-panel-subtitle,
+.debug-panel-subtitle {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
 .stack-query-panel-scope {
   font-size: 11px;
   color: var(--text-muted);
@@ -10799,6 +10805,12 @@ textarea {
   padding: 14px 16px;
   border-bottom: 1px solid var(--border-color);
   flex-shrink: 0;
+}
+
+.debug-panel-title-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .debug-panel-title {
