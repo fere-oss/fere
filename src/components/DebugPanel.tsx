@@ -54,6 +54,43 @@ interface ChatThread {
 const CHAT_HISTORY_STORAGE_KEY = "fere-debug-chat-threads-v1";
 const CHAT_SELECTED_STORAGE_KEY = "fere-debug-chat-selected-v1";
 const CHAT_LEGACY_STORAGE_KEY = "fere-debug-chat-history-v1";
+const RATE_LIMIT_STORAGE_KEY = "fere-debug-rate-limit-v1";
+const DAILY_CALL_LIMIT = 5;
+
+function getTodayKey(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function getDailyUsage(): { date: string; count: number } {
+  try {
+    const raw = window.localStorage.getItem(RATE_LIMIT_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed.date === getTodayKey() && typeof parsed.count === "number") {
+        return parsed;
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return { date: getTodayKey(), count: 0 };
+}
+
+function incrementDailyUsage(): number {
+  const usage = getDailyUsage();
+  const next = { date: getTodayKey(), count: usage.count + 1 };
+  try {
+    window.localStorage.setItem(RATE_LIMIT_STORAGE_KEY, JSON.stringify(next));
+  } catch {
+    // ignore
+  }
+  return next.count;
+}
+
+function getRemainingCalls(): number {
+  return Math.max(0, DAILY_CALL_LIMIT - getDailyUsage().count);
+}
 
 function extractEvidence(steps: InvestigationStep[]): EvidenceData {
   const services = new Map<string, { name: string; tools: string[] }>();
@@ -211,9 +248,13 @@ export function DebugPanel({ isOpen, onClose, graphNodes }: DebugPanelProps) {
   const [problemCaret, setProblemCaret] = useState(0);
   const [followUpCaret, setFollowUpCaret] = useState(0);
   const [mentionIndex, setMentionIndex] = useState(0);
+  const [mentionSuppressed, setMentionSuppressed] = useState(false);
   const [chatThreads, setChatThreads] = useState<ChatThread[]>([]);
   const [selectedChatId, setSelectedChatId] = useState("");
   const [isHistoryLoaded, setIsHistoryLoaded] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const [viewingHistory, setViewingHistory] = useState(false);
+  const [remainingCalls, setRemainingCalls] = useState(() => getRemainingCalls());
   const problemInputRef = useRef<HTMLTextAreaElement>(null);
   const followUpInputRef = useRef<HTMLTextAreaElement>(null);
   const problemHighlightRef = useRef<HTMLDivElement>(null);
@@ -429,14 +470,15 @@ export function DebugPanel({ isOpen, onClose, graphNodes }: DebugPanelProps) {
   ]);
 
   const mentionOptions = useMemo(() => {
-    if (!activeMention) return [];
+    if (!activeMention || mentionSuppressed) return [];
     const q = activeMention.query.toLowerCase();
     return mentionCandidates
       .filter((option) => option.name.toLowerCase().includes(q))
       .slice(0, 8);
-  }, [activeMention, mentionCandidates]);
+  }, [activeMention, mentionCandidates, mentionSuppressed]);
 
   useEffect(() => {
+    setMentionSuppressed(false);
     setMentionIndex(0);
   }, [activeMention?.target, activeMention?.query]);
 
@@ -678,6 +720,9 @@ export function DebugPanel({ isOpen, onClose, graphNodes }: DebugPanelProps) {
     if (isOpen) {
       setShouldRender(true);
       setIsClosing(false);
+      setShowHistory(false);
+      setViewingHistory(false);
+      setRemainingCalls(getRemainingCalls());
       return;
     }
 
@@ -776,6 +821,8 @@ export function DebugPanel({ isOpen, onClose, graphNodes }: DebugPanelProps) {
           case "complete":
             // Authoritative final text — replaces any streamed partial content
             setDiagnosis(progress.diagnosis);
+            incrementDailyUsage();
+            setRemainingCalls(getRemainingCalls());
             if (pendingPromptRef.current.trim() && progress.diagnosis.trim()) {
               const promptText = pendingPromptRef.current.trim();
               const responseText = progress.diagnosis.trim();
@@ -868,6 +915,11 @@ export function DebugPanel({ isOpen, onClose, graphNodes }: DebugPanelProps) {
   const handleStart = useCallback(async () => {
     const trimmed = problem.trim();
     if (!trimmed) return;
+    if (getRemainingCalls() <= 0) {
+      setError("Daily limit reached (5 per day). Try again tomorrow.");
+      setPhase("complete");
+      return;
+    }
     if (!selectedChatIdRef.current && !selectedChatId) {
       const fresh = createChatThread(trimmed.slice(0, 72));
       setChatThreads((prev) => [...prev, fresh]);
@@ -883,6 +935,8 @@ export function DebugPanel({ isOpen, onClose, graphNodes }: DebugPanelProps) {
     setFollowUpInput("");
     setIsResultsVisible(true);
     setExpandedToolResults({});
+    setViewingHistory(false);
+    setShowHistory(false);
     setPhase("running");
     const result = await window.electronAPI.debugStart({ problem: trimmed });
     if (!result.success) {
@@ -922,6 +976,8 @@ export function DebugPanel({ isOpen, onClose, graphNodes }: DebugPanelProps) {
     setProblem("");
     setIsResultsVisible(true);
     setExpandedToolResults({});
+    setViewingHistory(false);
+    setShowHistory(false);
     setPhase("input");
     window.dispatchEvent(
       new CustomEvent("fere:debug-highlight-services", {
@@ -933,6 +989,11 @@ export function DebugPanel({ isOpen, onClose, graphNodes }: DebugPanelProps) {
   const handleFollowUp = useCallback(async () => {
     const trimmed = followUpInput.trim();
     if (!trimmed) return;
+    if (getRemainingCalls() <= 0) {
+      setError("Daily limit reached (5 per day). Try again tomorrow.");
+      setPhase("complete");
+      return;
+    }
     pendingPromptRef.current = trimmed;
     setSteps((prev) => [
       ...prev,
@@ -960,6 +1021,9 @@ export function DebugPanel({ isOpen, onClose, graphNodes }: DebugPanelProps) {
   const handleSelectChat = useCallback((chatId: string) => {
     setSelectedChatId(chatId);
     selectedChatIdRef.current = chatId;
+    setShowHistory(false);
+    setViewingHistory(true);
+    setIsResultsVisible(true);
   }, []);
 
   const handleClearChat = useCallback(
@@ -984,7 +1048,7 @@ export function DebugPanel({ isOpen, onClose, graphNodes }: DebugPanelProps) {
   const autoResizeTextarea = useCallback(
     (el: HTMLTextAreaElement | null) => {
       if (!el) return;
-      const minHeight = 64;
+      const minHeight = 48;
       const maxHeight = 220;
       el.style.height = "0px";
       const next = Math.max(minHeight, Math.min(maxHeight, el.scrollHeight));
@@ -1035,6 +1099,12 @@ export function DebugPanel({ isOpen, onClose, graphNodes }: DebugPanelProps) {
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
       if (mentionOptions.length > 0 && activeMention?.target === "problem") {
+        if (e.key === "Escape") {
+          e.preventDefault();
+          e.stopPropagation();
+          setMentionSuppressed(true);
+          return;
+        }
         if (e.key === "ArrowDown") {
           e.preventDefault();
           setMentionIndex((prev) => (prev + 1) % mentionOptions.length);
@@ -1066,6 +1136,12 @@ export function DebugPanel({ isOpen, onClose, graphNodes }: DebugPanelProps) {
   const handleFollowUpKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
       if (mentionOptions.length > 0 && activeMention?.target === "followup") {
+        if (e.key === "Escape") {
+          e.preventDefault();
+          e.stopPropagation();
+          setMentionSuppressed(true);
+          return;
+        }
         if (e.key === "ArrowDown") {
           e.preventDefault();
           setMentionIndex((prev) => (prev + 1) % mentionOptions.length);
@@ -1374,7 +1450,7 @@ export function DebugPanel({ isOpen, onClose, graphNodes }: DebugPanelProps) {
   const hasSavedHistory = historyThreads.length > 0;
   const showResultsPanel =
     isResultsVisible &&
-    (phase === "running" || phase === "complete" || hasSavedHistory);
+    (phase === "running" || phase === "complete" || viewingHistory);
   const problemPlaceholder =
     "Ask Fere Agent to investigate an issue... (Shift+Enter for newline)";
   const followUpPlaceholder =
@@ -1386,7 +1462,63 @@ export function DebugPanel({ isOpen, onClose, graphNodes }: DebugPanelProps) {
     >
       <div className="debug-agent-dock">
         <div className="debug-agent-dock-header">
+          {hasSavedHistory && (
+            <button
+              className={`debug-dock-btn${showHistory ? " debug-dock-btn-active" : ""}`}
+              onClick={() => setShowHistory((v) => !v)}
+              title="Chat history"
+            >
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="8" cy="8" r="6.5" />
+                <path d="M8 4.5V8l2.5 1.5" />
+              </svg>
+            </button>
+          )}
+          <span
+            className={`debug-dock-remaining${remainingCalls === 0 ? " debug-dock-remaining-zero" : ""}`}
+            title={`${remainingCalls} of ${DAILY_CALL_LIMIT} daily calls remaining`}
+          >
+            {remainingCalls}/{DAILY_CALL_LIMIT}
+          </span>
         </div>
+
+        {showHistory && (
+          <div className="debug-history-dropdown">
+            <div className="debug-history-dropdown-header">
+              <span>History</span>
+              <button
+                className="debug-history-new-btn"
+                onClick={() => { handleNewInvestigation(); setShowHistory(false); }}
+              >
+                + New Chat
+              </button>
+            </div>
+            {historyThreads.map((thread) => (
+              <button
+                key={thread.id}
+                type="button"
+                className={`debug-history-item${thread.id === selectedChatId ? " debug-history-item-active" : ""}`}
+                onClick={() => handleSelectChat(thread.id)}
+              >
+                <span className="debug-history-item-title">{thread.title}</span>
+                <span className="debug-history-item-meta">
+                  {thread.turns.length} msg{thread.turns.length !== 1 ? "s" : ""}
+                </span>
+                <span
+                  className="debug-history-item-delete"
+                  role="button"
+                  tabIndex={0}
+                  onClick={(e) => { e.stopPropagation(); handleClearChat(thread.id); }}
+                  title="Delete chat"
+                >
+                  <svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <path d="M1 1l12 12M13 1L1 13" />
+                  </svg>
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
 
         {phase === "setup" && (
           <div className="debug-panel-setup">
@@ -1671,59 +1803,22 @@ export function DebugPanel({ isOpen, onClose, graphNodes }: DebugPanelProps) {
           </div>
 
           <div className="debug-panel-body">
-            {hasSavedHistory && (
-              <div className="debug-chat-history">
-                <div className="debug-panel-section-header">Chat History</div>
-                <div className="debug-chat-list">
-                  {historyThreads.map((thread) => (
-                    <button
-                      key={thread.id}
-                      type="button"
-                      className={`debug-chat-list-item${thread.id === selectedHistoryChat?.id ? " debug-chat-list-item-active" : ""}`}
-                      onClick={() => handleSelectChat(thread.id)}
-                    >
-                      <span className="debug-chat-list-title">{thread.title}</span>
-                      <span className="debug-chat-list-meta">
-                        {thread.turns.length} message
-                        {thread.turns.length === 1 ? "" : "s"}
-                      </span>
-                    </button>
-                  ))}
+            {selectedChatTurns.map((turn) => (
+              <div className="debug-chat-turn" key={turn.id}>
+                <div className="debug-chat-turn-header">
+                  <span className="debug-chat-turn-role">You</span>
                 </div>
-                {selectedHistoryChat && (
-                  <div className="debug-chat-history-actions">
-                    <button
-                      type="button"
-                      className="debug-chat-turn-clear"
-                      onClick={() => handleClearChat(selectedHistoryChat.id)}
-                    >
-                      Clear This Chat
-                    </button>
-                  </div>
-                )}
-                {selectedChatTurns.map((turn) => (
-                  <div className="debug-chat-turn" key={turn.id}>
-                    <div className="debug-chat-turn-header">
-                      <span className="debug-chat-turn-role">You</span>
-                    </div>
-                    <div className="debug-chat-turn-prompt">{turn.prompt}</div>
-                    <div className="debug-chat-turn-header">
-                      <span className="debug-chat-turn-role">Assistant</span>
-                    </div>
-                    <div className="debug-chat-turn-response">
-                      <ReactMarkdown components={markdownComponents}>
-                        {linkifyServiceMentions(turn.response)}
-                      </ReactMarkdown>
-                    </div>
-                  </div>
-                ))}
-                {selectedChatTurns.length === 0 && (
-                  <div className="debug-chat-empty">
-                    No messages in this chat yet.
-                  </div>
-                )}
+                <div className="debug-chat-turn-prompt">{turn.prompt}</div>
+                <div className="debug-chat-turn-header">
+                  <span className="debug-chat-turn-role">Assistant</span>
+                </div>
+                <div className="debug-chat-turn-response">
+                  <ReactMarkdown components={markdownComponents}>
+                    {linkifyServiceMentions(turn.response)}
+                  </ReactMarkdown>
+                </div>
               </div>
-            )}
+            ))}
 
             {phase === "running" && pendingPromptRef.current.trim() && (
               <div className="debug-chat-turn debug-chat-turn-live">
