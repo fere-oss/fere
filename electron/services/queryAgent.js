@@ -93,6 +93,7 @@ function buildQueryPrompt(graphSnapshot, query) {
   const edges = graphSnapshot.edges || [];
   const nodeById = new Map(nodes.map((node) => [node.id, node]));
   const focus = extractFocusTerms(graphSnapshot, query);
+  const queryText = String(query || "").toLowerCase();
 
   const services = summarizePromptList(
     nodes
@@ -231,6 +232,99 @@ function buildQueryPrompt(graphSnapshot, query) {
       })`,
   );
 
+  const routeOwners = summarizePromptList(
+    nodes
+      .filter((node) => Array.isArray(node.routes) && node.routes.length > 0)
+      .flatMap((node) =>
+        (node.routes || [])
+          .filter((route) =>
+            focus.routeTerms.size === 0
+              ? false
+              : Array.from(focus.routeTerms).some((term) =>
+                  String(route.path || "").toLowerCase().includes(term),
+                ),
+          )
+          .map((route) => ({
+            serviceName: node.name,
+            method: route.method,
+            path: route.path,
+            ports: (node.ports || []).map((entry) => entry.port),
+            project: getProjectLabel(node),
+          })),
+      ),
+    8,
+    (route) =>
+      `- ${route.method} ${route.path} -> ${route.serviceName}${
+        route.ports.length > 0 ? ` (ports: ${route.ports.join(", ")})` : ""
+      }${route.project ? `, ${route.project}` : ""}`,
+  );
+
+  const portOwners = summarizePromptList(
+    nodes
+      .filter((node) =>
+        (node.ports || []).some((entry) => focus.ports.has(entry.port)),
+      )
+      .map((node) => ({
+        name: node.name,
+        type: node.type,
+        health: node.healthStatus || "unknown",
+        ports: (node.ports || [])
+          .map((entry) => entry.port)
+          .filter((port) => focus.ports.has(port)),
+        project: getProjectLabel(node),
+      })),
+    8,
+    (node) =>
+      `- ${node.name} (${node.type}, ports: ${node.ports.join(", ")}, health: ${node.health}${
+        node.project ? `, ${node.project}` : ""
+      })`,
+  );
+
+  const idleOrHeavyServices = summarizePromptList(
+    nodes
+      .filter((node) => node.type !== "external")
+      .filter(
+        (node) =>
+          node.healthStatus === "yellow" ||
+          Number(node.cpu || 0) >= 5 ||
+          Number(node.memory || 0) >= 5,
+      )
+      .sort((a, b) => {
+        const aScore =
+          (a.healthStatus === "yellow" ? 3 : 0) + Number(a.memory || 0) + Number(a.cpu || 0);
+        const bScore =
+          (b.healthStatus === "yellow" ? 3 : 0) + Number(b.memory || 0) + Number(b.cpu || 0);
+        return bScore - aScore;
+      }),
+    10,
+    (node) =>
+      `- ${node.name} (health: ${node.healthStatus}, ${formatResourceState(node)}${
+        getProjectLabel(node) ? `, ${getProjectLabel(node)}` : ""
+      })`,
+  );
+
+  const intentHints = [];
+  if (focus.routeTerms.size > 0 || queryText.includes("route") || queryText.includes("endpoint")) {
+    intentHints.push(
+      "- If the user asks about a route or endpoint, answer with the owning service first, then mention relevant ports and project.",
+    );
+  }
+  if (focus.ports.size > 0 || queryText.includes("port")) {
+    intentHints.push(
+      "- If the user asks about a port, identify the owning service directly before describing dependencies.",
+    );
+  }
+  if (queryText.includes("idle") || queryText.includes("active") || queryText.includes("memory") || queryText.includes("cpu")) {
+    intentHints.push(
+      "- If the user asks about activity or resources, rank services by health and current cpu/memory instead of giving a generic topology summary.",
+    );
+  }
+  if (queryText.includes("project") || queryText.includes("repo")) {
+    intentHints.push(
+      "- If the user asks about a project or repo, summarize the project grouping and which services belong to it.",
+    );
+  }
+
   return `You are Fere's stack assistant. Answer questions about the user's local development environment clearly and concisely.
 
 You are not debugging a failure unless the user explicitly asks for diagnosis. For general questions:
@@ -240,6 +334,7 @@ You are not debugging a failure unless the user explicitly asks for diagnosis. F
 - identify likely owners of ports and dependencies
 - call out uncertainty when topology alone is insufficient
 - keep answers short and practical
+${intentHints.length > 0 ? intentHints.join("\n") : ""}
 
 When referencing services, ports, or files, use backticks.
 
@@ -254,6 +349,15 @@ ${routes || "No API routes detected"}
 
 ## Project Context
 ${projects || "No project grouping detected"}
+
+## Matching Route Owners
+${routeOwners || "No route-specific matches"}
+
+## Matching Port Owners
+${portOwners || "No port-specific matches"}
+
+## Idle / Heavy Services
+${idleOrHeavyServices || "No notable idle or heavy services"}
 
 ## External APIs
 ${externalApis || "None detected"}
