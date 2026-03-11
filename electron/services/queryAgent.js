@@ -408,6 +408,18 @@ You are not debugging a failure unless the user explicitly asks for diagnosis. F
 - keep answers short and practical
 ${intentHints.length > 0 ? intentHints.join("\n") : ""}
 
+Use this response structure unless the user asks for something else:
+1. Start with a single sentence that directly answers the question.
+2. Then add a short \`Supporting facts\` bullet list with 2-4 bullets.
+3. If there is uncertainty or missing context, end with one short \`Uncertainty\` bullet.
+
+Formatting rules:
+- Prefer bullets over paragraphs.
+- Do not write a long introduction.
+- Do not restate the entire graph.
+- If ownership is clear, name the owning service in the first sentence.
+- If the answer is a list, rank the most relevant items first.
+
 When referencing services, ports, or files, use backticks.
 
 ## Current Services
