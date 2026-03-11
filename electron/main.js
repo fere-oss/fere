@@ -231,6 +231,10 @@ function createWindow() {
   });
 }
 
+// Enable smooth scrolling and GPU compositing for smoother UI
+app.commandLine.appendSwitch("enable-smooth-scrolling");
+app.commandLine.appendSwitch("enable-gpu-rasterization");
+
 app.whenReady().then(() => {
   // Security: Set up default-deny permission handlers
   setupPermissionHandlers();
