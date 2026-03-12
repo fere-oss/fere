@@ -554,6 +554,11 @@ export interface PublishGraphResult {
   error?: string;
 }
 
+export interface DebugHistoryTurn {
+  prompt: string;
+  response: string;
+}
+
 export interface ShareSettings {
   hasToken: boolean;
   shareUrl: string | null;
@@ -696,9 +701,9 @@ export interface ElectronAPI {
   // Debug Agent
   debugSetApiKey: (key: string) => Promise<{ success: boolean; error?: string }>;
   debugGetApiKeyStatus: () => Promise<{ hasKey: boolean }>;
-  debugStart: (options: { problem: string }) => Promise<{ success: boolean; error?: string }>;
+  debugStart: (options: { problem: string; historyTurns?: DebugHistoryTurn[] }) => Promise<{ success: boolean; error?: string }>;
   debugStop: () => Promise<{ success: boolean }>;
-  debugFollowUp: (options: { message: string }) => Promise<{ success: boolean; error?: string }>;
+  debugFollowUp: (options: { message: string; historyTurns?: DebugHistoryTurn[] }) => Promise<{ success: boolean; error?: string }>;
   onDebugProgress: (callback: (progress: DebugProgress) => void) => () => void;
 
   // Stack Query Agent

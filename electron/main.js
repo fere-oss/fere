@@ -1668,6 +1668,29 @@ ipcMain.handle("update-shared-graph", async (_, options) => {
 let activeDebugSession = null;
 let activeQuerySession = null;
 
+function buildDebugResumeMessages(historyTurns = []) {
+  if (!Array.isArray(historyTurns) || historyTurns.length === 0) return [];
+  const MAX_TURNS = 6;
+  const MAX_CHARS = 1600;
+  const recent = historyTurns.slice(-MAX_TURNS);
+  const messages = [];
+  for (const turn of recent) {
+    if (typeof turn?.prompt === "string" && turn.prompt.trim()) {
+      messages.push({
+        role: "user",
+        content: turn.prompt.trim().slice(0, MAX_CHARS),
+      });
+    }
+    if (typeof turn?.response === "string" && turn.response.trim()) {
+      messages.push({
+        role: "assistant",
+        content: turn.response.trim().slice(0, MAX_CHARS),
+      });
+    }
+  }
+  return messages;
+}
+
 ipcMain.handle("debug-set-api-key", async (_, key) => {
   if (typeof key !== "string" || key.length < 10) {
     return { success: false, error: "Invalid API key" };
@@ -1723,6 +1746,7 @@ ipcMain.handle("debug-start", async (event, options) => {
     problem: options.problem,
     graphSnapshot,
     apiKey,
+    resumeMessages: buildDebugResumeMessages(options?.historyTurns),
     _cancelled: false,
   };
 
@@ -1762,7 +1786,58 @@ ipcMain.handle("debug-follow-up", async (event, options) => {
   }
 
   if (!activeDebugSession?.state) {
-    return { success: false, error: "No active debug session to follow up on" };
+    const apiKey = getApiKey();
+    if (!apiKey) {
+      return { success: false, error: "No OpenAI API key configured. Set OPENAI_API_KEY in .env" };
+    }
+
+    const snapshot = await getSystemSnapshot();
+    const graphSnapshot = {
+      nodes: snapshot.graph?.nodes || [],
+      edges: snapshot.graph?.edges || [],
+    };
+
+    if (activeDebugSession) {
+      activeDebugSession._cancelled = true;
+    }
+
+    const session = { _cancelled: false };
+    activeDebugSession = session;
+
+    const agentOptions = {
+      problem: options.message,
+      graphSnapshot,
+      apiKey,
+      resumeMessages: buildDebugResumeMessages(options?.historyTurns),
+      _cancelled: false,
+    };
+
+    Object.defineProperty(agentOptions, "_cancelled", {
+      get() { return session._cancelled; },
+    });
+
+    runDebugAgent(agentOptions, (progress) => {
+      if (session._cancelled) return;
+      const sender = event.sender;
+      if (!sender.isDestroyed()) {
+        sender.send("debug-progress", progress);
+      }
+    }).then((result) => {
+      if (result?.state && activeDebugSession === session) {
+        session.state = result.state;
+        session.graphSnapshot = graphSnapshot;
+        session.apiKey = apiKey;
+      }
+    }).catch((err) => {
+      if (!session._cancelled && !event.sender.isDestroyed()) {
+        event.sender.send("debug-progress", {
+          type: "error",
+          error: err.message,
+        });
+      }
+    });
+
+    return { success: true, resumedFromHistory: true };
   }
 
   const session = activeDebugSession;
