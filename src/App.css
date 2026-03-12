@@ -89,15 +89,17 @@ textarea {
   -webkit-app-region: no-drag;
   background: none;
   border: 1px solid var(--border-color);
-  border-radius: 999px;
-  padding: 6px 11px;
+  border-radius: 6px;
+  min-height: 32px;
+  padding: 6px 8px;
   cursor: pointer;
   color: var(--text-muted);
   display: inline-flex;
   align-items: center;
-  gap: 7px;
+  gap: 6px;
   font-size: 12px;
   font-weight: 500;
+  line-height: 1;
   transition:
     color 0.15s,
     border-color 0.15s,
