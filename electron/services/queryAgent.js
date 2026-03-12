@@ -8,6 +8,91 @@ const MAX_PROMPT_CONNECTIONS = 22;
 const MAX_PROMPT_EXTERNALS = 12;
 const MAX_PROMPT_ROUTES = 16;
 const MAX_PROMPT_PROJECTS = 10;
+const GENERIC_SERVICE_TOKENS = new Set([
+  "service",
+  "services",
+  "server",
+  "container",
+  "containers",
+  "app",
+  "dev",
+  "local",
+  "test",
+]);
+
+function normalizeLookupValue(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/^`+|`+$/g, "")
+    .replace(/^@+/, "")
+    .replace(/^[([{"']+|[)\]}",.!?:;'"]+$/g, "");
+}
+
+function buildNodeAliases(node) {
+  const aliases = new Set();
+  const addAlias = (value) => {
+    const normalized = normalizeLookupValue(value);
+    if (!normalized) return;
+    aliases.add(normalized);
+  };
+
+  addAlias(node.name);
+  addAlias(node.project);
+
+  const name = normalizeLookupValue(node.name);
+  const parts = name.split(/[^a-z0-9]+/).filter(Boolean);
+  for (const part of parts) {
+    if (!GENERIC_SERVICE_TOKENS.has(part)) addAlias(part);
+  }
+
+  if (parts.length > 1) {
+    for (let i = 0; i < parts.length; i++) {
+      const suffix = parts.slice(i).join("-");
+      if (suffix && !GENERIC_SERVICE_TOKENS.has(suffix)) addAlias(suffix);
+    }
+  }
+
+  const typeAliases = {
+    frontend: ["frontend", "ui", "web"],
+    backend: ["backend", "api"],
+    webserver: ["webserver", "gateway", "proxy"],
+    database: ["database", "db"],
+    cache: ["cache", "redis"],
+    broker: ["broker", "queue", "messaging"],
+    worker: ["worker", "job"],
+  };
+  for (const alias of typeAliases[node.type] || []) addAlias(alias);
+
+  const commandTokens = normalizeLookupValue(node.command)
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean);
+  for (const token of commandTokens.slice(0, 12)) {
+    if (!GENERIC_SERVICE_TOKENS.has(token) && token.length > 2) addAlias(token);
+  }
+
+  return aliases;
+}
+
+function resolveFocusedServiceIds(graphSnapshot, inputText) {
+  const text = normalizeLookupValue(inputText);
+  const serviceIds = new Set();
+  if (!text) return serviceIds;
+
+  const searchTokens = text.split(/[^a-z0-9/:-]+/).filter(Boolean);
+  for (const node of graphSnapshot.nodes || []) {
+    if (node.type === "external" || !node.name) continue;
+    const aliases = buildNodeAliases(node);
+    const hasDirectMatch = Array.from(aliases).some(
+      (alias) => text.includes(`@${alias}`) || text.includes(alias),
+    );
+    const hasTokenMatch = searchTokens.some((token) => aliases.has(token));
+    if (hasDirectMatch || hasTokenMatch) {
+      serviceIds.add(node.id);
+    }
+  }
+  return serviceIds;
+}
 
 function summarizePromptList(items, maxItems, formatter) {
   const visible = items.slice(0, maxItems).map(formatter);
@@ -34,12 +119,12 @@ function extractFocusTerms(graphSnapshot, inputText) {
   const routeTerms = new Set();
   const projectTerms = new Set();
 
+  for (const id of resolveFocusedServiceIds(graphSnapshot, text)) {
+    serviceIds.add(id);
+  }
+
   for (const node of graphSnapshot.nodes || []) {
     if (node.type === "external" || !node.name) continue;
-    const name = node.name.toLowerCase();
-    if (text.includes(`@${name}`) || text.includes(name)) {
-      serviceIds.add(node.id);
-    }
     const projectBits = [
       node.project,
       node.projectPath ? path.basename(node.projectPath) : null,

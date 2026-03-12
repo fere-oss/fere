@@ -31,6 +31,22 @@ export function StackQueryPanel({
   initialQueryKey,
   initialServiceName,
 }: StackQueryPanelProps) {
+  const genericServiceTokens = React.useMemo(
+    () =>
+      new Set([
+        "service",
+        "services",
+        "server",
+        "container",
+        "containers",
+        "app",
+        "dev",
+        "local",
+        "test",
+      ]),
+    [],
+  );
+
   const [hasApiKey, setHasApiKey] = useState<boolean | null>(null);
   const [apiKeyInput, setApiKeyInput] = useState("");
   const [apiKeyError, setApiKeyError] = useState("");
@@ -57,13 +73,62 @@ export function StackQueryPanel({
   const pendingAutoSubmitRef = React.useRef(false);
 
   const normalizeServiceToken = useCallback((value: string) => {
-    return value
+    return String(value || "")
       .trim()
       .replace(/^`+|`+$/g, "")
       .replace(/^@+/, "")
       .replace(/^[([{"']+|[)\]}",.!?:;'"]+$/g, "")
       .toLowerCase();
   }, []);
+
+  const buildNodeAliases = useCallback(
+    (node: GraphNode) => {
+      const aliases = new Set<string>();
+      const addAlias = (value: string | null | undefined) => {
+        const normalized = normalizeServiceToken(value || "");
+        if (!normalized) return;
+        aliases.add(normalized);
+      };
+
+      addAlias(node.name);
+      addAlias(node.project || undefined);
+
+      const parts = normalizeServiceToken(node.name)
+        .split(/[^a-z0-9]+/)
+        .filter(Boolean);
+      for (const part of parts) {
+        if (!genericServiceTokens.has(part)) addAlias(part);
+      }
+      if (parts.length > 1) {
+        for (let i = 0; i < parts.length; i++) {
+          const suffix = parts.slice(i).join("-");
+          if (suffix && !genericServiceTokens.has(suffix)) addAlias(suffix);
+        }
+      }
+
+      const typeAliases: Record<string, string[]> = {
+        frontend: ["frontend", "ui", "web"],
+        backend: ["backend", "api"],
+        webserver: ["webserver", "gateway", "proxy"],
+        database: ["database", "db"],
+        cache: ["cache", "redis"],
+        broker: ["broker", "queue"],
+        worker: ["worker", "job"],
+      };
+      for (const alias of typeAliases[node.type] || []) addAlias(alias);
+
+      const commandTokens = normalizeServiceToken(node.command)
+        .split(/[^a-z0-9]+/)
+        .filter(Boolean)
+        .slice(0, 12);
+      for (const token of commandTokens) {
+        if (!genericServiceTokens.has(token) && token.length > 2) addAlias(token);
+      }
+
+      return aliases;
+    },
+    [genericServiceTokens, normalizeServiceToken],
+  );
 
   const optimizationHints = React.useMemo<OptimizationHint[]>(() => {
     const hints: OptimizationHint[] = [];
@@ -190,13 +255,15 @@ export function StackQueryPanel({
       const normalized = normalizeServiceToken(serviceToken);
       if (!normalized) return undefined;
       return graphNodes.find(
-        (node) =>
-          node.type !== "external" &&
-          (node.name.toLowerCase() === normalized ||
-            node.name.toLowerCase().includes(normalized)),
+        (node) => {
+          if (node.type === "external") return false;
+          const aliases = buildNodeAliases(node);
+          if (aliases.has(normalized)) return true;
+          return Array.from(aliases).some((alias) => alias.includes(normalized));
+        },
       );
     },
-    [graphNodes, normalizeServiceToken],
+    [buildNodeAliases, graphNodes, normalizeServiceToken],
   );
 
   const handleServiceClick = useCallback(
