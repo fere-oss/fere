@@ -231,9 +231,9 @@ function createWindow() {
   });
 }
 
-// Enable smooth scrolling and GPU compositing for smoother UI
-app.commandLine.appendSwitch("enable-smooth-scrolling");
+// Enable GPU rasterization and uncap frame rate for smoother mouse interaction
 app.commandLine.appendSwitch("enable-gpu-rasterization");
+app.commandLine.appendSwitch("disable-frame-rate-limit");
 
 app.whenReady().then(() => {
   // Security: Set up default-deny permission handlers
