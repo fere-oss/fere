@@ -25,6 +25,8 @@ export function DatabaseQueryLayout({
   formatCellValue,
 }: DatabaseQueryLayoutProps) {
   const tabCounterRef = useRef(2);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const previewRef = useRef<HTMLPreElement | null>(null);
   const [queryTabs, setQueryTabs] = useState([{ id: 'query-tab-1', title: 'Query 1', content: query }]);
   const [activeTabId, setActiveTabId] = useState('query-tab-1');
   const [isEditorFocused, setIsEditorFocused] = useState(false);
@@ -78,6 +80,18 @@ export function DatabaseQueryLayout({
       setActiveTabId(fallbackTab.id);
       onChangeQuery(fallbackTab.content);
     }
+  };
+
+  const syncPreviewScroll = () => {
+    if (!textareaRef.current || !previewRef.current) return;
+    previewRef.current.scrollTop = textareaRef.current.scrollTop;
+    previewRef.current.scrollLeft = textareaRef.current.scrollLeft;
+  };
+
+  const syncTextareaScroll = () => {
+    if (!textareaRef.current || !previewRef.current) return;
+    textareaRef.current.scrollTop = previewRef.current.scrollTop;
+    textareaRef.current.scrollLeft = previewRef.current.scrollLeft;
   };
 
   return (
@@ -147,14 +161,25 @@ export function DatabaseQueryLayout({
         </div>
         <div className="db-query-editor-container">
           {showHighlightPreview && (
-            <pre className="db-query-highlight" aria-hidden>
+            <pre
+              ref={previewRef}
+              className="db-query-highlight"
+              onScroll={syncTextareaScroll}
+              onMouseDown={(event) => {
+                event.preventDefault();
+                setIsEditorFocused(true);
+                requestAnimationFrame(() => textareaRef.current?.focus());
+              }}
+            >
               {highlightQuery(activeTab.content, dbType)}
             </pre>
           )}
           <textarea
+            ref={textareaRef}
             className={`db-query-textarea ${showHighlightPreview ? 'is-preview' : ''}`}
             value={activeTab.content}
             onChange={(e) => handleChangeQuery(e.target.value)}
+            onScroll={syncPreviewScroll}
             onKeyDown={onKeyDown}
             onFocus={() => setIsEditorFocused(true)}
             onBlur={() => setIsEditorFocused(false)}
@@ -215,7 +240,7 @@ export function DatabaseQueryLayout({
             </div>
           ) : queryResult?.output ? (
             <pre className="db-query-output">
-              {highlightQueryOutput(queryResult.output)}
+              {highlightQueryOutput(normalizeQueryOutput(queryResult.output))}
             </pre>
           ) : (
             <div className="db-query-empty">
@@ -315,4 +340,61 @@ function highlightQueryOutput(output: string): React.ReactNode {
     }
     return part;
   });
+}
+
+function normalizeQueryOutput(output: string): string {
+  const lines = String(output || '')
+    .split('\n')
+    .map((line) => line.replace(/\s+$/, ''));
+
+  const promptOnly = /^[a-z0-9_-]+>\s*$/i;
+  const promptDotsOnly = /^[a-z0-9_-]+>\s*(?:\.\.\.\s*)+$/i;
+  const dotsOnly = /^(?:\.\.\.\s*)+$/;
+
+  const cleanedLines = lines
+    .map((line) => line.replace(/^[a-z0-9_-]+>\s*(?:\.\.\.\s*)*/i, ''))
+    .filter((line) => {
+      const trimmed = line.trim();
+      if (!trimmed) return false;
+      if (promptOnly.test(trimmed)) return false;
+      if (promptDotsOnly.test(trimmed)) return false;
+      if (dotsOnly.test(trimmed)) return false;
+      return true;
+    });
+
+  const cleaned = cleanedLines.join('\n').trim();
+  if (!cleaned) return '';
+
+  const jsonCandidate = extractJsonCandidate(cleaned);
+  if (jsonCandidate) {
+    try {
+      const parsed = JSON.parse(jsonCandidate);
+      return JSON.stringify(parsed, null, 2);
+    } catch {
+      // Fall back to cleaned text
+    }
+  }
+
+  return cleaned;
+}
+
+function extractJsonCandidate(text: string): string | null {
+  const lines = text
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  for (let i = lines.length - 1; i >= 0; i -= 1) {
+    const line = lines[i];
+    if ((line.startsWith('{') && line.endsWith('}')) || (line.startsWith('[') && line.endsWith(']'))) {
+      return line;
+    }
+  }
+
+  const trimmed = text.trim();
+  if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+    return trimmed;
+  }
+
+  return null;
 }

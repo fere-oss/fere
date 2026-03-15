@@ -6267,8 +6267,7 @@ textarea {
   flex: 1;
   min-height: 300px;
   background: #fafafa;
-  overflow-y: auto;
-  overflow-x: hidden;
+  overflow: hidden;
   padding: 20px 24px;
 }
 
@@ -6284,8 +6283,9 @@ textarea {
   color: #171717;
   white-space: pre-wrap;
   word-break: break-word;
-  overflow: hidden;
-  pointer-events: none;
+  overflow: auto;
+  pointer-events: auto;
+  cursor: text;
 }
 
 .db-query-textarea {
@@ -6306,13 +6306,15 @@ textarea {
   outline: none;
   white-space: pre-wrap;
   word-break: break-word;
-  overflow: hidden;
+  overflow: auto;
   tab-size: 2;
 }
 
 .db-query-textarea.is-preview {
   color: transparent;
   caret-color: transparent;
+  overflow: hidden;
+  pointer-events: none;
 }
 
 .db-query-textarea::placeholder {
