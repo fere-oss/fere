@@ -108,6 +108,7 @@ const {
   markIntentionalStopForContainer,
 } = require("./services/alertManager");
 const analytics = require("./analytics");
+const sentry = require("./sentry");
 const { generateHTML } = require("./services/graphExporter");
 const { createGist, updateGist, buildPreviewUrl } = require("./services/gistPublisher");
 const { executeTracedRequest } = require("./services/traceCapture");
@@ -168,6 +169,16 @@ function unregisterLogStreamEverywhere(streamId) {
 }
 
 const isDev = process.env.NODE_ENV === "development" || !app.isPackaged;
+
+process.on("uncaughtException", (err) => {
+  sentry.captureException(err);
+  console.error("Uncaught exception:", err);
+});
+
+process.on("unhandledRejection", (reason) => {
+  sentry.captureException(reason instanceof Error ? reason : new Error(String(reason)));
+  console.error("Unhandled rejection:", reason);
+});
 
 function resolveAppIconPath() {
   const devIconPath = path.join(__dirname, "../public/icon.png");
@@ -245,6 +256,9 @@ app.whenReady().then(() => {
   // Initialize alert manager (loads preferences from disk)
   initAlertManager();
 
+  // Initialize error reporting
+  sentry.init(isDev);
+
   // Initialize analytics
   analytics.init();
   analytics.capture("app_launched", { is_dev: isDev });
@@ -267,6 +281,7 @@ app.on("window-all-closed", () => {
 });
 
 app.on("will-quit", async () => {
+  await sentry.flush();
   try {
     await analytics.shutdown();
   } catch (err) {
