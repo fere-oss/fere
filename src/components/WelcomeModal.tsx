@@ -5,6 +5,7 @@ import {
   type CSSProperties,
   type ReactElement,
 } from "react";
+import fereLogo from "../assets/fere.png";
 
 interface WelcomeModalProps {
   onClose: () => void;
@@ -22,7 +23,7 @@ const RAW_LOGO_DEV_TOKEN = (process.env.REACT_APP_LOGO_DEV_TOKEN || "").trim();
 const LOGO_DEV_TOKEN = RAW_LOGO_DEV_TOKEN.startsWith("pk_")
   ? RAW_LOGO_DEV_TOKEN
   : "";
-const APP_LOGO_SRC = `${process.env.PUBLIC_URL || ""}/icon.png`;
+const APP_LOGO_SRC = fereLogo;
 
 function getLogoDevUrl(domain: string): string {
   const params = new URLSearchParams({
@@ -255,17 +256,6 @@ function SharePreview() {
           </svg>
           <span>Published just now</span>
         </div>
-      </div>
-      <div className="share-preview-nodes">
-        <div className="share-preview-node share-preview-node-1" />
-        <div className="share-preview-node share-preview-node-2" />
-        <div className="share-preview-node share-preview-node-3" />
-        <svg className="share-preview-edges" viewBox="0 0 200 60" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path className="share-preview-edge" d="M30 30 C60 30 70 12 100 12" />
-          <path className="share-preview-edge share-preview-edge-2" d="M30 30 C60 30 70 48 100 48" />
-          <path className="share-preview-edge share-preview-edge-3" d="M100 12 C130 12 140 30 170 30" />
-          <path className="share-preview-edge share-preview-edge-4" d="M100 48 C130 48 140 30 170 30" />
-        </svg>
       </div>
     </div>
   );
