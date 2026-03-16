@@ -290,7 +290,7 @@ async function generateHTML({ graphData, metadata, logoDevToken = '' }) {
     #vp.dragging { cursor: grabbing; }
 
     /* ── Canvas ── */
-    #canvas { position: absolute; transform-origin: 0 0; will-change: transform; }
+    #canvas { position: absolute; transform-origin: 0 0; }
 
     /* ── SVG edge layer ── */
     #esv { position: absolute; top: 0; left: 0; overflow: visible; pointer-events: none; }
@@ -1913,7 +1913,11 @@ async function generateHTML({ graphData, metadata, logoDevToken = '' }) {
     const canvas = document.getElementById('canvas');
 
     function applyT() {
-      canvas.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + sc + ')';
+      // Pixel-align translation to avoid persistent text blur on transformed layers.
+      const dpr = window.devicePixelRatio || 1;
+      const alignedTx = Math.round(tx * dpr) / dpr;
+      const alignedTy = Math.round(ty * dpr) / dpr;
+      canvas.style.transform = 'translate3d(' + alignedTx + 'px,' + alignedTy + 'px,0) scale(' + sc + ')';
     }
 
     function fit() {
