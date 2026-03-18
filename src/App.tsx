@@ -1672,7 +1672,6 @@ function App() {
                       <div className="loading">Scanning localhost...</div>
                     ) : (
                       <GraphView
-                        key={selectedTab}
                         nodes={filteredData.nodes}
                         edges={filteredData.edges}
                         debugHighlightNodeIds={debugHighlightNodeIds}
@@ -1803,17 +1802,16 @@ function App() {
             </TraceDispatchContext.Provider>
           </TraceContext.Provider>
         </main>
+        {hasEverOpened && (
+          <DebugPanel
+            isOpen={isAgentOpen}
+            onClose={handleCloseDebugPanel}
+            graphNodes={filteredData.nodes}
+            initialProblem={debugInitialProblem}
+            initialProblemKey={debugInitialProblemKey}
+          />
+        )}
       </div>
-
-      {hasEverOpened && (
-        <DebugPanel
-          isOpen={isAgentOpen}
-          onClose={handleCloseDebugPanel}
-          graphNodes={filteredData.nodes}
-          initialProblem={debugInitialProblem}
-          initialProblemKey={debugInitialProblemKey}
-        />
-      )}
       <StackQueryPanel
         isOpen={isStackQueryOpen}
         onClose={handleCloseStackQuery}

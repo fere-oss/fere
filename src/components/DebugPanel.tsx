@@ -294,6 +294,7 @@ export function DebugPanel({
 
   // Build lookup maps from graph nodes
   const nodeByName = useMemo(() => {
+    if (!shouldRender) return new Map<string, GraphNode>();
     const map = new Map<string, GraphNode>();
     for (const n of graphNodes) {
       map.set(n.name.toLowerCase(), n);
@@ -302,6 +303,7 @@ export function DebugPanel({
   }, [graphNodes]);
 
   const mentionCandidates = useMemo(() => {
+    if (!shouldRender) return [];
     const isIpLike = (name: string) =>
       /^(\d{1,3}\.){3}\d{1,3}(:\d+)?$/.test(name) ||
       /^\[?[a-fA-F0-9:]+\]?(:\d+)?$/.test(name);
@@ -330,8 +332,11 @@ export function DebugPanel({
   }, []);
 
   const selectedChat = useMemo(
-    () => chatThreads.find((thread) => thread.id === selectedChatId),
-    [chatThreads, selectedChatId],
+    () =>
+      shouldRender
+        ? chatThreads.find((thread) => thread.id === selectedChatId)
+        : undefined,
+    [chatThreads, selectedChatId, shouldRender],
   );
 
   // --- Service & file click handlers ---
@@ -1533,6 +1538,7 @@ export function DebugPanel({
     'Ask a follow-up... (e.g. "check Redis instead", "try this payload: {...}")';
 
   const renderedChatTurns = useMemo(() => {
+    if (!shouldRender) return [];
     return selectedChatTurns.map((turn) => (
       <div className="debug-chat-turn" key={turn.id}>
         <div className="debug-chat-turn-header">
@@ -1554,7 +1560,12 @@ export function DebugPanel({
         </div>
       </div>
     ));
-  }, [selectedChatTurns, markdownComponents, linkifyServiceMentions]);
+  }, [
+    selectedChatTurns,
+    markdownComponents,
+    linkifyServiceMentions,
+    shouldRender,
+  ]);
 
   // Loading / hidden state
   if (!shouldRender || hasApiKey === null) return null;

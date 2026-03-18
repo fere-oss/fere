@@ -10855,7 +10855,10 @@ textarea {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  animation: debug-agent-panel-in 0.18s ease-out;
+  transform: translateZ(0);
+  will-change: transform, opacity;
+  contain: layout paint;
+  animation: debug-agent-panel-in 0.14s ease-out;
 }
 
 .debug-panel-inline {
@@ -10866,11 +10869,14 @@ textarea {
   margin-top: 0;
   pointer-events: auto;
   z-index: auto;
-  animation: debug-agent-panel-in 0.18s ease-out;
+  transform: translateZ(0);
+  will-change: transform, opacity;
+  contain: layout paint;
+  animation: debug-agent-panel-in 0.14s ease-out;
 }
 
 .debug-agent-shell-closing .debug-panel {
-  animation: debug-agent-panel-out 0.18s ease-in forwards;
+  animation: debug-agent-panel-out 0.14s ease-in forwards;
 }
 
 @keyframes debug-agent-dock-in {

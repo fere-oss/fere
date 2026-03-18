@@ -230,6 +230,10 @@ export function GraphView({
         .join(","),
     [layoutNodes],
   );
+  const hoverEffectsEnabled = useMemo(
+    () => layoutNodes.length <= 90,
+    [layoutNodes.length],
+  );
   const nodeIds = useMemo(
     () => layoutNodes.map((node) => node.id),
     [layoutNodes],
@@ -386,6 +390,7 @@ export function GraphView({
   ]);
 
   const connectedNodeIds = useMemo(() => {
+    if (!hoverEffectsEnabled) return new Set<string>();
     if (!hoveredNodeId) return new Set<string>();
     const connected = new Set<string>();
     connected.add(hoveredNodeId);
@@ -394,7 +399,7 @@ export function GraphView({
     const incoming = hoverEdgeGeometry.incomingByTarget.get(hoveredNodeId);
     if (incoming) incoming.forEach((edge) => connected.add(edge.source));
     return connected;
-  }, [hoveredNodeId, hoverEdgeGeometry]);
+  }, [hoveredNodeId, hoverEdgeGeometry, hoverEffectsEnabled]);
 
   const hoverState = useMemo(
     () => ({ hoveredNodeId, connectedNodeIds }),
@@ -402,6 +407,7 @@ export function GraphView({
   );
 
   const flowEdges = useMemo(() => {
+    if (!hoverEffectsEnabled) return [];
     if (!hoveredNodeId) return [];
     const {
       posMap,
@@ -524,7 +530,7 @@ export function GraphView({
         data,
       }];
     });
-  }, [hoveredNodeId, hoverEdgeGeometry]);
+  }, [hoveredNodeId, hoverEdgeGeometry, hoverEffectsEnabled]);
 
   // Trace state
   const traceState = useTraceState();
@@ -776,6 +782,7 @@ export function GraphView({
   const pendingHover = useRef<string | null>(null);
   const handleNodeMouseEnter = useCallback(
     (_event: ReactMouseEvent, node: { id: string; type?: string }) => {
+      if (!hoverEffectsEnabled) return;
       clearTimeout(hoverTimer.current);
       if (node.type === "service") {
         pendingHover.current = node.id;
@@ -787,17 +794,25 @@ export function GraphView({
         }, 16);
       }
     },
-    [],
+    [hoverEffectsEnabled],
   );
 
   const handleNodeMouseLeave = useCallback(() => {
+    if (!hoverEffectsEnabled) return;
     if (contextMenuOpenRef.current) return;
     clearTimeout(hoverTimer.current);
     pendingHover.current = null;
     hoverTimer.current = setTimeout(() => {
       setHoveredNodeId((current) => (current === null ? current : null));
     }, 40);
-  }, []);
+  }, [hoverEffectsEnabled]);
+
+  useEffect(() => {
+    if (hoverEffectsEnabled) return;
+    clearTimeout(hoverTimer.current);
+    pendingHover.current = null;
+    setHoveredNodeId((current) => (current === null ? current : null));
+  }, [hoverEffectsEnabled]);
 
   const handlePaneClick = useCallback(() => {
     setSelectedNode(null);
