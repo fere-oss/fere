@@ -16,6 +16,7 @@ export type FlowServiceNodeData = {
   animate: boolean;
   animationIndex: number;
   onMeasure: (id: string, height: number) => void;
+  debugHighlightNodeIds?: Set<string>;
 };
 
 export function TierLabelNode({ data }: { data: { text: string } }) {
@@ -54,12 +55,21 @@ export function GroupBoxNode({
   );
 }
 
-const FlowServiceNodeInner = memo(function FlowServiceNodeInner({ data }: { data: FlowServiceNodeData }) {
+const FlowServiceNodeInner = memo(function FlowServiceNodeInner({
+  data,
+}: {
+  data: FlowServiceNodeData;
+}) {
   const nodeRef = useRef<HTMLDivElement | null>(null);
   const dataRef = useRef(data);
   dataRef.current = data;
   const { hoveredNodeId, connectedNodeIds } = useHoverState();
-  const { phase: tracePhase, traceNodeIds, entryNodeId, result: traceResult } = useTraceState();
+  const {
+    phase: tracePhase,
+    traceNodeIds,
+    entryNodeId,
+    result: traceResult,
+  } = useTraceState();
 
   useEffect(() => {
     if (!nodeRef.current) return;
@@ -70,7 +80,8 @@ const FlowServiceNodeInner = memo(function FlowServiceNodeInner({ data }: { data
       rafId = requestAnimationFrame(() => {
         const d = dataRef.current;
         // Use unscaled layout height so zoom level doesn't change measured node size.
-        const height = element.offsetHeight || element.getBoundingClientRect().height;
+        const height =
+          element.offsetHeight || element.getBoundingClientRect().height;
         d.onMeasure(d.node.id, height);
       });
     };
@@ -89,6 +100,8 @@ const FlowServiceNodeInner = memo(function FlowServiceNodeInner({ data }: { data
 
   // Trace takes priority over hover when a trace is active
   const isConnected = connectedNodeIds.has(data.node.id);
+  const isDebugHighlighted =
+    data.debugHighlightNodeIds?.has(data.node.id) ?? false;
   const dimmed = traceActive
     ? !isInTrace
     : hoveredNodeId !== null && !isConnected;
@@ -102,7 +115,11 @@ const FlowServiceNodeInner = memo(function FlowServiceNodeInner({ data }: { data
   if (isTraceEntry && traceResult) {
     const method = traceResult.request.method;
     let path = "/";
-    try { path = new URL(traceResult.request.url).pathname; } catch { /* ignore */ }
+    try {
+      path = new URL(traceResult.request.url).pathname;
+    } catch {
+      /* ignore */
+    }
     entryLabel = `${method} ${path}`;
   }
 
@@ -111,6 +128,7 @@ const FlowServiceNodeInner = memo(function FlowServiceNodeInner({ data }: { data
     data.animate && "rf-node-animate",
     dimmed && "rf-node-dimmed",
     highlighted && "rf-node-highlighted",
+    isDebugHighlighted && "rf-node-debug-highlighted",
     traceActive && isInTrace && "rf-node-trace-active",
     isTraceEntry && "rf-node-trace-entry",
   ]
@@ -133,7 +151,9 @@ const FlowServiceNodeInner = memo(function FlowServiceNodeInner({ data }: { data
             <span className="trace-entry-method" style={{ color: methodColor }}>
               {traceResult?.request.method}
             </span>
-            <span className="trace-entry-path">{entryLabel.split(" ").slice(1).join(" ")}</span>
+            <span className="trace-entry-path">
+              {entryLabel.split(" ").slice(1).join(" ")}
+            </span>
             {tracePhase === "capturing" && (
               <span className="trace-entry-status">
                 <span className="trace-entry-spinner" />
@@ -141,27 +161,69 @@ const FlowServiceNodeInner = memo(function FlowServiceNodeInner({ data }: { data
             )}
             {tracePhase === "complete" && traceResult && (
               <span className="trace-entry-time">
-                {traceResult.timedOut ? "Timed out" : `${Math.round(traceResult.totalTime)}ms`}
+                {traceResult.timedOut
+                  ? "Timed out"
+                  : `${Math.round(traceResult.totalTime)}ms`}
               </span>
             )}
           </div>
           <div className="trace-entry-arrow" />
         </div>
       )}
-      <Handle type="target" id="target-top" position={Position.Top} className="rf-handle rf-handle-target" />
-      <Handle type="target" id="target-bottom" position={Position.Bottom} className="rf-handle rf-handle-target" />
-      <Handle type="target" id="target-left" position={Position.Left} className="rf-handle rf-handle-target" />
-      <Handle type="target" id="target-right" position={Position.Right} className="rf-handle rf-handle-target" />
+      <Handle
+        type="target"
+        id="target-top"
+        position={Position.Top}
+        className="rf-handle rf-handle-target"
+      />
+      <Handle
+        type="target"
+        id="target-bottom"
+        position={Position.Bottom}
+        className="rf-handle rf-handle-target"
+      />
+      <Handle
+        type="target"
+        id="target-left"
+        position={Position.Left}
+        className="rf-handle rf-handle-target"
+      />
+      <Handle
+        type="target"
+        id="target-right"
+        position={Position.Right}
+        className="rf-handle rf-handle-target"
+      />
       <ServiceNode
         node={data.node}
         onClick={data.onNodeClick}
         onContextMenu={data.onNodeContextMenu}
         animationIndex={0}
       />
-      <Handle type="source" id="source-top" position={Position.Top} className="rf-handle rf-handle-source" />
-      <Handle type="source" id="source-bottom" position={Position.Bottom} className="rf-handle rf-handle-source" />
-      <Handle type="source" id="source-left" position={Position.Left} className="rf-handle rf-handle-source" />
-      <Handle type="source" id="source-right" position={Position.Right} className="rf-handle rf-handle-source" />
+      <Handle
+        type="source"
+        id="source-top"
+        position={Position.Top}
+        className="rf-handle rf-handle-source"
+      />
+      <Handle
+        type="source"
+        id="source-bottom"
+        position={Position.Bottom}
+        className="rf-handle rf-handle-source"
+      />
+      <Handle
+        type="source"
+        id="source-left"
+        position={Position.Left}
+        className="rf-handle rf-handle-source"
+      />
+      <Handle
+        type="source"
+        id="source-right"
+        position={Position.Right}
+        className="rf-handle rf-handle-source"
+      />
     </div>
   );
 });

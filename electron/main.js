@@ -111,6 +111,7 @@ const analytics = require("./analytics");
 const sentry = require("./sentry");
 const { generateHTML } = require("./services/graphExporter");
 const { createGist, updateGist, buildPreviewUrl } = require("./services/gistPublisher");
+const { runDebugAgent, getApiKey, setApiKey } = require("./services/debugAgent");
 const { executeTracedRequest } = require("./services/traceCapture");
 
 app.setName("Fere");
@@ -1181,6 +1182,56 @@ ipcMain.handle("open-terminal", async (event, dirPath) => {
   }
 });
 
+// Open file in editor (VS Code preferred, fallback to macOS open)
+ipcMain.handle("open-in-editor", async (event, filePath, line) => {
+  try {
+    if (!filePath || typeof filePath !== "string") {
+      return { success: false, error: "Invalid file path" };
+    }
+
+    const resolvedPath = path.resolve(filePath);
+    if (!fs.existsSync(resolvedPath)) {
+      return { success: false, error: "File does not exist" };
+    }
+
+    const home = require("os").homedir();
+    if (!resolvedPath.startsWith(home) && !resolvedPath.startsWith("/tmp")) {
+      return { success: false, error: "Path outside home directory" };
+    }
+
+    const { spawn, execFileSync } = require("child_process");
+
+    // Try VS Code first
+    let hasCode = false;
+    try {
+      execFileSync("which", ["code"], { timeout: 2000, stdio: "ignore" });
+      hasCode = true;
+    } catch {}
+
+    if (hasCode) {
+      const lineNum = typeof line === "number" && line > 0 ? line : undefined;
+      const gotoArg = lineNum ? `${resolvedPath}:${lineNum}` : resolvedPath;
+      const child = spawn("code", ["--goto", gotoArg], {
+        detached: true,
+        stdio: "ignore",
+      });
+      child.unref();
+      return { success: true, editor: "vscode" };
+    }
+
+    // Fallback: macOS open
+    const child = spawn("open", [resolvedPath], {
+      detached: true,
+      stdio: "ignore",
+    });
+    child.unref();
+    return { success: true, editor: "default" };
+  } catch (error) {
+    console.error("Error opening file in editor:", error);
+    return { success: false, error: error.message };
+  }
+});
+
 // ============================================
 // IPC Handlers - Docker Monitoring
 // ============================================
@@ -1627,4 +1678,220 @@ ipcMain.handle("update-shared-graph", async (_, options) => {
     console.error("update-shared-graph error:", err);
     return { error: err.message };
   }
+});
+
+// --- Debug Agent ---
+
+let activeDebugSession = null;
+
+function buildDebugResumeMessages(historyTurns = []) {
+  if (!Array.isArray(historyTurns) || historyTurns.length === 0) return [];
+  const MAX_TURNS = 6;
+  const MAX_CHARS = 1600;
+  const recent = historyTurns.slice(-MAX_TURNS);
+  const messages = [];
+  for (const turn of recent) {
+    if (typeof turn?.prompt === "string" && turn.prompt.trim()) {
+      messages.push({
+        role: "user",
+        content: turn.prompt.trim().slice(0, MAX_CHARS),
+      });
+    }
+    if (typeof turn?.response === "string" && turn.response.trim()) {
+      messages.push({
+        role: "assistant",
+        content: turn.response.trim().slice(0, MAX_CHARS),
+      });
+    }
+  }
+  return messages;
+}
+
+ipcMain.handle("debug-set-api-key", async (_, key) => {
+  if (typeof key !== "string" || key.length < 10) {
+    return { success: false, error: "Invalid API key" };
+  }
+  setApiKey(key);
+  return { success: true };
+});
+
+ipcMain.handle("debug-get-api-key-status", async () => {
+  const key = getApiKey();
+  return { hasKey: !!key };
+});
+
+ipcMain.handle("debug-start", async (event, options) => {
+  if (typeof options?.problem !== "string" || !options.problem.trim()) {
+    return { success: false, error: "Problem description is required" };
+  }
+
+  const apiKey = getApiKey();
+  if (!apiKey) {
+    return { success: false, error: "No OpenAI API key configured. Set OPENAI_API_KEY in .env" };
+  }
+
+  // Get current graph snapshot
+  const snapshot = await getSystemSnapshot();
+  const graphSnapshot = {
+    nodes: snapshot.graph?.nodes || [],
+    edges: snapshot.graph?.edges || [],
+  };
+
+  // Cancel any existing session
+  if (activeDebugSession) {
+    activeDebugSession._cancelled = true;
+  }
+
+  const session = { _cancelled: false };
+  activeDebugSession = session;
+
+  // Run agent asynchronously, streaming progress
+  const agentOptions = {
+    problem: options.problem,
+    graphSnapshot,
+    apiKey,
+    resumeMessages: buildDebugResumeMessages(options?.historyTurns),
+    _cancelled: false,
+  };
+
+  // Link cancellation
+  Object.defineProperty(agentOptions, "_cancelled", {
+    get() { return session._cancelled; },
+  });
+
+  runDebugAgent(agentOptions, (progress) => {
+    if (session._cancelled) return;
+    const sender = event.sender;
+    if (!sender.isDestroyed()) {
+      sender.send("debug-progress", progress);
+    }
+  }).then((result) => {
+    // Persist conversation state for follow-ups
+    if (result?.state && activeDebugSession === session) {
+      session.state = result.state;
+      session.graphSnapshot = graphSnapshot;
+      session.apiKey = apiKey;
+    }
+  }).catch((err) => {
+    if (!session._cancelled && !event.sender.isDestroyed()) {
+      event.sender.send("debug-progress", {
+        type: "error",
+        error: err.message,
+      });
+    }
+  });
+
+  return { success: true };
+});
+
+ipcMain.handle("debug-follow-up", async (event, options) => {
+  if (typeof options?.message !== "string" || !options.message.trim()) {
+    return { success: false, error: "Follow-up message is required" };
+  }
+
+  if (!activeDebugSession?.state) {
+    const apiKey = getApiKey();
+    if (!apiKey) {
+      return { success: false, error: "No OpenAI API key configured. Set OPENAI_API_KEY in .env" };
+    }
+
+    const snapshot = await getSystemSnapshot();
+    const graphSnapshot = {
+      nodes: snapshot.graph?.nodes || [],
+      edges: snapshot.graph?.edges || [],
+    };
+
+    if (activeDebugSession) {
+      activeDebugSession._cancelled = true;
+    }
+
+    const session = { _cancelled: false };
+    activeDebugSession = session;
+
+    const agentOptions = {
+      problem: options.message,
+      graphSnapshot,
+      apiKey,
+      resumeMessages: buildDebugResumeMessages(options?.historyTurns),
+      _cancelled: false,
+    };
+
+    Object.defineProperty(agentOptions, "_cancelled", {
+      get() { return session._cancelled; },
+    });
+
+    runDebugAgent(agentOptions, (progress) => {
+      if (session._cancelled) return;
+      const sender = event.sender;
+      if (!sender.isDestroyed()) {
+        sender.send("debug-progress", progress);
+      }
+    }).then((result) => {
+      if (result?.state && activeDebugSession === session) {
+        session.state = result.state;
+        session.graphSnapshot = graphSnapshot;
+        session.apiKey = apiKey;
+      }
+    }).catch((err) => {
+      if (!session._cancelled && !event.sender.isDestroyed()) {
+        event.sender.send("debug-progress", {
+          type: "error",
+          error: err.message,
+        });
+      }
+    });
+
+    return { success: true, resumedFromHistory: true };
+  }
+
+  const session = activeDebugSession;
+  session._cancelled = false;
+
+  // Refresh graph snapshot so the agent sees current topology
+  const freshSnapshot = await getSystemSnapshot();
+  const graphSnapshot = {
+    nodes: freshSnapshot.graph?.nodes || [],
+    edges: freshSnapshot.graph?.edges || [],
+  };
+
+  const agentOptions = {
+    followUp: options.message,
+    resumeState: session.state,
+    graphSnapshot,
+    apiKey: session.apiKey,
+  };
+
+  Object.defineProperty(agentOptions, "_cancelled", {
+    get() { return session._cancelled; },
+  });
+
+  runDebugAgent(agentOptions, (progress) => {
+    if (session._cancelled) return;
+    const sender = event.sender;
+    if (!sender.isDestroyed()) {
+      sender.send("debug-progress", progress);
+    }
+  }).then((result) => {
+    if (result?.state && activeDebugSession === session) {
+      session.state = result.state;
+      session.graphSnapshot = graphSnapshot;
+    }
+  }).catch((err) => {
+    if (!session._cancelled && !event.sender.isDestroyed()) {
+      event.sender.send("debug-progress", {
+        type: "error",
+        error: err.message,
+      });
+    }
+  });
+
+  return { success: true };
+});
+
+ipcMain.handle("debug-stop", async () => {
+  if (activeDebugSession) {
+    activeDebugSession._cancelled = true;
+    activeDebugSession = null;
+  }
+  return { success: true };
 });

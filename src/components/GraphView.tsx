@@ -32,6 +32,15 @@ const ActivePorts = React.memo(function ActivePorts({
   reactFlowInstance: ReactFlowInstance | null;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [closing, setClosing] = useState(false);
+
+  const handleCollapse = useCallback(() => {
+    setClosing(true);
+    setTimeout(() => {
+      setExpanded(false);
+      setClosing(false);
+    }, 180);
+  }, []);
 
   const portEntries = useMemo(() => {
     const entries: {
@@ -73,7 +82,7 @@ const ActivePorts = React.memo(function ActivePorts({
 
   return (
     <div
-      className={`graph-ports${expanded ? " graph-ports-expanded" : ""}`}
+      className={`graph-ports${expanded ? " graph-ports-expanded" : ""}${closing ? " graph-ports-closing" : ""}`}
       onClick={() => {
         if (!expanded) setExpanded(true);
       }}
@@ -101,7 +110,7 @@ const ActivePorts = React.memo(function ActivePorts({
         className="graph-ports-header"
         onClick={(e) => {
           e.stopPropagation();
-          setExpanded(false);
+          handleCollapse();
         }}
       >
         <span className="graph-ports-title">Active Ports</span>
@@ -140,6 +149,7 @@ export function GraphView({
   edges,
   isContainerView = false,
   onDatabaseClick,
+  debugHighlightNodeIds,
 }: GraphViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
@@ -273,6 +283,7 @@ export function GraphView({
       animateNodeIds,
       onMeasure: handleNodeMeasure,
       isContainerView,
+      debugHighlightNodeIds,
     });
   }, [
     layoutNodes,
@@ -286,7 +297,26 @@ export function GraphView({
     isContainerView,
     layoutVersion,
     nodeHeightsRef,
+    debugHighlightNodeIds,
   ]);
+
+  // Listen for debug focus events to center camera on a specific node
+  useEffect(() => {
+    const handleFocus = (e: Event) => {
+      const { nodeId } = (e as CustomEvent).detail;
+      if (!reactFlowInstance) return;
+      const rfNode = reactFlowInstance.getNode(nodeId);
+      if (rfNode) {
+        reactFlowInstance.setCenter(
+          rfNode.position.x + FLOW_LAYOUT.NODE_WIDTH / 2,
+          rfNode.position.y + 95,
+          { zoom: 1.2, duration: 400 },
+        );
+      }
+    };
+    window.addEventListener("fere:debug-focus-node", handleFocus);
+    return () => window.removeEventListener("fere:debug-focus-node", handleFocus);
+  }, [reactFlowInstance]);
 
   const hoverEdgeGeometry = useMemo(() => {
     const W = FLOW_LAYOUT.NODE_WIDTH;

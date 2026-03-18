@@ -255,6 +255,27 @@ function extractJsonCandidate(output, fallback = '[]') {
   return fallback;
 }
 
+function stripMongoShellNoise(output) {
+  const promptOnly = /^[a-z0-9_-]+>\s*$/i;
+  const promptDotsOnly = /^[a-z0-9_-]+>\s*(?:\.\.\.\s*)+$/i;
+  const dotsOnly = /^(?:\.\.\.\s*)+$/;
+
+  return String(output || '')
+    .split('\n')
+    .map((line) => line.replace(/\s+$/, ''))
+    .map((line) => line.replace(/^[a-z0-9_-]+>\s*(?:\.\.\.\s*)*/i, ''))
+    .filter((line) => {
+      const trimmed = line.trim();
+      if (!trimmed) return false;
+      if (promptOnly.test(trimmed)) return false;
+      if (promptDotsOnly.test(trimmed)) return false;
+      if (dotsOnly.test(trimmed)) return false;
+      return true;
+    })
+    .join('\n')
+    .trim();
+}
+
 function parseMongoCollectionLines(stdout) {
   return String(stdout || '')
     .split('\n')
@@ -813,7 +834,8 @@ async function executeMongoCommand(containerId, command) {
   for (const variant of commandVariants) {
     try {
       const { stdout, stderr } = await execDockerWithInput(containerId, variant, safeCommand, 30000);
-      const output = (stdout || stderr).trim();
+      const rawOutput = `${stdout || ''}\n${stderr || ''}`.trim();
+      const output = stripMongoShellNoise(rawOutput);
 
       // Check for errors
       if (output.toLowerCase().includes('error') && !output.includes('ObjectId')) {
@@ -822,7 +844,8 @@ async function executeMongoCommand(containerId, command) {
 
       // Try to parse as JSON
       try {
-        const parsed = JSON.parse(output);
+        const jsonPayload = extractJsonCandidate(output, '');
+        const parsed = JSON.parse(jsonPayload || output);
         if (Array.isArray(parsed)) {
           const columns = parsed.length > 0 ? Object.keys(parsed[0]) : [];
           return { columns, rows: parsed, rowCount: parsed.length, dbType: 'mongodb' };
@@ -974,10 +997,12 @@ async function executeMongoUriQuery(uri, command) {
     }
 
     const { stdout, stderr } = await execMongoUriEval(uri.trim(), safeCommand, 30000);
-    const output = (stdout || stderr).trim();
+    const rawOutput = `${stdout || ''}\n${stderr || ''}`.trim();
+    const output = stripMongoShellNoise(rawOutput);
 
     try {
-      const parsed = JSON.parse(output);
+      const jsonPayload = extractJsonCandidate(output, '');
+      const parsed = JSON.parse(jsonPayload || output);
       if (Array.isArray(parsed)) {
         const cleanRows = normalizeMongoRows(parsed);
         const columns = cleanRows.length > 0 ? Object.keys(cleanRows[0]) : [];

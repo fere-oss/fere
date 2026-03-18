@@ -255,6 +255,80 @@ function highlightCurl(curlStr: string): React.ReactNode {
         continue;
       }
 
+      // Match env var assignment prefix (e.g. TOKEN=abc curl ...)
+      const envAssignMatch = remaining.match(/^(\s*)([A-Za-z_][A-Za-z0-9_]*)(=)([^\s\\]+)/);
+      if (envAssignMatch) {
+        lineElements.push(<span key={`ws-${lineIndex}-${keyIndex++}`}>{envAssignMatch[1]}</span>);
+        lineElements.push(
+          <span key={`envk-${lineIndex}-${keyIndex++}`} className="curl-hl-env-key">
+            {envAssignMatch[2]}
+          </span>,
+        );
+        lineElements.push(
+          <span key={`enveq-${lineIndex}-${keyIndex++}`} className="curl-hl-punctuation">
+            {envAssignMatch[3]}
+          </span>,
+        );
+        lineElements.push(
+          <span key={`envv-${lineIndex}-${keyIndex++}`} className="curl-hl-env-value">
+            {envAssignMatch[4]}
+          </span>,
+        );
+        remaining = remaining.slice(envAssignMatch[0].length);
+        continue;
+      }
+
+      // Match double-quoted values
+      const doubleQuotedMatch = remaining.match(/^(\s*)"((?:[^"\\]|\\.)*)"/);
+      if (doubleQuotedMatch) {
+        lineElements.push(<span key={`ws-${lineIndex}-${keyIndex++}`}>{doubleQuotedMatch[1]}</span>);
+        lineElements.push(<span key={`dq1-${lineIndex}-${keyIndex++}`} className="curl-hl-quote">"</span>);
+        lineElements.push(
+          <span key={`dqs-${lineIndex}-${keyIndex++}`} className="curl-hl-string">
+            {doubleQuotedMatch[2]}
+          </span>,
+        );
+        lineElements.push(<span key={`dq2-${lineIndex}-${keyIndex++}`} className="curl-hl-quote">"</span>);
+        remaining = remaining.slice(doubleQuotedMatch[0].length);
+        continue;
+      }
+
+      // Match generic single-quoted values
+      const singleQuotedMatch = remaining.match(/^(\s*)'((?:[^'\\]|\\.)*)'/);
+      if (singleQuotedMatch) {
+        lineElements.push(<span key={`ws-${lineIndex}-${keyIndex++}`}>{singleQuotedMatch[1]}</span>);
+        lineElements.push(<span key={`sq1-${lineIndex}-${keyIndex++}`} className="curl-hl-quote">'</span>);
+        lineElements.push(
+          <span
+            key={`sqs-${lineIndex}-${keyIndex++}`}
+            className={
+              singleQuotedMatch[2].trimStart().startsWith("{")
+                || singleQuotedMatch[2].trimStart().startsWith("[")
+                ? "curl-hl-body"
+                : "curl-hl-string"
+            }
+          >
+            {singleQuotedMatch[2]}
+          </span>,
+        );
+        lineElements.push(<span key={`sq2-${lineIndex}-${keyIndex++}`} className="curl-hl-quote">'</span>);
+        remaining = remaining.slice(singleQuotedMatch[0].length);
+        continue;
+      }
+
+      // Match numeric values
+      const numberMatch = remaining.match(/^(\s*)(\d+(?:\.\d+)?)/);
+      if (numberMatch) {
+        lineElements.push(<span key={`ws-${lineIndex}-${keyIndex++}`}>{numberMatch[1]}</span>);
+        lineElements.push(
+          <span key={`num-${lineIndex}-${keyIndex++}`} className="curl-hl-number">
+            {numberMatch[2]}
+          </span>,
+        );
+        remaining = remaining.slice(numberMatch[0].length);
+        continue;
+      }
+
       // Match any other flag
       const flagMatch = remaining.match(/^(\s*)(-\w+)/);
       if (flagMatch) {
@@ -270,6 +344,19 @@ function highlightCurl(curlStr: string): React.ReactNode {
           </span>,
         );
         remaining = remaining.slice(flagMatch[0].length);
+        continue;
+      }
+
+      // Match bare words/tokens
+      const bareWordMatch = remaining.match(/^(\s*)([A-Za-z_][A-Za-z0-9_.:-]*)/);
+      if (bareWordMatch) {
+        lineElements.push(<span key={`ws-${lineIndex}-${keyIndex++}`}>{bareWordMatch[1]}</span>);
+        lineElements.push(
+          <span key={`tok-${lineIndex}-${keyIndex++}`} className="curl-hl-token">
+            {bareWordMatch[2]}
+          </span>,
+        );
+        remaining = remaining.slice(bareWordMatch[0].length);
         continue;
       }
 
@@ -702,6 +789,9 @@ export function CurlBuilder({ nodes, onTraceRequest }: CurlBuilderProps) {
 
   // State for trace toggle
   const [traceEnabled, setTraceEnabled] = useState(false);
+  const curlEditorTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const curlEditorHighlightRef = useRef<HTMLPreElement | null>(null);
+  const curlEditorGutterRef = useRef<HTMLPreElement | null>(null);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -883,6 +973,22 @@ export function CurlBuilder({ nodes, onTraceRequest }: CurlBuilderProps) {
 
   // The curl to display - show edited version if modified (even when locked), otherwise generated
   const displayCurl = isCurlModified ? editedCurl : curlCommand;
+  const curlLineNumbersText = useMemo(() => {
+    const lineCount = Math.max(1, editedCurl.split("\n").length);
+    return Array.from({ length: lineCount }, (_, i) => `${i + 1}`).join("\n");
+  }, [editedCurl]);
+
+  const syncCurlEditorScroll = useCallback(() => {
+    if (!curlEditorTextareaRef.current) return;
+    const { scrollTop, scrollLeft } = curlEditorTextareaRef.current;
+    if (curlEditorHighlightRef.current) {
+      curlEditorHighlightRef.current.scrollTop = scrollTop;
+      curlEditorHighlightRef.current.scrollLeft = scrollLeft;
+    }
+    if (curlEditorGutterRef.current) {
+      curlEditorGutterRef.current.scrollTop = scrollTop;
+    }
+  }, []);
 
   // Handle node selection
   const handleNodeSelect = useCallback((nodeId: string) => {
@@ -1616,12 +1722,30 @@ export function CurlBuilder({ nodes, onTraceRequest }: CurlBuilderProps) {
               >
                 {isCurlEditing ? (
                   <div className="curl-editor-container">
-                    <textarea
-                      className="curl-editor-textarea"
-                      value={editedCurl}
-                      onChange={(e) => setEditedCurl(e.target.value)}
-                      spellCheck={false}
-                    />
+                    <pre
+                      ref={curlEditorGutterRef}
+                      className="curl-editor-line-numbers"
+                      aria-hidden="true"
+                    >
+                      {curlLineNumbersText}
+                    </pre>
+                    <div className="curl-editor-code">
+                      <pre
+                        ref={curlEditorHighlightRef}
+                        className="curl-editor-highlight"
+                        aria-hidden="true"
+                      >
+                        {highlightCurl(editedCurl)}
+                      </pre>
+                      <textarea
+                        ref={curlEditorTextareaRef}
+                        className="curl-editor-textarea"
+                        value={editedCurl}
+                        onChange={(e) => setEditedCurl(e.target.value)}
+                        onScroll={syncCurlEditorScroll}
+                        spellCheck={false}
+                      />
+                    </div>
                   </div>
                 ) : displayCurl ? (
                   <pre className="curl-output-pre">
