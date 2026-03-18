@@ -18,7 +18,13 @@ const SETTINGS_FILE_PATH = path.join(os.homedir(), ".fere", "settings.json");
 const ALLOWED_EXTERNAL_PROTOCOLS = ["http:", "https:"];
 
 // Dangerous protocols that should never be allowed
-const DANGEROUS_PROTOCOLS = ["file:", "javascript:", "data:", "vbscript:", "about:"];
+const DANGEROUS_PROTOCOLS = [
+  "file:",
+  "javascript:",
+  "data:",
+  "vbscript:",
+  "about:",
+];
 
 /**
  * Validates a URL for safe external opening.
@@ -45,7 +51,10 @@ function validateExternalUrl(urlString) {
 
   // Only allow http/https
   if (!ALLOWED_EXTERNAL_PROTOCOLS.includes(protocol)) {
-    return { valid: false, reason: `Protocol '${protocol}' is not allowed for external URLs` };
+    return {
+      valid: false,
+      reason: `Protocol '${protocol}' is not allowed for external URLs`,
+    };
   }
 
   return { valid: true, url: parsed };
@@ -57,19 +66,19 @@ function validateExternalUrl(urlString) {
 
 // Private/reserved IP ranges (RFC 1918, RFC 5737, RFC 6598, loopback, link-local)
 const PRIVATE_IP_PATTERNS = [
-  /^127\./,                          // Loopback 127.0.0.0/8
-  /^10\./,                           // Private 10.0.0.0/8
-  /^172\.(1[6-9]|2[0-9]|3[0-1])\./,  // Private 172.16.0.0/12
-  /^192\.168\./,                     // Private 192.168.0.0/16
-  /^169\.254\./,                     // Link-local 169.254.0.0/16
-  /^0\./,                            // Current network 0.0.0.0/8
-  /^100\.(6[4-9]|[7-9][0-9]|1[0-2][0-7])\./,  // Carrier-grade NAT 100.64.0.0/10
-  /^192\.0\.0\./,                    // IETF Protocol Assignments 192.0.0.0/24
-  /^192\.0\.2\./,                    // TEST-NET-1 192.0.2.0/24
-  /^198\.51\.100\./,                 // TEST-NET-2 198.51.100.0/24
-  /^203\.0\.113\./,                  // TEST-NET-3 203.0.113.0/24
-  /^224\./,                          // Multicast 224.0.0.0/4
-  /^240\./,                          // Reserved 240.0.0.0/4
+  /^127\./, // Loopback 127.0.0.0/8
+  /^10\./, // Private 10.0.0.0/8
+  /^172\.(1[6-9]|2[0-9]|3[0-1])\./, // Private 172.16.0.0/12
+  /^192\.168\./, // Private 192.168.0.0/16
+  /^169\.254\./, // Link-local 169.254.0.0/16
+  /^0\./, // Current network 0.0.0.0/8
+  /^100\.(6[4-9]|[7-9][0-9]|1[0-2][0-7])\./, // Carrier-grade NAT 100.64.0.0/10
+  /^192\.0\.0\./, // IETF Protocol Assignments 192.0.0.0/24
+  /^192\.0\.2\./, // TEST-NET-1 192.0.2.0/24
+  /^198\.51\.100\./, // TEST-NET-2 198.51.100.0/24
+  /^203\.0\.113\./, // TEST-NET-3 203.0.113.0/24
+  /^224\./, // Multicast 224.0.0.0/4
+  /^240\./, // Reserved 240.0.0.0/4
 ];
 
 // Hostnames that resolve to localhost/private
@@ -139,7 +148,10 @@ function validateHttpRequestUrl(urlString, allowPrivate = false) {
 
   // SSRF check: block private/internal addresses unless explicitly allowed
   if (!allowPrivate && isPrivateHost(parsed.hostname)) {
-    return { valid: false, reason: "Requests to private/internal addresses are blocked" };
+    return {
+      valid: false,
+      reason: "Requests to private/internal addresses are blocked",
+    };
   }
 
   return { valid: true, url: parsed };
@@ -160,17 +172,24 @@ function setupNavigationBlocking(webContents, allowedOrigins) {
       parsed = new URL(navigationUrl);
     } catch (e) {
       event.preventDefault();
-      console.warn("[Security] Blocked navigation to invalid URL:", navigationUrl);
+      console.warn(
+        "[Security] Blocked navigation to invalid URL:",
+        navigationUrl,
+      );
       return;
     }
 
     const origin = parsed.origin;
     // file:// URLs have origin "null" (the string), so check protocol as fallback
-    const isAllowed = allowedOrigins.includes(origin) ||
+    const isAllowed =
+      allowedOrigins.includes(origin) ||
       (parsed.protocol === "file:" && allowedOrigins.includes("file://"));
     if (!isAllowed) {
       event.preventDefault();
-      console.warn("[Security] Blocked navigation to disallowed origin:", origin);
+      console.warn(
+        "[Security] Blocked navigation to disallowed origin:",
+        origin,
+      );
     }
   });
 }
@@ -188,7 +207,12 @@ function setupWindowOpenHandler(webContents) {
         console.error("[Security] Failed to open external URL:", err);
       });
     } else {
-      console.warn("[Security] Blocked window open for:", url, "-", validation.reason);
+      console.warn(
+        "[Security] Blocked window open for:",
+        url,
+        "-",
+        validation.reason,
+      );
     }
 
     // Always deny creating new Electron windows
@@ -216,7 +240,10 @@ function setupPermissionHandlers() {
   // Also handle permission checks (for APIs that check without requesting)
   ses.setPermissionCheckHandler((webContents, permission) => {
     // Allow clipboard-read and clipboard-write for app functionality
-    if (permission === "clipboard-read" || permission === "clipboard-sanitized-write") {
+    if (
+      permission === "clipboard-read" ||
+      permission === "clipboard-sanitized-write"
+    ) {
       return true;
     }
     return false;
@@ -237,7 +264,7 @@ function setupCSP(isDev) {
   // Development CSP: Allow React HMR (WebSockets, eval for source maps)
   const devCSP = [
     "default-src 'self'",
-    "script-src 'self' 'unsafe-eval' 'unsafe-inline'",  // unsafe-eval + unsafe-inline needed for React dev server
+    "script-src 'self' 'unsafe-eval' 'unsafe-inline'", // unsafe-eval + unsafe-inline needed for React dev server
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "font-src 'self' https://fonts.gstatic.com data:",
     "img-src 'self' data: https://img.logo.dev https://*.logo.dev",
@@ -295,7 +322,8 @@ function getNetworkPolicy() {
     if (fs.existsSync(SETTINGS_FILE_PATH)) {
       const raw = fs.readFileSync(SETTINGS_FILE_PATH, "utf-8");
       const parsed = JSON.parse(raw);
-      _cachedNetworkPolicy = parsed.networkPolicy === "public" ? "public" : "local";
+      _cachedNetworkPolicy =
+        parsed.networkPolicy === "public" ? "public" : "local";
       return _cachedNetworkPolicy;
     }
   } catch {
