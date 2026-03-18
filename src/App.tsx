@@ -1,4 +1,12 @@
-import { useState, useMemo, useEffect, useLayoutEffect, useCallback, useRef, useReducer } from "react";
+import {
+  useState,
+  useMemo,
+  useEffect,
+  useLayoutEffect,
+  useCallback,
+  useRef,
+  useReducer,
+} from "react";
 import { useSystemSnapshot } from "./hooks/useSystemMonitor";
 import { GraphView } from "./components/GraphView";
 import { CurlBuilder } from "./components/CurlBuilder";
@@ -9,11 +17,20 @@ import { ShareModal } from "./components/ShareModal";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { DebugPanel } from "./components/DebugPanel";
 import { StackQueryPanel } from "./components/StackQueryPanel";
-import { useKnownServices, serviceKey, nodeServiceKey, looseServiceIdentity } from "./components/checklist/useKnownServices";
+import {
+  useKnownServices,
+  serviceKey,
+  nodeServiceKey,
+  looseServiceIdentity,
+} from "./components/checklist/useKnownServices";
 import { ServiceDropdown } from "./components/checklist/ServiceDropdown";
 import { HEALTH_COLORS } from "./components/graph/constants";
 import { initAnalytics, capture, identifyWithMainProcess } from "./analytics";
-import { TraceContext, TraceDispatchContext, traceReducer } from "./components/graph/traceContext";
+import {
+  TraceContext,
+  TraceDispatchContext,
+  traceReducer,
+} from "./components/graph/traceContext";
 import type { AlertEvent, GraphEdge, GraphNode } from "./types/electron";
 import "./App.css";
 
@@ -76,7 +93,6 @@ function normalizeProjectTabPath(projectPath: string): string {
   // Collapse common compose/monorepo service folders into one project tab.
   return projectPath.replace(/\/services\/[^/]+$/, "");
 }
-
 
 function detectDbLabel(command: string, name: string) {
   if (command.includes("postgres") || name.includes("postgres"))
@@ -234,10 +250,13 @@ function App() {
   const [isStackQueryOpen, setIsStackQueryOpen] = useState(false);
   const [stackQueryInitialQuery, setStackQueryInitialQuery] = useState("");
   const [stackQueryInitialQueryKey, setStackQueryInitialQueryKey] = useState(0);
-  const [stackQueryInitialServiceName, setStackQueryInitialServiceName] = useState("");
+  const [stackQueryInitialServiceName, setStackQueryInitialServiceName] =
+    useState("");
   const [debugInitialProblem, setDebugInitialProblem] = useState("");
   const [debugInitialProblemKey, setDebugInitialProblemKey] = useState(0);
-  const [debugHighlightNodeIds, setDebugHighlightNodeIds] = useState<Set<string>>(new Set());
+  const [debugHighlightNodeIds, setDebugHighlightNodeIds] = useState<
+    Set<string>
+  >(new Set());
 
   const handleOpenDebugPanel = useCallback(() => {
     if (isAgentOpen) {
@@ -275,19 +294,24 @@ function App() {
   // Alert preferences state
   const [alertsEnabled, setAlertsEnabled] = useState(true);
   const [categoryToggles, setCategoryToggles] = useState({
-    down: true, recovery: true, degraded: true, container: true,
+    down: true,
+    recovery: true,
+    degraded: true,
+    container: true,
   });
   const [alertPanelOpen, setAlertPanelOpen] = useState(false);
   const [alertHistory, setAlertHistory] = useState<AlertEvent[]>([]);
   const alertPanelRef = useRef<HTMLDivElement>(null);
-  const [optimisticDownNodes, setOptimisticDownNodes] = useState<Map<string, GraphNode>>(
-    () => new Map(),
-  );
-  const optimisticDownTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(
+  const [optimisticDownNodes, setOptimisticDownNodes] = useState<
+    Map<string, GraphNode>
+  >(() => new Map());
+  const optimisticDownTimersRef = useRef<
+    Map<string, ReturnType<typeof setTimeout>>
+  >(new Map());
+  const lastNodeIdByServiceRef = useRef<Map<string, string>>(new Map());
+  const inferredEdgesCacheRef = useRef<Map<string, typeof graph.edges>>(
     new Map(),
   );
-  const lastNodeIdByServiceRef = useRef<Map<string, string>>(new Map());
-  const inferredEdgesCacheRef = useRef<Map<string, typeof graph.edges>>(new Map());
 
   // Tab button refs for dropdown positioning
   const tabButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
@@ -295,12 +319,17 @@ function App() {
 
   // Sliding indicator for view-mode tabs
   const viewModeTabsRef = useRef<HTMLDivElement>(null);
-  const [indicatorStyle, setIndicatorStyle] = useState<{ left: number; width: number } | null>(null);
+  const [indicatorStyle, setIndicatorStyle] = useState<{
+    left: number;
+    width: number;
+  } | null>(null);
 
   useLayoutEffect(() => {
     const container = viewModeTabsRef.current;
     if (!container) return;
-    const activeBtn = container.querySelector<HTMLButtonElement>(".view-mode-tab-active");
+    const activeBtn = container.querySelector<HTMLButtonElement>(
+      ".view-mode-tab-active",
+    );
     if (!activeBtn) return;
     setIndicatorStyle({
       left: activeBtn.offsetLeft,
@@ -316,12 +345,17 @@ function App() {
 
   useEffect(() => {
     if (window.electronAPI?.getAlertPreferences) {
-      window.electronAPI.getAlertPreferences().then((prefs) => {
-        setAlertsEnabled(prefs.alertsEnabled);
-        if (prefs.categoryToggles) {
-          setCategoryToggles(prefs.categoryToggles);
-        }
-      }).catch((err) => console.error("Failed to load alert preferences:", err));
+      window.electronAPI
+        .getAlertPreferences()
+        .then((prefs) => {
+          setAlertsEnabled(prefs.alertsEnabled);
+          if (prefs.categoryToggles) {
+            setCategoryToggles(prefs.categoryToggles);
+          }
+        })
+        .catch((err) =>
+          console.error("Failed to load alert preferences:", err),
+        );
     }
   }, []);
 
@@ -330,9 +364,12 @@ function App() {
     initAnalytics();
     capture("app_opened");
     if (window.electronAPI?.getAnalyticsId) {
-      window.electronAPI.getAnalyticsId().then((id) => {
-        if (id) identifyWithMainProcess(id);
-      }).catch((err) => console.error("Failed to get analytics ID:", err));
+      window.electronAPI
+        .getAnalyticsId()
+        .then((id) => {
+          if (id) identifyWithMainProcess(id);
+        })
+        .catch((err) => console.error("Failed to get analytics ID:", err));
     }
   }, []);
 
@@ -364,7 +401,8 @@ function App() {
         lastSeen: Date.now(),
         isGhost: true,
         startCommand: node.startCommand || node.command || undefined,
-        startProjectPath: node.startProjectPath || node.projectPath || undefined,
+        startProjectPath:
+          node.startProjectPath || node.projectPath || undefined,
       };
 
       setOptimisticDownNodes((current) => {
@@ -454,30 +492,35 @@ function App() {
         setDebugHighlightNodeIds(new Set([nodeId]));
       }
     };
-    window.addEventListener("fere:debug-highlight-services", handleDebugHighlight);
+    window.addEventListener(
+      "fere:debug-highlight-services",
+      handleDebugHighlight,
+    );
     window.addEventListener("fere:debug-focus-node", handleDebugFocus);
-    window.addEventListener("fere:debug-diagnose-service", handleDiagnoseService);
-    window.addEventListener("fere:query-about-service", handleQueryAboutService);
+    window.addEventListener(
+      "fere:debug-diagnose-service",
+      handleDiagnoseService,
+    );
+    window.addEventListener(
+      "fere:query-about-service",
+      handleQueryAboutService,
+    );
     return () => {
-      window.removeEventListener("fere:debug-highlight-services", handleDebugHighlight);
+      window.removeEventListener(
+        "fere:debug-highlight-services",
+        handleDebugHighlight,
+      );
       window.removeEventListener("fere:debug-focus-node", handleDebugFocus);
-      window.removeEventListener("fere:debug-diagnose-service", handleDiagnoseService);
-      window.removeEventListener("fere:query-about-service", handleQueryAboutService);
+      window.removeEventListener(
+        "fere:debug-diagnose-service",
+        handleDiagnoseService,
+      );
+      window.removeEventListener(
+        "fere:query-about-service",
+        handleQueryAboutService,
+      );
     };
   }, [viewMode]);
-
-  // Cmd/Ctrl+K opens Fere Agent
-  useEffect(() => {
-    const handleShortcut = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
-        e.preventDefault();
-        setHasEverOpened(true);
-        setIsAgentOpen(true);
-      }
-    };
-    window.addEventListener("keydown", handleShortcut);
-    return () => window.removeEventListener("keydown", handleShortcut);
-  }, []);
 
   useEffect(() => {
     if (optimisticDownNodes.size === 0) return;
@@ -505,7 +548,8 @@ function App() {
           !!liveNode &&
           !liveNode.isGhost &&
           liveNode.healthStatus !== "red" &&
-          (!liveNode.isDockerContainer || liveNode.containerState === "running");
+          (!liveNode.isDockerContainer ||
+            liveNode.containerState === "running");
         if (serviceRecovered || idRecovered) {
           next.delete(id);
           changed = true;
@@ -518,21 +562,18 @@ function App() {
     });
   }, [graph.nodes, optimisticDownNodes.size]);
 
-  const visibleGraphNodes = useMemo(
-    () => {
-      const merged = graph.nodes.map(
-        (node) => optimisticDownNodes.get(node.id) || node,
-      );
-      const mergedIds = new Set(merged.map((node) => node.id));
-      optimisticDownNodes.forEach((node, id) => {
-        if (!mergedIds.has(id)) {
-          merged.push(node);
-        }
-      });
-      return merged;
-    },
-    [graph.nodes, optimisticDownNodes],
-  );
+  const visibleGraphNodes = useMemo(() => {
+    const merged = graph.nodes.map(
+      (node) => optimisticDownNodes.get(node.id) || node,
+    );
+    const mergedIds = new Set(merged.map((node) => node.id));
+    optimisticDownNodes.forEach((node, id) => {
+      if (!mergedIds.has(id)) {
+        merged.push(node);
+      }
+    });
+    return merged;
+  }, [graph.nodes, optimisticDownNodes]);
 
   const graphIndex = useMemo(() => {
     const nodeById = new Map<string, GraphNode>();
@@ -557,7 +598,10 @@ function App() {
         nodeByService.set(serviceKeyValue, node);
       }
 
-      const looseKey = looseServiceIdentity({ ...node, projectPath: node.projectPath || undefined });
+      const looseKey = looseServiceIdentity({
+        ...node,
+        projectPath: node.projectPath || undefined,
+      });
       const existingLoose = nodeByServiceLoose.get(looseKey);
       if (!existingLoose || (existingLoose.isGhost && !node.isGhost)) {
         nodeByServiceLoose.set(looseKey, node);
@@ -609,7 +653,10 @@ function App() {
       next.set(nodeServiceKey(node), node.id);
       // Also index by loose key so ghost nodes can find the last-seen node ID
       // even when containerId changes across container restarts (Bug 31/32).
-      const loose = looseServiceIdentity({ ...node, projectPath: node.projectPath || undefined });
+      const loose = looseServiceIdentity({
+        ...node,
+        projectPath: node.projectPath || undefined,
+      });
       next.set(loose, node.id);
     });
     lastNodeIdByServiceRef.current = next;
@@ -623,13 +670,18 @@ function App() {
     });
   }, []);
 
-  const handleToggleCategory = useCallback(async (category: keyof typeof categoryToggles) => {
-    setCategoryToggles((prev) => {
-      const newToggles = { ...prev, [category]: !prev[category] };
-      window.electronAPI?.setAlertPreferences?.({ categoryToggles: newToggles });
-      return newToggles;
-    });
-  }, []);
+  const handleToggleCategory = useCallback(
+    async (category: keyof typeof categoryToggles) => {
+      setCategoryToggles((prev) => {
+        const newToggles = { ...prev, [category]: !prev[category] };
+        window.electronAPI?.setAlertPreferences?.({
+          categoryToggles: newToggles,
+        });
+        return newToggles;
+      });
+    },
+    [],
+  );
 
   const loadAlertHistory = useCallback(async () => {
     if (window.electronAPI?.getAlertHistory) {
@@ -658,7 +710,10 @@ function App() {
   useEffect(() => {
     if (!alertPanelOpen) return;
     function handleClick(e: MouseEvent) {
-      if (alertPanelRef.current && !alertPanelRef.current.contains(e.target as Node)) {
+      if (
+        alertPanelRef.current &&
+        !alertPanelRef.current.contains(e.target as Node)
+      ) {
         const target = e.target as HTMLElement;
         if (target.closest(".alert-toggle")) return;
         setAlertPanelOpen(false);
@@ -684,67 +739,83 @@ function App() {
   }, []);
 
   // Handle trace request from CurlBuilder
-  const handleTraceRequest = useCallback(async (options: {
-    method: string;
-    url: string;
-    headers: Record<string, string>;
-    body?: string;
-  }) => {
-    // Find the target node from URL port and switch to its project tab
-    let targetPort: number | null = null;
-    try {
-      const parsed = new URL(options.url);
-      targetPort = parseInt(parsed.port, 10) || (parsed.protocol === "https:" ? 443 : 80);
-    } catch { /* ignore */ }
+  const handleTraceRequest = useCallback(
+    async (options: {
+      method: string;
+      url: string;
+      headers: Record<string, string>;
+      body?: string;
+    }) => {
+      // Find the target node from URL port and switch to its project tab
+      let targetPort: number | null = null;
+      try {
+        const parsed = new URL(options.url);
+        targetPort =
+          parseInt(parsed.port, 10) ||
+          (parsed.protocol === "https:" ? 443 : 80);
+      } catch {
+        /* ignore */
+      }
 
-    // Find the entry node and switch to its tab
-    let entryNodeId: string | null = null;
-    if (targetPort) {
-      let found = false;
-      graphIndex.nodesByTabPath.forEach((tabNodes, tabPath) => {
-        if (found) return;
-        const match = tabNodes.find((n: GraphNode) => n.ports.some((p: { port: number }) => p.port === targetPort));
-        if (match) {
-          setSelectedTab(tabPath);
-          entryNodeId = match.id;
-          found = true;
-        }
-      });
-      if (!found) {
-        const sysMatch = graphIndex.systemNodes.find((n: GraphNode) => n.ports.some((p: { port: number }) => p.port === targetPort));
-        if (sysMatch) {
-          setSelectedTab(SYSTEM_TAB_ID);
-          entryNodeId = sysMatch.id;
+      // Find the entry node and switch to its tab
+      let entryNodeId: string | null = null;
+      if (targetPort) {
+        let found = false;
+        graphIndex.nodesByTabPath.forEach((tabNodes, tabPath) => {
+          if (found) return;
+          const match = tabNodes.find((n: GraphNode) =>
+            n.ports.some((p: { port: number }) => p.port === targetPort),
+          );
+          if (match) {
+            setSelectedTab(tabPath);
+            entryNodeId = match.id;
+            found = true;
+          }
+        });
+        if (!found) {
+          const sysMatch = graphIndex.systemNodes.find((n: GraphNode) =>
+            n.ports.some((p: { port: number }) => p.port === targetPort),
+          );
+          if (sysMatch) {
+            setSelectedTab(SYSTEM_TAB_ID);
+            entryNodeId = sysMatch.id;
+          }
         }
       }
-    }
 
-    // Switch to graph view and start capture
-    setViewMode("graph");
-    traceDispatch({ type: "start-capture", entryNodeId });
+      // Switch to graph view and start capture
+      setViewMode("graph");
+      traceDispatch({ type: "start-capture", entryNodeId });
 
-    try {
-      // Send ALL graph nodes/edges so backend can BFS across the full topology
-      const result = await window.electronAPI.executeTracedRequest({
-        method: options.method,
-        url: options.url,
-        headers: options.headers,
-        body: options.body,
-        graphNodes: graph.nodes,
-        graphEdges: graph.edges,
-      });
+      try {
+        // Send ALL graph nodes/edges so backend can BFS across the full topology
+        const result = await window.electronAPI.executeTracedRequest({
+          method: options.method,
+          url: options.url,
+          headers: options.headers,
+          body: options.body,
+          graphNodes: graph.nodes,
+          graphEdges: graph.edges,
+        });
 
-      if (result.success && result.trace) {
-        traceDispatch({ type: "set-result", result: result.trace });
-      } else {
-        console.error("Trace failed:", result.error);
+        if (result.success && result.trace) {
+          traceDispatch({ type: "set-result", result: result.trace });
+        } else {
+          console.error("Trace failed:", result.error);
+          traceDispatch({ type: "dismiss" });
+        }
+      } catch (err) {
+        console.error("Trace error:", err);
         traceDispatch({ type: "dismiss" });
       }
-    } catch (err) {
-      console.error("Trace error:", err);
-      traceDispatch({ type: "dismiss" });
-    }
-  }, [graph.nodes, graph.edges, graphIndex.nodesByTabPath, graphIndex.systemNodes]);
+    },
+    [
+      graph.nodes,
+      graph.edges,
+      graphIndex.nodesByTabPath,
+      graphIndex.systemNodes,
+    ],
+  );
 
   // Reconcile databaseNode with live data when containers change
   // (e.g., container restarts get a new containerId)
@@ -836,7 +907,9 @@ function App() {
   const [serviceDropdownTab, setServiceDropdownTab] = useState<string | null>(
     null,
   );
-  const [serviceActionError, setServiceActionError] = useState<string | null>(null);
+  const [serviceActionError, setServiceActionError] = useState<string | null>(
+    null,
+  );
   const nodesForTab = useCallback(
     (tabId: string) => {
       if (tabId === SYSTEM_TAB_ID) return graphIndex.systemNodes;
@@ -876,8 +949,10 @@ function App() {
         const sourceNode = graphIndex.nodeById.get(edge.source);
         const targetNode = graphIndex.nodeById.get(edge.target);
 
-        if (sourceNode?.type === "external") connectedExternalIds.add(sourceNode.id);
-        if (targetNode?.type === "external") connectedExternalIds.add(targetNode.id);
+        if (sourceNode?.type === "external")
+          connectedExternalIds.add(sourceNode.id);
+        if (targetNode?.type === "external")
+          connectedExternalIds.add(targetNode.id);
       });
     });
 
@@ -898,7 +973,12 @@ function App() {
         primaryNodes.map((n) => nodeServiceKey(n)),
       );
       const primaryKeysLoose = new Set(
-        primaryNodes.map((n) => looseServiceIdentity({ ...n, projectPath: n.projectPath || undefined })),
+        primaryNodes.map((n) =>
+          looseServiceIdentity({
+            ...n,
+            projectPath: n.projectPath || undefined,
+          }),
+        ),
       );
       for (const svc of status.services) {
         const key = serviceKey(svc.service);
@@ -906,8 +986,9 @@ function App() {
         if (primaryKeysExact.has(key) || primaryKeysLoose.has(loose)) continue;
 
         // Look for a live node anywhere in the system — try exact then loose
-        const liveNode = graphIndex.nodeByService.get(key)
-          || graphIndex.nodeByServiceLoose.get(loose);
+        const liveNode =
+          graphIndex.nodeByService.get(key) ||
+          graphIndex.nodeByServiceLoose.get(loose);
         if (liveNode) {
           trackedExtra.push(liveNode);
         } else {
@@ -915,9 +996,10 @@ function App() {
           // Try loose key too so stale containerId in `key` doesn't prevent
           // finding the last-seen node ID (Bug 31/32).
           trackedExtra.push({
-            id: lastNodeIdByServiceRef.current.get(key)
-              || lastNodeIdByServiceRef.current.get(loose)
-              || `ghost-${key}`,
+            id:
+              lastNodeIdByServiceRef.current.get(key) ||
+              lastNodeIdByServiceRef.current.get(loose) ||
+              `ghost-${key}`,
             pid: 0,
             name: svc.service.name,
             command: svc.service.lastCommand || "",
@@ -950,7 +1032,11 @@ function App() {
       if (!connectedEdges) return;
       connectedEdges.forEach((edge) => {
         if (seenEdgeIds.has(edge.id)) return;
-        if (!filteredNodeIds.has(edge.source) || !filteredNodeIds.has(edge.target)) return;
+        if (
+          !filteredNodeIds.has(edge.source) ||
+          !filteredNodeIds.has(edge.target)
+        )
+          return;
         seenEdgeIds.add(edge.id);
         filteredEdges.push(edge);
       });
@@ -1044,7 +1130,11 @@ function App() {
       if (!connectedEdges) return;
       connectedEdges.forEach((edge) => {
         if (edgeIds.has(edge.id)) return;
-        if (!containerNodeIds.has(edge.source) || !containerNodeIds.has(edge.target)) return;
+        if (
+          !containerNodeIds.has(edge.source) ||
+          !containerNodeIds.has(edge.target)
+        )
+          return;
         edgeIds.add(edge.id);
         containerEdges.push(edge);
       });
@@ -1090,7 +1180,10 @@ function App() {
           )}
           <button
             className={`view-mode-tab ${viewMode === "graph" ? "view-mode-tab-active" : ""}`}
-            onClick={() => { setViewMode("graph"); capture("tab_switched", { to: "graph" }); }}
+            onClick={() => {
+              setViewMode("graph");
+              capture("tab_switched", { to: "graph" });
+            }}
           >
             <span className="view-mode-icon">
               <svg
@@ -1117,7 +1210,10 @@ function App() {
           </button>
           <button
             className={`view-mode-tab ${viewMode === "containers" ? "view-mode-tab-active" : ""}`}
-            onClick={() => { setViewMode("containers"); capture("tab_switched", { to: "containers" }); }}
+            onClick={() => {
+              setViewMode("containers");
+              capture("tab_switched", { to: "containers" });
+            }}
           >
             <span className="view-mode-icon">
               <svg
@@ -1134,7 +1230,10 @@ function App() {
           </button>
           <button
             className={`view-mode-tab ${viewMode === "api-tester" ? "view-mode-tab-active" : ""}`}
-            onClick={() => { setViewMode("api-tester"); capture("tab_switched", { to: "api-tester" }); }}
+            onClick={() => {
+              setViewMode("api-tester");
+              capture("tab_switched", { to: "api-tester" });
+            }}
           >
             <span className="view-mode-icon">
               <svg
@@ -1192,9 +1291,24 @@ function App() {
             onClick={handleToggleStackQuery}
             title="Ask about your stack"
           >
-            <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+            <svg
+              width="15"
+              height="15"
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
               <path d="M3.5 4.5C3.5 2.8 5.2 1.5 8 1.5C10.8 1.5 12.5 2.8 12.5 4.5C12.5 5.9 11.2 7 9.4 7.5C8.6 7.7 8 8.3 8 9.1V9.5" />
-              <circle cx="8" cy="12.4" r="0.7" fill="currentColor" stroke="none" />
+              <circle
+                cx="8"
+                cy="12.4"
+                r="0.7"
+                fill="currentColor"
+                stroke="none"
+              />
             </svg>
             <span>Ask Fere</span>
           </button>
@@ -1203,7 +1317,14 @@ function App() {
             onClick={handleOpenDebugPanel}
             title="Fere Agent"
           >
-            <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2">
+            <svg
+              width="15"
+              height="15"
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.2"
+            >
               <circle cx="8" cy="6" r="4" />
               <path d="M3 2L5.5 4.5" />
               <path d="M13 2L10.5 4.5" />
@@ -1221,7 +1342,16 @@ function App() {
             onClick={() => setShowShare(true)}
             title="Share service map"
           >
-            <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+            <svg
+              width="15"
+              height="15"
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
               <circle cx="12" cy="3" r="1.5" />
               <circle cx="3" cy="8" r="1.5" />
               <circle cx="12" cy="13" r="1.5" />
@@ -1236,7 +1366,14 @@ function App() {
               onClick={() => setAlertPanelOpen((v) => !v)}
               title={alertsEnabled ? "Notifications on" : "Notifications off"}
             >
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2">
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 16 16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.2"
+              >
                 <path d="M8 1.5C5.5 1.5 4 3.5 4 5.5V8L2.5 10.5V11.5H13.5V10.5L12 8V5.5C12 3.5 10.5 1.5 8 1.5Z" />
                 <path d="M6 12.5C6 13.6 6.9 14.5 8 14.5C9.1 14.5 10 13.6 10 12.5" />
                 {!alertsEnabled && <line x1="2" y1="14" x2="14" y2="2" />}
@@ -1268,8 +1405,12 @@ function App() {
                         className="alert-panel-checkbox"
                       />
                       <div className="alert-panel-category-text">
-                        <span className="alert-panel-category-label">{cat.label}</span>
-                        <span className="alert-panel-category-desc">{cat.desc}</span>
+                        <span className="alert-panel-category-label">
+                          {cat.label}
+                        </span>
+                        <span className="alert-panel-category-desc">
+                          {cat.desc}
+                        </span>
                       </div>
                     </label>
                   ))}
@@ -1281,23 +1422,33 @@ function App() {
                 <div className="alert-panel-history-header">
                   <span className="alert-panel-label">Recent Events</span>
                   {alertHistory.length > 0 && (
-                    <button className="alert-panel-clear" onClick={handleClearHistory}>
+                    <button
+                      className="alert-panel-clear"
+                      onClick={handleClearHistory}
+                    >
                       Clear
                     </button>
                   )}
                 </div>
                 <div className="alert-panel-history">
                   {alertHistory.length === 0 ? (
-                    <div className="alert-panel-history-empty">No events yet</div>
+                    <div className="alert-panel-history-empty">
+                      No events yet
+                    </div>
                   ) : (
                     alertHistory.slice(0, 50).map((event) => (
                       <div className="alert-panel-event" key={event.id}>
-                        <span className={`alert-panel-event-dot alert-panel-event-dot-${event.category}`} />
+                        <span
+                          className={`alert-panel-event-dot alert-panel-event-dot-${event.category}`}
+                        />
                         <div className="alert-panel-event-content">
                           <span className="alert-panel-event-title">
                             {event.serviceName}
                             {!event.notified && (
-                              <span className="alert-panel-event-muted"> (muted)</span>
+                              <span className="alert-panel-event-muted">
+                                {" "}
+                                (muted)
+                              </span>
                             )}
                           </span>
                           <span className="alert-panel-event-desc">
@@ -1337,119 +1488,141 @@ function App() {
       {viewMode === "graph" && tabs.length > 1 && (
         <div className="app-tabs" ref={appTabsRef}>
           <div className="app-tabs-scroll">
-          {tabs.map((tab) => {
-            const status = getProjectStatus(tab.id);
-            const hasServices = status.total > 0;
-            const allRunning = hasServices && status.running === status.total;
-            const noneRunning = hasServices && status.running === 0;
-            const statusColor = allRunning
-              ? HEALTH_COLORS.green.color
-              : noneRunning
-                ? HEALTH_COLORS.red.color
-                : HEALTH_COLORS.yellow.color;
+            {tabs.map((tab) => {
+              const status = getProjectStatus(tab.id);
+              const hasServices = status.total > 0;
+              const allRunning = hasServices && status.running === status.total;
+              const noneRunning = hasServices && status.running === 0;
+              const statusColor = allRunning
+                ? HEALTH_COLORS.green.color
+                : noneRunning
+                  ? HEALTH_COLORS.red.color
+                  : HEALTH_COLORS.yellow.color;
 
-            return (
-              <div key={tab.id} className="app-tab-wrapper">
-                <button
-                  ref={(el) => { tabButtonRefs.current[tab.id] = el; }}
-                  className={`app-tab ${selectedTab === tab.id ? "app-tab-active" : ""}`}
-                  onClick={() => {
-                    if (selectedTab === tab.id) {
-                      setServiceDropdownTab(
-                        serviceDropdownTab === tab.id ? null : tab.id,
-                      );
-                    } else {
-                      setSelectedTab(tab.id);
-                      setServiceDropdownTab(null);
-                    }
+              return (
+                <div key={tab.id} className="app-tab-wrapper">
+                  <button
+                    ref={(el) => {
+                      tabButtonRefs.current[tab.id] = el;
+                    }}
+                    className={`app-tab ${selectedTab === tab.id ? "app-tab-active" : ""}`}
+                    onClick={() => {
+                      if (selectedTab === tab.id) {
+                        setServiceDropdownTab(
+                          serviceDropdownTab === tab.id ? null : tab.id,
+                        );
+                      } else {
+                        setSelectedTab(tab.id);
+                        setServiceDropdownTab(null);
+                      }
+                    }}
+                  >
+                    {tab.label}
+                    {tab.stackLabel && (
+                      <span className="app-tab-stack">{tab.stackLabel}</span>
+                    )}
+                    {hasServices && (
+                      <span className="app-tab-services">
+                        <span
+                          className="app-tab-services-dot"
+                          style={{ backgroundColor: statusColor }}
+                        />
+                        {status.running}/{status.total}
+                      </span>
+                    )}
+                    <span className="app-tab-count">{tab.count ?? 0}</span>
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+          {serviceDropdownTab !== null &&
+            (() => {
+              const activeTab = tabs.find((t) => t.id === serviceDropdownTab);
+              if (!activeTab) return null;
+              const activeStatus = getProjectStatus(activeTab.id);
+              const btnEl = tabButtonRefs.current[activeTab.id];
+              const tabsEl = appTabsRef.current;
+              let dropdownLeft = 16;
+              if (btnEl && tabsEl) {
+                const btnRect = btnEl.getBoundingClientRect();
+                const tabsRect = tabsEl.getBoundingClientRect();
+                dropdownLeft = btnRect.left - tabsRect.left;
+              }
+              return (
+                <div
+                  style={{
+                    position: "absolute",
+                    top: "100%",
+                    left: dropdownLeft,
+                    zIndex: 1000,
                   }}
                 >
-                  {tab.label}
-                  {tab.stackLabel && (
-                    <span className="app-tab-stack">{tab.stackLabel}</span>
-                  )}
-                  {hasServices && (
-                    <span className="app-tab-services">
-                      <span
-                        className="app-tab-services-dot"
-                        style={{ backgroundColor: statusColor }}
-                      />
-                      {status.running}/{status.total}
-                    </span>
-                  )}
-                  <span className="app-tab-count">{tab.count ?? 0}</span>
-                </button>
-              </div>
-            );
-          })}
-          </div>
-          {serviceDropdownTab !== null && (() => {
-            const activeTab = tabs.find(t => t.id === serviceDropdownTab);
-            if (!activeTab) return null;
-            const activeStatus = getProjectStatus(activeTab.id);
-            const btnEl = tabButtonRefs.current[activeTab.id];
-            const tabsEl = appTabsRef.current;
-            let dropdownLeft = 16;
-            if (btnEl && tabsEl) {
-              const btnRect = btnEl.getBoundingClientRect();
-              const tabsRect = tabsEl.getBoundingClientRect();
-              dropdownLeft = btnRect.left - tabsRect.left;
-            }
-            return (
-              <div style={{ position: "absolute", top: "100%", left: dropdownLeft, zIndex: 1000 }}>
-                <ServiceDropdown
-                  services={activeStatus.services}
-                  dismissedServices={getDismissedServices(activeTab.id)}
-                  onDismiss={(key) => dismissService(activeTab.id, key)}
-                  onRestore={(key) => restoreService(activeTab.id, key)}
-                  onRemove={(key) => removeService(activeTab.id, key)}
-                  onAdd={(node) => addService(activeTab.id, {
-                    name: node.name,
-                    type: node.type,
-                    containerId: node.containerId || undefined,
-                    projectPath: node.projectPath || undefined,
-                    isDockerContainer: node.isDockerContainer || false,
-                    command: node.command || undefined,
-                  })}
-                  onStart={async (service) => {
-                    try {
-                      let started = false;
-                      let failureReason: string | undefined;
-                      if (service.isDockerContainer) {
-                        const id = service.containerId || service.name;
-                        const result = await window.electronAPI.startContainer(id);
-                        started = !!result?.success;
-                        failureReason = result?.error;
-                      } else if (service.lastCommand && service.projectPath) {
-                        const result = await window.electronAPI.startProcess(
-                          service.lastCommand,
-                          service.projectPath,
-                        );
-                        started = !!result?.success;
-                        failureReason = result?.error;
-                      } else {
-                        failureReason = "Missing start command or project path";
-                      }
-                      if (started) {
-                        setServiceActionError(null);
-                        window.dispatchEvent(new CustomEvent("fere:refresh-snapshot"));
-                      } else if (failureReason) {
-                        setServiceActionError(failureReason);
-                      }
-                    } catch (err) {
-                      setServiceActionError(
-                        err instanceof Error ? err.message : "Failed to start service",
-                      );
+                  <ServiceDropdown
+                    services={activeStatus.services}
+                    dismissedServices={getDismissedServices(activeTab.id)}
+                    onDismiss={(key) => dismissService(activeTab.id, key)}
+                    onRestore={(key) => restoreService(activeTab.id, key)}
+                    onRemove={(key) => removeService(activeTab.id, key)}
+                    onAdd={(node) =>
+                      addService(activeTab.id, {
+                        name: node.name,
+                        type: node.type,
+                        containerId: node.containerId || undefined,
+                        projectPath: node.projectPath || undefined,
+                        isDockerContainer: node.isDockerContainer || false,
+                        command: node.command || undefined,
+                      })
                     }
-                  }}
-                  allNodes={nodesForTab(activeTab.id)}
-                  onClose={() => setServiceDropdownTab(null)}
-                />
-              </div>
-            );
-          })()}
+                    onStart={async (service) => {
+                      try {
+                        let started = false;
+                        let failureReason: string | undefined;
+                        if (service.isDockerContainer) {
+                          const id = service.containerId || service.name;
+                          const result =
+                            await window.electronAPI.startContainer(id);
+                          started = !!result?.success;
+                          failureReason = result?.error;
+                        } else if (service.lastCommand && service.projectPath) {
+                          const result = await window.electronAPI.startProcess(
+                            service.lastCommand,
+                            service.projectPath,
+                          );
+                          started = !!result?.success;
+                          failureReason = result?.error;
+                        } else {
+                          failureReason =
+                            "Missing start command or project path";
+                        }
+                        if (started) {
+                          setServiceActionError(null);
+                          window.dispatchEvent(
+                            new CustomEvent("fere:refresh-snapshot"),
+                          );
+                        } else if (failureReason) {
+                          setServiceActionError(failureReason);
+                        }
+                      } catch (err) {
+                        setServiceActionError(
+                          err instanceof Error
+                            ? err.message
+                            : "Failed to start service",
+                        );
+                      }
+                    }}
+                    allNodes={nodesForTab(activeTab.id)}
+                    onClose={() => setServiceDropdownTab(null)}
+                  />
+                </div>
+              );
+            })()}
           <div className="app-tabs-controls">
-            <div className="tab-grouping-toggle" role="group" aria-label="Tab grouping mode">
+            <div
+              className="tab-grouping-toggle"
+              role="group"
+              aria-label="Tab grouping mode"
+            >
               <button
                 className={`tab-grouping-btn ${tabGrouping === "repo" ? "tab-grouping-btn-active" : ""}`}
                 onClick={() => setTabGrouping("repo")}
@@ -1463,7 +1636,11 @@ function App() {
                 Subproject
               </button>
             </div>
-            <div className="tab-grouping-toggle" role="group" aria-label="Edge density mode">
+            <div
+              className="tab-grouping-toggle"
+              role="group"
+              aria-label="Edge density mode"
+            >
               <button
                 className={`tab-grouping-btn ${edgeMode === "live" ? "tab-grouping-btn-active" : ""}`}
                 onClick={() => setEdgeMode("live")}
@@ -1483,142 +1660,151 @@ function App() {
 
       {/* Main Content */}
       <div className="app-body">
-      <main className="main-content">
-        <TraceContext.Provider value={traceState}>
-        <TraceDispatchContext.Provider value={traceDispatch}>
-        <ErrorBoundary>
-        <div
-          className={`main-view ${viewMode === "graph" ? "main-view-active" : ""}`}
-        >
-          <div className="graph-container">
-            {loading ? (
-              <div className="loading">Scanning localhost...</div>
-            ) : (
-              <GraphView
-                key={selectedTab}
-                nodes={filteredData.nodes}
-                edges={filteredData.edges}
-                debugHighlightNodeIds={debugHighlightNodeIds}
-              />
-            )}
-          </div>
-        </div>
-
-        <div
-          className={`main-view ${viewMode === "containers" ? "main-view-active" : ""}`}
-        >
-          <div className="containers-view">
-            <div className="app-tabs app-tabs-inline">
-              <button
-                className={`app-tab ${containerSubTab === "overview" ? "app-tab-active" : ""}`}
-                onClick={() => setContainerSubTab("overview")}
-              >
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 16 16"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
+        <main className="main-content">
+          <TraceContext.Provider value={traceState}>
+            <TraceDispatchContext.Provider value={traceDispatch}>
+              <ErrorBoundary>
+                <div
+                  className={`main-view ${viewMode === "graph" ? "main-view-active" : ""}`}
                 >
-                  <rect x="2.5" y="3" width="11" height="10" rx="2" />
-                  <line x1="2.5" y1="6" x2="13.5" y2="6" />
-                </svg>
-                Overview
-              </button>
-              <button
-                className={`app-tab ${containerSubTab === "logs" ? "app-tab-active" : ""}`}
-                onClick={() => setContainerSubTab("logs")}
-              >
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                >
-                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                  <polyline points="14 2 14 8 20 8" />
-                  <line x1="16" y1="13" x2="8" y2="13" />
-                  <line x1="16" y1="17" x2="8" y2="17" />
-                </svg>
-                Logs
-              </button>
-            </div>
-
-            <div
-              className={`containers-overview containers-sub-view ${containerSubTab === "overview" ? "containers-sub-view-active" : ""}`}
-            >
-              <div className={`graph-container${!loading && dockerContainerData.nodes.length === 0 ? " graph-container-empty" : ""}`}>
-                {loading ? (
-                  <div className="loading">Scanning Docker containers...</div>
-                ) : dockerContainerData.nodes.length === 0 ? (
-                  <div className="graph-empty">
-                    <div className="docker-empty-icon">
-                      <svg
-                        width="48"
-                        height="48"
-                        viewBox="0 0 24 24"
-                        fill="currentColor"
-                        opacity="0.3"
-                      >
-                        <path d="M13.983 11.078h2.119a.186.186 0 00.186-.185V9.006a.186.186 0 00-.186-.186h-2.119a.185.185 0 00-.185.185v1.888c0 .102.083.185.185.185m-2.954-5.43h2.118a.186.186 0 00.186-.186V3.574a.186.186 0 00-.186-.185h-2.118a.185.185 0 00-.185.185v1.888c0 .102.082.185.185.186m0 2.716h2.118a.187.187 0 00.186-.186V6.29a.186.186 0 00-.186-.185h-2.118a.185.185 0 00-.185.185v1.887c0 .102.082.185.185.186m-2.93 0h2.12a.186.186 0 00.184-.186V6.29a.185.185 0 00-.185-.185H8.1a.185.185 0 00-.185.185v1.887c0 .102.083.185.185.186m-2.964 0h2.119a.186.186 0 00.185-.186V6.29a.185.185 0 00-.185-.185H5.136a.186.186 0 00-.186.185v1.887c0 .102.084.185.186.186m5.893 2.715h2.118a.186.186 0 00.186-.185V9.006a.186.186 0 00-.186-.186h-2.118a.185.185 0 00-.185.185v1.888c0 .102.082.185.185.185m-2.93 0h2.12a.185.185 0 00.184-.185V9.006a.185.185 0 00-.184-.186h-2.12a.185.185 0 00-.184.185v1.888c0 .102.083.185.185.185m-2.964 0h2.119a.185.185 0 00.185-.185V9.006a.185.185 0 00-.185-.186h-2.119a.185.185 0 00-.186.185v1.888c0 .102.084.185.186.185m-2.92 0h2.12a.185.185 0 00.184-.185V9.006a.185.185 0 00-.184-.186h-2.12a.186.186 0 00-.186.186v1.887c0 .102.084.185.186.185m-2.929 0h2.119a.185.185 0 00.185-.185V9.006a.186.186 0 00-.185-.186h-2.12a.185.185 0 00-.184.185v1.888c0 .102.083.185.185.185M23.763 9.89c-.065-.051-.672-.51-1.954-.51-.338.001-.676.03-1.01.087-.248-1.7-1.653-2.53-1.716-2.566l-.344-.199-.226.327c-.284.438-.49.922-.612 1.43-.23.97-.09 1.882.403 2.661-.595.332-1.55.413-1.744.42H.751a.751.751 0 00-.75.748 11.376 11.376 0 00.692 4.062c.545 1.428 1.355 2.48 2.41 3.124 1.18.723 3.1 1.137 5.275 1.137.983.003 1.963-.086 2.93-.266a12.248 12.248 0 003.823-1.389c.98-.567 1.86-1.288 2.61-2.136 1.252-1.418 1.998-2.997 2.553-4.4h.221c1.372 0 2.215-.549 2.68-1.009.309-.293.55-.65.707-1.046l.098-.288Z" />
-                      </svg>
-                    </div>
-                    <p>No Docker containers running</p>
-                    <span>Start some containers to see them here</span>
+                  <div className="graph-container">
+                    {loading ? (
+                      <div className="loading">Scanning localhost...</div>
+                    ) : (
+                      <GraphView
+                        key={selectedTab}
+                        nodes={filteredData.nodes}
+                        edges={filteredData.edges}
+                        debugHighlightNodeIds={debugHighlightNodeIds}
+                      />
+                    )}
                   </div>
-                ) : (
-                  <GraphView
-                    nodes={dockerContainerData.nodes}
-                    edges={dockerContainerData.edges}
-                    isContainerView={true}
-                    onDatabaseClick={handleDatabaseClick}
-                  />
-                )}
-              </div>
-            </div>
-            <div
-              className={`containers-logs containers-sub-view ${containerSubTab === "logs" ? "containers-sub-view-active" : ""}`}
-            >
-              <ContainerLogsTab
-                containers={dockerContainerData.nodes}
-                initialSelectedId={initialLogContainerId}
-              />
-            </div>
-          </div>
-        </div>
+                </div>
 
-        <div
-          className={`main-view main-view-single ${viewMode === "database" ? "main-view-active" : ""}`}
-        >
-          <div className="api-tester-container">
-            <DatabaseListView
-              databaseNodes={databaseNodes}
-              selectedNode={databaseNode}
-              onSelectNode={setDatabaseNode}
-            />
-          </div>
-        </div>
+                <div
+                  className={`main-view ${viewMode === "containers" ? "main-view-active" : ""}`}
+                >
+                  <div className="containers-view">
+                    <div className="app-tabs app-tabs-inline">
+                      <button
+                        className={`app-tab ${containerSubTab === "overview" ? "app-tab-active" : ""}`}
+                        onClick={() => setContainerSubTab("overview")}
+                      >
+                        <svg
+                          width="14"
+                          height="14"
+                          viewBox="0 0 16 16"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.5"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <rect x="2.5" y="3" width="11" height="10" rx="2" />
+                          <line x1="2.5" y1="6" x2="13.5" y2="6" />
+                        </svg>
+                        Overview
+                      </button>
+                      <button
+                        className={`app-tab ${containerSubTab === "logs" ? "app-tab-active" : ""}`}
+                        onClick={() => setContainerSubTab("logs")}
+                      >
+                        <svg
+                          width="14"
+                          height="14"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                        >
+                          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                          <polyline points="14 2 14 8 20 8" />
+                          <line x1="16" y1="13" x2="8" y2="13" />
+                          <line x1="16" y1="17" x2="8" y2="17" />
+                        </svg>
+                        Logs
+                      </button>
+                    </div>
 
-        <div
-          className={`main-view main-view-single ${viewMode === "api-tester" ? "main-view-active" : ""}`}
-        >
-          <div className="api-tester-container">
-            {loading ? (
-              <div className="loading">Scanning localhost...</div>
-            ) : (
-              <CurlBuilder nodes={visibleGraphNodes} onTraceRequest={handleTraceRequest} />
-            )}
-          </div>
-        </div>
-        </ErrorBoundary>
-        </TraceDispatchContext.Provider>
-        </TraceContext.Provider>
-      </main>
+                    <div
+                      className={`containers-overview containers-sub-view ${containerSubTab === "overview" ? "containers-sub-view-active" : ""}`}
+                    >
+                      <div
+                        className={`graph-container${!loading && dockerContainerData.nodes.length === 0 ? " graph-container-empty" : ""}`}
+                      >
+                        {loading ? (
+                          <div className="loading">
+                            Scanning Docker containers...
+                          </div>
+                        ) : dockerContainerData.nodes.length === 0 ? (
+                          <div className="graph-empty">
+                            <div className="docker-empty-icon">
+                              <svg
+                                width="48"
+                                height="48"
+                                viewBox="0 0 24 24"
+                                fill="currentColor"
+                                opacity="0.3"
+                              >
+                                <path d="M13.983 11.078h2.119a.186.186 0 00.186-.185V9.006a.186.186 0 00-.186-.186h-2.119a.185.185 0 00-.185.185v1.888c0 .102.083.185.185.185m-2.954-5.43h2.118a.186.186 0 00.186-.186V3.574a.186.186 0 00-.186-.185h-2.118a.185.185 0 00-.185.185v1.888c0 .102.082.185.185.186m0 2.716h2.118a.187.187 0 00.186-.186V6.29a.186.186 0 00-.186-.185h-2.118a.185.185 0 00-.185.185v1.887c0 .102.082.185.185.186m-2.93 0h2.12a.186.186 0 00.184-.186V6.29a.185.185 0 00-.185-.185H8.1a.185.185 0 00-.185.185v1.887c0 .102.083.185.185.186m-2.964 0h2.119a.186.186 0 00.185-.186V6.29a.185.185 0 00-.185-.185H5.136a.186.186 0 00-.186.185v1.887c0 .102.084.185.186.186m5.893 2.715h2.118a.186.186 0 00.186-.185V9.006a.186.186 0 00-.186-.186h-2.118a.185.185 0 00-.185.185v1.888c0 .102.082.185.185.185m-2.93 0h2.12a.185.185 0 00.184-.185V9.006a.185.185 0 00-.184-.186h-2.12a.185.185 0 00-.184.185v1.888c0 .102.083.185.185.185m-2.964 0h2.119a.185.185 0 00.185-.185V9.006a.185.185 0 00-.185-.186h-2.119a.185.185 0 00-.186.185v1.888c0 .102.084.185.186.185m-2.92 0h2.12a.185.185 0 00.184-.185V9.006a.185.185 0 00-.184-.186h-2.12a.186.186 0 00-.186.186v1.887c0 .102.084.185.186.185m-2.929 0h2.119a.185.185 0 00.185-.185V9.006a.186.186 0 00-.185-.186h-2.12a.185.185 0 00-.184.185v1.888c0 .102.083.185.185.185M23.763 9.89c-.065-.051-.672-.51-1.954-.51-.338.001-.676.03-1.01.087-.248-1.7-1.653-2.53-1.716-2.566l-.344-.199-.226.327c-.284.438-.49.922-.612 1.43-.23.97-.09 1.882.403 2.661-.595.332-1.55.413-1.744.42H.751a.751.751 0 00-.75.748 11.376 11.376 0 00.692 4.062c.545 1.428 1.355 2.48 2.41 3.124 1.18.723 3.1 1.137 5.275 1.137.983.003 1.963-.086 2.93-.266a12.248 12.248 0 003.823-1.389c.98-.567 1.86-1.288 2.61-2.136 1.252-1.418 1.998-2.997 2.553-4.4h.221c1.372 0 2.215-.549 2.68-1.009.309-.293.55-.65.707-1.046l.098-.288Z" />
+                              </svg>
+                            </div>
+                            <p>No Docker containers running</p>
+                            <span>Start some containers to see them here</span>
+                          </div>
+                        ) : (
+                          <GraphView
+                            nodes={dockerContainerData.nodes}
+                            edges={dockerContainerData.edges}
+                            isContainerView={true}
+                            onDatabaseClick={handleDatabaseClick}
+                          />
+                        )}
+                      </div>
+                    </div>
+                    <div
+                      className={`containers-logs containers-sub-view ${containerSubTab === "logs" ? "containers-sub-view-active" : ""}`}
+                    >
+                      <ContainerLogsTab
+                        containers={dockerContainerData.nodes}
+                        initialSelectedId={initialLogContainerId}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div
+                  className={`main-view main-view-single ${viewMode === "database" ? "main-view-active" : ""}`}
+                >
+                  <div className="api-tester-container">
+                    <DatabaseListView
+                      databaseNodes={databaseNodes}
+                      selectedNode={databaseNode}
+                      onSelectNode={setDatabaseNode}
+                    />
+                  </div>
+                </div>
+
+                <div
+                  className={`main-view main-view-single ${viewMode === "api-tester" ? "main-view-active" : ""}`}
+                >
+                  <div className="api-tester-container">
+                    {loading ? (
+                      <div className="loading">Scanning localhost...</div>
+                    ) : (
+                      <CurlBuilder
+                        nodes={visibleGraphNodes}
+                        onTraceRequest={handleTraceRequest}
+                      />
+                    )}
+                  </div>
+                </div>
+              </ErrorBoundary>
+            </TraceDispatchContext.Provider>
+          </TraceContext.Provider>
+        </main>
+      </div>
+
       {hasEverOpened && (
         <DebugPanel
           isOpen={isAgentOpen}
@@ -1637,7 +1823,6 @@ function App() {
         initialQueryKey={stackQueryInitialQueryKey}
         initialServiceName={stackQueryInitialServiceName}
       />
-      </div>
 
       {/* Welcome Modal */}
       {showWelcome && <WelcomeModal onClose={handleCloseWelcome} />}
@@ -1648,7 +1833,9 @@ function App() {
           onClose={() => setShowShare(false)}
           graphNodes={filteredData.nodes}
           graphEdges={filteredData.edges}
-          activeTabLabel={tabs.find((t) => t.id === selectedTab)?.label ?? SYSTEM_TAB_LABEL}
+          activeTabLabel={
+            tabs.find((t) => t.id === selectedTab)?.label ?? SYSTEM_TAB_LABEL
+          }
         />
       )}
     </div>

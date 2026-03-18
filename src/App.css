@@ -4187,50 +4187,72 @@ textarea {
 /* Editor with syntax highlighting overlay */
 .curl-editor-container {
   position: relative;
+  display: flex;
   width: 100%;
   height: 100%;
   min-height: 200px;
-  padding: 20px;
-  overflow: auto;
+  overflow: hidden;
   background: var(--bg-primary);
+}
+
+.curl-editor-line-numbers {
+  margin: 0;
+  width: 56px;
+  padding: 20px 10px 20px 14px;
+  border-right: 1px solid var(--border-color);
+  font-family: var(--font-mono);
+  font-size: 14px;
+  line-height: 1.7;
+  color: #9ca3af;
+  text-align: right;
+  white-space: pre;
+  overflow: hidden;
+  user-select: none;
+  pointer-events: none;
+}
+
+.curl-editor-code {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
 }
 
 .curl-editor-highlight {
   position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  inset: 0;
+  z-index: 0;
   margin: 0;
   padding: 20px;
   font-family: var(--font-mono);
   font-size: 14px;
   line-height: 1.7;
-  white-space: pre-wrap;
-  word-break: break-all;
+  white-space: pre;
+  word-break: normal;
   pointer-events: none;
   overflow: hidden;
 }
 
 .curl-editor-textarea {
   position: relative;
+  z-index: 1;
   width: 100%;
   height: 100%;
   min-height: 100%;
-  padding: 0;
+  padding: 20px;
   font-family: var(--font-mono);
   font-size: 14px;
   line-height: 1.7;
-  color: #111111;
+  color: transparent;
   caret-color: #111111;
   background: transparent;
   border: none;
   outline: none;
   resize: none;
-  white-space: pre-wrap;
-  word-break: break-all;
+  white-space: pre;
+  word-break: normal;
   box-sizing: border-box;
-  overflow: visible;
+  overflow: auto;
   tab-size: 2;
 }
 
@@ -4283,6 +4305,26 @@ textarea {
 
 .curl-hl-body {
   color: #0f766e; /* Muted teal */
+}
+
+.curl-hl-string {
+  color: #1d4ed8;
+}
+
+.curl-hl-number {
+  color: #7c3aed;
+}
+
+.curl-hl-token {
+  color: #0f172a;
+}
+
+.curl-hl-env-key {
+  color: #be123c;
+}
+
+.curl-hl-env-value {
+  color: #0f766e;
 }
 
 .curl-hl-punctuation {
@@ -6480,12 +6522,34 @@ textarea {
 
 .db-query-editor-container {
   position: relative;
+  display: flex;
   flex: 1;
   min-height: 300px;
   background: #fafafa;
-  overflow-y: auto;
-  overflow-x: hidden;
-  padding: 20px 24px;
+  overflow: hidden;
+}
+
+.db-query-line-numbers {
+  margin: 0;
+  width: 58px;
+  padding: 20px 10px 20px 14px;
+  border-right: 1px solid #e5e5e5;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.7;
+  color: #a3a3a3;
+  text-align: right;
+  white-space: pre;
+  overflow: hidden;
+  user-select: none;
+  pointer-events: none;
+}
+
+.db-query-editor-code {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
 }
 
 .db-query-highlight {
@@ -6498,9 +6562,9 @@ textarea {
   font-size: 13px;
   line-height: 1.7;
   color: #171717;
-  white-space: pre-wrap;
-  word-break: break-word;
-  overflow: hidden;
+  white-space: pre;
+  word-break: normal;
+  overflow: auto;
   pointer-events: none;
 }
 
@@ -6510,25 +6574,20 @@ textarea {
   width: 100%;
   height: 100%;
   min-height: 300px;
-  padding: 0;
+  padding: 20px 24px;
   background: transparent;
   border: none;
-  color: #171717;
+  color: transparent;
   caret-color: #171717;
   font-family: var(--font-mono);
   font-size: 13px;
   line-height: 1.7;
   resize: none;
   outline: none;
-  white-space: pre-wrap;
-  word-break: break-word;
-  overflow: hidden;
+  white-space: pre;
+  word-break: normal;
+  overflow: auto;
   tab-size: 2;
-}
-
-.db-query-textarea.is-preview {
-  color: transparent;
-  caret-color: transparent;
 }
 
 .db-query-textarea::placeholder {
@@ -6548,8 +6607,17 @@ textarea {
   font-weight: 600;
 }
 
+.db-hl-parameter {
+  color: #be123c;
+  font-weight: 600;
+}
+
 .db-hl-identifier {
   color: #111827;
+}
+
+.db-hl-qualified {
+  color: #334155;
 }
 
 .db-hl-function {
@@ -6558,6 +6626,16 @@ textarea {
 
 .db-hl-string {
   color: #15803d;
+}
+
+.db-hl-boolean {
+  color: #7c3aed;
+  font-weight: 600;
+}
+
+.db-hl-null {
+  color: #9f1239;
+  font-weight: 600;
 }
 
 .db-hl-number {
@@ -6571,6 +6649,10 @@ textarea {
 
 .db-hl-operator {
   color: #9ca3af;
+}
+
+.db-hl-punctuation {
+  color: #94a3b8;
 }
 
 /* Query results */

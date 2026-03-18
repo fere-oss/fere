@@ -25,15 +25,20 @@ export function DatabaseQueryLayout({
   formatCellValue,
 }: DatabaseQueryLayoutProps) {
   const tabCounterRef = useRef(2);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const previewRef = useRef<HTMLPreElement | null>(null);
+  const gutterRef = useRef<HTMLPreElement | null>(null);
   const [queryTabs, setQueryTabs] = useState([{ id: 'query-tab-1', title: 'Query 1', content: query }]);
   const [activeTabId, setActiveTabId] = useState('query-tab-1');
-  const [isEditorFocused, setIsEditorFocused] = useState(false);
 
   const activeTab = useMemo(
     () => queryTabs.find((tab) => tab.id === activeTabId) ?? queryTabs[0],
     [queryTabs, activeTabId],
   );
-  const showHighlightPreview = !isEditorFocused && activeTab.content.trim().length > 0;
+  const lineNumbersText = useMemo(() => {
+    const lineCount = Math.max(1, activeTab.content.split('\n').length);
+    return Array.from({ length: lineCount }, (_, i) => `${i + 1}`).join('\n');
+  }, [activeTab.content]);
 
   useEffect(() => {
     setQueryTabs((prev) =>
@@ -77,6 +82,15 @@ export function DatabaseQueryLayout({
     if (fallbackTab) {
       setActiveTabId(fallbackTab.id);
       onChangeQuery(fallbackTab.content);
+    }
+  };
+
+  const syncEditorScroll = () => {
+    if (!textareaRef.current || !previewRef.current) return;
+    previewRef.current.scrollTop = textareaRef.current.scrollTop;
+    previewRef.current.scrollLeft = textareaRef.current.scrollLeft;
+    if (gutterRef.current) {
+      gutterRef.current.scrollTop = textareaRef.current.scrollTop;
     }
   };
 
@@ -146,21 +160,24 @@ export function DatabaseQueryLayout({
           </button>
         </div>
         <div className="db-query-editor-container">
-          {showHighlightPreview && (
-            <pre className="db-query-highlight" aria-hidden>
+          <pre ref={gutterRef} className="db-query-line-numbers" aria-hidden="true">
+            {lineNumbersText}
+          </pre>
+          <div className="db-query-editor-code">
+            <pre ref={previewRef} className="db-query-highlight" aria-hidden="true">
               {highlightQuery(activeTab.content, dbType)}
             </pre>
-          )}
-          <textarea
-            className={`db-query-textarea ${showHighlightPreview ? 'is-preview' : ''}`}
-            value={activeTab.content}
-            onChange={(e) => handleChangeQuery(e.target.value)}
-            onKeyDown={onKeyDown}
-            onFocus={() => setIsEditorFocused(true)}
-            onBlur={() => setIsEditorFocused(false)}
-            placeholder={getQueryPlaceholder()}
-            spellCheck={false}
-          />
+            <textarea
+              ref={textareaRef}
+              className="db-query-textarea"
+              value={activeTab.content}
+              onChange={(e) => handleChangeQuery(e.target.value)}
+              onScroll={syncEditorScroll}
+              onKeyDown={onKeyDown}
+              placeholder={getQueryPlaceholder()}
+              spellCheck={false}
+            />
+          </div>
         </div>
       </div>
 
@@ -215,7 +232,7 @@ export function DatabaseQueryLayout({
             </div>
           ) : queryResult?.output ? (
             <pre className="db-query-output">
-              {highlightQueryOutput(queryResult.output)}
+              {highlightQueryOutput(normalizeQueryOutput(queryResult.output))}
             </pre>
           ) : (
             <div className="db-query-empty">
@@ -248,6 +265,11 @@ const MONGO_KEYWORDS = new Set([
 const COMMON_FUNCTIONS = new Set([
   'json', 'stringify', 'date', 'isodate', 'objectid', 'print',
 ]);
+const SQL_BUILTIN_FUNCTIONS = new Set([
+  'now', 'date_trunc', 'split_part', 'percentile_cont', 'jsonb_build_object', 'jsonb_agg',
+  'to_char', 'coalesce', 'nullif', 'cast', 'date_part', 'extract', 'lower', 'upper', 'trim',
+  'substring', 'regexp_replace', 'array_agg',
+]);
 
 function highlightQuery(query: string, dbType: string): React.ReactNode {
   const tokenPattern = /(--.*$|\/\/.*$|\/\*[\s\S]*?\*\/|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`|\$[a-zA-Z_][a-zA-Z0-9_]*|\b\d+(?:\.\d+)?\b|\b[a-zA-Z_][a-zA-Z0-9_]*\b|[()[\]{}.,;:+\-*/%<>=!?|&]+)/gm;
@@ -267,18 +289,35 @@ function highlightQuery(query: string, dbType: string): React.ReactNode {
 
     let className = '';
     const lower = token.toLowerCase();
+    const prevChar = start > 0 ? query[start - 1] : '';
+    const nextChar = end < query.length ? query[end] : '';
+    const looksLikeFunction = /^\s*\(/.test(query.slice(end));
     if (token.startsWith('--') || token.startsWith('//') || token.startsWith('/*')) {
       className = 'db-hl-comment';
     } else if (token.startsWith('"') || token.startsWith("'") || token.startsWith('`')) {
       className = 'db-hl-string';
+    } else if (/^\$[a-zA-Z_]/.test(token)) {
+      className = 'db-hl-parameter';
+    } else if (lower === 'true' || lower === 'false') {
+      className = 'db-hl-boolean';
+    } else if (lower === 'null') {
+      className = 'db-hl-null';
     } else if (/^\$[a-zA-Z_]/.test(token) || syntax.has(lower)) {
       className = 'db-hl-keyword';
     } else if (/^\d/.test(token)) {
       className = 'db-hl-number';
+    } else if (/^[.,;()[\]{}]+$/.test(token)) {
+      className = 'db-hl-punctuation';
     } else if (/^[()[\]{}.,;:+\-*/%<>=!?|&]+$/.test(token)) {
       className = 'db-hl-operator';
-    } else if (COMMON_FUNCTIONS.has(lower)) {
+    } else if (
+      COMMON_FUNCTIONS.has(lower)
+      || (dbType !== 'mongodb' && SQL_BUILTIN_FUNCTIONS.has(lower))
+      || looksLikeFunction
+    ) {
       className = 'db-hl-function';
+    } else if (prevChar === '.' || nextChar === '.') {
+      className = 'db-hl-qualified';
     } else if (/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(token)) {
       className = 'db-hl-identifier';
     }
@@ -315,4 +354,61 @@ function highlightQueryOutput(output: string): React.ReactNode {
     }
     return part;
   });
+}
+
+function normalizeQueryOutput(output: string): string {
+  const lines = String(output || '')
+    .split('\n')
+    .map((line) => line.replace(/\s+$/, ''));
+
+  const promptOnly = /^[a-z0-9_-]+>\s*$/i;
+  const promptDotsOnly = /^[a-z0-9_-]+>\s*(?:\.\.\.\s*)+$/i;
+  const dotsOnly = /^(?:\.\.\.\s*)+$/;
+
+  const cleanedLines = lines
+    .map((line) => line.replace(/^[a-z0-9_-]+>\s*(?:\.\.\.\s*)*/i, ''))
+    .filter((line) => {
+      const trimmed = line.trim();
+      if (!trimmed) return false;
+      if (promptOnly.test(trimmed)) return false;
+      if (promptDotsOnly.test(trimmed)) return false;
+      if (dotsOnly.test(trimmed)) return false;
+      return true;
+    });
+
+  const cleaned = cleanedLines.join('\n').trim();
+  if (!cleaned) return '';
+
+  const jsonCandidate = extractJsonCandidate(cleaned);
+  if (jsonCandidate) {
+    try {
+      const parsed = JSON.parse(jsonCandidate);
+      return JSON.stringify(parsed, null, 2);
+    } catch {
+      // Fall back to cleaned text
+    }
+  }
+
+  return cleaned;
+}
+
+function extractJsonCandidate(text: string): string | null {
+  const lines = text
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  for (let i = lines.length - 1; i >= 0; i -= 1) {
+    const line = lines[i];
+    if ((line.startsWith('{') && line.endsWith('}')) || (line.startsWith('[') && line.endsWith(']'))) {
+      return line;
+    }
+  }
+
+  const trimmed = text.trim();
+  if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+    return trimmed;
+  }
+
+  return null;
 }

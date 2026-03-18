@@ -19,6 +19,8 @@ const FLASK_API = process.env.FLASK_API || "http://localhost:5001";
 const state = {
   requests: 0,
   startTime: Date.now(),
+  users: [],
+  nextUserId: 1,
 };
 
 // Route handlers
@@ -31,7 +33,14 @@ const routes = {
         version: "1.0.0",
         type: "frontend-proxy",
         upstreamApi: FLASK_API,
-        endpoints: ["GET /", "GET /health", "GET /stats", "GET /proxy/*"],
+        endpoints: [
+          "GET /",
+          "GET /health",
+          "GET /stats",
+          "GET /api/users",
+          "POST /api/users",
+          "GET /proxy/*",
+        ],
       }),
     );
   },
@@ -58,10 +67,58 @@ const routes = {
       }),
     );
   },
+
+  "GET /api/users": (req, res) => {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(
+      JSON.stringify({
+        users: state.users,
+        total: state.users.length,
+      }),
+    );
+  },
+
+  "POST /api/users": (req, res, body) => {
+    const name =
+      typeof body?.name === "string" && body.name.trim().length > 0
+        ? body.name.trim()
+        : `User ${state.nextUserId}`;
+    const user = {
+      id: state.nextUserId++,
+      name,
+      created_at: new Date().toISOString(),
+    };
+    state.users.push(user);
+
+    res.writeHead(201, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(user));
+  },
 };
 
+function readJsonBody(req) {
+  return new Promise((resolve) => {
+    let raw = "";
+    req.on("data", (chunk) => {
+      raw += chunk.toString();
+      // Keep this test server safe from unexpectedly large payloads.
+      if (raw.length > 1_000_000) {
+        raw = raw.slice(0, 1_000_000);
+      }
+    });
+    req.on("end", () => {
+      if (!raw.trim()) return resolve({});
+      try {
+        resolve(JSON.parse(raw));
+      } catch {
+        resolve({});
+      }
+    });
+    req.on("error", () => resolve({}));
+  });
+}
+
 // Create server
-const server = http.createServer((req, res) => {
+const server = http.createServer(async (req, res) => {
   state.requests++;
 
   const parsedUrl = url.parse(req.url, true);
@@ -83,7 +140,11 @@ const server = http.createServer((req, res) => {
 
   // Check for exact route match
   if (routes[routeKey]) {
-    routes[routeKey](req, res);
+    const parsedBody =
+      req.method === "POST" || req.method === "PUT"
+        ? await readJsonBody(req)
+        : {};
+    routes[routeKey](req, res, parsedBody);
     return;
   }
 
@@ -122,6 +183,8 @@ server.listen(PORT, "0.0.0.0", () => {
 ║    GET  /         - Server info                               ║
 ║    GET  /health   - Health check                              ║
 ║    GET  /stats    - Request statistics                        ║
+║    GET  /api/users - List users                               ║
+║    POST /api/users - Create user                              ║
 ║    GET  /proxy/*  - Proxy to Flask API                        ║
 ╚═══════════════════════════════════════════════════════════════╝
   `);
