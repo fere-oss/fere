@@ -243,9 +243,9 @@ function createWindow() {
   });
 }
 
-// Enable GPU rasterization and uncap frame rate for smoother mouse interaction
+// Keep Chromium's smoother scrolling path without forcing unlimited redraws.
+app.commandLine.appendSwitch("enable-smooth-scrolling");
 app.commandLine.appendSwitch("enable-gpu-rasterization");
-app.commandLine.appendSwitch("disable-frame-rate-limit");
 
 app.whenReady().then(() => {
   // Security: Set up default-deny permission handlers
