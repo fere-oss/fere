@@ -464,18 +464,6 @@ function App() {
     };
   }, [viewMode]);
 
-  // Cmd/Ctrl+K opens Fere Agent
-  useEffect(() => {
-    const handleShortcut = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
-        e.preventDefault();
-        setHasEverOpened(true);
-        setIsAgentOpen(true);
-      }
-    };
-    window.addEventListener("keydown", handleShortcut);
-    return () => window.removeEventListener("keydown", handleShortcut);
-  }, []);
 
   useEffect(() => {
     if (optimisticDownNodes.size === 0) return;
@@ -1241,24 +1229,17 @@ function App() {
 
         {/* Header Actions */}
         <div className="app-header-actions">
+          {/* Fere Agent button — hidden, use Cmd+K to open
           <button
             className="alert-toggle"
             onClick={handleOpenDebugPanel}
             title="Fere Agent"
           >
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 16 16"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.0"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
+            <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.0" strokeLinecap="round" strokeLinejoin="round">
               <path d="M2.8 4.7A1.9 1.9 0 0 1 4.7 2.8h6.6a1.9 1.9 0 0 1 1.9 1.9v4.1a1.9 1.9 0 0 1-1.9 1.9H8.5L5.9 13v-2.3H4.7a1.9 1.9 0 0 1-1.9-1.9V4.7Z" />
             </svg>
           </button>
+          */}
           <button
             className="alert-toggle"
             onClick={() => setShowShare(true)}
@@ -1724,14 +1705,15 @@ function App() {
             </TraceDispatchContext.Provider>
           </TraceContext.Provider>
         </main>
-        {hasEverOpened && (
-          <DebugPanel
-            isOpen={isAgentOpen}
-            onClose={handleCloseDebugPanel}
-            graphNodes={filteredData.nodes}
-          />
-        )}
       </div>
+
+      {hasEverOpened && (
+        <DebugPanel
+          isOpen={isAgentOpen}
+          onClose={handleCloseDebugPanel}
+          graphNodes={filteredData.nodes}
+        />
+      )}
 
       {/* Welcome Modal */}
       {showWelcome && <WelcomeModal onClose={handleCloseWelcome} />}
