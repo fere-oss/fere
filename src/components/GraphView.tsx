@@ -20,6 +20,7 @@ import { useGraphLayoutData } from "./graph/useGraphLayoutData";
 import { useNodeMeasurements } from "./graph/useNodeMeasurements";
 import { useTraceState, useTraceDispatch } from "./graph/traceContext";
 import { TraceWaterfall } from "./graph/TraceWaterfall";
+import { ScanningEmptyState } from "./ScanningEmptyState";
 
 const NODE_TYPES = flowNodeTypes;
 const EDGE_TYPES = flowEdgeTypes;
@@ -864,18 +865,19 @@ export function GraphView({
   }, []);
 
   if (layoutNodes.length === 0) {
-    const emptyTitle = isContainerView
-      ? "No containers running"
-      : "No services detected";
-    const emptySubtitle = isContainerView
-      ? "Start Docker containers to see them here"
-      : "Try: npm run dev in your project";
+    if (isContainerView) {
+      return (
+        <div className="graph-view" ref={containerRef}>
+          <div className="graph-empty">
+            <p>No containers running</p>
+            <span>Start Docker containers to see them here</span>
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="graph-view" ref={containerRef}>
-        <div className="graph-empty">
-          <p>{emptyTitle}</p>
-          <span>{emptySubtitle}</span>
-        </div>
+        <ScanningEmptyState />
       </div>
     );
   }

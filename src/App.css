@@ -2325,6 +2325,123 @@ textarea {
   color: #2196f3;
 }
 
+/* Scanning Empty State */
+.scanning-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 20px;
+}
+
+.scanning-radar {
+  position: relative;
+  width: 120px;
+  height: 120px;
+}
+
+.scanning-radar-dot {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 8px;
+  height: 8px;
+  margin: -4px 0 0 -4px;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+
+.scanning-radar-ring {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  border-radius: 50%;
+  border: 1px solid var(--text-faint);
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(0.1);
+  animation: scanning-pulse 3s ease-out infinite;
+}
+
+.scanning-radar-ring-1 {
+  width: 60px;
+  height: 60px;
+  animation-delay: 0s;
+}
+
+.scanning-radar-ring-2 {
+  width: 90px;
+  height: 90px;
+  animation-delay: 1s;
+}
+
+.scanning-radar-ring-3 {
+  width: 120px;
+  height: 120px;
+  animation-delay: 2s;
+}
+
+@keyframes scanning-pulse {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.3);
+  }
+  20% {
+    opacity: 0.4;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+.scanning-message {
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.scanning-hint {
+  font-size: 12px;
+  font-family: var(--font-mono);
+  color: var(--text-faint);
+  text-align: center;
+}
+
+.scanning-hint code {
+  font-family: inherit;
+  color: var(--text-muted);
+}
+
+/* First Detection Toast */
+.first-detection-toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  padding: 12px 20px;
+  background: var(--text-primary);
+  color: var(--bg-primary);
+  font-size: 13px;
+  font-family: var(--font-ui);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  z-index: 9999;
+  opacity: 0;
+  transform: translateY(12px);
+  transition: opacity 0.3s ease, transform 0.3s ease;
+  pointer-events: none;
+}
+
+.first-detection-toast.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.first-detection-toast strong {
+  font-weight: 600;
+}
+
 /* Connection Lines SVG */
 .graph-connections {
   position: absolute;
