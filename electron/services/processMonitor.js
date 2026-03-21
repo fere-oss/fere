@@ -136,11 +136,11 @@ async function getAllProcesses() {
       processCache.promise = null;
       const msg = String(error?.message || error?.stderr || '');
       if (error.code === 'ENOENT' || /not found/i.test(msg)) {
-        lastProcessStatus = { code: 'unavailable', message: 'ps not found' };
+        lastProcessStatus = { code: 'unavailable', message: 'System process tool not found' };
       } else if (/permission denied/i.test(msg)) {
-        lastProcessStatus = { code: 'permission_denied', message: 'ps permission denied' };
+        lastProcessStatus = { code: 'permission_denied', message: 'Insufficient permissions for process scanning' };
       } else {
-        lastProcessStatus = { code: 'degraded', message: msg.slice(0, 200) };
+        lastProcessStatus = { code: 'degraded', message: 'Process scanning encountered an error' };
       }
       return [];
     }

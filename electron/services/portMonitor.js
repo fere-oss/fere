@@ -133,15 +133,15 @@ function classifyLsofError(error) {
   }
   const msg = String(error?.message || error?.stderr || '');
   if (error.code === 'ENOENT' || /not found/i.test(msg)) {
-    return { code: 'unavailable', message: 'lsof not found' };
+    return { code: 'unavailable', message: 'System network tool not found' };
   }
   if (/permission denied/i.test(msg)) {
-    return { code: 'permission_denied', message: 'lsof permission denied' };
+    return { code: 'permission_denied', message: 'Insufficient permissions for network scanning' };
   }
   if (error.killed || /timed?\s*out/i.test(msg)) {
-    return { code: 'timeout', message: 'lsof timed out' };
+    return { code: 'timeout', message: 'Network scanning timed out' };
   }
-  return { code: 'degraded', message: msg.slice(0, 200) };
+  return { code: 'degraded', message: 'Network scanning encountered an error' };
 }
 
 async function runCached(cache, fetcher) {

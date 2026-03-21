@@ -131,7 +131,7 @@ async function getDockerStatus() {
     } else {
       lastDockerStatus = {
         code: 'degraded',
-        message: msg.slice(0, 200),
+        message: 'Docker encountered an error',
       };
     }
     return lastDockerStatus;
