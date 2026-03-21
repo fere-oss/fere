@@ -326,6 +326,19 @@ export interface ExternalApi {
   hosts?: string[];
 }
 
+export type ServiceStatusCode = 'ok' | 'unavailable' | 'permission_denied' | 'timeout' | 'degraded';
+
+export interface ServiceStatus {
+  code: ServiceStatusCode;
+  message?: string;
+}
+
+export interface ServiceStatuses {
+  ports: ServiceStatus;
+  processes: ServiceStatus;
+  docker: ServiceStatus;
+}
+
 export interface SystemSnapshot {
   processes: Process[];
   ports: Port[];
@@ -337,6 +350,7 @@ export interface SystemSnapshot {
     processesAgeMs: number | null;
     portsAgeMs: number | null;
     connectionsAgeMs: number | null;
+    status?: ServiceStatuses;
   };
 }
 
@@ -531,6 +545,7 @@ export interface SnapshotDelta {
     processesAgeMs: number | null;
     portsAgeMs: number | null;
     connectionsAgeMs: number | null;
+    status?: ServiceStatuses;
   };
 }
 
