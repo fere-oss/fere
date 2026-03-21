@@ -219,12 +219,12 @@ function App() {
     const nodes = graph.nodes.filter((n) => n.type !== "external");
     const prevCount = prevNodeCountRef.current;
     prevNodeCountRef.current = nodes.length;
-    if (prevCount === 0 && nodes.length > 0) {
+    if (prevCount === 0 && nodes.length > 0 && !showWelcome) {
       const node = nodes[0];
       const port = node.ports?.[0]?.port ?? 0;
       firstDetection.trigger(node.name, port);
     }
-  }, [graph.nodes, firstDetection.trigger]);
+  }, [graph.nodes, firstDetection.trigger, showWelcome]);
 
   // View mode state - graph or api-tester
   const [viewMode, setViewMode] = useState<ViewMode>("graph");
@@ -339,8 +339,14 @@ function App() {
     });
   }, [viewMode]);
 
-  // Welcome modal state
-  const [showWelcome, setShowWelcome] = useState(false);
+  // Welcome modal state — initialize synchronously to avoid showing toast before modal
+  const [showWelcome, setShowWelcome] = useState(() => {
+    try {
+      return !window.localStorage.getItem(WELCOME_SEEN_KEY);
+    } catch {
+      return false;
+    }
+  });
 
   // Share modal state
   const [showShare, setShowShare] = useState(false);
@@ -375,17 +381,6 @@ function App() {
     }
   }, []);
 
-  // Check if user has seen welcome modal
-  useEffect(() => {
-    try {
-      const hasSeenWelcome = window.localStorage.getItem(WELCOME_SEEN_KEY);
-      if (!hasSeenWelcome) {
-        setShowWelcome(true);
-      }
-    } catch {
-      // Ignore localStorage read errors
-    }
-  }, []);
 
   useEffect(() => {
     const handleOptimisticDown = (event: Event) => {
