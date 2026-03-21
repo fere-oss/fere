@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import type { ConnectionGraph, EnvironmentSummary, Port, Process, SystemSnapshot, SnapshotDelta, GraphNode, GraphEdge } from '../types/electron';
+import type { ConnectionGraph, EnvironmentSummary, Port, Process, SystemSnapshot, SnapshotDelta, GraphNode, GraphEdge, ServiceStatuses } from '../types/electron';
 
 // Helper to create a stable key for comparing snapshots.
 // Uses count + sorted IDs for fast comparison without full string join.
@@ -212,6 +212,13 @@ export function useSystemSnapshot(pollInterval = 2000) {
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const defaultStatus: ServiceStatuses = {
+    ports: { code: 'ok' },
+    processes: { code: 'ok' },
+    docker: { code: 'ok' },
+  };
+  const [serviceStatus, setServiceStatus] = useState<ServiceStatuses>(defaultStatus);
+  const [monitoringStartedAt] = useState(() => Date.now());
   const snapshotRef = useRef<SystemSnapshot>(snapshot);
   const snapshotKeyRef = useRef<string>('');
   const lastSeqRef = useRef<number>(-1);
@@ -261,6 +268,9 @@ export function useSystemSnapshot(pollInterval = 2000) {
       snapshotRef.current = data;
       snapshotKeyRef.current = createSnapshotKey(data);
       setSnapshot(data);
+      if (data.meta?.status) {
+        setServiceStatus(data.meta.status);
+      }
       setError(null);
     } catch (err) {
       if (unmountedRef.current) return;
@@ -330,6 +340,9 @@ export function useSystemSnapshot(pollInterval = 2000) {
           }
         }
 
+        if (patched.meta?.status) {
+          setServiceStatus(patched.meta.status);
+        }
         setLoading(false);
         setError(null);
       });
@@ -400,7 +413,7 @@ export function useSystemSnapshot(pollInterval = 2000) {
     };
   }, [refresh, updateMetricsThrottle]);
 
-  return { snapshot, loading, error, refresh };
+  return { snapshot, loading, error, refresh, serviceStatus, monitoringStartedAt };
 }
 
 /**

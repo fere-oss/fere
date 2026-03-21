@@ -151,6 +151,8 @@ export function GraphView({
   isContainerView = false,
   onDatabaseClick,
   debugHighlightNodeIds,
+  serviceStatus,
+  monitoringStartedAt,
 }: GraphViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
@@ -877,7 +879,10 @@ export function GraphView({
     }
     return (
       <div className="graph-view" ref={containerRef}>
-        <ScanningEmptyState />
+        <ScanningEmptyState
+          serviceStatus={serviceStatus}
+          monitoringStartedAt={monitoringStartedAt}
+        />
       </div>
     );
   }

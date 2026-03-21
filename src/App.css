@@ -2414,6 +2414,10 @@ textarea {
   color: var(--text-muted);
 }
 
+.scanning-warning-icon {
+  color: var(--text-faint);
+}
+
 /* First Detection Toast */
 .first-detection-toast {
   position: fixed;
