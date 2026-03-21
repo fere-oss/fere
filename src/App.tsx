@@ -247,6 +247,16 @@ function DockerEmptyState({ dockerStatus }: { dockerStatus: ServiceStatus }) {
 function App() {
   const { snapshot, loading, error, serviceStatus, monitoringStartedAt } = useSystemSnapshot(2000);
   const { graph, ports } = snapshot;
+
+  // Welcome modal state — initialize synchronously to avoid showing toast before modal
+  const [showWelcome, setShowWelcome] = useState(() => {
+    try {
+      return !window.localStorage.getItem(WELCOME_SEEN_KEY);
+    } catch {
+      return false;
+    }
+  });
+
   // First detection toast
   const firstDetection = useFirstDetection();
   const prevNodeCountRef = useRef(0);
@@ -374,15 +384,6 @@ function App() {
       width: activeBtn.offsetWidth,
     });
   }, [viewMode]);
-
-  // Welcome modal state — initialize synchronously to avoid showing toast before modal
-  const [showWelcome, setShowWelcome] = useState(() => {
-    try {
-      return !window.localStorage.getItem(WELCOME_SEEN_KEY);
-    } catch {
-      return false;
-    }
-  });
 
   // Share modal state
   const [showShare, setShowShare] = useState(false);
