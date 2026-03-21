@@ -3,7 +3,7 @@ const EventEmitter = require('events');
 const { Worker } = require('worker_threads');
 const { getDevProcesses, getProcessCacheInfo, getProcessPids } = require('./processMonitor');
 const { getListeningPorts, getEstablishedConnections, getPortCacheInfo, getListeningPortNumbers } = require('./portMonitor');
-const { getDockerSnapshot } = require('./dockerMonitor');
+const { getDockerSnapshot, getLastDockerStatus } = require('./dockerMonitor');
 const { batchGetProcessCwds, collectHealthByPid, collectRoutes } = require('./connectionGraph');
 const { hasTopologyChanged, buildGraphStructure, collectProjectPaths } = require('./graphFunctions');
 
@@ -204,6 +204,31 @@ class SnapshotScheduler extends EventEmitter {
       await this.processSnapshot(rawData);
     } catch (error) {
       console.error('[SnapshotScheduler] Reconciliation error:', error);
+      // Emit a status-only update so the renderer knows collection is broken
+      const collectedAt = Date.now();
+      const processCacheInfo = getProcessCacheInfo();
+      const portCacheInfo = getPortCacheInfo();
+      this.emit('snapshot', {
+        type: 'full',
+        seq: this.seq++,
+        timestamp: collectedAt,
+        processes: [],
+        ports: [],
+        connections: [],
+        graph: { nodes: [], edges: [] },
+        docker: null,
+        meta: {
+          collectedAt,
+          processesAgeMs: processCacheInfo.timestamp ? collectedAt - processCacheInfo.timestamp : null,
+          portsAgeMs: portCacheInfo.listeningTimestamp ? collectedAt - portCacheInfo.listeningTimestamp : null,
+          connectionsAgeMs: portCacheInfo.connectionsTimestamp ? collectedAt - portCacheInfo.connectionsTimestamp : null,
+          status: {
+            ports: portCacheInfo.status,
+            processes: processCacheInfo.status,
+            docker: getLastDockerStatus(),
+          },
+        },
+      });
     } finally {
       this.reconcileInFlight = false;
     }
@@ -369,6 +394,11 @@ class SnapshotScheduler extends EventEmitter {
         processesAgeMs: processCacheInfo.timestamp ? collectedAt - processCacheInfo.timestamp : null,
         portsAgeMs: portCacheInfo.listeningTimestamp ? collectedAt - portCacheInfo.listeningTimestamp : null,
         connectionsAgeMs: portCacheInfo.connectionsTimestamp ? collectedAt - portCacheInfo.connectionsTimestamp : null,
+        status: {
+          ports: portCacheInfo.status,
+          processes: processCacheInfo.status,
+          docker: getLastDockerStatus(),
+        },
       },
     };
 
