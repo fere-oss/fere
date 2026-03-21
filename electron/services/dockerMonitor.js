@@ -93,6 +93,55 @@ async function isDockerAvailable() {
   }
 }
 
+// Last known Docker service status (updated by getDockerStatus)
+let lastDockerStatus = { code: 'ok' };
+
+/**
+ * Diagnose Docker availability and return a structured ServiceStatus.
+ * Distinguishes: not installed, not running, permission denied, ok.
+ */
+async function getDockerStatus() {
+  // Step 1: Can we find the binary at all?
+  const bin = await resolveDockerBinary();
+  if (!bin) {
+    lastDockerStatus = {
+      code: 'unavailable',
+      message: 'Docker Desktop is not installed',
+    };
+    return lastDockerStatus;
+  }
+
+  // Step 2: Can we talk to the daemon?
+  try {
+    await runDocker(['info'], { allowFailure: true });
+    lastDockerStatus = { code: 'ok' };
+    return lastDockerStatus;
+  } catch (error) {
+    const msg = String(error?.message || error?.stderr || '');
+    if (/cannot connect|connection refused|daemon.*not running|Is the docker daemon running/i.test(msg)) {
+      lastDockerStatus = {
+        code: 'unavailable',
+        message: 'Docker Desktop is not running',
+      };
+    } else if (/permission denied|access denied/i.test(msg)) {
+      lastDockerStatus = {
+        code: 'permission_denied',
+        message: 'Cannot access Docker',
+      };
+    } else {
+      lastDockerStatus = {
+        code: 'degraded',
+        message: msg.slice(0, 200),
+      };
+    }
+    return lastDockerStatus;
+  }
+}
+
+function getLastDockerStatus() {
+  return lastDockerStatus;
+}
+
 // Cache compose service name lookups keyed by compose file path.
 // Entries are invalidated when the file's mtime changes.
 const composeServicesCache = new Map();
@@ -848,6 +897,8 @@ async function startContainer(containerId) {
 
 module.exports = {
   isDockerAvailable,
+  getDockerStatus,
+  getLastDockerStatus,
   getDockerContainers,
   getDockerNetworks,
   getDockerSnapshot,

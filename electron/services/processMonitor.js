@@ -6,6 +6,9 @@ const execFileAsync = promisify(execFile);
 const CACHE_TTL_MS = 5000;
 const processCache = { timestamp: 0, data: [], promise: null };
 
+// Last known process collection status (updated on each ps call)
+let lastProcessStatus = { code: 'ok' };
+
 // Dev-related process patterns to filter for
 const DEV_PATTERNS = [
   'node', 'npm', 'npx', 'yarn', 'pnpm', 'bun',
@@ -126,10 +129,19 @@ async function getAllProcesses() {
       processCache.data = data;
       processCache.timestamp = Date.now();
       processCache.promise = null;
+      lastProcessStatus = { code: 'ok' };
       return data;
     } catch (error) {
       console.error('Error getting processes:', error);
       processCache.promise = null;
+      const msg = String(error?.message || error?.stderr || '');
+      if (error.code === 'ENOENT' || /not found/i.test(msg)) {
+        lastProcessStatus = { code: 'unavailable', message: 'ps not found' };
+      } else if (/permission denied/i.test(msg)) {
+        lastProcessStatus = { code: 'permission_denied', message: 'ps permission denied' };
+      } else {
+        lastProcessStatus = { code: 'degraded', message: msg.slice(0, 200) };
+      }
       return [];
     }
   })();
@@ -140,6 +152,7 @@ async function getAllProcesses() {
 function getProcessCacheInfo() {
   return {
     timestamp: processCache.timestamp || 0,
+    status: lastProcessStatus,
   };
 }
 
