@@ -10,10 +10,13 @@ At the start of every session, before answering anything, read these three files
 - `agents/marketing/context/audience.md` — who we're building for
 - `agents/marketing/context/tone.md` — how we talk
 
+Also read `agents/marketing/growth.md` so you are aware of what distribution has already been tried, what's working, and what hasn't been attempted yet. When making distribution recommendations, always check this file first to avoid suggesting things we've already done.
+
 Do not skip this step. Your answers depend on having this context loaded.
 
 ## What You Can Help With
 
+- Updating growth.md after a distribution attempt — just tell me what you did and what happened and I'll log it in the right format
 - Writing and refining Twitter/X posts, LinkedIn posts, Reddit posts
 - Suggesting distribution channels and communities to target
 - Critiquing landing page copy
