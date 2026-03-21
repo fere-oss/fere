@@ -112,6 +112,9 @@ export function NodeDetailContent({ node, edges, allNodes }: NodeDetailContentPr
             >
               {healthInfo.label}
             </span>
+            <span className="node-detail-health-desc">
+              — {healthInfo.description}
+            </span>
           </div>
           <div className="node-detail-health-meta">
             <span className="node-detail-label">Last seen</span>
@@ -304,7 +307,7 @@ export function NodeDetailContent({ node, edges, allNodes }: NodeDetailContentPr
             </div>
             {node.containerHealth.failingStreak !== undefined && node.containerHealth.failingStreak > 0 && (
               <div className="docker-health-failing">
-                Failing streak: {node.containerHealth.failingStreak}
+                {node.containerHealth.failingStreak} consecutive health {node.containerHealth.failingStreak === 1 ? 'check has' : 'checks have'} failed
               </div>
             )}
             {node.containerHealth.checks && node.containerHealth.checks.length > 0 && (

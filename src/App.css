@@ -2703,6 +2703,12 @@ textarea {
   font-weight: 600;
 }
 
+.node-detail-health-desc {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
 .node-detail-health-meta {
   display: flex;
   flex-direction: column;
