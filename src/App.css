@@ -2885,6 +2885,53 @@ textarea {
   border-color: var(--text-muted);
 }
 
+.node-detail-route-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.node-detail-scanned-ago {
+  font-size: 10px;
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+
+.node-detail-rescan-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--text-faint);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.node-detail-rescan-btn:hover {
+  color: var(--text-primary);
+  border-color: var(--border-color);
+}
+
+.node-detail-rescan-btn:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.node-detail-rescan-btn .spinning {
+  animation: rescan-spin 0.8s linear infinite;
+}
+
+@keyframes rescan-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
 /* External APIs in detail panel */
 .node-detail-apis {
   display: flex;

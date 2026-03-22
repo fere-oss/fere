@@ -62,6 +62,7 @@ const {
 const { getSystemSnapshot } = require("./services/systemSnapshot");
 const { SnapshotScheduler } = require("./services/snapshotScheduler");
 const { scanExternalApis } = require("./services/externalApiScanner");
+const { scanRoutes, clearRouteCache, getRouteCacheTimestamp } = require("./services/routeScanner");
 const {
   loadHistory,
   saveHistoryEntry,
@@ -485,6 +486,22 @@ ipcMain.handle("get-environment-summary", async () => {
   } catch (error) {
     console.error("Error getting environment summary:", error);
     return { totalServices: 0, totalConnections: 0, services: [] };
+  }
+});
+
+// Rescan routes for a project path (clears cache, returns fresh routes + timestamp)
+ipcMain.handle("rescan-routes", async (event, projectPath) => {
+  try {
+    if (!projectPath || typeof projectPath !== "string") {
+      return { routes: [], scannedAt: null };
+    }
+    const resolvedPath = path.resolve(projectPath);
+    clearRouteCache(resolvedPath);
+    const routes = await scanRoutes(resolvedPath);
+    return { routes, scannedAt: getRouteCacheTimestamp(resolvedPath) };
+  } catch (error) {
+    console.error("Error rescanning routes:", error);
+    return { routes: [], scannedAt: null };
   }
 });
 

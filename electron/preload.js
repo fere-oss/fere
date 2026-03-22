@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getEnvironmentSummary: () => ipcRenderer.invoke('get-environment-summary'),
   getSystemSnapshot: () => ipcRenderer.invoke('get-system-snapshot'),
   getExternalApis: (projectPath) => ipcRenderer.invoke('get-external-apis', projectPath),
+  rescanRoutes: (projectPath) => ipcRenderer.invoke('rescan-routes', projectPath),
 
   // Docker monitoring
   isDockerAvailable: () => ipcRenderer.invoke('is-docker-available'),

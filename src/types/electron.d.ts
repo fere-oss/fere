@@ -608,6 +608,7 @@ export interface ElectronAPI {
   getEnvironmentSummary: () => Promise<EnvironmentSummary>;
   getSystemSnapshot: () => Promise<SystemSnapshot>;
   getExternalApis: (projectPath: string) => Promise<ExternalApi[]>;
+  rescanRoutes: (projectPath: string) => Promise<{ routes: Route[]; scannedAt: number | null }>;
 
   // Docker monitoring
   getDockerContainers: () => Promise<DockerContainer[]>;
