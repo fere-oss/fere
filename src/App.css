@@ -2864,6 +2864,27 @@ textarea {
   color: var(--text-secondary);
 }
 
+.node-detail-trace-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-family: var(--font-ui);
+  color: var(--text-muted);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.node-detail-trace-btn:hover {
+  color: var(--text-primary);
+  border-color: var(--text-muted);
+}
+
 /* External APIs in detail panel */
 .node-detail-apis {
   display: flex;

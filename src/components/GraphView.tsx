@@ -995,6 +995,7 @@ export function GraphView({
           edges={layoutEdges}
           allNodes={layoutNodes}
           onClose={() => setSelectedNode(null)}
+          onTraceRequest={handleContextMenuTrace}
         />
       )}
 

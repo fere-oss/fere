@@ -14,9 +14,10 @@ interface NodeDetailContentProps {
   node: GraphNode;
   edges: GraphEdge[];
   allNodes: GraphNode[];
+  onTraceRequest?: (node: GraphNode) => void;
 }
 
-export function NodeDetailContent({ node, edges, allNodes }: NodeDetailContentProps) {
+export function NodeDetailContent({ node, edges, allNodes, onTraceRequest }: NodeDetailContentProps) {
   const accentColor = getServiceColor(node.type);
   const healthInfo = getHealthInfo(node.healthStatus);
   const routes = node.routes || [];
@@ -478,6 +479,20 @@ export function NodeDetailContent({ node, edges, allNodes }: NodeDetailContentPr
               </div>
             ))}
           </div>
+          {onTraceRequest && node.ports.length > 0 && (
+            <button
+              className="node-detail-trace-btn"
+              onClick={() => onTraceRequest(node)}
+            >
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round">
+                <circle cx="3" cy="8" r="1.5" />
+                <circle cx="13" cy="8" r="1.5" />
+                <line x1="4.5" y1="8" x2="11.5" y2="8" />
+                <path d="M7.5 9l5-3M7.5 11l5 3" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+              </svg>
+              Trace request through stack
+            </button>
+          )}
         </div>
       )}
 
