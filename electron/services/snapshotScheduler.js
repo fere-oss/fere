@@ -32,6 +32,11 @@ class SnapshotScheduler extends EventEmitter {
     this.throttled = false;
     this.THROTTLE_MULTIPLIER = 6; // 1.5s→9s fast probe, 5s→30s reconciliation
 
+    // Idle backoff: stretch fast probe when nothing changes
+    this._stableProbeCount = 0;
+    this._currentFastProbeInterval = this.fastProbeInterval;
+    this._MAX_FAST_PROBE_INTERVAL = 10000; // cap at 10s
+
     this.reconcileTimer = null;
     this.fastProbeTimer = null;
     this.running = false;
@@ -130,6 +135,9 @@ class SnapshotScheduler extends EventEmitter {
   unthrottle() {
     if (!this.throttled || !this.running) return;
     this.throttled = false;
+    // Reset idle backoff — user is back, probe aggressively
+    this._stableProbeCount = 0;
+    this._currentFastProbeInterval = this.fastProbeInterval;
     this._resetTimers();
     this.reconcile();
   }
@@ -144,7 +152,7 @@ class SnapshotScheduler extends EventEmitter {
     );
     this.fastProbeTimer = setInterval(
       () => this.fastProbe(),
-      this.fastProbeInterval * multiplier,
+      this._currentFastProbeInterval * multiplier,
     );
   }
 
@@ -196,6 +204,7 @@ class SnapshotScheduler extends EventEmitter {
   /**
    * Fast probe — lightweight PID and port enumeration.
    * If the set changed since last check, triggers an early reconciliation.
+   * Backs off when topology is stable, resets on any change.
    */
   async fastProbe() {
     if (this.workerBusy || this.reconcileInFlight) return;
@@ -213,11 +222,42 @@ class SnapshotScheduler extends EventEmitter {
       this.previousPortNumbers = currentPorts;
 
       if (pidsChanged || portsChanged) {
+        this._stableProbeCount = 0;
+        this._applyFastProbeBackoff();
         this.reconcile();
+      } else {
+        this._stableProbeCount++;
+        this._applyFastProbeBackoff();
       }
     } catch (error) {
       console.error('[SnapshotScheduler] Fast probe error:', error);
     }
+  }
+
+  /**
+   * Adjust fast probe interval based on how long topology has been stable.
+   * Ramps from base (1.5s) toward max (10s) over ~40 stable probes (~60s).
+   * Any topology change resets to base immediately.
+   */
+  _applyFastProbeBackoff() {
+    const base = this.fastProbeInterval;
+    // Step up by 25% of base interval every 5 stable probes, capped at max
+    const steps = Math.floor(this._stableProbeCount / 5);
+    const newInterval = Math.min(
+      base + steps * Math.round(base * 0.25),
+      this._MAX_FAST_PROBE_INTERVAL,
+    );
+
+    if (newInterval === this._currentFastProbeInterval) return;
+    this._currentFastProbeInterval = newInterval;
+
+    // Reschedule fast probe timer only (reconcile timer stays the same)
+    if (this.fastProbeTimer) clearInterval(this.fastProbeTimer);
+    const multiplier = this.throttled ? this.THROTTLE_MULTIPLIER : 1;
+    this.fastProbeTimer = setInterval(
+      () => this.fastProbe(),
+      this._currentFastProbeInterval * multiplier,
+    );
   }
 
   /**
