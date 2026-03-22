@@ -28,6 +28,10 @@ class SnapshotScheduler extends EventEmitter {
     this.fastProbeInterval = options.fastProbeInterval || 1500;
     this.structureInterval = options.structureInterval || 10000; // 10s forced structure rebuild
 
+    // Background throttling multiplier
+    this.throttled = false;
+    this.THROTTLE_MULTIPLIER = 6; // 1.5s→9s fast probe, 5s→30s reconciliation
+
     this.reconcileTimer = null;
     this.fastProbeTimer = null;
     this.running = false;
@@ -109,6 +113,39 @@ class SnapshotScheduler extends EventEmitter {
       this.worker = null;
       this.workerReady = false;
     }
+  }
+
+  /**
+   * Slow down collection when the app is in the background.
+   */
+  throttle() {
+    if (this.throttled || !this.running) return;
+    this.throttled = true;
+    this._resetTimers();
+  }
+
+  /**
+   * Resume normal collection speed and immediately reconcile.
+   */
+  unthrottle() {
+    if (!this.throttled || !this.running) return;
+    this.throttled = false;
+    this._resetTimers();
+    this.reconcile();
+  }
+
+  _resetTimers() {
+    const multiplier = this.throttled ? this.THROTTLE_MULTIPLIER : 1;
+    if (this.reconcileTimer) clearInterval(this.reconcileTimer);
+    if (this.fastProbeTimer) clearInterval(this.fastProbeTimer);
+    this.reconcileTimer = setInterval(
+      () => this.reconcile(),
+      this.reconciliationInterval * multiplier,
+    );
+    this.fastProbeTimer = setInterval(
+      () => this.fastProbe(),
+      this.fastProbeInterval * multiplier,
+    );
   }
 
   _restartWorker() {

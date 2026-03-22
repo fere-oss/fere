@@ -231,6 +231,26 @@ function createWindow() {
   // Security: Block new windows, open http/https in external browser
   setupWindowOpenHandler(mainWindow.webContents);
 
+  // Throttle snapshot collection when app is not visible
+  mainWindow.on("blur", () => {
+    if (snapshotScheduler) snapshotScheduler.throttle();
+  });
+  mainWindow.on("minimize", () => {
+    if (snapshotScheduler) snapshotScheduler.throttle();
+  });
+  mainWindow.on("hide", () => {
+    if (snapshotScheduler) snapshotScheduler.throttle();
+  });
+  mainWindow.on("focus", () => {
+    if (snapshotScheduler) snapshotScheduler.unthrottle();
+  });
+  mainWindow.on("restore", () => {
+    if (snapshotScheduler) snapshotScheduler.unthrottle();
+  });
+  mainWindow.on("show", () => {
+    if (snapshotScheduler) snapshotScheduler.unthrottle();
+  });
+
   mainWindow.on("closed", () => {
     if (snapshotScheduler) {
       snapshotScheduler.stop();
