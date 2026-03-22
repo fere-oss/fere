@@ -32,6 +32,10 @@ class SnapshotScheduler extends EventEmitter {
     this.throttled = false;
     this.THROTTLE_MULTIPLIER = 6; // 1.5s→9s fast probe, 5s→30s reconciliation
 
+    // Battery-aware slowdown
+    this.onBattery = false;
+    this.BATTERY_MULTIPLIER = 2; // 2× slower on battery
+
     // Idle backoff: stretch fast probe when nothing changes
     this._stableProbeCount = 0;
     this._currentFastProbeInterval = this.fastProbeInterval;
@@ -142,8 +146,15 @@ class SnapshotScheduler extends EventEmitter {
     this.reconcile();
   }
 
+  _getMultiplier() {
+    let m = 1;
+    if (this.onBattery) m *= this.BATTERY_MULTIPLIER;
+    if (this.throttled) m *= this.THROTTLE_MULTIPLIER;
+    return m;
+  }
+
   _resetTimers() {
-    const multiplier = this.throttled ? this.THROTTLE_MULTIPLIER : 1;
+    const multiplier = this._getMultiplier();
     if (this.reconcileTimer) clearInterval(this.reconcileTimer);
     if (this.fastProbeTimer) clearInterval(this.fastProbeTimer);
     this.reconcileTimer = setInterval(
@@ -154,6 +165,12 @@ class SnapshotScheduler extends EventEmitter {
       () => this.fastProbe(),
       this._currentFastProbeInterval * multiplier,
     );
+  }
+
+  setBattery(onBattery) {
+    if (this.onBattery === onBattery) return;
+    this.onBattery = onBattery;
+    if (this.running) this._resetTimers();
   }
 
   _restartWorker() {
@@ -253,7 +270,7 @@ class SnapshotScheduler extends EventEmitter {
 
     // Reschedule fast probe timer only (reconcile timer stays the same)
     if (this.fastProbeTimer) clearInterval(this.fastProbeTimer);
-    const multiplier = this.throttled ? this.THROTTLE_MULTIPLIER : 1;
+    const multiplier = this._getMultiplier();
     this.fastProbeTimer = setInterval(
       () => this.fastProbe(),
       this._currentFastProbeInterval * multiplier,

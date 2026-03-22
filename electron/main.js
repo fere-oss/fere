@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell, nativeImage, Notification, clipboard } = require("electron");
+const { app, BrowserWindow, ipcMain, shell, nativeImage, Notification, clipboard, powerMonitor } = require("electron");
 const path = require("path");
 const fs = require("fs");
 
@@ -292,6 +292,14 @@ app.whenReady().then(() => {
       app.dock.setIcon(icon);
     }
   }
+  // Power-aware scheduling: slow down on battery
+  powerMonitor.on('on-ac', () => {
+    if (snapshotScheduler) snapshotScheduler.setBattery(false);
+  });
+  powerMonitor.on('on-battery', () => {
+    if (snapshotScheduler) snapshotScheduler.setBattery(true);
+  });
+
   createWindow();
 });
 
@@ -423,6 +431,9 @@ ipcMain.handle("start-snapshot-stream", async (event) => {
     }
 
     snapshotScheduler = new SnapshotScheduler();
+    if (typeof powerMonitor.isOnBatteryPower === 'function') {
+      snapshotScheduler.setBattery(powerMonitor.isOnBatteryPower());
+    }
 
     snapshotHandler = (delta) => {
       if (event.sender.isDestroyed()) {
