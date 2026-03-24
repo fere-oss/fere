@@ -494,8 +494,8 @@ export interface AlertPreferences {
 export interface AlertEvent {
   id: string;
   timestamp: number;
-  type: 'down' | 'recovery' | 'degraded' | 'container-stopped' | 'container-running';
-  category: 'down' | 'recovery' | 'degraded' | 'container';
+  type: 'down' | 'recovery' | 'degraded' | 'container-stopped' | 'container-running' | 'service-discovered' | 'service-gone';
+  category: 'down' | 'recovery' | 'degraded' | 'container' | 'discovery';
   serviceName: string;
   serviceType: string;
   nodeId: string;

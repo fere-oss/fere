@@ -89,6 +89,8 @@ const ALERT_EVENT_LABELS: Record<string, string> = {
   degraded: "degraded",
   "container-stopped": "stopped",
   "container-running": "started running",
+  "service-discovered": "appeared",
+  "service-gone": "disappeared",
 };
 
 function normalizeProjectTabPath(projectPath: string): string {
@@ -1397,7 +1399,7 @@ function App() {
                         <div className="alert-panel-event-content">
                           <span className="alert-panel-event-title">
                             {event.serviceName}
-                            {!event.notified && (
+                            {!event.notified && event.category !== 'discovery' && (
                               <span className="alert-panel-event-muted">
                                 {" "}
                                 (muted)

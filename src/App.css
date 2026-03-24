@@ -312,6 +312,9 @@ textarea {
 .alert-panel-event-dot-container {
   background: #0078d4;
 }
+.alert-panel-event-dot-discovery {
+  background: #8b5cf6;
+}
 
 .alert-panel-event-content {
   flex: 1;
