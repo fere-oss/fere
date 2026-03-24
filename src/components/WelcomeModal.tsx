@@ -275,7 +275,9 @@ const ONBOARDING_STEPS: OnboardingStep[] = [
     icon: <ServiceMapPreview />,
     iconClassName: "welcome-icon-service-map",
     details: [
-      "Fere auto-discovers everything. No config needed.",
+      "Auto-discovers services, ports, and connections",
+      "Tracks health and alerts you when something goes down",
+      "No config files — just run your stack",
     ],
   },
   {
@@ -284,7 +286,9 @@ const ONBOARDING_STEPS: OnboardingStep[] = [
     icon: <WelcomeIntroPreview />,
     iconClassName: "welcome-icon-service-map welcome-icon-intro",
     details: [
-      "Start a local server or run docker-compose up — Fere will do the rest.",
+      "Start any local server or run docker-compose up",
+      "Click a node to see routes, connections, and health",
+      "Fere runs in the background — it'll notify you if something breaks",
     ],
   },
 ];
