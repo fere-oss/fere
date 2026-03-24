@@ -655,6 +655,10 @@ export interface ElectronAPI {
   getNetworkPolicy: () => Promise<NetworkPolicyResult>;
   setNetworkPolicy: (policy: NetworkPolicy) => Promise<{ success: boolean; error?: string }>;
 
+  // Auto-Launch
+  getAutoLaunch: () => Promise<boolean>;
+  setAutoLaunch: (enabled: boolean) => Promise<{ success: boolean; error?: string }>;
+
   // Alert Preferences
   getAlertPreferences: () => Promise<AlertPreferences>;
   setAlertPreferences: (prefs: Partial<AlertPreferences>) => Promise<{ success: boolean; error?: string }>;

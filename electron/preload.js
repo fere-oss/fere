@@ -60,6 +60,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getNetworkPolicy: () => ipcRenderer.invoke('get-network-policy'),
   setNetworkPolicy: (policy) => ipcRenderer.invoke('set-network-policy', policy),
 
+  // Auto-Launch
+  getAutoLaunch: () => ipcRenderer.invoke('get-auto-launch'),
+  setAutoLaunch: (enabled) => ipcRenderer.invoke('set-auto-launch', enabled),
+
   // Alert Preferences
   getAlertPreferences: () => ipcRenderer.invoke('get-alert-preferences'),
   setAlertPreferences: (prefs) => ipcRenderer.invoke('set-alert-preferences', prefs),

@@ -252,6 +252,15 @@ function createWindow() {
     if (snapshotScheduler) snapshotScheduler.unthrottle();
   });
 
+  // Hide instead of close — keeps process alive for background notifications
+  mainWindow.on("close", (e) => {
+    if (!app.isQuitting) {
+      e.preventDefault();
+      mainWindow.hide();
+      if (snapshotScheduler) snapshotScheduler.throttle();
+    }
+  });
+
   mainWindow.on("closed", () => {
     if (snapshotScheduler) {
       snapshotScheduler.stop();
@@ -310,6 +319,10 @@ app.on("window-all-closed", () => {
   }
 });
 
+app.on("before-quit", () => {
+  app.isQuitting = true;
+});
+
 app.on("will-quit", async () => {
   await sentry.flush();
   try {
@@ -322,6 +335,9 @@ app.on("will-quit", async () => {
 app.on("activate", () => {
   if (mainWindow === null) {
     createWindow();
+  } else {
+    mainWindow.show();
+    if (snapshotScheduler) snapshotScheduler.unthrottle();
   }
 });
 
@@ -436,20 +452,23 @@ ipcMain.handle("start-snapshot-stream", async (event) => {
       snapshotScheduler.setBattery(powerMonitor.isOnBatteryPower());
     }
 
-    snapshotHandler = (delta) => {
-      if (event.sender.isDestroyed()) {
-        snapshotScheduler.removeListener("snapshot", snapshotHandler);
-        return;
-      }
-      event.sender.send("snapshot-delta", delta);
-
-      // Evaluate alert notifications on each snapshot
+    // Persistent listener: evaluate alerts even when window is hidden
+    snapshotScheduler.on("snapshot", (delta) => {
       try {
         updateAlertNodeMap(delta);
         evaluateAlerts(Array.from(alertNodeMap.values()));
       } catch (err) {
         console.error("[AlertManager] Error evaluating alerts:", err);
       }
+    });
+
+    // Renderer listener: forward deltas to the window (removed when window goes away)
+    snapshotHandler = (delta) => {
+      if (event.sender.isDestroyed()) {
+        snapshotScheduler.removeListener("snapshot", snapshotHandler);
+        return;
+      }
+      event.sender.send("snapshot-delta", delta);
     };
 
     snapshotScheduler.on("snapshot", snapshotHandler);
@@ -1137,6 +1156,23 @@ ipcMain.handle("set-network-policy", async (event, policy) => {
     return setNetworkPolicy(policy);
   } catch (error) {
     console.error("Error setting network policy:", error);
+    return { success: false, error: error.message };
+  }
+});
+
+// ============================================
+// IPC Handlers - Auto-Launch
+// ============================================
+
+ipcMain.handle("get-auto-launch", async () => {
+  return app.getLoginItemSettings().openAtLogin;
+});
+
+ipcMain.handle("set-auto-launch", async (_event, enabled) => {
+  try {
+    app.setLoginItemSettings({ openAtLogin: !!enabled });
+    return { success: true };
+  } catch (error) {
     return { success: false, error: error.message };
   }
 });
