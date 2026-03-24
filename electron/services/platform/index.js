@@ -14,9 +14,9 @@ switch (platform) {
   case 'darwin':
     impl = require('./darwin');
     break;
-  // case 'win32':
-  //   impl = require('./win32');
-  //   break;
+  case 'win32':
+    impl = require('./win32');
+    break;
   default:
     throw new Error(
       `Unsupported platform: ${platform}. ` +
