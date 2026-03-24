@@ -138,14 +138,13 @@ export function NodeDetailContent({ node, edges, allNodes, onTraceRequest }: Nod
             >
               {healthInfo.label}
             </span>
-            <span className="node-detail-health-desc">
-              — {healthInfo.description}
-            </span>
           </div>
-          <div className="node-detail-health-meta">
-            <span className="node-detail-label">Last seen</span>
-            <span className="node-detail-value">{formatLastSeen(node.lastSeen)}</span>
-          </div>
+          <span className="node-detail-health-desc">
+            {healthInfo.description}
+          </span>
+          <span className="node-detail-health-lastseen">
+            Last seen {formatLastSeen(node.lastSeen)}
+          </span>
         </div>
       </div>
 

@@ -2680,8 +2680,8 @@ textarea {
 /* Health Status in Detail Panel */
 .node-detail-health {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  flex-direction: column;
+  gap: 6px;
   padding: 12px 14px;
   background: #f5f5f5;
   border-radius: 8px;
@@ -2708,15 +2708,14 @@ textarea {
 
 .node-detail-health-desc {
   font-size: 12px;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   font-weight: 400;
+  line-height: 1.4;
 }
 
-.node-detail-health-meta {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 2px;
+.node-detail-health-lastseen {
+  font-size: 11px;
+  color: var(--text-muted);
 }
 
 .node-detail-count {
