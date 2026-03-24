@@ -111,29 +111,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Open file in editor
   openInEditor: (filePath, line) => ipcRenderer.invoke('open-in-editor', filePath, line),
 
-  // Debug Agent
-  debugSetApiKey: (key) => ipcRenderer.invoke('debug-set-api-key', key),
-  debugGetApiKeyStatus: () => ipcRenderer.invoke('debug-get-api-key-status'),
-  debugStart: (options) => ipcRenderer.invoke('debug-start', options),
-  debugStop: () => ipcRenderer.invoke('debug-stop'),
-  debugFollowUp: (options) => ipcRenderer.invoke('debug-follow-up', options),
-  onDebugProgress: (callback) => {
-    const listener = (event, data) => callback(data);
-    ipcRenderer.on('debug-progress', listener);
-    return () => ipcRenderer.removeListener('debug-progress', listener);
-  },
-
-  // Stack Query Agent
-  queryStart: (options) => ipcRenderer.invoke('query-start', options),
-  queryStop: () => ipcRenderer.invoke('query-stop'),
-  onQueryProgress: (callback) => {
-    const listener = (event, data) => callback(data);
-    ipcRenderer.on('query-progress', listener);
-    return () => ipcRenderer.removeListener('query-progress', listener);
-  },
-
-  explainService: (options) => ipcRenderer.invoke('explain-service', options),
-
   // Platform info
   platform: process.platform,
+
+  // Fere Agent
+  agentScan: (nodeIds) => ipcRenderer.invoke('agent:scan', nodeIds),
+  agentApplyFix: (action) => ipcRenderer.invoke('agent:apply-fix', action),
+  agentChat: (payload) => ipcRenderer.invoke('agent:chat', payload),
+  agentStopChat: () => ipcRenderer.invoke('agent:stop-chat'),
+  onAgentStream: (callback) => {
+    const listener = (event, data) => callback(data);
+    ipcRenderer.on('agent-stream', listener);
+    return () => ipcRenderer.removeListener('agent-stream', listener);
+  },
 });

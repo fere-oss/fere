@@ -149,7 +149,6 @@ export function GraphView({
   edges,
   isContainerView = false,
   onDatabaseClick,
-  debugHighlightNodeIds,
 }: GraphViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
@@ -287,7 +286,6 @@ export function GraphView({
       animateNodeIds,
       onMeasure: handleNodeMeasure,
       isContainerView,
-      debugHighlightNodeIds,
     });
   }, [
     layoutNodes,
@@ -301,26 +299,8 @@ export function GraphView({
     isContainerView,
     layoutVersion,
     nodeHeightsRef,
-    debugHighlightNodeIds,
   ]);
 
-  // Listen for debug focus events to center camera on a specific node
-  useEffect(() => {
-    const handleFocus = (e: Event) => {
-      const { nodeId } = (e as CustomEvent).detail;
-      if (!reactFlowInstance) return;
-      const rfNode = reactFlowInstance.getNode(nodeId);
-      if (rfNode) {
-        reactFlowInstance.setCenter(
-          rfNode.position.x + FLOW_LAYOUT.NODE_WIDTH / 2,
-          rfNode.position.y + 95,
-          { zoom: 1.2, duration: 400 },
-        );
-      }
-    };
-    window.addEventListener("fere:debug-focus-node", handleFocus);
-    return () => window.removeEventListener("fere:debug-focus-node", handleFocus);
-  }, [reactFlowInstance]);
 
   const hoverEdgeGeometry = useMemo(() => {
     const W = FLOW_LAYOUT.NODE_WIDTH;
@@ -777,6 +757,28 @@ export function GraphView({
       cancelAnimationFrame(rafB);
     };
   }, [reactFlowInstance, nodesKey]);
+
+  // Agent panel: focus a node by ID or name when the custom event fires
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { nodeId, nodeName } = (e as CustomEvent).detail ?? {};
+      const target = layoutNodes.find((n) => n.id === nodeId || n.name === nodeName);
+      if (!target) return;
+      setSelectedNode(target);
+      if (reactFlowInstance) {
+        const rfNode = reactFlowInstance.getNode(target.id);
+        if (rfNode) {
+          reactFlowInstance.setCenter(
+            rfNode.position.x + FLOW_LAYOUT.NODE_WIDTH / 2,
+            rfNode.position.y + 95,
+            { zoom: 1.3, duration: 450 },
+          );
+        }
+      }
+    };
+    window.addEventListener("fere:focus-node", handler);
+    return () => window.removeEventListener("fere:focus-node", handler);
+  }, [reactFlowInstance, layoutNodes]);
 
   const hoverTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const pendingHover = useRef<string | null>(null);

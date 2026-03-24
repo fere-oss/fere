@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react';
+import { useEffect } from 'react';
 import type { GraphNode, GraphEdge } from '../../types/electron';
 import { getServiceColor, getTypeBadge } from './constants';
 import { NodeDetailContent } from './NodeDetailContent';
@@ -30,17 +30,6 @@ export function NodeDetailPanel({ node, edges, allNodes, onClose }: NodeDetailPa
     window.addEventListener('keydown', handleEscape);
     return () => window.removeEventListener('keydown', handleEscape);
   }, [onClose]);
-
-  const handleAssessService = useCallback(() => {
-    window.dispatchEvent(
-      new CustomEvent('fere:assess-service', {
-        detail: {
-          nodeId: node.id,
-          serviceName: node.name,
-        },
-      }),
-    );
-  }, [node.id, node.name]);
 
   return (
     <div className="node-detail-backdrop" onClick={handleBackdropClick} onWheel={handleWheel}>
@@ -77,29 +66,10 @@ export function NodeDetailPanel({ node, edges, allNodes, onClose }: NodeDetailPa
           </div>
           <button className="node-detail-close" onClick={onClose}>×</button>
         </div>
-        <div className="node-detail-actions-card node-detail-actions-card-header">
-          <button
-            type="button"
-            className="node-detail-ai-button node-detail-ai-button-wide"
-            onClick={handleAssessService}
-          >
-            <span className="node-detail-ai-button-icon" aria-hidden="true">
-              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="7" cy="7" r="3.75" />
-                <path d="M9.75 9.75L13 13" />
-                <path d="M7 5.5v3" />
-                <path d="M5.5 7h3" />
-              </svg>
-            </span>
-            Assess Service
-          </button>
-        </div>
         <NodeDetailContent
           node={node}
           edges={edges}
           allNodes={allNodes}
-          serviceExplanation={null}
-          serviceExplanationError={null}
         />
       </div>
     </div>

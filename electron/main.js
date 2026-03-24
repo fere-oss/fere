@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain, shell, nativeImage, Notification, clipboard } = require("electron");
 const path = require("path");
 const fs = require("fs");
+require("dotenv").config({ path: path.join(__dirname, "../.env") });
 
 // Import security utilities
 const {
@@ -108,12 +109,10 @@ const {
   markIntentionalStopForContainer,
 } = require("./services/alertManager");
 const analytics = require("./analytics");
+const { runScan, executeAction, runChatAgent } = require("./services/fereAgent");
 const sentry = require("./sentry");
 const { generateHTML } = require("./services/graphExporter");
 const { createGist, updateGist, buildPreviewUrl } = require("./services/gistPublisher");
-const { runDebugAgent, getApiKey, setApiKey } = require("./services/debugAgent");
-const { runQueryAgent } = require("./services/queryAgent");
-const { explainService } = require("./services/explainAgent");
 const { executeTracedRequest } = require("./services/traceCapture");
 
 app.setName("Fere");
@@ -1682,335 +1681,58 @@ ipcMain.handle("update-shared-graph", async (_, options) => {
   }
 });
 
-// --- Debug Agent ---
+// ── Fere Agent ────────────────────────────────────────────────────────────────
 
-let activeDebugSession = null;
-let activeQuerySession = null;
-
-function buildDebugResumeMessages(historyTurns = []) {
-  if (!Array.isArray(historyTurns) || historyTurns.length === 0) return [];
-  const MAX_TURNS = 6;
-  const MAX_CHARS = 1600;
-  const recent = historyTurns.slice(-MAX_TURNS);
-  const messages = [];
-  for (const turn of recent) {
-    if (typeof turn?.prompt === "string" && turn.prompt.trim()) {
-      messages.push({
-        role: "user",
-        content: turn.prompt.trim().slice(0, MAX_CHARS),
-      });
-    }
-    if (typeof turn?.response === "string" && turn.response.trim()) {
-      messages.push({
-        role: "assistant",
-        content: turn.response.trim().slice(0, MAX_CHARS),
-      });
-    }
-  }
-  return messages;
-}
-
-ipcMain.handle("debug-set-api-key", async (_, key) => {
-  if (typeof key !== "string" || key.length < 10) {
-    return { success: false, error: "Invalid API key" };
-  }
-  setApiKey(key);
-  return { success: true };
-});
-
-ipcMain.handle("debug-get-api-key-status", async () => {
-  const key = getApiKey();
-  return { hasKey: !!key };
-});
-
-ipcMain.handle("debug-start", async (event, options) => {
-  if (typeof options?.problem !== "string" || !options.problem.trim()) {
-    return { success: false, error: "Problem description is required" };
-  }
-
-  const apiKey = getApiKey();
-  if (!apiKey) {
-    return { success: false, error: "No OpenAI API key configured. Set OPENAI_API_KEY in .env" };
-  }
-
-  // Get current graph snapshot
-  let graphSnapshot = null;
-  if (
-    options?.graphSnapshot &&
-    Array.isArray(options.graphSnapshot.nodes) &&
-    Array.isArray(options.graphSnapshot.edges)
-  ) {
-    graphSnapshot = {
-      nodes: options.graphSnapshot.nodes,
-      edges: options.graphSnapshot.edges,
-    };
-  } else {
+ipcMain.handle("agent:scan", async (_, nodeIds) => {
+  try {
     const snapshot = await getSystemSnapshot();
-    graphSnapshot = {
-      nodes: snapshot.graph?.nodes || [],
-      edges: snapshot.graph?.edges || [],
-    };
+    const findings = await runScan(snapshot, Array.isArray(nodeIds) ? nodeIds : undefined);
+    return { success: true, findings };
+  } catch (err) {
+    console.error("agent:scan error:", err);
+    return { success: false, error: err.message, findings: [] };
   }
-
-  // Cancel any existing session
-  if (activeDebugSession) {
-    activeDebugSession._cancelled = true;
-  }
-
-  const session = { _cancelled: false };
-  activeDebugSession = session;
-
-  // Run agent asynchronously, streaming progress
-  const agentOptions = {
-    problem: options.problem,
-    graphSnapshot,
-    apiKey,
-    resumeMessages: buildDebugResumeMessages(options?.historyTurns),
-    _cancelled: false,
-  };
-
-  // Link cancellation
-  Object.defineProperty(agentOptions, "_cancelled", {
-    get() { return session._cancelled; },
-  });
-
-  runDebugAgent(agentOptions, (progress) => {
-    if (session._cancelled) return;
-    const sender = event.sender;
-    if (!sender.isDestroyed()) {
-      sender.send("debug-progress", progress);
-    }
-  }).then((result) => {
-    // Persist conversation state for follow-ups
-    if (result?.state && activeDebugSession === session) {
-      session.state = result.state;
-      session.graphSnapshot = graphSnapshot;
-      session.apiKey = apiKey;
-    }
-  }).catch((err) => {
-    if (!session._cancelled && !event.sender.isDestroyed()) {
-      event.sender.send("debug-progress", {
-        type: "error",
-        error: err.message,
-      });
-    }
-  });
-
-  return { success: true };
 });
 
-ipcMain.handle("debug-follow-up", async (event, options) => {
-  if (typeof options?.message !== "string" || !options.message.trim()) {
-    return { success: false, error: "Follow-up message is required" };
+ipcMain.handle("agent:apply-fix", async (_, action) => {
+  try {
+    const result = await executeAction(action);
+    return { success: true, ...result };
+  } catch (err) {
+    console.error("agent:apply-fix error:", err);
+    return { success: false, error: err.message };
   }
-
-  if (!activeDebugSession?.state) {
-    const apiKey = getApiKey();
-    if (!apiKey) {
-      return { success: false, error: "No OpenAI API key configured. Set OPENAI_API_KEY in .env" };
-    }
-
-    const snapshot = await getSystemSnapshot();
-    const graphSnapshot = {
-      nodes: snapshot.graph?.nodes || [],
-      edges: snapshot.graph?.edges || [],
-    };
-
-    if (activeDebugSession) {
-      activeDebugSession._cancelled = true;
-    }
-
-    const session = { _cancelled: false };
-    activeDebugSession = session;
-
-    const agentOptions = {
-      problem: options.message,
-      graphSnapshot,
-      apiKey,
-      resumeMessages: buildDebugResumeMessages(options?.historyTurns),
-      _cancelled: false,
-    };
-
-    Object.defineProperty(agentOptions, "_cancelled", {
-      get() { return session._cancelled; },
-    });
-
-    runDebugAgent(agentOptions, (progress) => {
-      if (session._cancelled) return;
-      const sender = event.sender;
-      if (!sender.isDestroyed()) {
-        sender.send("debug-progress", progress);
-      }
-    }).then((result) => {
-      if (result?.state && activeDebugSession === session) {
-        session.state = result.state;
-        session.graphSnapshot = graphSnapshot;
-        session.apiKey = apiKey;
-      }
-    }).catch((err) => {
-      if (!session._cancelled && !event.sender.isDestroyed()) {
-        event.sender.send("debug-progress", {
-          type: "error",
-          error: err.message,
-        });
-      }
-    });
-
-    return { success: true, resumedFromHistory: true };
-  }
-
-  const session = activeDebugSession;
-  session._cancelled = false;
-
-  // Refresh graph snapshot so the agent sees current topology
-  const freshSnapshot = await getSystemSnapshot();
-  const graphSnapshot = {
-    nodes: freshSnapshot.graph?.nodes || [],
-    edges: freshSnapshot.graph?.edges || [],
-  };
-
-  const agentOptions = {
-    followUp: options.message,
-    resumeState: session.state,
-    graphSnapshot,
-    apiKey: session.apiKey,
-  };
-
-  Object.defineProperty(agentOptions, "_cancelled", {
-    get() { return session._cancelled; },
-  });
-
-  runDebugAgent(agentOptions, (progress) => {
-    if (session._cancelled) return;
-    const sender = event.sender;
-    if (!sender.isDestroyed()) {
-      sender.send("debug-progress", progress);
-    }
-  }).then((result) => {
-    if (result?.state && activeDebugSession === session) {
-      session.state = result.state;
-      session.graphSnapshot = graphSnapshot;
-    }
-  }).catch((err) => {
-    if (!session._cancelled && !event.sender.isDestroyed()) {
-      event.sender.send("debug-progress", {
-        type: "error",
-        error: err.message,
-      });
-    }
-  });
-
-  return { success: true };
 });
 
-ipcMain.handle("debug-stop", async () => {
-  if (activeDebugSession) {
-    activeDebugSession._cancelled = true;
-    activeDebugSession = null;
-  }
-  return { success: true };
-});
+let activeChatSession = null;
 
-// --- Stack Query Agent ---
-
-ipcMain.handle("query-start", async (event, options) => {
-  if (typeof options?.query !== "string" || !options.query.trim()) {
-    return { success: false, error: "Query is required" };
-  }
-
-  const apiKey = getApiKey();
-  if (!apiKey) {
-    return {
-      success: false,
-      error: "No OpenAI API key configured. Set OPENAI_API_KEY in .env",
-    };
-  }
-
-  const snapshot = await getSystemSnapshot();
-  const graphSnapshot = {
-    nodes: snapshot.graph?.nodes || [],
-    edges: snapshot.graph?.edges || [],
-  };
-
-  if (activeQuerySession) {
-    activeQuerySession._cancelled = true;
-  }
-
-  const session = { _cancelled: false };
-  activeQuerySession = session;
-
-  const agentOptions = {
-    query: options.query,
-    graphSnapshot,
-    apiKey,
-    _cancelled: false,
-  };
-
-  Object.defineProperty(agentOptions, "_cancelled", {
-    get() {
-      return session._cancelled;
-    },
-  });
-
-  runQueryAgent(agentOptions, (progress) => {
-    if (session._cancelled) return;
-    const sender = event.sender;
-    if (!sender.isDestroyed()) {
-      sender.send("query-progress", progress);
-    }
-  }).catch((err) => {
-    if (!session._cancelled && !event.sender.isDestroyed()) {
-      event.sender.send("query-progress", {
-        type: "error",
-        error: err.message,
-      });
-    }
-  });
-
-  return { success: true };
-});
-
-ipcMain.handle("query-stop", async () => {
-  if (activeQuerySession) {
-    activeQuerySession._cancelled = true;
-    activeQuerySession = null;
-  }
-  return { success: true };
-});
-
-ipcMain.handle("explain-service", async (_, options) => {
-  const apiKey = getApiKey();
-  if (!apiKey) {
-    return {
-      success: false,
-      error: "No OpenAI API key configured. Set OPENAI_API_KEY in .env",
-    };
-  }
-
-  if (
-    typeof options?.serviceId !== "string" ||
-    typeof options?.serviceName !== "string"
-  ) {
-    return { success: false, error: "Service id and name are required" };
-  }
+ipcMain.handle("agent:chat", async (event, { messages, nodeIds }) => {
+  if (activeChatSession) activeChatSession.cancelled = true;
+  const session = { cancelled: false };
+  activeChatSession = session;
 
   try {
     const snapshot = await getSystemSnapshot();
-    const graphSnapshot = {
-      nodes: snapshot.graph?.nodes || [],
-      edges: snapshot.graph?.edges || [],
-    };
-    const result = await explainService({
-      graphSnapshot,
-      serviceId: options.serviceId,
-      serviceName: options.serviceName,
-      apiKey,
-    });
-    return { success: true, ...result };
-  } catch (error) {
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : "Failed to explain service",
-    };
+    const generator = runChatAgent(messages, snapshot, nodeIds);
+    for await (const event_data of generator) {
+      if (session.cancelled) break;
+      if (!event.sender.isDestroyed()) {
+        event.sender.send("agent-stream", event_data);
+      }
+    }
+  } catch (err) {
+    if (!session.cancelled && !event.sender.isDestroyed()) {
+      event.sender.send("agent-stream", { type: "error", error: err.message });
+    }
   }
+  return { success: true };
 });
+
+ipcMain.handle("agent:stop-chat", async () => {
+  if (activeChatSession) {
+    activeChatSession.cancelled = true;
+    activeChatSession = null;
+  }
+  return { success: true };
+});
+

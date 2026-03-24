@@ -16,7 +16,6 @@ export type FlowServiceNodeData = {
   animate: boolean;
   animationIndex: number;
   onMeasure: (id: string, height: number) => void;
-  debugHighlightNodeIds?: Set<string>;
 };
 
 export function TierLabelNode({ data }: { data: { text: string } }) {
@@ -100,8 +99,6 @@ const FlowServiceNodeInner = memo(function FlowServiceNodeInner({
 
   // Trace takes priority over hover when a trace is active
   const isConnected = connectedNodeIds.has(data.node.id);
-  const isDebugHighlighted =
-    data.debugHighlightNodeIds?.has(data.node.id) ?? false;
   const dimmed = traceActive
     ? !isInTrace
     : hoveredNodeId !== null && !isConnected;
@@ -128,7 +125,6 @@ const FlowServiceNodeInner = memo(function FlowServiceNodeInner({
     data.animate && "rf-node-animate",
     dimmed && "rf-node-dimmed",
     highlighted && "rf-node-highlighted",
-    isDebugHighlighted && "rf-node-debug-highlighted",
     traceActive && isInTrace && "rf-node-trace-active",
     isTraceEntry && "rf-node-trace-entry",
   ]

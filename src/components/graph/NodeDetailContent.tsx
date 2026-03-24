@@ -1,5 +1,4 @@
 import { useEffect, useState, useMemo, useCallback } from "react";
-import ReactMarkdown from "react-markdown";
 import type { GraphNode, GraphEdge, ExternalApi } from "../../types/electron";
 import { DatabaseViewer } from "../DatabaseViewer";
 import { getHealthInfo, getServiceColor } from "./constants";
@@ -15,16 +14,12 @@ interface NodeDetailContentProps {
   node: GraphNode;
   edges: GraphEdge[];
   allNodes: GraphNode[];
-  serviceExplanation: string | null;
-  serviceExplanationError: string | null;
 }
 
 export function NodeDetailContent({
   node,
   edges,
   allNodes,
-  serviceExplanation,
-  serviceExplanationError,
 }: NodeDetailContentProps) {
   const accentColor = getServiceColor(node.type);
   const healthInfo = getHealthInfo(node.healthStatus);
@@ -144,23 +139,10 @@ export function NodeDetailContent({
         </div>
       </div>
 
-      {(node.description || serviceExplanation || serviceExplanationError) && (
+      {node.description && (
         <div className="node-detail-section">
           <h3 className="node-detail-section-title">About</h3>
-          {serviceExplanationError ? (
-            <div className="node-detail-error">{serviceExplanationError}</div>
-          ) : serviceExplanation ? (
-            <div className="node-detail-ai-copy">
-              <ReactMarkdown>{serviceExplanation}</ReactMarkdown>
-            </div>
-          ) : node.description ? (
-            <p className="node-detail-description">{node.description}</p>
-          ) : (
-            <div className="node-detail-ai-placeholder">
-              Generate a concise explanation of how this service fits into the
-              current stack.
-            </div>
-          )}
+          <p className="node-detail-description">{node.description}</p>
         </div>
       )}
 

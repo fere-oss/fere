@@ -9,13 +9,13 @@ import {
 } from "react";
 import { useSystemSnapshot } from "./hooks/useSystemMonitor";
 import { GraphView } from "./components/GraphView";
+import { AgentPanel } from "./components/AgentPanel";
 import { CurlBuilder } from "./components/CurlBuilder";
 import { DatabaseListView } from "./components/DatabaseListView";
 import { ContainerLogsTab } from "./components/ContainerLogsTab";
 import { WelcomeModal } from "./components/WelcomeModal";
 import { ShareModal } from "./components/ShareModal";
 import { ErrorBoundary } from "./components/ErrorBoundary";
-import { DebugPanel } from "./components/DebugPanel";
 import {
   useKnownServices,
   serviceKey,
@@ -204,39 +204,6 @@ function getNodeTabPath(node: GraphNode, grouping: TabGrouping): string | null {
   return normalizeProjectTabPath(node.projectPath);
 }
 
-function buildStackAssessmentPrompt(nodes: GraphNode[]): string {
-  const visibleNodes = nodes.filter((node) => node.type !== "external");
-  const unhealthy = visibleNodes
-    .filter((node) => node.healthStatus === "red" || node.healthStatus === "yellow")
-    .slice(0, 5)
-    .map((node) => node.name);
-  const services = visibleNodes.slice(0, 8).map((node) => node.name);
-  const contextBits = [
-    unhealthy.length > 0 ? `Prioritize these services first: ${unhealthy.join(", ")}.` : "",
-    services.length > 0 ? `Visible services include: ${services.join(", ")}.` : "",
-  ]
-    .filter(Boolean)
-    .join(" ");
-
-  return [
-    "Assess my local stack proactively.",
-    "Identify the top issues, risky dependencies, unhealthy or idle services, and likely runtime or config mismatches.",
-    "Do the investigation work yourself: inspect the live topology, follow dependencies, check the highest-signal services, and gather concrete evidence before concluding.",
-    "Finish with concise sections: Current State, Top Findings, Evidence, and Recommended Next Action.",
-    contextBits,
-  ]
-    .filter(Boolean)
-    .join(" ");
-}
-
-function buildServiceInvestigationPrompt(serviceName: string): string {
-  return [
-    `Assess \`${serviceName}\` in the context of the local stack.`,
-    "Determine its role, current health, incoming and outgoing dependencies, ports, routes, likely risks, and any runtime or configuration mismatches affecting it right now.",
-    "Do the investigation work yourself and end with clear evidence plus the best next action.",
-  ].join(" ");
-}
-
 function App() {
   const { snapshot, loading, error } = useSystemSnapshot(2000);
   const { graph, ports } = snapshot;
@@ -274,39 +241,6 @@ function App() {
 
   // Database node for database page
   const [databaseNode, setDatabaseNode] = useState<GraphNode | null>(null);
-
-  // Fere Agent
-  // hasEverOpened: mounts once and preserves conversation state across open/close
-  const [hasEverOpened, setHasEverOpened] = useState(false);
-  const [isAgentOpen, setIsAgentOpen] = useState(false);
-  const [debugInitialProblem, setDebugInitialProblem] = useState("");
-  const [debugInitialProblemKey, setDebugInitialProblemKey] = useState(0);
-  const [debugInitialAutoRun, setDebugInitialAutoRun] = useState(false);
-  const [debugInitialDisplayPrompt, setDebugInitialDisplayPrompt] = useState("");
-  const [debugHighlightNodeIds, setDebugHighlightNodeIds] = useState<
-    Set<string>
-  >(new Set());
-
-  const handleOpenDebugPanel = useCallback(() => {
-    if (isAgentOpen) {
-      setIsAgentOpen(false);
-      setDebugHighlightNodeIds(new Set());
-    } else {
-      setDebugInitialProblem(buildStackAssessmentPrompt(graph.nodes));
-      setDebugInitialDisplayPrompt("Assess my stack");
-      setDebugInitialProblemKey((current) => current + 1);
-      setDebugInitialAutoRun(true);
-      setHasEverOpened(true);
-      setIsAgentOpen(true);
-    }
-  }, [graph.nodes, isAgentOpen]);
-
-  const handleCloseDebugPanel = useCallback(() => {
-    setIsAgentOpen(false);
-    setDebugInitialAutoRun(false);
-    setDebugInitialDisplayPrompt("");
-    setDebugHighlightNodeIds(new Set());
-  }, []);
 
   // Sub-tab for containers view
   const [containerSubTab, setContainerSubTab] =
@@ -480,49 +414,6 @@ function App() {
     return () =>
       window.removeEventListener("fere:view-container-logs", handleViewLogs);
   }, []);
-
-  // Debug agent: highlight services on graph and focus camera
-  useEffect(() => {
-    const handleDebugHighlight = (e: Event) => {
-      const { nodeIds } = (e as CustomEvent).detail;
-      setDebugHighlightNodeIds(new Set(nodeIds));
-    };
-    const handleDebugFocus = (e: Event) => {
-      const { nodeId } = (e as CustomEvent).detail;
-      if (nodeId && viewMode !== "graph") {
-        setViewMode("graph");
-      }
-    };
-    const handleAssessService = (e: Event) => {
-      const { nodeId, serviceName } = (e as CustomEvent).detail;
-      setDebugInitialProblem(buildServiceInvestigationPrompt(serviceName));
-      setDebugInitialDisplayPrompt(`Assess ${serviceName}`);
-      setDebugInitialProblemKey((current) => current + 1);
-      setDebugInitialAutoRun(true);
-      setHasEverOpened(true);
-      setIsAgentOpen(true);
-      if (nodeId) {
-        setDebugHighlightNodeIds(new Set([nodeId]));
-      }
-      if (viewMode !== "graph") {
-        setViewMode("graph");
-      }
-    };
-    window.addEventListener(
-      "fere:debug-highlight-services",
-      handleDebugHighlight,
-    );
-    window.addEventListener("fere:debug-focus-node", handleDebugFocus);
-    window.addEventListener("fere:assess-service", handleAssessService);
-    return () => {
-      window.removeEventListener(
-        "fere:debug-highlight-services",
-        handleDebugHighlight,
-      );
-      window.removeEventListener("fere:debug-focus-node", handleDebugFocus);
-      window.removeEventListener("fere:assess-service", handleAssessService);
-    };
-  }, [viewMode]);
 
   useEffect(() => {
     if (optimisticDownNodes.size === 0) return;
@@ -1288,31 +1179,7 @@ function App() {
 
         {/* Header Actions */}
         <div className="app-header-actions">
-          <button
-            className={`app-header-action${isAgentOpen ? " app-header-action-active" : ""}`}
-            onClick={handleOpenDebugPanel}
-            title="Fere AI"
-          >
-            <svg
-              width="15"
-              height="15"
-              viewBox="0 0 16 16"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.2"
-            >
-              <circle cx="8" cy="6" r="4" />
-              <path d="M3 2L5.5 4.5" />
-              <path d="M13 2L10.5 4.5" />
-              <path d="M1.5 6H4" />
-              <path d="M12 6h2.5" />
-              <path d="M3 10l1.5-1.5" />
-              <path d="M13 10l-1.5-1.5" />
-              <path d="M6.5 10v4" />
-              <path d="M9.5 10v4" />
-            </svg>
-            <span>Fere AI</span>
-          </button>
+          <AgentPanel nodes={filteredData.nodes} />
           <button
             className="app-header-action"
             onClick={() => setShowShare(true)}
@@ -1650,7 +1517,6 @@ function App() {
                       <GraphView
                         nodes={filteredData.nodes}
                         edges={filteredData.edges}
-                        debugHighlightNodeIds={debugHighlightNodeIds}
                       />
                     )}
                   </div>
@@ -1778,21 +1644,12 @@ function App() {
             </TraceDispatchContext.Provider>
           </TraceContext.Provider>
         </main>
-        {hasEverOpened && (
-          <DebugPanel
-            isOpen={isAgentOpen}
-            onClose={handleCloseDebugPanel}
-            graphNodes={filteredData.nodes}
-            initialProblem={debugInitialProblem}
-            initialProblemKey={debugInitialProblemKey}
-            initialAutoRun={debugInitialAutoRun}
-            initialDisplayPrompt={debugInitialDisplayPrompt}
-          />
-        )}
+
       </div>
 
       {/* Welcome Modal */}
       {showWelcome && <WelcomeModal onClose={handleCloseWelcome} />}
+
 
       {/* Share Modal */}
       {showShare && (

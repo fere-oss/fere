@@ -554,56 +554,11 @@ export interface PublishGraphResult {
   error?: string;
 }
 
-export interface DebugHistoryTurn {
-  prompt: string;
-  response: string;
-}
-
 export interface ShareSettings {
   hasToken: boolean;
   shareUrl: string | null;
   publishedAt: number | null;
 }
-
-export type DebugProgress =
-  | { type: 'thinking'; iteration: number }
-  | { type: 'tool_call'; tool: string; input: Record<string, unknown>; iteration: number }
-  | {
-      type: 'tool_result';
-      tool: string;
-      input?: Record<string, unknown>;
-      summary: string;
-      result?: unknown;
-      iteration: number;
-    }
-  | { type: 'diagnosis_delta'; text: string }
-  | { type: 'complete'; diagnosis: string }
-  | { type: 'error'; error: string };
-
-export type QueryProgress =
-  | { type: 'thinking' }
-  | { type: 'answer_delta'; text: string }
-  | {
-      type: 'complete';
-      answer: string;
-      structuredAnswer?: {
-        kind: string;
-        directAnswer: string;
-        supportingFacts: string[];
-        uncertainty?: string[];
-      };
-      references?: {
-        services?: string[];
-        ports?: number[];
-        routes?: Array<{ serviceName: string; method: string; path: string }>;
-        projects?: string[];
-      };
-      optimizationSignals?: Array<{
-        text: string;
-        serviceName?: string;
-      }>;
-    }
-  | { type: 'error'; error: string };
 
 // Electron API interface
 export interface ElectronAPI {
@@ -698,37 +653,55 @@ export interface ElectronAPI {
   // Open file in editor
   openInEditor: (filePath: string, line?: number) => Promise<{ success: boolean; editor?: string; error?: string }>;
 
-  // Debug Agent
-  debugSetApiKey: (key: string) => Promise<{ success: boolean; error?: string }>;
-  debugGetApiKeyStatus: () => Promise<{ hasKey: boolean }>;
-  debugStart: (options: { problem: string; historyTurns?: DebugHistoryTurn[] }) => Promise<{ success: boolean; error?: string }>;
-  debugStop: () => Promise<{ success: boolean }>;
-  debugFollowUp: (options: { message: string; historyTurns?: DebugHistoryTurn[] }) => Promise<{ success: boolean; error?: string }>;
-  onDebugProgress: (callback: (progress: DebugProgress) => void) => () => void;
-
-  // Stack Query Agent
-  queryStart: (options: {
-    query: string;
-    graphSnapshot?: {
-      nodes: GraphNode[];
-      edges: GraphEdge[];
-    };
-  }) => Promise<{ success: boolean; error?: string }>;
-  queryStop: () => Promise<{ success: boolean }>;
-  onQueryProgress: (callback: (progress: QueryProgress) => void) => () => void;
-  explainService: (options: {
-    serviceId: string;
-    serviceName: string;
-  }) => Promise<{
-    success: boolean;
-    serviceId?: string;
-    serviceName?: string;
-    explanation?: string;
-    error?: string;
-  }>;
-
   // Platform info
   platform: string;
+
+  // Fere Agent
+  agentScan: (nodeIds?: string[]) => Promise<{ success: boolean; findings: AgentFinding[]; error?: string }>;
+  agentApplyFix: (action: AgentFixAction) => Promise<{ success: boolean; error?: string }>;
+  agentChat: (payload: { messages: AgentChatMessage[]; nodeIds?: string[] }) => Promise<{ success: boolean }>;
+  agentStopChat: () => Promise<{ success: boolean }>;
+  onAgentStream: (callback: (event: AgentStreamEvent) => void) => () => void;
+}
+
+export type AgentSeverity = 'critical' | 'warning' | 'suggestion';
+
+export interface AgentChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+export type AgentStreamEvent =
+  | { type: 'text_delta'; text: string }
+  | { type: 'tool_call'; name: string; label: string }
+  | { type: 'tool_result'; name: string; summary: string }
+  | { type: 'action'; action: AgentFixAction }
+  | { type: 'done' }
+  | { type: 'error'; error: string };
+
+export interface AgentFixAction {
+  type: 'kill-port' | 'restart-container' | 'copy-only' | 'write-file';
+  port?: number;
+  pid?: number;
+  containerId?: string;
+  preview?: string;
+  label?: string;
+  filePath?: string;
+  content?: string;
+}
+
+export type AgentCategory = 'health' | 'connectivity' | 'config' | 'security' | 'dependency';
+
+export interface AgentFinding {
+  id: string;
+  severity: AgentSeverity;
+  category: AgentCategory;
+  service: string;
+  summary: string;
+  detail: string;
+  impact: string | null;
+  affectedServices: string[];
+  fix: AgentFixAction | null;
 }
 
 declare global {
