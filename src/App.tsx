@@ -1276,22 +1276,10 @@ function App() {
           </button>
           */}
           <button
-            className="alert-toggle"
+            className="feedback-btn"
             onClick={() => window.electronAPI?.openUrl?.('https://docs.google.com/forms/d/e/1FAIpQLSdssI3HquKKE7Cskm797E24jKmfjdihUXKxEttJDQCw7HL4Mw/viewform')}
-            title="Send feedback"
           >
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 16 16"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M2.5 4.5a1.5 1.5 0 0 1 1.5-1.5h8a1.5 1.5 0 0 1 1.5 1.5v5a1.5 1.5 0 0 1-1.5 1.5H8l-2.5 2.5V11H4a1.5 1.5 0 0 1-1.5-1.5v-5Z" />
-            </svg>
+            Feedback
           </button>
           <button
             className="alert-toggle"
