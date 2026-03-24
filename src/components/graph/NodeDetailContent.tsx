@@ -9,6 +9,7 @@ import {
   supportsExternalApiScan,
 } from './externalApis';
 import { BrandIcon } from './brandIcons';
+import { NodeClickHint, hasSeenNodeClickHint } from '../OnboardingHints';
 
 interface NodeDetailContentProps {
   node: GraphNode;
@@ -121,6 +122,7 @@ export function NodeDetailContent({ node, edges, allNodes, onTraceRequest }: Nod
 
   return (
     <div className="node-detail-content">
+      {!hasSeenNodeClickHint() && <NodeClickHint />}
       <div className="node-detail-section">
         <h3 className="node-detail-section-title">Health Status</h3>
         <div className="node-detail-health">

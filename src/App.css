@@ -2449,6 +2449,104 @@ textarea {
   font-weight: 600;
 }
 
+/* Onboarding Hints */
+.onboarding-hint {
+  font-family: var(--font-ui);
+  border-radius: 8px;
+  background: var(--bg-white);
+  border: 1px solid var(--border-color);
+}
+
+.discovery-hint {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%) translateY(-8px);
+  z-index: 20;
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 14px 18px;
+  max-width: 460px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  opacity: 0;
+  transition: opacity 0.3s ease, transform 0.3s ease;
+  cursor: pointer;
+}
+
+.discovery-hint.visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+.onboarding-hint-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.onboarding-hint-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.onboarding-hint-body {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.onboarding-hint-dismiss {
+  flex-shrink: 0;
+  padding: 5px 12px;
+  font-size: 11px;
+  font-weight: 500;
+  font-family: var(--font-ui);
+  color: var(--text-secondary);
+  background: var(--bg-muted);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.onboarding-hint-dismiss:hover {
+  color: var(--text-primary);
+  border-color: var(--border-hover);
+}
+
+.node-click-hint {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  background: #f0f4ff;
+  border-color: #d0daf0;
+}
+
+.onboarding-hint-dismiss-small {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: 4px;
+  transition: color 0.15s;
+}
+
+.onboarding-hint-dismiss-small:hover {
+  color: var(--text-primary);
+}
+
 /* Connection Lines SVG */
 .graph-connections {
   position: absolute;
