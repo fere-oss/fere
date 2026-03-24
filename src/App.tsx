@@ -16,7 +16,6 @@ import { WelcomeModal } from "./components/WelcomeModal";
 import { ShareModal } from "./components/ShareModal";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { DebugPanel } from "./components/DebugPanel";
-import { StackQueryPanel } from "./components/StackQueryPanel";
 import {
   useKnownServices,
   serviceKey,
@@ -205,6 +204,39 @@ function getNodeTabPath(node: GraphNode, grouping: TabGrouping): string | null {
   return normalizeProjectTabPath(node.projectPath);
 }
 
+function buildStackAssessmentPrompt(nodes: GraphNode[]): string {
+  const visibleNodes = nodes.filter((node) => node.type !== "external");
+  const unhealthy = visibleNodes
+    .filter((node) => node.healthStatus === "red" || node.healthStatus === "yellow")
+    .slice(0, 5)
+    .map((node) => node.name);
+  const services = visibleNodes.slice(0, 8).map((node) => node.name);
+  const contextBits = [
+    unhealthy.length > 0 ? `Prioritize these services first: ${unhealthy.join(", ")}.` : "",
+    services.length > 0 ? `Visible services include: ${services.join(", ")}.` : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  return [
+    "Assess my local stack proactively.",
+    "Identify the top issues, risky dependencies, unhealthy or idle services, and likely runtime or config mismatches.",
+    "Do the investigation work yourself: inspect the live topology, follow dependencies, check the highest-signal services, and gather concrete evidence before concluding.",
+    "Finish with concise sections: Current State, Top Findings, Evidence, and Recommended Next Action.",
+    contextBits,
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+function buildServiceInvestigationPrompt(serviceName: string): string {
+  return [
+    `Assess \`${serviceName}\` in the context of the local stack.`,
+    "Determine its role, current health, incoming and outgoing dependencies, ports, routes, likely risks, and any runtime or configuration mismatches affecting it right now.",
+    "Do the investigation work yourself and end with clear evidence plus the best next action.",
+  ].join(" ");
+}
+
 function App() {
   const { snapshot, loading, error } = useSystemSnapshot(2000);
   const { graph, ports } = snapshot;
@@ -247,13 +279,10 @@ function App() {
   // hasEverOpened: mounts once and preserves conversation state across open/close
   const [hasEverOpened, setHasEverOpened] = useState(false);
   const [isAgentOpen, setIsAgentOpen] = useState(false);
-  const [isStackQueryOpen, setIsStackQueryOpen] = useState(false);
-  const [stackQueryInitialQuery, setStackQueryInitialQuery] = useState("");
-  const [stackQueryInitialQueryKey, setStackQueryInitialQueryKey] = useState(0);
-  const [stackQueryInitialServiceName, setStackQueryInitialServiceName] =
-    useState("");
   const [debugInitialProblem, setDebugInitialProblem] = useState("");
   const [debugInitialProblemKey, setDebugInitialProblemKey] = useState(0);
+  const [debugInitialAutoRun, setDebugInitialAutoRun] = useState(false);
+  const [debugInitialDisplayPrompt, setDebugInitialDisplayPrompt] = useState("");
   const [debugHighlightNodeIds, setDebugHighlightNodeIds] = useState<
     Set<string>
   >(new Set());
@@ -263,23 +292,20 @@ function App() {
       setIsAgentOpen(false);
       setDebugHighlightNodeIds(new Set());
     } else {
+      setDebugInitialProblem(buildStackAssessmentPrompt(graph.nodes));
+      setDebugInitialDisplayPrompt("Assess my stack");
+      setDebugInitialProblemKey((current) => current + 1);
+      setDebugInitialAutoRun(true);
       setHasEverOpened(true);
       setIsAgentOpen(true);
     }
-  }, [isAgentOpen]);
+  }, [graph.nodes, isAgentOpen]);
 
   const handleCloseDebugPanel = useCallback(() => {
     setIsAgentOpen(false);
+    setDebugInitialAutoRun(false);
+    setDebugInitialDisplayPrompt("");
     setDebugHighlightNodeIds(new Set());
-  }, []);
-
-  const handleToggleStackQuery = useCallback(() => {
-    setIsStackQueryOpen((current) => !current);
-  }, []);
-
-  const handleCloseStackQuery = useCallback(() => {
-    setIsStackQueryOpen(false);
-    setStackQueryInitialServiceName("");
   }, []);
 
   // Sub-tab for containers view
@@ -467,11 +493,12 @@ function App() {
         setViewMode("graph");
       }
     };
-    const handleDiagnoseService = (e: Event) => {
+    const handleAssessService = (e: Event) => {
       const { nodeId, serviceName } = (e as CustomEvent).detail;
-      const scopedProblem = `Diagnose issues with \`${serviceName}\`. Focus on its current health, incoming and outgoing dependencies, ports, routes, and any likely causes if it is failing, idle unexpectedly, or behaving inconsistently.`;
-      setDebugInitialProblem(scopedProblem);
+      setDebugInitialProblem(buildServiceInvestigationPrompt(serviceName));
+      setDebugInitialDisplayPrompt(`Assess ${serviceName}`);
       setDebugInitialProblemKey((current) => current + 1);
+      setDebugInitialAutoRun(true);
       setHasEverOpened(true);
       setIsAgentOpen(true);
       if (nodeId) {
@@ -481,44 +508,19 @@ function App() {
         setViewMode("graph");
       }
     };
-    const handleQueryAboutService = (e: Event) => {
-      const { nodeId, serviceName } = (e as CustomEvent).detail;
-      const scopedQuery = `What does \`${serviceName}\` do, what depends on it, and what does it depend on?`;
-      setStackQueryInitialQuery(scopedQuery);
-      setStackQueryInitialQueryKey((current) => current + 1);
-      setStackQueryInitialServiceName(serviceName);
-      setIsStackQueryOpen(true);
-      if (nodeId) {
-        setDebugHighlightNodeIds(new Set([nodeId]));
-      }
-    };
     window.addEventListener(
       "fere:debug-highlight-services",
       handleDebugHighlight,
     );
     window.addEventListener("fere:debug-focus-node", handleDebugFocus);
-    window.addEventListener(
-      "fere:debug-diagnose-service",
-      handleDiagnoseService,
-    );
-    window.addEventListener(
-      "fere:query-about-service",
-      handleQueryAboutService,
-    );
+    window.addEventListener("fere:assess-service", handleAssessService);
     return () => {
       window.removeEventListener(
         "fere:debug-highlight-services",
         handleDebugHighlight,
       );
       window.removeEventListener("fere:debug-focus-node", handleDebugFocus);
-      window.removeEventListener(
-        "fere:debug-diagnose-service",
-        handleDiagnoseService,
-      );
-      window.removeEventListener(
-        "fere:query-about-service",
-        handleQueryAboutService,
-      );
+      window.removeEventListener("fere:assess-service", handleAssessService);
     };
   }, [viewMode]);
 
@@ -1287,35 +1289,9 @@ function App() {
         {/* Header Actions */}
         <div className="app-header-actions">
           <button
-            className={`app-header-action${isStackQueryOpen ? " app-header-action-active" : ""}`}
-            onClick={handleToggleStackQuery}
-            title="Ask about your stack"
-          >
-            <svg
-              width="15"
-              height="15"
-              viewBox="0 0 16 16"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M3.5 4.5C3.5 2.8 5.2 1.5 8 1.5C10.8 1.5 12.5 2.8 12.5 4.5C12.5 5.9 11.2 7 9.4 7.5C8.6 7.7 8 8.3 8 9.1V9.5" />
-              <circle
-                cx="8"
-                cy="12.4"
-                r="0.7"
-                fill="currentColor"
-                stroke="none"
-              />
-            </svg>
-            <span>Ask Fere</span>
-          </button>
-          <button
             className={`app-header-action${isAgentOpen ? " app-header-action-active" : ""}`}
             onClick={handleOpenDebugPanel}
-            title="Fere Agent"
+            title="Fere AI"
           >
             <svg
               width="15"
@@ -1335,7 +1311,7 @@ function App() {
               <path d="M6.5 10v4" />
               <path d="M9.5 10v4" />
             </svg>
-            <span>Debugger</span>
+            <span>Fere AI</span>
           </button>
           <button
             className="app-header-action"
@@ -1809,18 +1785,11 @@ function App() {
             graphNodes={filteredData.nodes}
             initialProblem={debugInitialProblem}
             initialProblemKey={debugInitialProblemKey}
+            initialAutoRun={debugInitialAutoRun}
+            initialDisplayPrompt={debugInitialDisplayPrompt}
           />
         )}
       </div>
-      <StackQueryPanel
-        isOpen={isStackQueryOpen}
-        onClose={handleCloseStackQuery}
-        graphNodes={filteredData.nodes}
-        graphEdges={filteredData.edges}
-        initialQuery={stackQueryInitialQuery}
-        initialQueryKey={stackQueryInitialQueryKey}
-        initialServiceName={stackQueryInitialServiceName}
-      />
 
       {/* Welcome Modal */}
       {showWelcome && <WelcomeModal onClose={handleCloseWelcome} />}

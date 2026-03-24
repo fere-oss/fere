@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect } from 'react';
 import type { GraphNode, GraphEdge } from '../../types/electron';
 import { getServiceColor, getTypeBadge } from './constants';
 import { NodeDetailContent } from './NodeDetailContent';
@@ -12,9 +12,6 @@ interface NodeDetailPanelProps {
 
 export function NodeDetailPanel({ node, edges, allNodes, onClose }: NodeDetailPanelProps) {
   const accentColor = getServiceColor(node.type);
-  const [serviceExplanation, setServiceExplanation] = useState<string | null>(null);
-  const [serviceExplanationLoading, setServiceExplanationLoading] = useState(false);
-  const [serviceExplanationError, setServiceExplanationError] = useState<string | null>(null);
 
   const handleBackdropClick = (e: React.MouseEvent) => {
     if (e.target === e.currentTarget) {
@@ -34,42 +31,9 @@ export function NodeDetailPanel({ node, edges, allNodes, onClose }: NodeDetailPa
     return () => window.removeEventListener('keydown', handleEscape);
   }, [onClose]);
 
-  useEffect(() => {
-    setServiceExplanation(null);
-    setServiceExplanationLoading(false);
-    setServiceExplanationError(null);
-  }, [node.id]);
-
-  const handleExplainService = useCallback(async () => {
-    setServiceExplanationLoading(true);
-    setServiceExplanationError(null);
-    const result = await window.electronAPI.explainService({
-      serviceId: node.id,
-      serviceName: node.name,
-    });
-    if (!result.success) {
-      setServiceExplanationError(result.error || 'Failed to explain service');
-      setServiceExplanationLoading(false);
-      return;
-    }
-    setServiceExplanation(result.explanation || '');
-    setServiceExplanationLoading(false);
-  }, [node.id, node.name]);
-
-  const handleDiagnoseService = useCallback(() => {
+  const handleAssessService = useCallback(() => {
     window.dispatchEvent(
-      new CustomEvent('fere:debug-diagnose-service', {
-        detail: {
-          nodeId: node.id,
-          serviceName: node.name,
-        },
-      }),
-    );
-  }, [node.id, node.name]);
-
-  const handleAskAboutService = useCallback(() => {
-    window.dispatchEvent(
-      new CustomEvent('fere:query-about-service', {
+      new CustomEvent('fere:assess-service', {
         detail: {
           nodeId: node.id,
           serviceName: node.name,
@@ -116,37 +80,8 @@ export function NodeDetailPanel({ node, edges, allNodes, onClose }: NodeDetailPa
         <div className="node-detail-actions-card node-detail-actions-card-header">
           <button
             type="button"
-            className="node-detail-ai-button"
-            onClick={handleAskAboutService}
-          >
-            <span className="node-detail-ai-button-icon" aria-hidden="true">
-              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M4.25 4.75C4.25 3.1 5.73 2 8 2c2.2 0 3.75 1.02 3.75 2.8 0 1.42-.96 2.15-2.19 2.69-.85.36-1.31.88-1.31 1.65v.36" />
-                <circle cx="8" cy="12.35" r="0.65" fill="currentColor" stroke="none" />
-              </svg>
-            </span>
-            Ask Fere
-          </button>
-          <button
-            type="button"
-            className={`node-detail-ai-button${serviceExplanation || serviceExplanationLoading ? ' node-detail-ai-button-active' : ''}`}
-            onClick={handleExplainService}
-            disabled={serviceExplanationLoading}
-          >
-                <span className="node-detail-ai-button-icon" aria-hidden="true">
-                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                    <rect x="3" y="2.75" width="10" height="10.5" rx="2.2" />
-                    <path d="M6 6.25h4" />
-                    <path d="M6 8.25h4" />
-                    <path d="M6 10.25h2.5" />
-                  </svg>
-                </span>
-                {serviceExplanationLoading ? 'Explaining...' : 'Explain Service'}
-              </button>
-          <button
-            type="button"
-            className="node-detail-ai-button node-detail-ai-button-secondary node-detail-ai-button-wide"
-            onClick={handleDiagnoseService}
+            className="node-detail-ai-button node-detail-ai-button-wide"
+            onClick={handleAssessService}
           >
             <span className="node-detail-ai-button-icon" aria-hidden="true">
               <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -156,15 +91,15 @@ export function NodeDetailPanel({ node, edges, allNodes, onClose }: NodeDetailPa
                 <path d="M5.5 7h3" />
               </svg>
             </span>
-            Diagnose Service
+            Assess Service
           </button>
         </div>
         <NodeDetailContent
           node={node}
           edges={edges}
           allNodes={allNodes}
-          serviceExplanation={serviceExplanation}
-          serviceExplanationError={serviceExplanationError}
+          serviceExplanation={null}
+          serviceExplanationError={null}
         />
       </div>
     </div>
