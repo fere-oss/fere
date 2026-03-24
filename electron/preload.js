@@ -110,6 +110,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Share (GitHub Gist)
   getShareSettings: () => ipcRenderer.invoke('get-share-settings'),
   saveGithubToken: (token) => ipcRenderer.invoke('save-github-token', token),
+  exportGraphFile: (options) => ipcRenderer.invoke('export-graph-file', options),
   publishGraph: (options) => ipcRenderer.invoke('publish-graph', options),
   updateSharedGraph: (options) => ipcRenderer.invoke('update-shared-graph', options),
 

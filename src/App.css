@@ -10047,6 +10047,83 @@ textarea {
   max-width: 480px;
 }
 
+.share-export-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 11px 16px;
+  margin-top: 12px;
+  font-size: 13px;
+  font-weight: 500;
+  font-family: var(--font-ui);
+  color: #fff;
+  background: #171717;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.share-export-btn:hover {
+  background: #333;
+}
+
+.share-export-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.share-gist-toggle {
+  display: block;
+  width: 100%;
+  margin-top: 10px;
+  padding: 0;
+  font-size: 12px;
+  font-family: var(--font-ui);
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: center;
+  transition: color 0.15s;
+}
+
+.share-gist-toggle:hover {
+  color: var(--text-secondary);
+}
+
+.share-gist-section {
+  margin-top: 4px;
+}
+
+.share-gist-divider {
+  height: 1px;
+  background: var(--border-color);
+  margin: 12px 0;
+}
+
+.share-desc-small {
+  font-size: 12px;
+  margin-bottom: 6px;
+}
+
+.share-save-token-btn {
+  flex-shrink: 0;
+}
+
+.share-gist-ready {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.share-publish-btn {
+  width: 100%;
+  justify-content: center;
+}
+
 /* Setup state */
 .share-setup {
   display: flex;

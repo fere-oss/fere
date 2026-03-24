@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell, nativeImage, Notification, clipboard, powerMonitor } = require("electron");
+const { app, BrowserWindow, ipcMain, shell, nativeImage, Notification, clipboard, powerMonitor, dialog } = require("electron");
 const path = require("path");
 const fs = require("fs");
 
@@ -1745,6 +1745,33 @@ async function doPublish({ graphData, metadata }, isUpdate) {
 
   return { url: previewUrl, publishedAt };
 }
+
+ipcMain.handle("export-graph-file", async (_, { graphData, metadata }) => {
+  try {
+    let logoDevToken = process.env.REACT_APP_LOGO_DEV_TOKEN || "";
+    if (!logoDevToken) {
+      try {
+        const envPath = path.join(__dirname, '../.env');
+        const envContent = fs.readFileSync(envPath, 'utf8');
+        const m = envContent.match(/^REACT_APP_LOGO_DEV_TOKEN=(.+)$/m);
+        if (m) logoDevToken = m[1].trim();
+      } catch {}
+    }
+    const html = await generateHTML({ graphData, metadata, logoDevToken });
+    const tabName = (metadata.tabName || 'service-map').replace(/[^a-zA-Z0-9_-]/g, '-');
+    const result = await dialog.showSaveDialog(mainWindow, {
+      title: 'Save Service Map',
+      defaultPath: `fere-${tabName}.html`,
+      filters: [{ name: 'HTML', extensions: ['html'] }],
+    });
+    if (result.canceled || !result.filePath) return { success: false };
+    fs.writeFileSync(result.filePath, html, 'utf8');
+    return { success: true, filePath: result.filePath };
+  } catch (err) {
+    console.error("export-graph-file error:", err);
+    return { success: false, error: err.message };
+  }
+});
 
 ipcMain.handle("publish-graph", async (_, options) => {
   try {

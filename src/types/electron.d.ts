@@ -684,9 +684,10 @@ export interface ElectronAPI {
   // Analytics
   getAnalyticsId: () => Promise<string>;
 
-  // Share (GitHub Gist)
+  // Share / Export
   getShareSettings: () => Promise<ShareSettings>;
   saveGithubToken: (token: string) => Promise<{ success: boolean; error?: string }>;
+  exportGraphFile: (options: PublishGraphOptions) => Promise<{ success: boolean; filePath?: string; error?: string }>;
   publishGraph: (options: PublishGraphOptions) => Promise<PublishGraphResult>;
   updateSharedGraph: (options: PublishGraphOptions) => Promise<PublishGraphResult>;
 
