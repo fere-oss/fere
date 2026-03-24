@@ -108,7 +108,7 @@
     "publish": {
       "provider": "github",
       "owner": "RahulThennarasu",
-      "repo": "fere"
+      "repo": "fere-macOS"
     }
   },
   "eslintConfig": {
