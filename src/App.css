@@ -2450,28 +2450,25 @@ textarea {
 }
 
 /* Onboarding Hints */
-.onboarding-hint {
-  font-family: var(--font-ui);
-  border-radius: 8px;
-  background: var(--bg-white);
-  border: 1px solid var(--border-color);
-}
 
+/* Discovery hint — compact dark pill overlaying the graph */
 .discovery-hint {
   position: absolute;
-  top: 16px;
+  top: 12px;
   left: 50%;
   transform: translateX(-50%) translateY(-8px);
   z-index: 20;
   display: flex;
-  align-items: flex-start;
-  gap: 16px;
-  padding: 14px 18px;
-  max-width: 460px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  font-family: var(--font-ui);
+  background: #171717;
+  color: #fff;
+  border-radius: 10px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
   opacity: 0;
   transition: opacity 0.3s ease, transform 0.3s ease;
-  cursor: pointer;
 }
 
 .discovery-hint.visible {
@@ -2479,72 +2476,97 @@ textarea {
   transform: translateX(-50%) translateY(0);
 }
 
-.onboarding-hint-content {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+.discovery-hint-icon {
+  display: none;
 }
 
-.onboarding-hint-title {
+.discovery-hint-content {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.discovery-hint-title {
   font-size: 13px;
   font-weight: 600;
-  color: var(--text-primary);
+  color: #fff;
+  white-space: nowrap;
 }
 
-.onboarding-hint-body {
+.discovery-hint-body {
   font-size: 12px;
-  color: var(--text-secondary);
-  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.6);
+  line-height: 1.4;
 }
 
-.onboarding-hint-dismiss {
+.discovery-hint-dismiss {
   flex-shrink: 0;
-  padding: 5px 12px;
+  padding: 4px 10px;
   font-size: 11px;
   font-weight: 500;
   font-family: var(--font-ui);
-  color: var(--text-secondary);
-  background: var(--bg-muted);
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
+  color: rgba(255, 255, 255, 0.8);
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 5px;
   cursor: pointer;
-  transition: color 0.15s, border-color 0.15s;
+  transition: background 0.15s;
 }
 
-.onboarding-hint-dismiss:hover {
-  color: var(--text-primary);
-  border-color: var(--border-hover);
+.discovery-hint-dismiss:hover {
+  background: rgba(255, 255, 255, 0.18);
 }
 
+/* Node click hint — floating pill to the left of the detail panel */
 .node-click-hint {
+  position: absolute;
+  top: 50%;
+  right: 344px; /* 320px panel + 12px right + 12px gap */
+  transform: translateY(-50%);
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 10px 14px;
-  margin-bottom: 12px;
-  background: #f0f4ff;
-  border-color: #d0daf0;
+  flex-direction: column;
+  gap: 8px;
+  width: 200px;
+  padding: 14px 16px;
+  font-family: var(--font-ui);
+  background: #171717;
+  color: #fff;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+  animation: fadeInHint 0.3s ease-out;
 }
 
-.onboarding-hint-dismiss-small {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  padding: 0;
-  background: none;
-  border: none;
-  color: var(--text-muted);
+@keyframes fadeInHint {
+  from { opacity: 0; transform: translateY(-50%) translateX(8px); }
+  to { opacity: 1; transform: translateY(-50%) translateX(0); }
+}
+
+.node-click-hint-icon {
+  display: none;
+}
+
+.node-click-hint-text {
+  font-size: 12.5px;
+  color: rgba(255, 255, 255, 0.8);
+  line-height: 1.5;
+}
+
+.node-click-hint-dismiss {
+  align-self: flex-end;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-family: var(--font-ui);
+  color: rgba(255, 255, 255, 0.7);
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 5px;
   cursor: pointer;
-  border-radius: 4px;
-  transition: color 0.15s;
+  transition: background 0.15s;
 }
 
-.onboarding-hint-dismiss-small:hover {
-  color: var(--text-primary);
+.node-click-hint-dismiss:hover {
+  background: rgba(255, 255, 255, 0.18);
 }
 
 /* Connection Lines SVG */
