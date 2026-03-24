@@ -9740,6 +9740,37 @@ textarea {
   opacity: 0.6;
 }
 
+.service-dropdown-start-all {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: calc(100% - 16px);
+  margin: 6px 8px 2px 8px;
+  padding: 9px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--bg-white);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.service-dropdown-start-all:hover {
+  color: #22c55e;
+  background: var(--bg-muted);
+  border-color: #22c55e40;
+}
+.service-dropdown-start-all svg {
+  opacity: 0.7;
+}
+.service-dropdown-start-all:hover svg {
+  opacity: 1;
+  fill: #22c55e;
+}
+
 .service-dropdown-add {
   display: flex;
   align-items: center;
