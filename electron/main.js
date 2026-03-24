@@ -195,6 +195,7 @@ function resolveAppIconPath() {
 
 function createWindow() {
   const appIconPath = resolveAppIconPath();
+  const platformUI = require("./services/platform");
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
@@ -202,8 +203,7 @@ function createWindow() {
     minHeight: 600,
     title: "Fere",
     icon: appIconPath,
-    titleBarStyle: "hiddenInset",
-    trafficLightPosition: { x: 15, y: 15 },
+    ...platformUI.getWindowOptions(),
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       // Security hardening
@@ -267,18 +267,15 @@ app.whenReady().then(() => {
   analytics.capture("app_launched", { is_dev: isDev });
 
   if (process.platform === "darwin" && isDev) {
-    const icon = nativeImage.createFromPath(
-      resolveAppIconPath()
-    );
-    if (!icon.isEmpty()) {
-      app.dock.setIcon(icon);
-    }
+    const platformUI = require("./services/platform");
+    platformUI.setupDockIcon(app, nativeImage, resolveAppIconPath());
   }
   createWindow();
 });
 
 app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") {
+  const platformUI = require("./services/platform");
+  if (platformUI.shouldQuitOnAllWindowsClosed()) {
     app.quit();
   }
 });
@@ -1142,7 +1139,7 @@ ipcMain.handle("clear-alert-history", async () => {
   }
 });
 
-// Open Terminal at specified path (macOS)
+// Open Terminal at specified path
 ipcMain.handle("open-terminal", async (event, dirPath) => {
   try {
     // Validate the path exists and is a directory
@@ -1161,30 +1158,15 @@ ipcMain.handle("open-terminal", async (event, dirPath) => {
       return { success: false, error: "Path is not a directory" };
     }
 
-    // Use spawn with array args to avoid shell escaping issues
-    const { spawn } = require("child_process");
-    return new Promise((resolve) => {
-      const child = spawn("open", ["-a", "Terminal", resolvedPath], {
-        detached: true,
-        stdio: "ignore",
-      });
-
-      child.on("error", (err) => {
-        console.error("Error opening terminal:", err);
-        resolve({ success: false, error: err.message });
-      });
-
-      child.unref();
-      // Give it a moment to launch, then resolve success
-      setTimeout(() => resolve({ success: true }), 100);
-    });
+    const platformShell = require("./services/platform");
+    return await platformShell.openTerminalAtPath(resolvedPath);
   } catch (error) {
     console.error("Error opening terminal:", error);
     return { success: false, error: error.message };
   }
 });
 
-// Open file in editor (VS Code preferred, fallback to macOS open)
+// Open file in editor (VS Code preferred, fallback to platform default)
 ipcMain.handle("open-in-editor", async (event, filePath, line) => {
   try {
     if (!filePath || typeof filePath !== "string") {
@@ -1196,21 +1178,15 @@ ipcMain.handle("open-in-editor", async (event, filePath, line) => {
       return { success: false, error: "File does not exist" };
     }
 
-    const home = require("os").homedir();
-    if (!resolvedPath.startsWith(home) && !resolvedPath.startsWith("/tmp")) {
+    const platformShell = require("./services/platform");
+    if (!platformShell.isPathAllowedForEditor(resolvedPath)) {
       return { success: false, error: "Path outside home directory" };
     }
 
-    const { spawn, execFileSync } = require("child_process");
+    const { spawn } = require("child_process");
 
-    // Try VS Code first
-    let hasCode = false;
-    try {
-      execFileSync("which", ["code"], { timeout: 2000, stdio: "ignore" });
-      hasCode = true;
-    } catch {}
-
-    if (hasCode) {
+    // Try VS Code first (cross-platform)
+    if (platformShell.hasCodeEditor()) {
       const lineNum = typeof line === "number" && line > 0 ? line : undefined;
       const gotoArg = lineNum ? `${resolvedPath}:${lineNum}` : resolvedPath;
       const child = spawn("code", ["--goto", gotoArg], {
@@ -1221,13 +1197,8 @@ ipcMain.handle("open-in-editor", async (event, filePath, line) => {
       return { success: true, editor: "vscode" };
     }
 
-    // Fallback: macOS open
-    const child = spawn("open", [resolvedPath], {
-      detached: true,
-      stdio: "ignore",
-    });
-    child.unref();
-    return { success: true, editor: "default" };
+    // Fallback: platform default
+    return platformShell.openFileInDefaultApp(resolvedPath);
   } catch (error) {
     console.error("Error opening file in editor:", error);
     return { success: false, error: error.message };

@@ -44,14 +44,7 @@ const MAX_TOOL_RESULT_CHARS = 4000;
 const ITERATION_WARN_THRESHOLD = 12;
 const MIN_API_CALL_INTERVAL_MS = 1000;
 
-const DOCKER_BIN_CANDIDATES = [
-  process.env.FERE_DOCKER_BIN,
-  '/opt/homebrew/bin/docker',
-  '/usr/local/bin/docker',
-  '/Applications/Docker.app/Contents/Resources/bin/docker',
-  'docker',
-].filter(Boolean);
-let resolvedDockerBin = null;
+const { resolveDockerBinary: resolveDockerBin, getDockerBinaries: getDockerBins } = require('./platform/docker');
 
 // --- API Key Management (.env) ---
 
@@ -97,29 +90,10 @@ function setApiKey(key) {
   fs.writeFileSync(ENV_PATH, lines.join('\n') + '\n');
 }
 
-// --- Docker Binary Resolution ---
+// --- Docker Binary Resolution (delegated to platform/docker.js) ---
 
 async function resolveDockerBinary() {
-  if (resolvedDockerBin) return resolvedDockerBin;
-  const candidates = DOCKER_BIN_CANDIDATES.filter(bin => {
-    if (bin.includes('/') && !fs.existsSync(bin)) return false;
-    return true;
-  });
-  try {
-    resolvedDockerBin = await Promise.any(
-      candidates.map(async (candidate) => {
-        await execFileAsync(candidate, ['version', '--format', '{{.Client.Version}}'], {
-          timeout: 3000,
-          maxBuffer: 1024 * 1024,
-        });
-        return candidate;
-      })
-    );
-    return resolvedDockerBin;
-  } catch {
-    resolvedDockerBin = null;
-    return null;
-  }
+  return resolveDockerBin({ timeout: 3000 });
 }
 
 // --- Tool Definitions ---

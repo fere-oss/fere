@@ -1,9 +1,5 @@
-const { exec } = require("child_process");
-const { promisify } = require("util");
 const crypto = require("crypto");
-const { parseConnections } = require("./portMonitor");
-
-const execAsync = promisify(exec);
+const platform = require("./platform");
 
 const POLL_INTERVAL_MS = 200;
 const TRACE_TIMEOUT_MS = 30000;
@@ -11,15 +7,12 @@ const TRACE_TIMEOUT_MS = 30000;
 /**
  * Get fresh (uncached) established TCP connections.
  * Bypasses portMonitor's 5s cache to get real-time data for tracing.
+ * Calls the platform layer directly for uncached results.
  */
 async function getFreshConnections() {
   try {
-    const { stdout } = await execAsync(
-      "lsof -iTCP -sTCP:ESTABLISHED -P -n 2>/dev/null"
-    );
-    return parseConnections(stdout);
+    return await platform.fetchEstablishedConnections();
   } catch (error) {
-    if (error.code === 1) return [];
     console.error("[traceCapture] Error getting connections:", error.message);
     return [];
   }

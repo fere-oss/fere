@@ -10,63 +10,24 @@ const os = require('os');
 const path = require('path');
 const { getPortDescription } = require('./portMonitor');
 const { matchRoutesToService } = require('./routeScanner');
+const {
+  PLATFORM_KNOWN_SERVICES,
+  extractAppNameFromCommand,
+  HOME_DIR_PATH_PREFIXES,
+} = require('./platform');
 
 // ============================================
 // Known Services Dictionary
 // ============================================
 
-const KNOWN_SERVICES = {
+// Cross-platform services (present on all OSes)
+const COMMON_KNOWN_SERVICES = {
   'visual studio code': { description: 'Visual Studio Code - a code editor for development workflows.', category: 'developer', displayName: 'VS Code' },
   'code': { description: 'Visual Studio Code - a code editor for development workflows.', category: 'developer', displayName: 'VS Code' },
   'google chrome': { description: 'Google Chrome - web browser often used for local dev testing.', category: 'developer', displayName: 'Google Chrome' },
   'discord': { description: 'Discord - collaboration and chat client.', category: 'developer', displayName: 'Discord' },
   'electron': { description: 'Electron - runtime for desktop apps built with web tech.', category: 'developer', displayName: 'Electron' },
   'next-server': { description: 'Next.js dev server.', category: 'frontend', displayName: 'Next.js Dev Server' },
-  'controlcenter': { description: 'macOS Control Center daemon - manages Control Center widgets, toggles, and system controls like Wi-Fi, Bluetooth, Do Not Disturb, and AirDrop.', category: 'system', displayName: 'Control Center' },
-  'controlce': { description: 'macOS Control Center daemon - manages Control Center widgets, toggles, and system controls like Wi-Fi, Bluetooth, Do Not Disturb, and AirDrop.', category: 'system', displayName: 'Control Center' },
-  'commcenter': { description: 'macOS Communications Center - handles cellular, SMS, MMS, and phone-related communications for devices with cellular capability.', category: 'system', displayName: 'CommCenter' },
-  'commcentre': { description: 'macOS Communications Center - handles cellular, SMS, MMS, and phone-related communications for devices with cellular capability.', category: 'system', displayName: 'CommCenter' },
-  'commcente': { description: 'macOS Communications Center - handles cellular, SMS, MMS, and phone-related communications for devices with cellular capability.', category: 'system', displayName: 'CommCenter' },
-  'airportd': { description: 'macOS AirPort daemon - manages Wi-Fi connections, network scanning, and wireless network configuration.', category: 'system', displayName: 'AirPort Daemon' },
-  'bluetoothd': { description: 'macOS Bluetooth daemon - handles Bluetooth device pairing, connections, and communication.', category: 'system', displayName: 'Bluetooth Daemon' },
-  'configd': { description: 'macOS System Configuration daemon - monitors and manages system configuration, network settings, and dynamic store.', category: 'system', displayName: 'Config Daemon' },
-  'coreaudiod': { description: 'macOS Core Audio daemon - manages audio routing, device selection, and audio processing for the system.', category: 'system', displayName: 'Core Audio' },
-  'distnoted': { description: 'macOS Distributed Notification daemon - handles inter-process notifications and communication between apps.', category: 'system', displayName: 'Distributed Notifications' },
-  'fseventsd': { description: 'macOS File System Events daemon - monitors file system changes and provides notifications to apps watching for changes.', category: 'system', displayName: 'FS Events' },
-  'launchd': { description: 'macOS Launch daemon - the master process manager that starts and manages all system and user services.', category: 'system', displayName: 'launchd' },
-  'mDNSResponder': { description: 'macOS Multicast DNS Responder - handles Bonjour service discovery, local network name resolution, and zero-configuration networking.', category: 'network', displayName: 'mDNS Responder' },
-  'mDNSRespon': { description: 'macOS Multicast DNS Responder - handles Bonjour service discovery, local network name resolution, and zero-configuration networking.', category: 'network', displayName: 'mDNS Responder' },
-  'netbiosd': { description: 'macOS NetBIOS daemon - provides Windows network compatibility for file sharing and network browsing.', category: 'network', displayName: 'NetBIOS Daemon' },
-  'rapportd': { description: 'macOS Rapport daemon - enables device-to-device communication for features like Universal Clipboard, Handoff, and AirDrop.', category: 'system', displayName: 'Rapport Daemon' },
-  'sharingd': { description: 'macOS Sharing daemon - manages AirDrop, Handoff, Shared Clipboard, and other device sharing features.', category: 'system', displayName: 'Sharing Daemon' },
-  'symptomsd': { description: 'macOS Symptoms daemon - collects network diagnostics and performance data to improve connectivity.', category: 'system', displayName: 'Symptoms Daemon' },
-  'UserEventAgent': { description: 'macOS User Event Agent - monitors and responds to user-level system events like display sleep, wake, and login.', category: 'system', displayName: 'User Event Agent' },
-  'UserEventAg': { description: 'macOS User Event Agent - monitors and responds to user-level system events like display sleep, wake, and login.', category: 'system', displayName: 'User Event Agent' },
-  'WiFiAgent': { description: 'macOS Wi-Fi Agent - manages the Wi-Fi menu bar item and user-facing Wi-Fi controls.', category: 'network', displayName: 'Wi-Fi Agent' },
-  'identityservicesd': { description: 'macOS Identity Services daemon - handles iCloud account authentication, iMessage, and FaceTime identity.', category: 'system', displayName: 'Identity Services' },
-  'identityse': { description: 'macOS Identity Services daemon - handles iCloud account authentication, iMessage, and FaceTime identity.', category: 'system', displayName: 'Identity Services' },
-  'cloudd': { description: 'macOS CloudKit daemon - manages iCloud data synchronization and CloudKit framework operations.', category: 'system', displayName: 'CloudKit Daemon' },
-  'nsurlsessiond': { description: 'macOS URL Session daemon - handles background network transfers and downloads for apps.', category: 'network', displayName: 'NSURLSession Daemon' },
-  'nsurlsessi': { description: 'macOS URL Session daemon - handles background network transfers and downloads for apps.', category: 'network', displayName: 'NSURLSession Daemon' },
-  'apsd': { description: 'macOS Apple Push Services daemon - manages push notifications from Apple services and third-party apps.', category: 'network', displayName: 'Apple Push Services' },
-  'locationd': { description: 'macOS Location Services daemon - provides location data to apps and manages location privacy.', category: 'system', displayName: 'Location Services' },
-  'coreduetd': { description: 'macOS Core Duet daemon - tracks app usage patterns to improve Siri suggestions and system intelligence.', category: 'system', displayName: 'Core Duet' },
-  'suggestd': { description: 'macOS Suggestions daemon - provides intelligent suggestions in Spotlight, Siri, and other system features.', category: 'system', displayName: 'Suggestions Daemon' },
-  'tccd': { description: 'macOS Transparency, Consent, and Control daemon - manages privacy permissions for apps accessing sensitive data.', category: 'system', displayName: 'TCC Daemon' },
-  'trustd': { description: 'macOS Trust daemon - handles certificate trust evaluation and security policy decisions.', category: 'system', displayName: 'Trust Daemon' },
-  'securityd': { description: 'macOS Security daemon - manages keychain access, code signing verification, and security services.', category: 'system', displayName: 'Security Daemon' },
-  'WindowServer': { description: 'macOS Window Server - the core process that manages the display, windows, and graphical user interface.', category: 'system', displayName: 'Window Server' },
-  'WindowServe': { description: 'macOS Window Server - the core process that manages the display, windows, and graphical user interface.', category: 'system', displayName: 'Window Server' },
-  'Finder': { description: 'macOS Finder - the default file manager that provides the desktop and file browsing experience.', category: 'system', displayName: 'Finder' },
-  'Dock': { description: 'macOS Dock - provides the application dock, Launchpad, and window management features.', category: 'system', displayName: 'Dock' },
-  'SystemUIServer': { description: 'macOS System UI Server - manages menu bar extras, system dialogs, and UI elements.', category: 'system', displayName: 'System UI Server' },
-  'SystemUISe': { description: 'macOS System UI Server - manages menu bar extras, system dialogs, and UI elements.', category: 'system', displayName: 'System UI Server' },
-  'NotificationCenter': { description: 'macOS Notification Center - displays and manages notifications from apps and system services.', category: 'system', displayName: 'Notification Center' },
-  'Notificati': { description: 'macOS Notification Center - displays and manages notifications from apps and system services.', category: 'system', displayName: 'Notification Center' },
-  'Spotlight': { description: 'macOS Spotlight - provides system-wide search, app launching, and quick calculations.', category: 'system', displayName: 'Spotlight' },
-  'mds': { description: 'macOS Metadata Server - indexes files for Spotlight search and manages file metadata.', category: 'system', displayName: 'Metadata Server' },
-  'mds_stores': { description: 'macOS Metadata Server Stores - manages the Spotlight search index database.', category: 'system', displayName: 'Metadata Stores' },
-  'kernel_task': { description: 'macOS Kernel Task - the core operating system process that manages hardware, memory, and system resources.', category: 'system', displayName: 'Kernel Task' },
   'node': { description: 'Node.js runtime - JavaScript runtime built on Chrome\'s V8 engine for building server-side applications.', category: 'development', displayName: 'Node.js' },
   'python': { description: 'Python interpreter - a versatile programming language used for web development, scripting, and data science.', category: 'development', displayName: 'Python' },
   'python3': { description: 'Python 3 interpreter - the modern version of Python with improved syntax and features.', category: 'development', displayName: 'Python 3' },
@@ -87,6 +48,9 @@ const KNOWN_SERVICES = {
   'com.docker': { description: 'Docker Backend - the background service that manages Docker containers and images.', category: 'container', displayName: 'Docker Backend' },
 };
 
+// Merge cross-platform + platform-specific services
+const KNOWN_SERVICES = { ...COMMON_KNOWN_SERVICES, ...PLATFORM_KNOWN_SERVICES };
+
 // ============================================
 // Service Info / Display Name Functions
 // ============================================
@@ -101,16 +65,7 @@ for (const [key, value] of Object.entries(KNOWN_SERVICES)) {
 const KNOWN_SERVICES_KEYS_SORTED = [...KNOWN_SERVICES_LOWER.keys()]
   .sort((a, b) => b.length - a.length);
 
-function extractAppNameFromCommand(command = '') {
-  if (!command) return null;
-  const appMatch = command.match(/\/Applications\/([^/]+)\.app\//i)
-    || command.match(/\/System\/Applications\/([^/]+)\.app\//i)
-    || command.match(/\/Users\/[^/]+\/Applications\/([^/]+)\.app\//i);
-  if (appMatch && appMatch[1]) {
-    return appMatch[1];
-  }
-  return null;
-}
+// extractAppNameFromCommand is imported from platform — platform-specific .app/.exe extraction
 
 function getServiceInfo(processName, command = '') {
   if (!processName) return null;
@@ -704,7 +659,7 @@ function inferProjectPathFromCommand(command = '') {
   const tokens = command.split(/\s+/);
   const candidates = [];
   for (const token of tokens) {
-    if (token.startsWith('/Users/') || token.startsWith('/home/')) {
+    if (HOME_DIR_PATH_PREFIXES.some(prefix => token.startsWith(prefix))) {
       candidates.push(token.replace(/[",']/g, ''));
     }
   }

@@ -1,19 +1,9 @@
-const { spawn, execFile } = require('child_process');
+const { spawn } = require('child_process');
 const fs = require('fs');
 const http = require('http');
 const https = require('https');
-const { promisify } = require('util');
-const execFileAsync = promisify(execFile);
+const { getDockerBinaryOrThrow } = require('./platform/docker');
 
-const DOCKER_EXEC_TIMEOUT_MS = 15000;
-const DOCKER_BIN_CANDIDATES = [
-  process.env.FERE_DOCKER_BIN,
-  '/opt/homebrew/bin/docker',
-  '/usr/local/bin/docker',
-  '/Applications/Docker.app/Contents/Resources/bin/docker',
-  'docker',
-].filter(Boolean);
-let resolvedDockerBin = null;
 let PgClient = null;
 try {
   ({ Client: PgClient } = require('pg'));
@@ -28,44 +18,6 @@ const MONGO_LIMIT_RE = /\.limit\s*\(/;
 const MONGO_TOARRAY_RE = /\.toArray\s*\(/;
 const MYSQL_SYSTEM_DBS = new Set(['information_schema', 'performance_schema', 'mysql', 'sys']);
 const dbTypeCache = new Map();
-
-function getDockerBinaries() {
-  const bins = [];
-  for (const bin of DOCKER_BIN_CANDIDATES) {
-    if (bin.includes('/') && !fs.existsSync(bin)) continue;
-    bins.push(bin);
-  }
-  return bins.length > 0 ? bins : ['docker'];
-}
-
-async function resolveDockerBinary() {
-  if (resolvedDockerBin) return resolvedDockerBin;
-
-  const candidates = getDockerBinaries();
-  for (const candidate of candidates) {
-    try {
-      await execFileAsync(candidate, ['version', '--format', '{{.Client.Version}}'], {
-        timeout: DOCKER_EXEC_TIMEOUT_MS,
-        maxBuffer: 1024 * 1024,
-      });
-      resolvedDockerBin = candidate;
-      return candidate;
-    } catch {
-      // Try next candidate
-    }
-  }
-
-  resolvedDockerBin = null;
-  return null;
-}
-
-async function getDockerBinaryOrThrow() {
-  const dockerBin = await resolveDockerBinary();
-  if (!dockerBin) {
-    throw new Error('Docker CLI not found. Tried: ' + getDockerBinaries().join(', '));
-  }
-  return dockerBin;
-}
 
 function validateContainerId(containerId) {
   if (!containerId || typeof containerId !== 'string' || !VALID_CONTAINER_ID.test(containerId)) {

@@ -1,85 +1,12 @@
-const { execFile } = require('child_process');
-const { promisify } = require('util');
 const fs = require('fs');
 const path = require('path');
-
-const execFileAsync = promisify(execFile);
+const { runDocker, clearDockerBinCache } = require('./platform/docker');
 
 const CACHE_TTL_MS = 2000; // 2 second cache for Docker data (Docker commands are slower)
 const containersCache = { timestamp: 0, data: [], promise: null };
 const networksCache = { timestamp: 0, data: [], promise: null };
 const RUNNING_STATES = new Set(['running', 'paused', 'restarting']);
 const DEFAULT_NETWORKS = new Set(['bridge', 'host', 'none']);
-const DOCKER_EXEC_TIMEOUT_MS = 15000;
-const DOCKER_BIN_CANDIDATES = [
-  process.env.FERE_DOCKER_BIN,
-  '/opt/homebrew/bin/docker',
-  '/usr/local/bin/docker',
-  '/Applications/Docker.app/Contents/Resources/bin/docker',
-  'docker',
-].filter(Boolean);
-let resolvedDockerBin = null;
-
-function getDockerBinaries() {
-  const bins = [];
-  for (const bin of DOCKER_BIN_CANDIDATES) {
-    if (bin.includes('/') && !fs.existsSync(bin)) continue;
-    bins.push(bin);
-  }
-  return bins.length > 0 ? bins : ['docker'];
-}
-
-async function resolveDockerBinary() {
-  if (resolvedDockerBin) return resolvedDockerBin;
-
-  const candidates = getDockerBinaries();
-  for (const candidate of candidates) {
-    try {
-      await execFileAsync(candidate, ['version', '--format', '{{.Client.Version}}'], {
-        timeout: DOCKER_EXEC_TIMEOUT_MS,
-        maxBuffer: 1024 * 1024,
-      });
-      resolvedDockerBin = candidate;
-      return candidate;
-    } catch (error) {
-      // Try next candidate
-    }
-  }
-
-  resolvedDockerBin = null;
-  return null;
-}
-
-async function runDocker(args, options = {}) {
-  const normalizedArgs = Array.isArray(args) ? args : [];
-  const allowFailure = !!options.allowFailure;
-  const preferred = await resolveDockerBinary();
-  const candidates = preferred
-    ? [preferred]
-    : getDockerBinaries();
-
-  let lastError = null;
-  for (const bin of candidates) {
-    try {
-      const result = await execFileAsync(bin, normalizedArgs, {
-        timeout: DOCKER_EXEC_TIMEOUT_MS,
-        maxBuffer: 1024 * 1024,
-      });
-      resolvedDockerBin = bin;
-      return result.stdout || '';
-    } catch (error) {
-      lastError = error;
-      const isMissingBinary = error?.code === 'ENOENT' || /not found/i.test(String(error?.message || ''));
-      if (isMissingBinary) continue;
-      throw error;
-    }
-  }
-
-  if (allowFailure && lastError) {
-    throw lastError;
-  }
-  throw new Error('Docker CLI not found. Tried: ' + candidates.join(', '));
-}
 
 /**
  * Check if Docker is available and running
@@ -811,7 +738,7 @@ function clearDockerCache() {
   networksCache.timestamp = 0;
   networksCache.data = [];
   networksCache.promise = null;
-  resolvedDockerBin = null;
+  clearDockerBinCache();
 }
 
 function sanitizeContainerId(containerId) {

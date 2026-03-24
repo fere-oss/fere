@@ -10,8 +10,7 @@
  */
 
 const path = require('path');
-const { exec } = require('child_process');
-const { promisify } = require('util');
+const platform = require('./platform');
 const { getDevProcesses } = require('./processMonitor');
 const { getListeningPorts, getEstablishedConnections } = require('./portMonitor');
 const { scanRoutes, matchRoutesToService } = require('./routeScanner');
@@ -33,8 +32,6 @@ const {
   hasTopologyChanged,
 } = require('./graphFunctions');
 
-const execAsync = promisify(exec);
-
 // Performance timing
 const PERF_LOGGING = process.env.FERE_PERF_LOG === '1';
 const perfLog = (label, duration) => {
@@ -48,32 +45,13 @@ const CWD_CACHE_TTL_MS = 60000; // 60 seconds
 const CWD_NULL_CACHE_TTL_MS = 10000; // Retry missing CWDs sooner
 const persistentCwdCache = new Map();
 
-function parseBatchedLsofCwdOutput(output = '') {
-  const cwdByPid = new Map();
-  let currentPid = null;
-
-  for (const line of output.split('\n')) {
-    if (line.startsWith('p')) {
-      currentPid = parseInt(line.slice(1), 10);
-      continue;
-    }
-    if (line.startsWith('n') && currentPid !== null) {
-      const cwd = line.slice(1).trim();
-      cwdByPid.set(currentPid, cwd);
-      currentPid = null;
-    }
-  }
-
-  return cwdByPid;
-}
-
 // ============================================
 // CWD Lookup (I/O-bound, main thread only)
 // ============================================
 
 /**
- * Batch CWD lookup — single lsof call for all PIDs.
- * Reduces N lsof spawns to 1.
+ * Batch CWD lookup via platform abstraction.
+ * Wraps platform.batchResolveCwds with a persistent TTL cache.
  * @param {number[]} pids - Array of process IDs
  * @returns {Promise<Map<number, string|null>>} Map of PID → CWD path
  */
@@ -95,27 +73,12 @@ async function batchGetProcessCwds(pids) {
 
   if (uncached.length > 0) {
     const startCwd = Date.now();
-    let parsed = new Map();
-    try {
-      // Single batched lsof call for all uncached PIDs
-      const pidArgs = uncached.map(p => `-p ${p}`).join(' ');
-      const { stdout } = await execAsync(`lsof -a -d cwd -Fn ${pidArgs} 2>/dev/null`);
-      parsed = parseBatchedLsofCwdOutput(stdout);
-    } catch (error) {
-      // lsof often exits non-zero even when stdout includes partial results.
-      parsed = parseBatchedLsofCwdOutput(error?.stdout || '');
-    }
-
-    for (const [pid, cwd] of parsed.entries()) {
-      result.set(pid, cwd);
-      persistentCwdCache.set(pid, { cwd, timestamp: now });
-    }
+    const resolved = await platform.batchResolveCwds(uncached);
 
     for (const pid of uncached) {
-      if (!result.has(pid)) {
-        result.set(pid, null);
-        persistentCwdCache.set(pid, { cwd: null, timestamp: now });
-      }
+      const cwd = resolved.get(pid) || null;
+      result.set(pid, cwd);
+      persistentCwdCache.set(pid, { cwd, timestamp: now });
     }
     perfLog(`Batched CWD lookups (${uncached.length} uncached of ${pids.length} total)`, Date.now() - startCwd);
   }
@@ -136,20 +99,10 @@ async function getProcessCwd(pid, cache) {
     return persistentEntry.cwd;
   }
 
-  try {
-    const { stdout } = await execAsync(`lsof -a -p ${pid} -d cwd -Fn`);
-    const line = stdout.split('\n').find(entry => entry.startsWith('n'));
-    const cwd = line ? line.slice(1).trim() : null;
-    cache.set(pid, cwd);
-    persistentCwdCache.set(pid, { cwd, timestamp: Date.now() });
-    return cwd;
-  } catch (error) {
-    const line = (error?.stdout || '').split('\n').find(entry => entry.startsWith('n'));
-    const cwd = line ? line.slice(1).trim() : null;
-    cache.set(pid, cwd);
-    persistentCwdCache.set(pid, { cwd, timestamp: Date.now() });
-    return cwd;
-  }
+  const cwd = await platform.resolveCwd(pid);
+  cache.set(pid, cwd);
+  persistentCwdCache.set(pid, { cwd, timestamp: Date.now() });
+  return cwd;
 }
 
 // ============================================

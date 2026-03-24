@@ -1,8 +1,5 @@
-const { exec, execFile } = require('child_process');
-const { promisify } = require('util');
+const platform = require('./platform');
 
-const execAsync = promisify(exec);
-const execFileAsync = promisify(execFile);
 const CACHE_TTL_MS = 5000;
 const processCache = { timestamp: 0, data: [], promise: null };
 
@@ -36,42 +33,6 @@ const DEV_PATTERNS_RE = new RegExp(
 
 // Wrapper process names that should show their script argument
 const WRAPPER_NAMES = new Set(['node', 'python', 'python3', 'ruby']);
-
-/**
- * Parse ps aux output into structured process data
- */
-function parseProcesses(psOutput) {
-  const lines = psOutput.trim().split('\n');
-  const processes = [];
-
-  // Skip header line
-  for (let i = 1; i < lines.length; i++) {
-    const line = lines[i];
-    // ps aux format: USER PID %CPU %MEM VSZ RSS TTY STAT START TIME COMMAND
-    const parts = line.trim().split(/\s+/);
-    if (parts.length < 11) continue;
-
-    const [user, pid, cpu, mem, vsz, rss, tty, stat, start, time, ...cmdParts] = parts;
-    const command = cmdParts.join(' ');
-
-    processes.push({
-      pid: parseInt(pid, 10),
-      user,
-      cpu: parseFloat(cpu),
-      memory: parseFloat(mem),
-      vsz: parseInt(vsz, 10),
-      rss: parseInt(rss, 10),
-      tty,
-      status: stat,
-      startTime: start,
-      cpuTime: time,
-      command,
-      name: extractProcessName(command),
-    });
-  }
-
-  return processes;
-}
 
 /**
  * Extract a clean process name from the full command
@@ -121,8 +82,12 @@ async function getAllProcesses() {
 
   processCache.promise = (async () => {
     try {
-      const { stdout } = await execAsync('ps aux');
-      const data = parseProcesses(stdout);
+      const rawProcesses = await platform.getProcessList();
+      // Decorate with extractProcessName (business logic stays here)
+      const data = rawProcesses.map(proc => ({
+        ...proc,
+        name: extractProcessName(proc.command),
+      }));
       processCache.data = data;
       processCache.timestamp = Date.now();
       processCache.promise = null;
@@ -161,61 +126,32 @@ async function getDevProcesses() {
  * Get process by PID
  */
 async function getProcessByPid(pid) {
-  try {
-    const { stdout } = await execFileAsync('ps', [
-      '-p', String(pid),
-      '-o', 'user,pid,%cpu,%mem,vsz,rss,tty,stat,start,time,command',
-    ]);
-    const processes = parseProcesses(stdout);
-    return processes[0] || null;
-  } catch (error) {
-    return null;
-  }
+  const proc = await platform.getProcessInfoByPid(pid);
+  if (!proc) return null;
+  return { ...proc, name: extractProcessName(proc.command) };
 }
 
 /**
  * Kill a process by PID
  */
 async function killProcess(pid, signal = 'TERM') {
-  // Whitelist allowed signals to prevent injection via the signal parameter.
-  const ALLOWED_SIGNALS = new Set(['TERM', 'KILL', 'INT', 'HUP', 'QUIT']);
-  const safeSignal = ALLOWED_SIGNALS.has(signal) ? signal : 'TERM';
-  const pidStr = String(pid);
-
-  try {
-    await execFileAsync('kill', [`-${safeSignal}`, pidStr]);
-    // Give the process a brief moment to exit
-    await new Promise(resolve => setTimeout(resolve, 300));
-    try {
-      await execFileAsync('kill', ['-0', pidStr]);
-      // Still alive, escalate to SIGKILL
-      await execFileAsync('kill', ['-KILL', pidStr]);
-    } catch (error) {
-      // kill -0 failed, process is gone
-    }
-    return { success: true };
-  } catch (error) {
-    return { success: false, error: error.message };
-  }
+  return platform.killProcess(pid, signal);
 }
 
 /**
- * Lightweight PID enumeration (much cheaper than ps aux)
+ * Lightweight PID enumeration (much cheaper than full ps aux)
  */
 async function getProcessPids() {
-  try {
-    const { stdout } = await execAsync('ps -eo pid');
-    const pids = new Set();
-    const lines = stdout.trim().split('\n');
-    for (let i = 1; i < lines.length; i++) {
-      const pid = parseInt(lines[i].trim(), 10);
-      if (!isNaN(pid)) pids.add(pid);
-    }
-    return pids;
-  } catch (error) {
-    console.error('Error enumerating PIDs:', error);
-    return new Set();
-  }
+  return platform.enumeratePids();
+}
+
+// Re-export parseProcesses for backward compatibility (used in tests)
+function parseProcesses(psOutput) {
+  const rawProcesses = platform.parseProcessList(psOutput);
+  return rawProcesses.map(proc => ({
+    ...proc,
+    name: extractProcessName(proc.command),
+  }));
 }
 
 module.exports = {

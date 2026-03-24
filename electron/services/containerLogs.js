@@ -1,18 +1,7 @@
-const { spawn, execFile } = require('child_process');
-const fs = require('fs');
-const { promisify } = require('util');
+const { spawn } = require('child_process');
+const { resolveDockerBinary, getDockerBinaries } = require('./platform/docker');
 
-const execFileAsync = promisify(execFile);
 const TIMESTAMP_RE = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z)\s+(.*)$/;
-const DOCKER_EXEC_TIMEOUT_MS = 3000;
-const DOCKER_BIN_CANDIDATES = [
-  process.env.FERE_DOCKER_BIN,
-  '/opt/homebrew/bin/docker',
-  '/usr/local/bin/docker',
-  '/Applications/Docker.app/Contents/Resources/bin/docker',
-  'docker',
-].filter(Boolean);
-let resolvedDockerBin = null;
 
 // Active log streams: Map<streamId, { process, containerId, onData, onError, onClose }>
 const activeStreams = new Map();
@@ -20,38 +9,6 @@ const activeStreams = new Map();
 // Generate unique stream ID
 function generateStreamId() {
   return `stream-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-}
-
-function getDockerBinaries() {
-  const bins = [];
-  for (const bin of DOCKER_BIN_CANDIDATES) {
-    if (bin.includes('/') && !fs.existsSync(bin)) continue;
-    bins.push(bin);
-  }
-  return bins.length > 0 ? bins : ['docker'];
-}
-
-// Probe all candidates in parallel so worst-case time = one timeout (3s)
-// instead of N × timeout (Bug 29).
-async function resolveDockerBinary() {
-  if (resolvedDockerBin) return resolvedDockerBin;
-
-  const candidates = getDockerBinaries();
-  try {
-    resolvedDockerBin = await Promise.any(
-      candidates.map(async (candidate) => {
-        await execFileAsync(candidate, ['version', '--format', '{{.Client.Version}}'], {
-          timeout: DOCKER_EXEC_TIMEOUT_MS,
-          maxBuffer: 1024 * 1024,
-        });
-        return candidate;
-      })
-    );
-    return resolvedDockerBin;
-  } catch {
-    resolvedDockerBin = null;
-    return null;
-  }
 }
 
 /**
