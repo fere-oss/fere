@@ -1,4 +1,5 @@
 const { app, BrowserWindow, ipcMain, shell, nativeImage, Notification, clipboard } = require("electron");
+const { autoUpdater } = require("electron-updater");
 const path = require("path");
 const fs = require("fs");
 
@@ -273,6 +274,10 @@ app.whenReady().then(() => {
     }
   }
   createWindow();
+
+  if (!isDev) {
+    autoUpdater.checkForUpdatesAndNotify();
+  }
 });
 
 app.on("window-all-closed", () => {
