@@ -1761,7 +1761,7 @@ ipcMain.handle("export-graph-file", async (_, { graphData, metadata }) => {
     const tabName = (metadata.tabName || 'service-map').replace(/[^a-zA-Z0-9_-]/g, '-');
     const result = await dialog.showSaveDialog(mainWindow, {
       title: 'Save Service Map',
-      defaultPath: `fere-${tabName}.html`,
+      defaultPath: path.join(app.getPath('downloads'), `fere-${tabName}.html`),
       filters: [{ name: 'HTML', extensions: ['html'] }],
     });
     if (result.canceled || !result.filePath) return { success: false };
