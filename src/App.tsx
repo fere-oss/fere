@@ -13,10 +13,6 @@ import { CurlBuilder } from "./components/CurlBuilder";
 import { DatabaseListView } from "./components/DatabaseListView";
 import { ContainerLogsTab } from "./components/ContainerLogsTab";
 import { WelcomeModal } from "./components/WelcomeModal";
-import {
-  FirstDetectionToast,
-  useFirstDetection,
-} from "./components/FirstDetectionToast";
 import { ShareModal } from "./components/ShareModal";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { DebugPanel } from "./components/DebugPanel";
@@ -260,20 +256,6 @@ function App() {
   });
 
   // First detection toast
-  const firstDetection = useFirstDetection();
-  const prevNodeCountRef = useRef(0);
-
-  useEffect(() => {
-    const nodes = graph.nodes.filter((n) => n.type !== "external");
-    const prevCount = prevNodeCountRef.current;
-    prevNodeCountRef.current = nodes.length;
-    if (prevCount === 0 && nodes.length > 0 && !showWelcome) {
-      const node = nodes[0];
-      const port = node.ports?.[0]?.port ?? 0;
-      firstDetection.trigger(node.name, port);
-    }
-  }, [graph.nodes, firstDetection.trigger, showWelcome]);
-
   // View mode state - graph or api-tester
   const [viewMode, setViewMode] = useState<ViewMode>("graph");
 
@@ -1776,14 +1758,6 @@ function App() {
       {/* Welcome Modal */}
       {showWelcome && <WelcomeModal onClose={handleCloseWelcome} />}
 
-      {/* First Detection Toast */}
-      {firstDetection.toast && (
-        <FirstDetectionToast
-          serviceName={firstDetection.toast.serviceName}
-          port={firstDetection.toast.port}
-          onDismiss={firstDetection.dismiss}
-        />
-      )}
 
       {/* Share Modal */}
       {showShare && (

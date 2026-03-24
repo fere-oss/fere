@@ -2422,33 +2422,6 @@ textarea {
 }
 
 /* First Detection Toast */
-.first-detection-toast {
-  position: fixed;
-  bottom: 24px;
-  right: 24px;
-  padding: 12px 20px;
-  background: var(--text-primary);
-  color: var(--bg-primary);
-  font-size: 13px;
-  font-family: var(--font-ui);
-  border-radius: 8px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
-  z-index: 9999;
-  opacity: 0;
-  transform: translateY(12px);
-  transition: opacity 0.3s ease, transform 0.3s ease;
-  pointer-events: none;
-}
-
-.first-detection-toast.visible {
-  opacity: 1;
-  transform: translateY(0);
-}
-
-.first-detection-toast strong {
-  font-weight: 600;
-}
-
 /* Onboarding Hints */
 
 /* Discovery hint — compact dark pill overlaying the graph */
