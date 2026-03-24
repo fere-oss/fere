@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell, nativeImage, Notification, clipboard } = require("electron");
+const { app, BrowserWindow, ipcMain, shell, nativeImage, Notification, clipboard, powerMonitor, dialog } = require("electron");
 const { autoUpdater } = require("electron-updater");
 const path = require("path");
 const fs = require("fs");
@@ -63,6 +63,7 @@ const {
 const { getSystemSnapshot } = require("./services/systemSnapshot");
 const { SnapshotScheduler } = require("./services/snapshotScheduler");
 const { scanExternalApis } = require("./services/externalApiScanner");
+const { scanRoutes, clearRouteCache, getRouteCacheTimestamp } = require("./services/routeScanner");
 const {
   loadHistory,
   saveHistoryEntry,
@@ -232,6 +233,35 @@ function createWindow() {
   // Security: Block new windows, open http/https in external browser
   setupWindowOpenHandler(mainWindow.webContents);
 
+  // Throttle snapshot collection when app is not visible
+  mainWindow.on("blur", () => {
+    if (snapshotScheduler) snapshotScheduler.throttle();
+  });
+  mainWindow.on("minimize", () => {
+    if (snapshotScheduler) snapshotScheduler.throttle();
+  });
+  mainWindow.on("hide", () => {
+    if (snapshotScheduler) snapshotScheduler.throttle();
+  });
+  mainWindow.on("focus", () => {
+    if (snapshotScheduler) snapshotScheduler.unthrottle();
+  });
+  mainWindow.on("restore", () => {
+    if (snapshotScheduler) snapshotScheduler.unthrottle();
+  });
+  mainWindow.on("show", () => {
+    if (snapshotScheduler) snapshotScheduler.unthrottle();
+  });
+
+  // Hide instead of close — keeps process alive for background notifications
+  mainWindow.on("close", (e) => {
+    if (!app.isQuitting) {
+      e.preventDefault();
+      mainWindow.hide();
+      if (snapshotScheduler) snapshotScheduler.throttle();
+    }
+  });
+
   mainWindow.on("closed", () => {
     if (snapshotScheduler) {
       snapshotScheduler.stop();
@@ -273,6 +303,14 @@ app.whenReady().then(() => {
       app.dock.setIcon(icon);
     }
   }
+  // Power-aware scheduling: slow down on battery
+  powerMonitor.on('on-ac', () => {
+    if (snapshotScheduler) snapshotScheduler.setBattery(false);
+  });
+  powerMonitor.on('on-battery', () => {
+    if (snapshotScheduler) snapshotScheduler.setBattery(true);
+  });
+
   createWindow();
 
   if (!isDev) {
@@ -284,6 +322,10 @@ app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {
     app.quit();
   }
+});
+
+app.on("before-quit", () => {
+  app.isQuitting = true;
 });
 
 app.on("will-quit", async () => {
@@ -298,6 +340,9 @@ app.on("will-quit", async () => {
 app.on("activate", () => {
   if (mainWindow === null) {
     createWindow();
+  } else {
+    mainWindow.show();
+    if (snapshotScheduler) snapshotScheduler.unthrottle();
   }
 });
 
@@ -408,21 +453,27 @@ ipcMain.handle("start-snapshot-stream", async (event) => {
     }
 
     snapshotScheduler = new SnapshotScheduler();
+    if (typeof powerMonitor.isOnBatteryPower === 'function') {
+      snapshotScheduler.setBattery(powerMonitor.isOnBatteryPower());
+    }
 
-    snapshotHandler = (delta) => {
-      if (event.sender.isDestroyed()) {
-        snapshotScheduler.removeListener("snapshot", snapshotHandler);
-        return;
-      }
-      event.sender.send("snapshot-delta", delta);
-
-      // Evaluate alert notifications on each snapshot
+    // Persistent listener: evaluate alerts even when window is hidden
+    snapshotScheduler.on("snapshot", (delta) => {
       try {
         updateAlertNodeMap(delta);
         evaluateAlerts(Array.from(alertNodeMap.values()));
       } catch (err) {
         console.error("[AlertManager] Error evaluating alerts:", err);
       }
+    });
+
+    // Renderer listener: forward deltas to the window (removed when window goes away)
+    snapshotHandler = (delta) => {
+      if (event.sender.isDestroyed()) {
+        snapshotScheduler.removeListener("snapshot", snapshotHandler);
+        return;
+      }
+      event.sender.send("snapshot-delta", delta);
     };
 
     snapshotScheduler.on("snapshot", snapshotHandler);
@@ -459,6 +510,22 @@ ipcMain.handle("get-environment-summary", async () => {
   } catch (error) {
     console.error("Error getting environment summary:", error);
     return { totalServices: 0, totalConnections: 0, services: [] };
+  }
+});
+
+// Rescan routes for a project path (clears cache, returns fresh routes + timestamp)
+ipcMain.handle("rescan-routes", async (event, projectPath) => {
+  try {
+    if (!projectPath || typeof projectPath !== "string") {
+      return { routes: [], scannedAt: null };
+    }
+    const resolvedPath = path.resolve(projectPath);
+    clearRouteCache(resolvedPath);
+    const routes = await scanRoutes(resolvedPath);
+    return { routes, scannedAt: getRouteCacheTimestamp(resolvedPath) };
+  } catch (error) {
+    console.error("Error rescanning routes:", error);
+    return { routes: [], scannedAt: null };
   }
 });
 
@@ -1099,6 +1166,23 @@ ipcMain.handle("set-network-policy", async (event, policy) => {
 });
 
 // ============================================
+// IPC Handlers - Auto-Launch
+// ============================================
+
+ipcMain.handle("get-auto-launch", async () => {
+  return app.getLoginItemSettings().openAtLogin;
+});
+
+ipcMain.handle("set-auto-launch", async (_event, enabled) => {
+  try {
+    app.setLoginItemSettings({ openAtLogin: !!enabled });
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+// ============================================
 // IPC Handlers - Alert Preferences
 // ============================================
 
@@ -1666,6 +1750,33 @@ async function doPublish({ graphData, metadata }, isUpdate) {
 
   return { url: previewUrl, publishedAt };
 }
+
+ipcMain.handle("export-graph-file", async (_, { graphData, metadata }) => {
+  try {
+    let logoDevToken = process.env.REACT_APP_LOGO_DEV_TOKEN || "";
+    if (!logoDevToken) {
+      try {
+        const envPath = path.join(__dirname, '../.env');
+        const envContent = fs.readFileSync(envPath, 'utf8');
+        const m = envContent.match(/^REACT_APP_LOGO_DEV_TOKEN=(.+)$/m);
+        if (m) logoDevToken = m[1].trim();
+      } catch {}
+    }
+    const html = await generateHTML({ graphData, metadata, logoDevToken });
+    const tabName = (metadata.tabName || 'service-map').replace(/[^a-zA-Z0-9_-]/g, '-');
+    const result = await dialog.showSaveDialog(mainWindow, {
+      title: 'Save Service Map',
+      defaultPath: path.join(app.getPath('downloads'), `fere-${tabName}.html`),
+      filters: [{ name: 'HTML', extensions: ['html'] }],
+    });
+    if (result.canceled || !result.filePath) return { success: false };
+    fs.writeFileSync(result.filePath, html, 'utf8');
+    return { success: true, filePath: result.filePath };
+  } catch (err) {
+    console.error("export-graph-file error:", err);
+    return { success: false, error: err.message };
+  }
+});
 
 ipcMain.handle("publish-graph", async (_, options) => {
   try {

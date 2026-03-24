@@ -13,10 +13,6 @@ import { CurlBuilder } from "./components/CurlBuilder";
 import { DatabaseListView } from "./components/DatabaseListView";
 import { ContainerLogsTab } from "./components/ContainerLogsTab";
 import { WelcomeModal } from "./components/WelcomeModal";
-import {
-  FirstDetectionToast,
-  useFirstDetection,
-} from "./components/FirstDetectionToast";
 import { ShareModal } from "./components/ShareModal";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { DebugPanel } from "./components/DebugPanel";
@@ -89,6 +85,8 @@ const ALERT_EVENT_LABELS: Record<string, string> = {
   degraded: "degraded",
   "container-stopped": "stopped",
   "container-running": "started running",
+  "service-discovered": "appeared",
+  "service-gone": "disappeared",
 };
 
 function normalizeProjectTabPath(projectPath: string): string {
@@ -258,20 +256,6 @@ function App() {
   });
 
   // First detection toast
-  const firstDetection = useFirstDetection();
-  const prevNodeCountRef = useRef(0);
-
-  useEffect(() => {
-    const nodes = graph.nodes.filter((n) => n.type !== "external");
-    const prevCount = prevNodeCountRef.current;
-    prevNodeCountRef.current = nodes.length;
-    if (prevCount === 0 && nodes.length > 0 && !showWelcome) {
-      const node = nodes[0];
-      const port = node.ports?.[0]?.port ?? 0;
-      firstDetection.trigger(node.name, port);
-    }
-  }, [graph.nodes, firstDetection.trigger, showWelcome]);
-
   // View mode state - graph or api-tester
   const [viewMode, setViewMode] = useState<ViewMode>("graph");
 
@@ -1292,6 +1276,12 @@ function App() {
           </button>
           */}
           <button
+            className="feedback-btn"
+            onClick={() => window.electronAPI?.openUrl?.('https://docs.google.com/forms/d/e/1FAIpQLSdssI3HquKKE7Cskm797E24jKmfjdihUXKxEttJDQCw7HL4Mw/viewform')}
+          >
+            Feedback
+          </button>
+          <button
             className="alert-toggle"
             onClick={() => setShowShare(true)}
             title="Share service map"
@@ -1397,7 +1387,7 @@ function App() {
                         <div className="alert-panel-event-content">
                           <span className="alert-panel-event-title">
                             {event.serviceName}
-                            {!event.notified && (
+                            {!event.notified && event.category !== 'discovery' && (
                               <span className="alert-panel-event-muted">
                                 {" "}
                                 (muted)
@@ -1756,14 +1746,6 @@ function App() {
       {/* Welcome Modal */}
       {showWelcome && <WelcomeModal onClose={handleCloseWelcome} />}
 
-      {/* First Detection Toast */}
-      {firstDetection.toast && (
-        <FirstDetectionToast
-          serviceName={firstDetection.toast.serviceName}
-          port={firstDetection.toast.port}
-          onDismiss={firstDetection.dismiss}
-        />
-      )}
 
       {/* Share Modal */}
       {showShare && (

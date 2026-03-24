@@ -28,6 +28,19 @@ class SnapshotScheduler extends EventEmitter {
     this.fastProbeInterval = options.fastProbeInterval || 1500;
     this.structureInterval = options.structureInterval || 10000; // 10s forced structure rebuild
 
+    // Background throttling multiplier
+    this.throttled = false;
+    this.THROTTLE_MULTIPLIER = 6; // 1.5s→9s fast probe, 5s→30s reconciliation
+
+    // Battery-aware slowdown
+    this.onBattery = false;
+    this.BATTERY_MULTIPLIER = 2; // 2× slower on battery
+
+    // Idle backoff: stretch fast probe when nothing changes
+    this._stableProbeCount = 0;
+    this._currentFastProbeInterval = this.fastProbeInterval;
+    this._MAX_FAST_PROBE_INTERVAL = 10000; // cap at 10s
+
     this.reconcileTimer = null;
     this.fastProbeTimer = null;
     this.running = false;
@@ -111,6 +124,55 @@ class SnapshotScheduler extends EventEmitter {
     }
   }
 
+  /**
+   * Slow down collection when the app is in the background.
+   */
+  throttle() {
+    if (this.throttled || !this.running) return;
+    this.throttled = true;
+    this._resetTimers();
+  }
+
+  /**
+   * Resume normal collection speed and immediately reconcile.
+   */
+  unthrottle() {
+    if (!this.throttled || !this.running) return;
+    this.throttled = false;
+    // Reset idle backoff — user is back, probe aggressively
+    this._stableProbeCount = 0;
+    this._currentFastProbeInterval = this.fastProbeInterval;
+    this._resetTimers();
+    this.reconcile();
+  }
+
+  _getMultiplier() {
+    let m = 1;
+    if (this.onBattery) m *= this.BATTERY_MULTIPLIER;
+    if (this.throttled) m *= this.THROTTLE_MULTIPLIER;
+    return m;
+  }
+
+  _resetTimers() {
+    const multiplier = this._getMultiplier();
+    if (this.reconcileTimer) clearInterval(this.reconcileTimer);
+    if (this.fastProbeTimer) clearInterval(this.fastProbeTimer);
+    this.reconcileTimer = setInterval(
+      () => this.reconcile(),
+      this.reconciliationInterval * multiplier,
+    );
+    this.fastProbeTimer = setInterval(
+      () => this.fastProbe(),
+      this._currentFastProbeInterval * multiplier,
+    );
+  }
+
+  setBattery(onBattery) {
+    if (this.onBattery === onBattery) return;
+    this.onBattery = onBattery;
+    if (this.running) this._resetTimers();
+  }
+
   _restartWorker() {
     if (!this.running) return;
 
@@ -159,6 +221,7 @@ class SnapshotScheduler extends EventEmitter {
   /**
    * Fast probe — lightweight PID and port enumeration.
    * If the set changed since last check, triggers an early reconciliation.
+   * Backs off when topology is stable, resets on any change.
    */
   async fastProbe() {
     if (this.workerBusy || this.reconcileInFlight) return;
@@ -176,11 +239,42 @@ class SnapshotScheduler extends EventEmitter {
       this.previousPortNumbers = currentPorts;
 
       if (pidsChanged || portsChanged) {
+        this._stableProbeCount = 0;
+        this._applyFastProbeBackoff();
         this.reconcile();
+      } else {
+        this._stableProbeCount++;
+        this._applyFastProbeBackoff();
       }
     } catch (error) {
       console.error('[SnapshotScheduler] Fast probe error:', error);
     }
+  }
+
+  /**
+   * Adjust fast probe interval based on how long topology has been stable.
+   * Ramps from base (1.5s) toward max (10s) over ~40 stable probes (~60s).
+   * Any topology change resets to base immediately.
+   */
+  _applyFastProbeBackoff() {
+    const base = this.fastProbeInterval;
+    // Step up by 25% of base interval every 5 stable probes, capped at max
+    const steps = Math.floor(this._stableProbeCount / 5);
+    const newInterval = Math.min(
+      base + steps * Math.round(base * 0.25),
+      this._MAX_FAST_PROBE_INTERVAL,
+    );
+
+    if (newInterval === this._currentFastProbeInterval) return;
+    this._currentFastProbeInterval = newInterval;
+
+    // Reschedule fast probe timer only (reconcile timer stays the same)
+    if (this.fastProbeTimer) clearInterval(this.fastProbeTimer);
+    const multiplier = this._getMultiplier();
+    this.fastProbeTimer = setInterval(
+      () => this.fastProbe(),
+      this._currentFastProbeInterval * multiplier,
+    );
   }
 
   /**

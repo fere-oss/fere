@@ -517,6 +517,19 @@ function parseMounts(inspectData) {
 }
 
 /**
+ * Strip curl progress meter and other noise from health check output.
+ * Docker captures both stdout and stderr, so curl's progress table leaks in.
+ */
+function cleanHealthCheckOutput(raw) {
+  if (!raw) return '';
+  const lines = raw.split('\n')
+    .map(l => l.trim())
+    .filter(l => l && !/^% Total|% Received|Xferd|Average|Dload|Upload|--:--:--|^\s*\d+\s+\d+\s+\d+\s+\d+/.test(l));
+  const cleaned = lines.join(' ').substring(0, 200);
+  return cleaned;
+}
+
+/**
  * Parse health status from container inspect data
  */
 function parseHealth(inspectData) {
@@ -535,7 +548,7 @@ function parseHealth(inspectData) {
         start: log.Start,
         end: log.End,
         exitCode: log.ExitCode,
-        output: log.Output?.substring(0, 200), // Truncate output
+        output: cleanHealthCheckOutput(log.Output),
       })),
     };
   }

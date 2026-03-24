@@ -21,6 +21,7 @@ import { useNodeMeasurements } from "./graph/useNodeMeasurements";
 import { useTraceState, useTraceDispatch } from "./graph/traceContext";
 import { TraceWaterfall } from "./graph/TraceWaterfall";
 import { ScanningEmptyState } from "./ScanningEmptyState";
+import { DiscoveryHint, hasSeenDiscoveryHint } from "./OnboardingHints";
 
 const NODE_TYPES = flowNodeTypes;
 const EDGE_TYPES = flowEdgeTypes;
@@ -155,6 +156,7 @@ export function GraphView({
   monitoringStartedAt,
 }: GraphViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const [showDiscoveryHint, setShowDiscoveryHint] = useState(() => !isContainerView && !hasSeenDiscoveryHint());
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
   const [reactFlowInstance, setReactFlowInstance] =
     useState<ReactFlowInstance | null>(null);
@@ -894,6 +896,10 @@ export function GraphView({
     >
       <ActivePorts nodes={layoutNodes} reactFlowInstance={reactFlowInstance} />
 
+      {showDiscoveryHint && (
+        <DiscoveryHint onDismiss={() => setShowDiscoveryHint(false)} />
+      )}
+
       <div className={`graph-flow${viewportReady ? "" : " graph-flow-hidden"}`}>
         <HoverContext.Provider value={hoverState}>
           <ReactFlow
@@ -995,6 +1001,7 @@ export function GraphView({
           edges={layoutEdges}
           allNodes={layoutNodes}
           onClose={() => setSelectedNode(null)}
+          onTraceRequest={handleContextMenuTrace}
         />
       )}
 

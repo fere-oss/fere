@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getEnvironmentSummary: () => ipcRenderer.invoke('get-environment-summary'),
   getSystemSnapshot: () => ipcRenderer.invoke('get-system-snapshot'),
   getExternalApis: (projectPath) => ipcRenderer.invoke('get-external-apis', projectPath),
+  rescanRoutes: (projectPath) => ipcRenderer.invoke('rescan-routes', projectPath),
 
   // Docker monitoring
   isDockerAvailable: () => ipcRenderer.invoke('is-docker-available'),
@@ -58,6 +59,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Network Policy
   getNetworkPolicy: () => ipcRenderer.invoke('get-network-policy'),
   setNetworkPolicy: (policy) => ipcRenderer.invoke('set-network-policy', policy),
+
+  // Auto-Launch
+  getAutoLaunch: () => ipcRenderer.invoke('get-auto-launch'),
+  setAutoLaunch: (enabled) => ipcRenderer.invoke('set-auto-launch', enabled),
 
   // Alert Preferences
   getAlertPreferences: () => ipcRenderer.invoke('get-alert-preferences'),
@@ -105,6 +110,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Share (GitHub Gist)
   getShareSettings: () => ipcRenderer.invoke('get-share-settings'),
   saveGithubToken: (token) => ipcRenderer.invoke('save-github-token', token),
+  exportGraphFile: (options) => ipcRenderer.invoke('export-graph-file', options),
   publishGraph: (options) => ipcRenderer.invoke('publish-graph', options),
   updateSharedGraph: (options) => ipcRenderer.invoke('update-shared-graph', options),
 

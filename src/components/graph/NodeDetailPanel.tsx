@@ -2,16 +2,19 @@ import { useEffect } from 'react';
 import type { GraphNode, GraphEdge } from '../../types/electron';
 import { getServiceColor, getTypeBadge } from './constants';
 import { NodeDetailContent } from './NodeDetailContent';
+import { NodeClickHint, hasSeenNodeClickHint } from '../OnboardingHints';
 
 interface NodeDetailPanelProps {
   node: GraphNode;
   edges: GraphEdge[];
   allNodes: GraphNode[];
   onClose: () => void;
+  onTraceRequest?: (node: GraphNode) => void;
 }
 
-export function NodeDetailPanel({ node, edges, allNodes, onClose }: NodeDetailPanelProps) {
+export function NodeDetailPanel({ node, edges, allNodes, onClose, onTraceRequest }: NodeDetailPanelProps) {
   const accentColor = getServiceColor(node.type);
+  const showHint = !hasSeenNodeClickHint();
 
   const handleBackdropClick = (e: React.MouseEvent) => {
     if (e.target === e.currentTarget) {
@@ -33,6 +36,7 @@ export function NodeDetailPanel({ node, edges, allNodes, onClose }: NodeDetailPa
 
   return (
     <div className="node-detail-backdrop" onClick={handleBackdropClick} onWheel={handleWheel}>
+      {showHint && <NodeClickHint />}
       <div
         className="node-detail-panel"
         onMouseDown={e => e.stopPropagation()}
@@ -64,7 +68,7 @@ export function NodeDetailPanel({ node, edges, allNodes, onClose }: NodeDetailPa
           </div>
           <button className="node-detail-close" onClick={onClose}>×</button>
         </div>
-        <NodeDetailContent node={node} edges={edges} allNodes={allNodes} />
+        <NodeDetailContent node={node} edges={edges} allNodes={allNodes} onTraceRequest={onTraceRequest} />
       </div>
     </div>
   );

@@ -131,6 +131,7 @@ function setAlertPreferences(prefs) {
 
 function typeToCategory(type) {
   if (type === 'container-stopped' || type === 'container-running') return 'container';
+  if (type === 'service-discovered' || type === 'service-gone') return 'discovery';
   return type;
 }
 
@@ -311,7 +312,7 @@ function evaluateAlerts(nodes) {
     const prev = nodeStates.get(node.id);
 
     if (!prev) {
-      // First time seeing this node — initialize, no alert
+      // First time seeing this node — initialize and record discovery
       nodeStates.set(node.id, {
         previousHealth: node.healthStatus,
         previousContainerState: node.containerState || null,
@@ -322,6 +323,7 @@ function evaluateAlerts(nodes) {
         lastNotifiedAt: 0,
         name: node.name,
       });
+      recordAlertEvent('service-discovered', node, '', false);
       continue;
     }
 
@@ -430,9 +432,10 @@ function evaluateAlerts(nodes) {
     prev.name = node.name;
   }
 
-  // Clean up nodes that disappeared from the graph
-  for (const [nodeId] of nodeStates) {
+  // Record and clean up nodes that disappeared from the graph
+  for (const [nodeId, state] of nodeStates) {
     if (!currentNodeIds.has(nodeId)) {
+      recordAlertEvent('service-gone', { id: nodeId, name: state.name, type: 'service' }, '', false);
       nodeStates.delete(nodeId);
     }
   }

@@ -2003,6 +2003,9 @@ async function generateHTML({ graphData, metadata, logoDevToken = '' }) {
     render();
   })();
   </script>
+  <div style="position:fixed;bottom:10px;left:50%;transform:translateX(-50%);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:11px;color:#999;pointer-events:auto;">
+    Visualized with <a href="https://github.com/RahulThennarasu/fere" target="_blank" rel="noopener" style="color:#777;text-decoration:none;font-weight:500;">Fere</a> — service map for local dev
+  </div>
 </body>
 </html>`;
 }
