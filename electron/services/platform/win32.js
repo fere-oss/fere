@@ -400,37 +400,303 @@ async function enumeratePids() {
 }
 
 // ============================================
-// Port & Connection Monitoring (TODO: step 3)
+// Port & Connection Monitoring
 // ============================================
 
+/*
+ * Windows `netstat -ano` output format:
+ *
+ *   Active Connections
+ *
+ *     Proto  Local Address          Foreign Address        State           PID
+ *     TCP    0.0.0.0:135            0.0.0.0:0              LISTENING       1234
+ *     TCP    127.0.0.1:3000         0.0.0.0:0              LISTENING       5678
+ *     TCP    [::]:445               [::]:0                 LISTENING       4
+ *     TCP    192.168.1.5:49876      52.114.128.40:443      ESTABLISHED     9012
+ *     TCP    [::1]:3000             [::1]:49877            ESTABLISHED     5678
+ *
+ * Unlike lsof, netstat gives PID but not process name. We build a PID→name
+ * lookup from `tasklist` to enrich the results.
+ */
+
 /**
- * Fetch listening TCP ports via `netstat -ano`.
- * TODO: Implement in step 3. Currently returns empty array.
+ * Regex for a netstat -ano TCP line.
+ * Groups: 1=proto, 2=local address, 3=foreign address, 4=state, 5=pid
+ */
+const NETSTAT_LINE_RE = /^\s*(TCP|UDP)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\d+)\s*$/i;
+
+/**
+ * Parse a host:port string from netstat output.
+ * Handles both IPv4 ("0.0.0.0:135") and IPv6 ("[::]:445", "[::1]:3000").
+ */
+function parseNetstatAddr(addr) {
+  if (!addr) return null;
+
+  // IPv6: [::]:port or [::1]:port
+  const ipv6Match = addr.match(/^\[([^\]]*)\]:(\d+)$/);
+  if (ipv6Match) {
+    return { host: ipv6Match[1] || '::', port: parseInt(ipv6Match[2], 10) };
+  }
+
+  // IPv4: host:port — split on last colon
+  const lastColon = addr.lastIndexOf(':');
+  if (lastColon === -1) return null;
+
+  const host = addr.slice(0, lastColon) || '*';
+  const port = parseInt(addr.slice(lastColon + 1), 10);
+  if (isNaN(port)) return null;
+
+  return { host, port };
+}
+
+/**
+ * Build a PID → process name map from `tasklist /fo csv /nh`.
+ * This is fast (~50ms) and doesn't require admin.
+ */
+async function buildPidNameMap() {
+  const pidMap = new Map();
+  try {
+    const { stdout } = await execAsync('tasklist /fo csv /nh', {
+      timeout: 5000,
+      maxBuffer: 5 * 1024 * 1024,
+    });
+    for (const line of stdout.trim().split('\r\n')) {
+      if (line.startsWith('"INFO:')) continue;
+      const cols = parseCsvLine(line);
+      if (cols && cols.length >= 2) {
+        const name = cols[0];
+        const pid = parseInt(cols[1], 10);
+        if (!isNaN(pid) && name) {
+          pidMap.set(pid, name);
+        }
+      }
+    }
+  } catch {
+    // Non-fatal — process names will just be empty
+  }
+  return pidMap;
+}
+
+/**
+ * Run `netstat -ano` and parse all TCP lines.
+ * Returns { listening: [...], established: [...] }.
+ */
+async function parseNetstatOutput(rawOutput) {
+  const lines = rawOutput.trim().split(/\r?\n/);
+  const listening = [];
+  const established = [];
+
+  for (const line of lines) {
+    const match = line.match(NETSTAT_LINE_RE);
+    if (!match) continue;
+
+    const [, proto, localAddr, foreignAddr, state, pidStr] = match;
+    // We only handle TCP (UDP has no state column in the same format)
+    if (proto.toUpperCase() !== 'TCP') continue;
+
+    const pid = parseInt(pidStr, 10);
+    const local = parseNetstatAddr(localAddr);
+    if (!local) continue;
+
+    const stateUpper = state.toUpperCase();
+
+    if (stateUpper === 'LISTENING') {
+      listening.push({ local, pid });
+    } else if (stateUpper === 'ESTABLISHED') {
+      const remote = parseNetstatAddr(foreignAddr);
+      if (!remote) continue;
+      established.push({ local, remote, pid });
+    }
+  }
+
+  return { listening, established };
+}
+
+/**
+ * Fetch listening TCP ports.
+ * Returns array of { port, host, pid, process, user, protocol, fd }.
  */
 async function fetchListeningPorts() {
-  // TODO: implement using `netstat -ano` + parse LISTENING lines
-  return [];
+  try {
+    const [{ stdout }, pidMap] = await Promise.all([
+      execAsync('netstat -ano -p tcp', { timeout: 10000, maxBuffer: 5 * 1024 * 1024 }),
+      buildPidNameMap(),
+    ]);
+
+    const { listening } = await parseNetstatOutput(stdout);
+
+    // Deduplicate by port+pid (same process can listen on multiple addresses for same port)
+    const uniquePorts = new Map();
+    for (const entry of listening) {
+      const key = `${entry.local.port}-${entry.pid}`;
+      if (uniquePorts.has(key)) continue;
+
+      uniquePorts.set(key, {
+        port: entry.local.port,
+        host: entry.local.host,
+        pid: entry.pid,
+        process: pidMap.get(entry.pid) || '',
+        user: '',      // netstat doesn't provide user; would need Get-Process
+        protocol: 'tcp',
+        fd: '',        // no FD concept in netstat
+      });
+    }
+
+    return Array.from(uniquePorts.values());
+  } catch (error) {
+    console.error('Error getting listening ports:', error);
+    return [];
+  }
 }
 
-function parseListeningPorts(_rawOutput) {
-  return [];
+/**
+ * Parse raw netstat output for listening ports.
+ * For API compatibility with darwin — used by portMonitor.js re-export.
+ */
+function parseListeningPorts(rawOutput) {
+  if (!rawOutput || !rawOutput.trim()) return [];
+
+  const lines = rawOutput.trim().split(/\r?\n/);
+  const ports = [];
+
+  for (const line of lines) {
+    const match = line.match(NETSTAT_LINE_RE);
+    if (!match) continue;
+
+    const [, proto, localAddr, , state, pidStr] = match;
+    if (proto.toUpperCase() !== 'TCP') continue;
+    if (state.toUpperCase() !== 'LISTENING') continue;
+
+    const local = parseNetstatAddr(localAddr);
+    if (!local) continue;
+
+    const pid = parseInt(pidStr, 10);
+
+    ports.push({
+      port: local.port,
+      host: local.host,
+      pid,
+      process: '',
+      user: '',
+      protocol: 'tcp',
+      fd: '',
+    });
+  }
+
+  // Deduplicate by port+pid
+  const unique = new Map();
+  for (const p of ports) {
+    const key = `${p.port}-${p.pid}`;
+    if (!unique.has(key)) unique.set(key, p);
+  }
+  return Array.from(unique.values());
 }
 
+/**
+ * Fetch established TCP connections.
+ * Returns array of { pid, process, user, localHost, localPort, remoteHost, remotePort, protocol }.
+ */
 async function fetchEstablishedConnections() {
-  // TODO: implement using `netstat -ano` + parse ESTABLISHED lines
-  return [];
+  try {
+    const [{ stdout }, pidMap] = await Promise.all([
+      execAsync('netstat -ano -p tcp', { timeout: 10000, maxBuffer: 5 * 1024 * 1024 }),
+      buildPidNameMap(),
+    ]);
+
+    const { established } = await parseNetstatOutput(stdout);
+
+    return established.map(entry => ({
+      pid: entry.pid,
+      process: pidMap.get(entry.pid) || '',
+      user: '',
+      localHost: entry.local.host,
+      localPort: entry.local.port,
+      remoteHost: entry.remote.host,
+      remotePort: entry.remote.port,
+      protocol: 'tcp',
+    }));
+  } catch (error) {
+    console.error('Error getting connections:', error);
+    return [];
+  }
 }
 
-function parseEstablishedConnections(_rawOutput) {
-  return [];
+/**
+ * Parse raw netstat output for established connections.
+ * For API compatibility with darwin.
+ */
+function parseEstablishedConnections(rawOutput) {
+  if (!rawOutput || !rawOutput.trim()) return [];
+
+  const lines = rawOutput.trim().split(/\r?\n/);
+  const connections = [];
+
+  for (const line of lines) {
+    const match = line.match(NETSTAT_LINE_RE);
+    if (!match) continue;
+
+    const [, proto, localAddr, foreignAddr, state, pidStr] = match;
+    if (proto.toUpperCase() !== 'TCP') continue;
+    if (state.toUpperCase() !== 'ESTABLISHED') continue;
+
+    const local = parseNetstatAddr(localAddr);
+    const remote = parseNetstatAddr(foreignAddr);
+    if (!local || !remote) continue;
+
+    connections.push({
+      pid: parseInt(pidStr, 10),
+      process: '',
+      user: '',
+      localHost: local.host,
+      localPort: local.port,
+      remoteHost: remote.host,
+      remotePort: remote.port,
+      protocol: 'tcp',
+    });
+  }
+
+  return connections;
 }
 
-async function fetchProcessOnPort(_port) {
-  return null;
+/**
+ * Fetch process info on a specific port.
+ */
+async function fetchProcessOnPort(port) {
+  try {
+    const results = await fetchListeningPorts();
+    return results.find(p => p.port === port) || null;
+  } catch {
+    return null;
+  }
 }
 
+/**
+ * Lightweight listening port number enumeration.
+ * Faster path: parse netstat ourselves without the PID→name enrichment.
+ */
 async function fetchListeningPortNumbers() {
-  return new Set();
+  try {
+    const { stdout } = await execAsync('netstat -ano -p tcp', {
+      timeout: 10000,
+      maxBuffer: 5 * 1024 * 1024,
+    });
+
+    const ports = new Set();
+    for (const line of stdout.trim().split(/\r?\n/)) {
+      const match = line.match(NETSTAT_LINE_RE);
+      if (!match) continue;
+
+      const [, proto, localAddr, , state] = match;
+      if (proto.toUpperCase() !== 'TCP') continue;
+      if (state.toUpperCase() !== 'LISTENING') continue;
+
+      const local = parseNetstatAddr(localAddr);
+      if (local) ports.add(local.port);
+    }
+    return ports;
+  } catch (error) {
+    return new Set();
+  }
 }
 
 // ============================================
@@ -711,7 +977,7 @@ module.exports = {
   killProcess,
   enumeratePids,
 
-  // Port & connection monitoring (TODO: step 3)
+  // Port & connection monitoring
   fetchListeningPorts,
   parseListeningPorts,
   fetchEstablishedConnections,
