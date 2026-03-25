@@ -659,25 +659,9 @@ export interface ElectronAPI {
   // Fere Agent
   agentScan: (nodeIds?: string[]) => Promise<{ success: boolean; findings: AgentFinding[]; error?: string }>;
   agentApplyFix: (action: AgentFixAction) => Promise<{ success: boolean; error?: string }>;
-  agentChat: (payload: { messages: AgentChatMessage[]; nodeIds?: string[] }) => Promise<{ success: boolean }>;
-  agentStopChat: () => Promise<{ success: boolean }>;
-  onAgentStream: (callback: (event: AgentStreamEvent) => void) => () => void;
 }
 
 export type AgentSeverity = 'critical' | 'warning' | 'suggestion';
-
-export interface AgentChatMessage {
-  role: 'user' | 'assistant';
-  content: string;
-}
-
-export type AgentStreamEvent =
-  | { type: 'text_delta'; text: string }
-  | { type: 'tool_call'; name: string; label: string }
-  | { type: 'tool_result'; name: string; summary: string }
-  | { type: 'action'; action: AgentFixAction }
-  | { type: 'done' }
-  | { type: 'error'; error: string };
 
 export interface AgentFixAction {
   type: 'kill-port' | 'restart-container' | 'copy-only' | 'write-file';

@@ -758,13 +758,13 @@ export function GraphView({
     };
   }, [reactFlowInstance, nodesKey]);
 
-  // Agent panel: focus a node by ID or name when the custom event fires
+  // Agent panel: center the graph on a node when the custom event fires.
+  // Do not open the node detail overlay as part of automated investigation.
   useEffect(() => {
     const handler = (e: Event) => {
       const { nodeId, nodeName } = (e as CustomEvent).detail ?? {};
       const target = layoutNodes.find((n) => n.id === nodeId || n.name === nodeName);
       if (!target) return;
-      setSelectedNode(target);
       if (reactFlowInstance) {
         const rfNode = reactFlowInstance.getNode(target.id);
         if (rfNode) {

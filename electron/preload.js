@@ -117,11 +117,4 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Fere Agent
   agentScan: (nodeIds) => ipcRenderer.invoke('agent:scan', nodeIds),
   agentApplyFix: (action) => ipcRenderer.invoke('agent:apply-fix', action),
-  agentChat: (payload) => ipcRenderer.invoke('agent:chat', payload),
-  agentStopChat: () => ipcRenderer.invoke('agent:stop-chat'),
-  onAgentStream: (callback) => {
-    const listener = (event, data) => callback(data);
-    ipcRenderer.on('agent-stream', listener);
-    return () => ipcRenderer.removeListener('agent-stream', listener);
-  },
 });

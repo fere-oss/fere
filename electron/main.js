@@ -109,7 +109,7 @@ const {
   markIntentionalStopForContainer,
 } = require("./services/alertManager");
 const analytics = require("./analytics");
-const { runScan, executeAction, runChatAgent } = require("./services/fereAgent");
+const { runScan, executeAction } = require("./services/fereAgent");
 const sentry = require("./sentry");
 const { generateHTML } = require("./services/graphExporter");
 const { createGist, updateGist, buildPreviewUrl } = require("./services/gistPublisher");
@@ -1702,37 +1702,5 @@ ipcMain.handle("agent:apply-fix", async (_, action) => {
     console.error("agent:apply-fix error:", err);
     return { success: false, error: err.message };
   }
-});
-
-let activeChatSession = null;
-
-ipcMain.handle("agent:chat", async (event, { messages, nodeIds }) => {
-  if (activeChatSession) activeChatSession.cancelled = true;
-  const session = { cancelled: false };
-  activeChatSession = session;
-
-  try {
-    const snapshot = await getSystemSnapshot();
-    const generator = runChatAgent(messages, snapshot, nodeIds);
-    for await (const event_data of generator) {
-      if (session.cancelled) break;
-      if (!event.sender.isDestroyed()) {
-        event.sender.send("agent-stream", event_data);
-      }
-    }
-  } catch (err) {
-    if (!session.cancelled && !event.sender.isDestroyed()) {
-      event.sender.send("agent-stream", { type: "error", error: err.message });
-    }
-  }
-  return { success: true };
-});
-
-ipcMain.handle("agent:stop-chat", async () => {
-  if (activeChatSession) {
-    activeChatSession.cancelled = true;
-    activeChatSession = null;
-  }
-  return { success: true };
 });
 
