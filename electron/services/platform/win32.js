@@ -4,10 +4,10 @@
  * Provides the same exports as darwin.js using Windows equivalents:
  *   - Process list: `wmic process` (fast, gives command line) with `tasklist` fallback
  *   - Process kill: `taskkill`
- *   - Port monitoring: `netstat -ano` (TODO: step 3)
- *   - CWD resolution: WMI ExecutablePath heuristic (TODO: step 4)
+ *   - Port monitoring: `netstat -ano` + PID→name enrichment via `tasklist`
+ *   - CWD resolution: multi-strategy (command-line path extraction + ExecutablePath fallback)
  *   - Docker paths: Windows Docker Desktop locations
- *   - Shell ops: cmd.exe, explorer.exe, where.exe
+ *   - Shell ops: cmd.exe, wt.exe, where.exe
  */
 
 const { exec, execFile, spawn, execFileSync } = require('child_process');
@@ -700,49 +700,180 @@ async function fetchListeningPortNumbers() {
 }
 
 // ============================================
-// CWD Resolution (TODO: step 4)
+// CWD Resolution
 // ============================================
+
+/*
+ * Windows has no `lsof -d cwd` equivalent. The actual CWD lives in the PEB
+ * (Process Environment Block) and requires either native code or Sysinternals
+ * handle.exe to read — neither is practical for a desktop app.
+ *
+ * Instead we use a multi-strategy approach to infer the working directory:
+ *
+ *   Strategy 1 — Command-line path extraction (best signal)
+ *     Dev tools like `node`, `python`, `ruby`, `go` typically have a script
+ *     or source file as an argument. An absolute path like
+ *     `C:\Users\dev\myapp\server.js` tells us the project lives in
+ *     `C:\Users\dev\myapp`. Even a relative path can help when combined
+ *     with the executable location.
+ *
+ *   Strategy 2 — ExecutablePath directory
+ *     For compiled binaries or processes where the command line has no useful
+ *     paths, the exe's parent directory is a reasonable fallback.
+ *     e.g. `C:\Users\dev\myapp\node_modules\.bin\next.cmd` → project nearby.
+ *
+ *   Strategy 3 — Walk up from either path looking for project markers
+ *     This is done downstream by findProjectRoot() in graphFunctions.js.
+ *     Our job here is to give it the best starting point.
+ *
+ * The result feeds into connectionGraph.js where findProjectRoot(cwd) walks
+ * upward to find .git / package.json / etc. So even an approximate path
+ * that's inside the project tree is sufficient.
+ */
+
+/**
+ * Use path.win32 for all Windows path operations — path.dirname/extname use
+ * POSIX rules on macOS/Linux and would return '.' for 'C:\foo\bar'.
+ */
+const win32Path = path.win32;
+
+/**
+ * Regex to match absolute Windows paths in a command line.
+ * Two capture groups: one for quoted paths (may contain spaces), one for unquoted.
+ */
+const WIN_QUOTED_PATH_RE = /"([A-Za-z]:[/\\][^"]+)"/g;
+const WIN_UNQUOTED_PATH_RE = /(?:^|\s|=)([A-Za-z]:[/\\][^\s"';<>|*?]+)/g;
+
+/**
+ * Runtimes whose first file argument is the script/entry point.
+ * The value indicates the typical argument position pattern.
+ */
+const SCRIPT_RUNTIMES = new Set([
+  'node', 'node.exe',
+  'python', 'python.exe', 'python3', 'python3.exe',
+  'ruby', 'ruby.exe',
+  'php', 'php.exe',
+  'go', 'go.exe',
+  'deno', 'deno.exe',
+  'bun', 'bun.exe',
+  'java', 'java.exe', 'javaw.exe',
+  'ts-node', 'ts-node.exe',
+  'npx', 'npx.exe', 'npx.cmd',
+  'uvicorn', 'gunicorn', 'flask', 'django-admin',
+]);
+
+/**
+ * Extract the best candidate working directory from a command line string.
+ *
+ * Returns an absolute directory path, or null if nothing useful found.
+ */
+function extractCwdFromCommandLine(commandLine) {
+  if (!commandLine) return null;
+
+  // Collect all absolute paths from the command line.
+  // Check quoted paths first (handles spaces), then unquoted.
+  const paths = [];
+  let match;
+
+  WIN_QUOTED_PATH_RE.lastIndex = 0;
+  while ((match = WIN_QUOTED_PATH_RE.exec(commandLine)) !== null) {
+    paths.push(normalizeToBs(match[1]));
+  }
+
+  WIN_UNQUOTED_PATH_RE.lastIndex = 0;
+  while ((match = WIN_UNQUOTED_PATH_RE.exec(commandLine)) !== null) {
+    const p = normalizeToBs(match[1]);
+    // Skip if already found via quoted regex
+    if (!paths.includes(p)) paths.push(p);
+  }
+
+  if (paths.length === 0) return null;
+
+  // First path is usually the executable, rest are arguments
+  const exePath = paths[0];
+  const argPaths = paths.slice(1);
+
+  // Prefer argument paths that look like source files (not the exe itself)
+  for (const p of argPaths) {
+    const lower = p.toLowerCase();
+    if (lower.startsWith('c:\\windows\\')) continue;
+    if (lower.startsWith('c:\\program files')) continue;
+    if (lower.includes('\\node_modules\\.bin\\')) continue;
+
+    // If it has a file extension, use its parent directory
+    const ext = win32Path.extname(p).toLowerCase();
+    if (ext) {
+      return win32Path.dirname(p);
+    }
+    // Otherwise treat it as a directory path
+    return p;
+  }
+
+  // No useful argument paths — fall back to the exe's directory,
+  // but skip well-known system/runtime directories
+  if (exePath) {
+    return exeDirOrNull(exePath);
+  }
+
+  return null;
+}
+
+/**
+ * Normalize forward slashes to backslashes and strip trailing backslash.
+ */
+function normalizeToBs(p) {
+  let out = p.replace(/\//g, '\\');
+  if (out.length > 3 && out.endsWith('\\')) out = out.slice(0, -1);
+  return out;
+}
+
+/**
+ * Return the exe's parent directory, or null if it's a system/runtime path.
+ */
+function exeDirOrNull(exePath) {
+  const lower = exePath.toLowerCase();
+  if (lower.startsWith('c:\\windows\\')) return null;
+  if (lower.includes('\\program files\\')) return null;
+  if (lower.includes('\\program files (x86)\\')) return null;
+  if (lower.includes('\\appdata\\local\\programs\\python')) return null;
+  // Unquoted "C:\Program" from split at space in "Program Files"
+  if (/^[a-z]:\\program$/i.test(lower)) return null;
+
+  // node_modules/.bin scripts live inside the project — go up past node_modules
+  const nmIdx = lower.indexOf('\\node_modules\\');
+  if (nmIdx !== -1) {
+    return exePath.slice(0, nmIdx);
+  }
+  return win32Path.dirname(exePath);
+}
 
 /**
  * Batch CWD lookup for multiple PIDs.
  *
- * Windows has no direct `lsof -d cwd` equivalent. Possible approaches:
- *   1. WMI ExecutablePath — gives the exe location, not CWD
- *   2. NtQueryInformationProcess — requires native addon
- *   3. PowerShell Get-Process | Select-Object Path — gives exe path
+ * Fetches CommandLine + ExecutablePath via wmic and applies the multi-strategy
+ * extraction above. Falls back to PowerShell if wmic is unavailable.
  *
- * For now we use the exe directory as a heuristic: the executable's parent
- * directory is often close to or inside the project directory.
- *
- * TODO: Implement proper CWD resolution in step 4.
+ * @param {number[]} pids
+ * @returns {Promise<Map<number, string|null>>}
  */
 async function batchResolveCwds(pids) {
   if (pids.length === 0) return new Map();
 
   const result = new Map();
+
   try {
-    const pidFilter = pids.map(p => `ProcessId=${p}`).join(' OR ');
-    const { stdout } = await execAsync(
-      `wmic process where "${pidFilter}" get ProcessId,ExecutablePath /format:csv`,
-      { timeout: 10000, maxBuffer: 5 * 1024 * 1024 }
-    );
+    const data = await fetchProcessPathData(pids);
 
-    const lines = stdout.trim().split('\r\n').filter(l => l.trim());
-    if (lines.length >= 2) {
-      const header = lines[0].split(',').map(h => h.trim());
-      const idxPid = header.indexOf('ProcessId');
-      const idxPath = header.indexOf('ExecutablePath');
+    for (const { pid, commandLine, executablePath } of data) {
+      // Strategy 1: extract from command line
+      let cwd = extractCwdFromCommandLine(commandLine);
 
-      for (let i = 1; i < lines.length; i++) {
-        const cols = lines[i].split(',');
-        if (cols.length < header.length) continue;
-        const pid = parseInt(cols[idxPid], 10);
-        const exePath = (cols[idxPath] || '').trim();
-        if (!isNaN(pid) && exePath) {
-          // Use exe's directory as CWD heuristic
-          result.set(pid, path.dirname(exePath));
-        }
+      // Strategy 2: fall back to executable path directory
+      if (!cwd && executablePath) {
+        cwd = exeDirOrNull(executablePath);
       }
+
+      result.set(pid, cwd || null);
     }
   } catch (error) {
     // Non-fatal — return what we have
@@ -757,6 +888,92 @@ async function batchResolveCwds(pids) {
   return result;
 }
 
+/**
+ * Fetch CommandLine + ExecutablePath for a set of PIDs.
+ * Primary: wmic (fast). Fallback: PowerShell.
+ * @returns {Promise<Array<{pid: number, commandLine: string, executablePath: string}>>}
+ */
+async function fetchProcessPathData(pids) {
+  try {
+    return await fetchProcessPathDataViaWmic(pids);
+  } catch {
+    return await fetchProcessPathDataViaPowerShell(pids);
+  }
+}
+
+async function fetchProcessPathDataViaWmic(pids) {
+  // wmic has a WHERE clause length limit (~8000 chars). For very large PID
+  // lists, batch into chunks.
+  const CHUNK_SIZE = 200;
+  const allResults = [];
+
+  for (let i = 0; i < pids.length; i += CHUNK_SIZE) {
+    const chunk = pids.slice(i, i + CHUNK_SIZE);
+    const pidFilter = chunk.map(p => `ProcessId=${p}`).join(' OR ');
+    const { stdout } = await execAsync(
+      `wmic process where "${pidFilter}" get ProcessId,CommandLine,ExecutablePath /format:csv`,
+      { timeout: 15000, maxBuffer: 10 * 1024 * 1024 }
+    );
+
+    const lines = stdout.trim().split('\r\n').filter(l => l.trim());
+    if (lines.length < 2) continue;
+
+    const header = lines[0].split(',').map(h => h.trim());
+    const idxPid = header.indexOf('ProcessId');
+    const idxCmd = header.indexOf('CommandLine');
+    const idxExe = header.indexOf('ExecutablePath');
+
+    for (let j = 1; j < lines.length; j++) {
+      // CommandLine can contain commas — use the same right-split strategy
+      const cols = parseWmicCsvLine(lines[j], header.length);
+      if (!cols || cols.length < header.length) continue;
+
+      const pid = parseInt(cols[idxPid], 10);
+      if (isNaN(pid)) continue;
+
+      allResults.push({
+        pid,
+        commandLine: (cols[idxCmd] || '').trim(),
+        executablePath: (cols[idxExe] || '').trim(),
+      });
+    }
+  }
+
+  return allResults;
+}
+
+async function fetchProcessPathDataViaPowerShell(pids) {
+  const pidList = pids.join(',');
+  const psCmd = [
+    `Get-CimInstance Win32_Process -Filter "ProcessId IN (${pidList})"`,
+    '| Select-Object ProcessId,CommandLine,ExecutablePath',
+    '| ConvertTo-Json -Compress',
+  ].join(' ');
+
+  const { stdout } = await execAsync(
+    `powershell -NoProfile -NoLogo -Command "${psCmd}"`,
+    { timeout: 15000, maxBuffer: 10 * 1024 * 1024 }
+  );
+
+  let raw;
+  try {
+    raw = JSON.parse(stdout);
+  } catch {
+    return [];
+  }
+
+  if (!Array.isArray(raw)) raw = [raw];
+
+  return raw.map(p => ({
+    pid: p.ProcessId,
+    commandLine: (p.CommandLine || '').trim(),
+    executablePath: (p.ExecutablePath || '').trim(),
+  }));
+}
+
+/**
+ * Single-PID CWD lookup.
+ */
 async function resolveCwd(pid) {
   const map = await batchResolveCwds([pid]);
   return map.get(pid) || null;
@@ -985,9 +1202,10 @@ module.exports = {
   fetchProcessOnPort,
   fetchListeningPortNumbers,
 
-  // CWD resolution (heuristic — TODO: improve in step 4)
+  // CWD resolution
   batchResolveCwds,
   resolveCwd,
+  extractCwdFromCommandLine, // exported for testing
 
   // Docker binary paths
   DOCKER_BIN_CANDIDATES,

@@ -218,6 +218,82 @@ test('extractAppNameFromCommand returns null for unrecognized paths', () => {
 });
 
 // ============================================
+// CWD resolution tests
+// ============================================
+
+test('extractCwdFromCommandLine finds script path from node command', () => {
+  const cwd = win32.extractCwdFromCommandLine(
+    'C:\\Program Files\\nodejs\\node.exe C:\\Users\\dev\\myapp\\server.js'
+  );
+  assert.equal(cwd, 'C:\\Users\\dev\\myapp');
+});
+
+test('extractCwdFromCommandLine finds script path from python command', () => {
+  const cwd = win32.extractCwdFromCommandLine(
+    '"C:\\Users\\dev\\AppData\\Local\\Programs\\Python\\Python311\\python.exe" C:\\Users\\dev\\backend\\manage.py runserver'
+  );
+  assert.equal(cwd, 'C:\\Users\\dev\\backend');
+});
+
+test('extractCwdFromCommandLine handles forward slashes', () => {
+  const cwd = win32.extractCwdFromCommandLine(
+    'C:/Program Files/nodejs/node.exe C:/Users/dev/project/index.js'
+  );
+  assert.equal(cwd, 'C:\\Users\\dev\\project');
+});
+
+test('extractCwdFromCommandLine strips node_modules from exe path', () => {
+  // npx/node_modules/.bin scripts are inside the project
+  const cwd = win32.extractCwdFromCommandLine(
+    'C:\\Users\\dev\\webapp\\node_modules\\.bin\\next.cmd start'
+  );
+  assert.equal(cwd, 'C:\\Users\\dev\\webapp');
+});
+
+test('extractCwdFromCommandLine skips system runtime directories', () => {
+  // Only exe path, and it's in Program Files/nodejs → skip
+  const cwd = win32.extractCwdFromCommandLine(
+    'C:\\Program Files\\nodejs\\node.exe'
+  );
+  assert.equal(cwd, null);
+});
+
+test('extractCwdFromCommandLine uses exe dir for non-system paths', () => {
+  const cwd = win32.extractCwdFromCommandLine(
+    'C:\\Users\\dev\\myapp\\dist\\server.exe --port 3000'
+  );
+  assert.equal(cwd, 'C:\\Users\\dev\\myapp\\dist');
+});
+
+test('extractCwdFromCommandLine prefers arg paths over exe path', () => {
+  // Exe is in system dir, arg has the project path → prefer arg
+  const cwd = win32.extractCwdFromCommandLine(
+    'C:\\Windows\\System32\\cmd.exe /c C:\\Users\\dev\\project\\start.bat'
+  );
+  assert.equal(cwd, 'C:\\Users\\dev\\project');
+});
+
+test('extractCwdFromCommandLine returns null for empty/null input', () => {
+  assert.equal(win32.extractCwdFromCommandLine(''), null);
+  assert.equal(win32.extractCwdFromCommandLine(null), null);
+  assert.equal(win32.extractCwdFromCommandLine(undefined), null);
+});
+
+test('extractCwdFromCommandLine returns null for relative-only commands', () => {
+  // No absolute paths at all
+  assert.equal(win32.extractCwdFromCommandLine('node server.js'), null);
+  assert.equal(win32.extractCwdFromCommandLine('python -m flask run'), null);
+});
+
+test('extractCwdFromCommandLine handles path with spaces', () => {
+  const cwd = win32.extractCwdFromCommandLine(
+    '"C:\\Program Files\\nodejs\\node.exe" "C:\\Users\\dev\\my project\\app.js"'
+  );
+  // Should extract the script's directory despite spaces
+  assert.equal(cwd, 'C:\\Users\\dev\\my project');
+});
+
+// ============================================
 // Constant exports tests
 // ============================================
 
