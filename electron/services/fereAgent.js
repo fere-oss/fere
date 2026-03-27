@@ -1,5 +1,5 @@
 /**
- * Fere Agent — deterministic detection + AI-powered investigation
+ * Sentinel — deterministic runtime detection and typed fix execution
  */
 
 const fs = require("fs");

@@ -1,5 +1,26 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AgentCategory, AgentFinding, AgentFixAction, GraphNode } from "../types/electron";
+
+const BACKGROUND_SCAN_INTERVAL_MS = 45000;
+const TOPOLOGY_SCAN_DEBOUNCE_MS = 1200;
+
+const FINDING_SEVERITY_ORDER: Record<AgentFinding["severity"], number> = {
+  critical: 0,
+  warning: 1,
+  suggestion: 2,
+};
+
+function sortFindings(findings: AgentFinding[]): AgentFinding[] {
+  return [...findings].sort((a, b) => {
+    const severityDiff =
+      FINDING_SEVERITY_ORDER[a.severity] - FINDING_SEVERITY_ORDER[b.severity];
+    if (severityDiff !== 0) return severityDiff;
+    const blastRadiusDiff =
+      (b.affectedServices?.length ?? 0) - (a.affectedServices?.length ?? 0);
+    if (blastRadiusDiff !== 0) return blastRadiusDiff;
+    return a.summary.localeCompare(b.summary);
+  });
+}
 
 function AgentGlyph({ className }: { className?: string }) {
   return (
@@ -279,10 +300,12 @@ function ActionRow({ action }: { action: AgentFixAction }) {
 
 function FindingRow({
   finding,
+  isNew,
   onDismiss,
   onFocusService,
 }: {
   finding: AgentFinding;
+  isNew?: boolean;
   onDismiss: (id: string) => void;
   onFocusService: (finding: AgentFinding) => void;
 }) {
@@ -318,12 +341,13 @@ function FindingRow({
   };
 
   return (
-    <div className={`agp-row${expanded ? " agp-row-open" : ""}`}>
+    <div className={`agp-row${expanded ? " agp-row-open" : ""}${isNew ? " agp-row-new" : ""}`}>
       <div className="agp-row-header" onClick={() => setExpanded((v) => !v)}>
         <span className="agp-dot" style={{ background: SEVERITY_DOT[finding.severity] }} />
         <div className="agp-row-text">
           <div className="agp-row-title-line">
             <span className="agp-row-title">{finding.summary}</span>
+            {isNew && <span className="agp-new-chip">New</span>}
           </div>
           <div className="agp-row-meta">
             <span className="agp-row-service">{finding.service}</span>
@@ -387,12 +411,55 @@ export function AgentPanel({ nodes }: { nodes: GraphNode[] }) {
   const [findings, setFindings] = useState<AgentFinding[]>([]);
   const [scanning, setScanning] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
-  const hasScanned = useMemo(() => findings.length > 0 || scanError !== null, [findings.length, scanError]);
+  const [lastScanAt, setLastScanAt] = useState<number | null>(null);
+  const [newFindingIds, setNewFindingIds] = useState<string[]>([]);
+  const latestActionableIdsRef = useRef<Set<string>>(new Set());
+  const scanRequestIdRef = useRef(0);
+
+  const nodeIdsForScan = useMemo(
+    () => nodes.filter((node) => node.type !== "external").map((node) => node.id),
+    [nodes],
+  );
+  const scanFingerprint = useMemo(
+    () =>
+      nodes
+        .filter((node) => node.type !== "external")
+        .map((node) => {
+          const ports = (node.ports ?? [])
+            .map((port) => port.port)
+            .sort((a, b) => a - b)
+            .join(",");
+          return [
+            node.id,
+            node.name,
+            node.healthStatus,
+            node.containerState ?? "",
+            node.isGhost ? "ghost" : "live",
+            ports,
+          ].join(":");
+        })
+        .sort()
+        .join("|"),
+    [nodes],
+  );
+  const hasScanned = useMemo(
+    () => lastScanAt !== null || scanError !== null,
+    [lastScanAt, scanError],
+  );
 
   const criticalCount = findings.filter((finding) => finding.severity === "critical").length;
   const warningCount = findings.filter((finding) => finding.severity === "warning").length;
   const suggestionCount = findings.filter((finding) => finding.severity === "suggestion").length;
   const totalIssues = criticalCount + warningCount;
+  const unseenIssueCount = useMemo(
+    () =>
+      newFindingIds.filter((id) =>
+        findings.some(
+          (finding) => finding.id === id && finding.severity !== "suggestion",
+        ),
+      ).length,
+    [findings, newFindingIds],
+  );
 
   const healthScore = hasScanned
     ? Math.max(0, 100 - criticalCount * 15 - warningCount * 5 - suggestionCount)
@@ -410,28 +477,85 @@ export function AgentPanel({ nodes }: { nodes: GraphNode[] }) {
               ? { label: "Poor", color: "#ea580c" }
               : { label: "Critical", color: "#dc2626" };
 
-  const runScan = useCallback(async () => {
-    setScanning(true);
-    setScanError(null);
+  const runScan = useCallback(async (source: "manual" | "background" = "manual") => {
+    const requestId = scanRequestIdRef.current + 1;
+    scanRequestIdRef.current = requestId;
+    if (source === "manual") {
+      setScanning(true);
+      setScanError(null);
+    }
+    if (nodeIdsForScan.length === 0) {
+      latestActionableIdsRef.current = new Set();
+      setFindings([]);
+      setNewFindingIds([]);
+      setLastScanAt(Date.now());
+      if (source === "manual") setScanning(false);
+      return;
+    }
     try {
-      const result = await window.electronAPI.agentScan(nodes.map((node) => node.id));
+      const result = await window.electronAPI.agentScan(nodeIdsForScan);
+      if (requestId !== scanRequestIdRef.current) return;
       if (result.success) {
-        setFindings(result.findings);
+        const nextFindings = sortFindings(result.findings);
+        const nextActionableIds = new Set(
+          nextFindings
+            .filter((finding) => finding.severity !== "suggestion")
+            .map((finding) => finding.id),
+        );
+        if (source === "background" && !open) {
+          const newlyDetected = Array.from(nextActionableIds).filter(
+            (id) => !latestActionableIdsRef.current.has(id),
+          );
+          if (newlyDetected.length > 0) {
+            setNewFindingIds((prev) => Array.from(new Set([...prev, ...newlyDetected])));
+          }
+        } else if (source === "manual") {
+          setNewFindingIds([]);
+        }
+        latestActionableIdsRef.current = nextActionableIds;
+        setFindings(nextFindings);
+        setLastScanAt(Date.now());
+        if (source === "manual") setScanError(null);
       } else {
-        setScanError(result.error ?? "Scan failed");
+        if (source === "manual") {
+          setScanError(result.error ?? "Scan failed");
+        }
       }
     } catch (error: unknown) {
-      setScanError(error instanceof Error ? error.message : "Scan failed");
+      if (requestId !== scanRequestIdRef.current) return;
+      if (source === "manual") {
+        setScanError(error instanceof Error ? error.message : "Scan failed");
+      }
     } finally {
-      setScanning(false);
+      if (source === "manual" && requestId === scanRequestIdRef.current) {
+        setScanning(false);
+      }
     }
-  }, [nodes]);
+  }, [nodeIdsForScan, open]);
 
   useEffect(() => {
-    if (open && !hasScanned) {
-      void runScan();
+    if (!scanFingerprint) {
+      latestActionableIdsRef.current = new Set();
+      setFindings([]);
+      setNewFindingIds([]);
+      setLastScanAt(null);
+      setScanError(null);
+      return;
     }
-  }, [hasScanned, open, runScan]);
+    const timeout = window.setTimeout(
+      () => void runScan("background"),
+      hasScanned ? TOPOLOGY_SCAN_DEBOUNCE_MS : 0,
+    );
+    return () => window.clearTimeout(timeout);
+  }, [hasScanned, runScan, scanFingerprint]);
+
+  useEffect(() => {
+    if (!scanFingerprint) return;
+    const interval = window.setInterval(() => {
+      void runScan("background");
+    }, BACKGROUND_SCAN_INTERVAL_MS);
+    return () => window.clearInterval(interval);
+  }, [runScan, scanFingerprint]);
 
   useEffect(() => {
     if (!open) return;
@@ -462,6 +586,23 @@ export function AgentPanel({ nodes }: { nodes: GraphNode[] }) {
 
   const issues = findings.filter((finding) => finding.severity !== "suggestion");
   const suggestions = findings.filter((finding) => finding.severity === "suggestion");
+  const clearNewFindings = useCallback(() => setNewFindingIds([]), []);
+  const showIssueBadge = totalIssues > 0 && !open;
+  const showUnreadDot = unseenIssueCount > 0 && !open && !showIssueBadge;
+  const headerSubtext =
+    scanning
+      ? "Scanning the live runtime"
+      : unseenIssueCount > 0
+        ? `${unseenIssueCount} new issue${unseenIssueCount !== 1 ? "s" : ""} detected in background`
+        : scanError
+          ? "Scan failed"
+          : totalIssues > 0
+            ? `${totalIssues} actionable issue${totalIssues !== 1 ? "s" : ""}`
+            : findings.length > 0
+              ? `${findings.length} low-priority suggestion${findings.length !== 1 ? "s" : ""}`
+              : hasScanned
+                ? "All clear"
+                : "Watching your stack";
 
   return (
     <>
@@ -472,7 +613,14 @@ export function AgentPanel({ nodes }: { nodes: GraphNode[] }) {
       >
         <AgentGlyph className="agp-trigger-icon" />
         <span className="agp-trigger-label">Sentinel</span>
-        {totalIssues > 0 && !open && <span className="agp-trigger-badge">{totalIssues}</span>}
+        {showUnreadDot && <span className="agp-trigger-ping" aria-hidden="true" />}
+        {showIssueBadge && (
+          <span
+            className={`agp-trigger-badge${unseenIssueCount > 0 ? " agp-trigger-badge-unreviewed" : ""}`}
+          >
+            {totalIssues}
+          </span>
+        )}
       </button>
 
       {open && (
@@ -482,19 +630,7 @@ export function AgentPanel({ nodes }: { nodes: GraphNode[] }) {
               <AgentGlyph className="agp-avatar-icon" />
               <div className="agp-header-text">
                 <span className="agp-header-title">Sentinel</span>
-                <span className="agp-header-sub">
-                  {scanning
-                    ? "Scanning the live runtime"
-                    : scanError
-                      ? "Scan failed"
-                      : totalIssues > 0
-                        ? `${totalIssues} actionable issue${totalIssues !== 1 ? "s" : ""}`
-                        : findings.length > 0
-                          ? `${findings.length} low-priority suggestion${findings.length !== 1 ? "s" : ""}`
-                          : hasScanned
-                            ? "All clear"
-                            : "Ready to assess your stack"}
-                </span>
+                <span className="agp-header-sub">{headerSubtext}</span>
               </div>
             </div>
             <div className="agp-header-right">
@@ -536,6 +672,20 @@ export function AgentPanel({ nodes }: { nodes: GraphNode[] }) {
               </div>
             ) : (
               <div className="agp-findings">
+                {unseenIssueCount > 0 && (
+                  <div className="agp-watch-banner">
+                    <div className="agp-watch-banner-copy">
+                      <span className="agp-watch-dot" aria-hidden="true" />
+                      <span className="agp-watch-banner-title">
+                        {unseenIssueCount} new issue{unseenIssueCount !== 1 ? "s" : ""} detected in background
+                      </span>
+                    </div>
+                    <button className="agp-btn agp-btn-ghost" onClick={clearNewFindings}>
+                      Mark reviewed
+                    </button>
+                  </div>
+                )}
+
                 {healthScore !== null && healthGrade !== null && (
                   <div className="agp-score-bar">
                     <div className="agp-score-header">
@@ -562,6 +712,7 @@ export function AgentPanel({ nodes }: { nodes: GraphNode[] }) {
                       <FindingRow
                         key={finding.id}
                         finding={finding}
+                        isNew={newFindingIds.includes(finding.id)}
                         onDismiss={(id) => setFindings((prev) => prev.filter((item) => item.id !== id))}
                         onFocusService={handleFocusService}
                       />
@@ -576,6 +727,7 @@ export function AgentPanel({ nodes }: { nodes: GraphNode[] }) {
                       <FindingRow
                         key={finding.id}
                         finding={finding}
+                        isNew={newFindingIds.includes(finding.id)}
                         onDismiss={(id) => setFindings((prev) => prev.filter((item) => item.id !== id))}
                         onFocusService={handleFocusService}
                       />
@@ -584,7 +736,7 @@ export function AgentPanel({ nodes }: { nodes: GraphNode[] }) {
                 )}
 
                 <div className="agp-empty-sub" style={{ textAlign: "left" }}>
-                  This scan stays deterministic and local-first. It is meant to surface concrete runtime problems faster than a general coding assistant can infer them from a prompt.
+                  Sentinel watches the live stack in the background, reacts to topology changes, and rescans on an interval. It is meant to catch concrete runtime drift that a general coding assistant cannot see from code alone.
                 </div>
               </div>
             )}

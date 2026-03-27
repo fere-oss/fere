@@ -1179,7 +1179,7 @@ function App() {
 
         {/* Header Actions */}
         <div className="app-header-actions">
-          <AgentPanel nodes={filteredData.nodes} />
+          <AgentPanel nodes={visibleGraphNodes} />
           <button
             className="app-header-action"
             onClick={() => setShowShare(true)}

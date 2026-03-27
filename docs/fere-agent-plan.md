@@ -6,9 +6,9 @@ A unified **Fere Agent** that replaces the old Ask Fere and Cross-Service Debugg
 
 ---
 
-## Status: Shipped
+## Status: Shipped / In Progress
 
-The findings engine and fix actions are implemented and live in the app. The open-ended chat path has been removed in favor of a tighter findings-first workflow.
+The findings engine and fix actions are implemented and live in the app. The open-ended chat path has been removed in favor of a tighter findings-first workflow. Sentinel is also moving into proactive/background monitoring: it now rescans on topology changes and marks newly detected issues for the user.
 
 ---
 
@@ -100,6 +100,7 @@ Floating built-in panel anchored to the header trigger. Opens from the Sentinel 
 The panel is findings-first and intentionally minimal. It runs a deterministic runtime scan when opened, then presents:
 
 - Header status summary (`Scanning`, `All clear`, `N actionable issues`)
+- Background-watch state for issues found while the panel was closed
 - Health score bar
 - Grouped findings in `Issues` and `Suggestions`
 - One-click actions per finding
@@ -119,6 +120,8 @@ The panel is findings-first and intentionally minimal. It runs a deterministic r
 - `Dismiss` — removes from list
 
 **All-clear state** — green circle checkmark icon, "All systems nominal" heading, descriptive subtext.
+
+**Background watch** — Sentinel rescans on topology changes and on an interval while the app is open. New actionable findings discovered while the panel is closed are surfaced with a trigger indicator and a "new issues detected in background" banner when the panel is reopened.
 
 ---
 

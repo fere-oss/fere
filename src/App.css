@@ -10262,6 +10262,21 @@ textarea {
   line-height: 1;
 }
 
+.agp-trigger-badge-unreviewed {
+  box-shadow: 0 0 0 2px #fee2e2;
+}
+
+.agp-trigger-ping {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: #ef4444;
+  box-shadow: 0 0 0 2px var(--bg-primary);
+}
+
 /* Right-side panel */
 .agp-popup {
   position: fixed;
@@ -10437,6 +10452,39 @@ textarea {
   gap: 10px;
 }
 
+.agp-watch-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1px solid #fde68a;
+  background: #fffbeb;
+  border-radius: 14px;
+  padding: 10px 12px;
+}
+
+.agp-watch-banner-copy {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.agp-watch-dot {
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+  border-radius: 999px;
+  background: #d97706;
+}
+
+.agp-watch-banner-title {
+  font-size: 11.5px;
+  font-weight: 500;
+  color: #92400e;
+  line-height: 1.4;
+}
+
 .agp-section {
   display: flex;
   flex-direction: column;
@@ -10466,6 +10514,10 @@ textarea {
   border-radius: 14px;
   background: var(--bg-white);
   overflow: hidden;
+}
+
+.agp-row-new {
+  border-color: #fcd34d;
 }
 
 .agp-row-header {
@@ -10662,6 +10714,22 @@ textarea {
   display: flex;
   align-items: center;
   gap: 5px;
+  min-width: 0;
+}
+
+.agp-new-chip {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #92400e;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 999px;
+  padding: 1px 5px;
 }
 
 .agp-row-meta {

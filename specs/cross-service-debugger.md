@@ -1,5 +1,7 @@
 # Autonomous Cross-Service Debugger — Implementation Spec
 
+> Status: historical / superseded. This spec captures the earlier autonomous AI-debugger direction. The current shipped direction is the findings-first Sentinel workflow documented in `docs/fere-agent-plan.md` and `docs/AI_AGENT_CAPABILITIES.md`.
+
 ## Overview
 
 An AI debugging agent embedded in Fere that autonomously investigates cross-service bugs. The user describes a problem in natural language (e.g., "my checkout endpoint returns 500 sometimes"). The agent then orchestrates Fere's existing infrastructure — firing HTTP requests, reading container logs, reading source code, analyzing the service topology — in a loop until it identifies the root cause. It shows its investigation in real-time and presents a final diagnosis with evidence.
