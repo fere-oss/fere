@@ -10,7 +10,8 @@
       "Bash(node -e \"require\\(''./electron/services/fereAgent.js''\\)\")",
       "Bash(node --check /Users/rahulthennarasu/Documents/GitHub/fere/electron/main.js)",
       "Bash(/Users/rahulthennarasu/Documents/GitHub/fere/src/App.css:*)",
-      "Bash(grep -r \"GraphNode\\\\|incomingEdge\" /Users/rahulthennarasu/Documents/GitHub/fere/src --include=*.ts --include=*.tsx -l)"
+      "Bash(grep -r \"GraphNode\\\\|incomingEdge\" /Users/rahulthennarasu/Documents/GitHub/fere/src --include=*.ts --include=*.tsx -l)",
+      "Bash(npm run:*)"
     ]
   }
 }

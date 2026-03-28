@@ -31,14 +31,13 @@ function AgentGlyph({ className }: { className?: string }) {
       viewBox="0 0 16 16"
       fill="none"
       stroke="currentColor"
-      strokeWidth="1.15"
+      strokeWidth="1.3"
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"
     >
-      <path d="M2.8 4.7A1.9 1.9 0 0 1 4.7 2.8h6.6a1.9 1.9 0 0 1 1.9 1.9v4.1a1.9 1.9 0 0 1-1.9 1.9H8.5L5.9 13v-2.3H4.7a1.9 1.9 0 0 1-1.9-1.9V4.7Z" />
-      <path d="M5.6 5.9h4.8" />
-      <path d="M5.6 8h3.4" />
+      <path d="M8 1.5 L13.5 4v4c0 3-2.5 5.2-5.5 6C5 13.2 2.5 11 2.5 8V4Z" />
+      <path d="M5.8 8l1.5 1.5 3-3" />
     </svg>
   );
 }
