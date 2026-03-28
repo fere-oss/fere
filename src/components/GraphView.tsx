@@ -1,4 +1,10 @@
-import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import React, {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useCallback,
+} from "react";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import ReactFlow, {
   Background,
@@ -20,6 +26,8 @@ import { useGraphLayoutData } from "./graph/useGraphLayoutData";
 import { useNodeMeasurements } from "./graph/useNodeMeasurements";
 import { useTraceState, useTraceDispatch } from "./graph/traceContext";
 import { TraceWaterfall } from "./graph/TraceWaterfall";
+import { ScanningEmptyState } from "./ScanningEmptyState";
+import { DiscoveryHint, hasSeenDiscoveryHint } from "./OnboardingHints";
 
 const NODE_TYPES = flowNodeTypes;
 const EDGE_TYPES = flowEdgeTypes;
@@ -149,8 +157,14 @@ export function GraphView({
   edges,
   isContainerView = false,
   onDatabaseClick,
+  debugHighlightNodeIds,
+  serviceStatus,
+  monitoringStartedAt,
 }: GraphViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const [showDiscoveryHint, setShowDiscoveryHint] = useState(
+    () => !isContainerView && !hasSeenDiscoveryHint(),
+  );
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
   const [reactFlowInstance, setReactFlowInstance] =
     useState<ReactFlowInstance | null>(null);
@@ -301,7 +315,6 @@ export function GraphView({
     nodeHeightsRef,
   ]);
 
-
   const hoverEdgeGeometry = useMemo(() => {
     const W = FLOW_LAYOUT.NODE_WIDTH;
     const posMap = new Map<string, { x: number; y: number }>();
@@ -362,12 +375,7 @@ export function GraphView({
       endpoint,
       width: W,
     };
-  }, [
-    layoutEdges,
-    flowLayout.nodes,
-    nodeHeightsRef,
-    stableConnectedLayout,
-  ]);
+  }, [layoutEdges, flowLayout.nodes, nodeHeightsRef, stableConnectedLayout]);
 
   const connectedNodeIds = useMemo(() => {
     if (!hoverEffectsEnabled) return new Set<string>();
@@ -422,7 +430,9 @@ export function GraphView({
       // For each edge, the "other" node is the one that isn't the hovered node.
       const otherId = edge.source === hoveredNodeId ? edge.target : edge.source;
       const other = layoutLookup.get(otherId);
-      const groupKey = other ? `layer-${other.layer}-${other.groupId}` : otherId;
+      const groupKey = other
+        ? `layer-${other.layer}-${other.groupId}`
+        : otherId;
       const list = edgesByGroup.get(groupKey);
       if (list) list.push(edge);
       else edgesByGroup.set(groupKey, [edge]);
@@ -502,13 +512,15 @@ export function GraphView({
         bundleCount: (edge as typeof edge & { _bundleCount?: number })
           ._bundleCount,
       };
-      return [{
-        id: edge.id,
-        source: edge.source,
-        target: edge.target,
-        type: edgeType,
-        data,
-      }];
+      return [
+        {
+          id: edge.id,
+          source: edge.source,
+          target: edge.target,
+          type: edgeType,
+          data,
+        },
+      ];
     });
   }, [hoveredNodeId, hoverEdgeGeometry, hoverEffectsEnabled]);
 
@@ -525,7 +537,7 @@ export function GraphView({
       const matchingLayoutEdges = layoutEdges.filter(
         (e) =>
           (e.source === hop.sourceNodeId && e.target === hop.targetNodeId) ||
-          (e.target === hop.sourceNodeId && e.source === hop.targetNodeId)
+          (e.target === hop.sourceNodeId && e.source === hop.targetNodeId),
       );
 
       if (matchingLayoutEdges.length === 0) return [];
@@ -534,43 +546,59 @@ export function GraphView({
         const srcPos = hoverEdgeGeometry.posMap.get(edge.source);
         const tgtPos = hoverEdgeGeometry.posMap.get(edge.target);
         if (!srcPos || !tgtPos) return [];
-        const srcH = hoverEdgeGeometry.heightMap.get(edge.source) ?? FLOW_LAYOUT.NODE_MIN_HEIGHT;
-        const tgtH = hoverEdgeGeometry.heightMap.get(edge.target) ?? FLOW_LAYOUT.NODE_MIN_HEIGHT;
+        const srcH =
+          hoverEdgeGeometry.heightMap.get(edge.source) ??
+          FLOW_LAYOUT.NODE_MIN_HEIGHT;
+        const tgtH =
+          hoverEdgeGeometry.heightMap.get(edge.target) ??
+          FLOW_LAYOUT.NODE_MIN_HEIGHT;
         const dy = tgtPos.y - srcPos.y;
         const dx = tgtPos.x - srcPos.x;
         const sameLayer = Math.abs(dy) < 80;
-        let srcSide: "top" | "bottom" | "left" | "right" = dy > 0 ? "bottom" : "top";
-        let tgtSide: "top" | "bottom" | "left" | "right" = dy > 0 ? "top" : "bottom";
+        let srcSide: "top" | "bottom" | "left" | "right" =
+          dy > 0 ? "bottom" : "top";
+        let tgtSide: "top" | "bottom" | "left" | "right" =
+          dy > 0 ? "top" : "bottom";
         let edgeType: "traceBezier" | "traceStep" = "traceBezier";
         if (sameLayer) {
-          if (dx > 0) { srcSide = "right"; tgtSide = "left"; }
-          else { srcSide = "left"; tgtSide = "right"; }
+          if (dx > 0) {
+            srcSide = "right";
+            tgtSide = "left";
+          } else {
+            srcSide = "left";
+            tgtSide = "right";
+          }
           edgeType = "traceStep";
         }
         const src = hoverEdgeGeometry.endpoint(srcPos, srcH, srcSide);
         const tgt = hoverEdgeGeometry.endpoint(tgtPos, tgtH, tgtSide);
 
-        const isActiveHop = traceState.phase === "animating" && i === traceState.activeHopIndex;
-        const isDrawn = traceState.phase === "complete" || (traceState.phase === "animating" && i < traceState.activeHopIndex);
+        const isActiveHop =
+          traceState.phase === "animating" && i === traceState.activeHopIndex;
+        const isDrawn =
+          traceState.phase === "complete" ||
+          (traceState.phase === "animating" && i < traceState.activeHopIndex);
 
-        return [{
-          id: `trace-${edge.id}`,
-          source: edge.source,
-          target: edge.target,
-          type: edgeType,
-          data: {
-            sx: src.x,
-            sy: src.y,
-            tx: tgt.x,
-            ty: tgt.y,
-            sourcePos: src.pos,
-            targetPos: tgt.pos,
-            latency: hop.latency,
-            isActiveHop,
-            isDrawn,
-            inferred: hop.inferred,
+        return [
+          {
+            id: `trace-${edge.id}`,
+            source: edge.source,
+            target: edge.target,
+            type: edgeType,
+            data: {
+              sx: src.x,
+              sy: src.y,
+              tx: tgt.x,
+              ty: tgt.y,
+              sourcePos: src.pos,
+              targetPos: tgt.pos,
+              latency: hop.latency,
+              isActiveHop,
+              isDrawn,
+              inferred: hop.inferred,
+            },
           },
-        }];
+        ];
       });
     });
   }, [traceState, layoutEdges, hoverEdgeGeometry]);
@@ -593,7 +621,12 @@ export function GraphView({
     }, duration);
 
     return () => clearTimeout(timer);
-  }, [traceState.phase, traceState.activeHopIndex, traceState.result, traceDispatch]);
+  }, [
+    traceState.phase,
+    traceState.activeHopIndex,
+    traceState.result,
+    traceDispatch,
+  ]);
 
   // Handle waterfall interactions
   const handleWaterfallHoverHop = useCallback((hop: TraceHop | null) => {
@@ -604,51 +637,60 @@ export function GraphView({
     setHoveredNodeId(hop.targetNodeId);
   }, []);
 
-  const handleWaterfallClickHop = useCallback((hop: TraceHop) => {
-    const node = layoutNodes.find((n) => n.id === hop.targetNodeId);
-    if (node) {
-      setSelectedNode(node);
-      if (reactFlowInstance) {
-        const rfNode = reactFlowInstance.getNode(hop.targetNodeId);
-        if (rfNode) {
-          reactFlowInstance.setCenter(
-            rfNode.position.x + FLOW_LAYOUT.NODE_WIDTH / 2,
-            rfNode.position.y + 95,
-            { zoom: 1.2, duration: 400 },
-          );
+  const handleWaterfallClickHop = useCallback(
+    (hop: TraceHop) => {
+      const node = layoutNodes.find((n) => n.id === hop.targetNodeId);
+      if (node) {
+        setSelectedNode(node);
+        if (reactFlowInstance) {
+          const rfNode = reactFlowInstance.getNode(hop.targetNodeId);
+          if (rfNode) {
+            reactFlowInstance.setCenter(
+              rfNode.position.x + FLOW_LAYOUT.NODE_WIDTH / 2,
+              rfNode.position.y + 95,
+              { zoom: 1.2, duration: 400 },
+            );
+          }
         }
       }
-    }
-  }, [layoutNodes, reactFlowInstance]);
+    },
+    [layoutNodes, reactFlowInstance],
+  );
 
   const handleTraceDismiss = useCallback(() => {
     traceDispatch({ type: "dismiss" });
   }, [traceDispatch]);
 
   // Handle trace from context menu (fires GET to first route)
-  const handleContextMenuTrace = useCallback((node: GraphNode) => {
-    if (!node.routes?.length || !node.ports[0]) return;
-    const route = node.routes[0];
-    const port = node.ports[0].port;
-    const url = `http://localhost:${port}${route.path}`;
+  const handleContextMenuTrace = useCallback(
+    (node: GraphNode) => {
+      if (!node.routes?.length || !node.ports[0]) return;
+      const route = node.routes[0];
+      const port = node.ports[0].port;
+      const url = `http://localhost:${port}${route.path}`;
 
-    traceDispatch({ type: "start-capture", entryNodeId: node.id });
+      traceDispatch({ type: "start-capture", entryNodeId: node.id });
 
-    window.electronAPI.executeTracedRequest({
-      method: route.method || "GET",
-      url,
-      graphNodes: layoutNodes,
-      graphEdges: layoutEdges,
-    }).then((result) => {
-      if (result.success && result.trace) {
-        traceDispatch({ type: "set-result", result: result.trace });
-      } else {
-        traceDispatch({ type: "dismiss" });
-      }
-    }).catch(() => {
-      traceDispatch({ type: "dismiss" });
-    });
-  }, [layoutNodes, layoutEdges, traceDispatch]);
+      window.electronAPI
+        .executeTracedRequest({
+          method: route.method || "GET",
+          url,
+          graphNodes: layoutNodes,
+          graphEdges: layoutEdges,
+        })
+        .then((result) => {
+          if (result.success && result.trace) {
+            traceDispatch({ type: "set-result", result: result.trace });
+          } else {
+            traceDispatch({ type: "dismiss" });
+          }
+        })
+        .catch(() => {
+          traceDispatch({ type: "dismiss" });
+        });
+    },
+    [layoutNodes, layoutEdges, traceDispatch],
+  );
 
   const defaultEdgeOptions = useMemo(
     () => ({
@@ -670,7 +712,9 @@ export function GraphView({
 
     // Guard against rare viewport glitches where the camera drifts away from
     // every service node after topology/layout updates.
-    const serviceNodes = flowLayout.nodes.filter((node) => node.type === "service");
+    const serviceNodes = flowLayout.nodes.filter(
+      (node) => node.type === "service",
+    );
     if (serviceNodes.length === 0) return;
 
     const recoveryKey = `${nodesKey}:${layoutVersion}`;
@@ -763,7 +807,9 @@ export function GraphView({
   useEffect(() => {
     const handler = (e: Event) => {
       const { nodeId, nodeName } = (e as CustomEvent).detail ?? {};
-      const target = layoutNodes.find((n) => n.id === nodeId || n.name === nodeName);
+      const target = layoutNodes.find(
+        (n) => n.id === nodeId || n.name === nodeName,
+      );
       if (!target) return;
       if (reactFlowInstance) {
         const rfNode = reactFlowInstance.getNode(target.id);
@@ -855,7 +901,10 @@ export function GraphView({
     window.addEventListener("resize", closeContextMenu);
     window.addEventListener("blur", closeContextMenu);
     window.addEventListener("wheel", closeOnWheel, { passive: true });
-    window.addEventListener("scroll", closeOnWheel, { passive: true, capture: true });
+    window.addEventListener("scroll", closeOnWheel, {
+      passive: true,
+      capture: true,
+    });
     return () => {
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("resize", closeContextMenu);
@@ -866,18 +915,22 @@ export function GraphView({
   }, []);
 
   if (layoutNodes.length === 0) {
-    const emptyTitle = isContainerView
-      ? "No containers running"
-      : "No services detected";
-    const emptySubtitle = isContainerView
-      ? "Start Docker containers to see them here"
-      : "Try: npm run dev in your project";
+    if (isContainerView) {
+      return (
+        <div className="graph-view" ref={containerRef}>
+          <div className="graph-empty">
+            <p>No containers running</p>
+            <span>Start Docker containers to see them here</span>
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="graph-view" ref={containerRef}>
-        <div className="graph-empty">
-          <p>{emptyTitle}</p>
-          <span>{emptySubtitle}</span>
-        </div>
+        <ScanningEmptyState
+          serviceStatus={serviceStatus}
+          monitoringStartedAt={monitoringStartedAt}
+        />
       </div>
     );
   }
@@ -888,6 +941,10 @@ export function GraphView({
       ref={containerRef}
     >
       <ActivePorts nodes={layoutNodes} reactFlowInstance={reactFlowInstance} />
+
+      {showDiscoveryHint && (
+        <DiscoveryHint onDismiss={() => setShowDiscoveryHint(false)} />
+      )}
 
       <div className={`graph-flow${viewportReady ? "" : " graph-flow-hidden"}`}>
         <HoverContext.Provider value={hoverState}>
@@ -990,6 +1047,7 @@ export function GraphView({
           edges={layoutEdges}
           allNodes={layoutNodes}
           onClose={() => setSelectedNode(null)}
+          onTraceRequest={handleContextMenuTrace}
         />
       )}
 

@@ -23,10 +23,10 @@ export const getServiceColor = (type: string) => {
 };
 
 // Health status colors and labels
-export const HEALTH_COLORS: Record<HealthStatus, { color: string; label: string; glow: string }> = {
-  green: { color: '#22C55E', label: 'Active', glow: '0 0 8px #22C55E60' },
-  yellow: { color: '#EAB308', label: 'Idle', glow: '0 0 8px #EAB30860' },
-  red: { color: '#EF4444', label: 'Down', glow: '0 0 8px #EF444460' },
+export const HEALTH_COLORS: Record<HealthStatus, { color: string; label: string; glow: string; description: string }> = {
+  green: { color: '#22C55E', label: 'Active', glow: '0 0 8px #22C55E60', description: 'Responding to connections normally' },
+  yellow: { color: '#EAB308', label: 'Idle', glow: '0 0 8px #EAB30860', description: 'Running but no recent connections' },
+  red: { color: '#EF4444', label: 'Down', glow: '0 0 8px #EF444460', description: 'Process exited or not responding' },
 };
 
 export const getHealthInfo = (status: HealthStatus) => {

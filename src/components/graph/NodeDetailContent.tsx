@@ -14,16 +14,43 @@ interface NodeDetailContentProps {
   node: GraphNode;
   edges: GraphEdge[];
   allNodes: GraphNode[];
+  onTraceRequest?: (node: GraphNode) => void;
 }
 
 export function NodeDetailContent({
   node,
   edges,
   allNodes,
+  onTraceRequest,
 }: NodeDetailContentProps) {
   const accentColor = getServiceColor(node.type);
   const healthInfo = getHealthInfo(node.healthStatus);
-  const routes = node.routes || [];
+  const [localRoutes, setLocalRoutes] = useState(node.routes || []);
+  const [routeScannedAt, setRouteScannedAt] = useState<number | null>(null);
+  const [routeRescanning, setRouteRescanning] = useState(false);
+  const routes = localRoutes;
+
+  // Sync routes from props when the node updates (new snapshot data)
+  useEffect(() => {
+    setLocalRoutes(node.routes || []);
+  }, [node.routes]);
+
+  const handleRescanRoutes = useCallback(async () => {
+    if (!node.projectPath || routeRescanning) return;
+    setRouteRescanning(true);
+    try {
+      const result = await window.electronAPI.rescanRoutes(node.projectPath);
+      if (result.routes.length > 0 || localRoutes.length > 0) {
+        setLocalRoutes(result.routes);
+      }
+      setRouteScannedAt(result.scannedAt);
+    } catch {
+      // Silently fail — routes stay as-is
+    } finally {
+      setRouteRescanning(false);
+    }
+  }, [node.projectPath, routeRescanning, localRoutes.length]);
+
   const [externalApis, setExternalApis] = useState<ExternalApi[]>([]);
   const [externalApiLoading, setExternalApiLoading] = useState(false);
   const [externalApiError, setExternalApiError] = useState<string | null>(null);
@@ -130,12 +157,12 @@ export function NodeDetailContent({
               {healthInfo.label}
             </span>
           </div>
-          <div className="node-detail-health-meta">
-            <span className="node-detail-label">Last seen</span>
-            <span className="node-detail-value">
-              {formatLastSeen(node.lastSeen)}
-            </span>
-          </div>
+          <span className="node-detail-health-desc">
+            {healthInfo.description}
+          </span>
+          <span className="node-detail-health-lastseen">
+            Last seen {formatLastSeen(node.lastSeen)}
+          </span>
         </div>
       </div>
 
@@ -384,6 +411,16 @@ export function NodeDetailContent({
               {node.containerHealth.failingStreak !== undefined &&
                 node.containerHealth.failingStreak > 0 && (
                   <div className="docker-health-failing">
+                    {node.containerHealth.failingStreak} consecutive health{" "}
+                    {node.containerHealth.failingStreak === 1
+                      ? "check has"
+                      : "checks have"}{" "}
+                    failed
+                  </div>
+                )}
+              {node.containerHealth.failingStreak !== undefined &&
+                node.containerHealth.failingStreak > 0 && (
+                  <div className="docker-health-failing">
                     Failing streak: {node.containerHealth.failingStreak}
                   </div>
                 )}
@@ -587,6 +624,36 @@ export function NodeDetailContent({
               API Routes{" "}
               <span className="node-detail-count">{routes.length}</span>
             </h3>
+            <span className="node-detail-route-actions">
+              {routeScannedAt && (
+                <span className="node-detail-scanned-ago">
+                  scanned {formatLastSeen(routeScannedAt)}
+                </span>
+              )}
+              {node.projectPath && (
+                <button
+                  className="node-detail-rescan-btn"
+                  onClick={handleRescanRoutes}
+                  disabled={routeRescanning}
+                  title="Rescan routes"
+                >
+                  <svg
+                    width="12"
+                    height="12"
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    className={routeRescanning ? "spinning" : ""}
+                  >
+                    <path d="M1 8a7 7 0 0 1 13.2-3.2M15 8a7 7 0 0 1-13.2 3.2" />
+                    <polyline points="1 3 1 8 6 8" />
+                    <polyline points="15 13 15 8 10 8" />
+                  </svg>
+                </button>
+              )}
+            </span>
           </div>
           <div className="node-detail-routes">
             {routes.map((route, idx) => (
@@ -600,6 +667,34 @@ export function NodeDetailContent({
               </div>
             ))}
           </div>
+          {onTraceRequest && node.ports.length > 0 && (
+            <button
+              className="node-detail-trace-btn"
+              onClick={() => onTraceRequest(node)}
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 16 16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.2"
+                strokeLinecap="round"
+              >
+                <circle cx="3" cy="8" r="1.5" />
+                <circle cx="13" cy="8" r="1.5" />
+                <line x1="4.5" y1="8" x2="11.5" y2="8" />
+                <path
+                  d="M7.5 9l5-3M7.5 11l5 3"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.2"
+                  strokeLinecap="round"
+                />
+              </svg>
+              Trace request through stack
+            </button>
+          )}
         </div>
       )}
 

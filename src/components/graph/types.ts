@@ -1,10 +1,17 @@
-import type { GraphNode, GraphEdge } from '../../types/electron';
+import type {
+  GraphNode,
+  GraphEdge,
+  ServiceStatuses,
+} from "../../types/electron";
 
 export interface GraphViewProps {
   nodes: GraphNode[];
   edges: GraphEdge[];
   isContainerView?: boolean;
   onDatabaseClick?: (node: GraphNode) => void;
+  debugHighlightNodeIds?: Set<string>;
+  serviceStatus?: ServiceStatuses;
+  monitoringStartedAt?: number;
 }
 
 export interface NodePosition {

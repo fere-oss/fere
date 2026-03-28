@@ -326,6 +326,19 @@ export interface ExternalApi {
   hosts?: string[];
 }
 
+export type ServiceStatusCode = 'ok' | 'unavailable' | 'permission_denied' | 'timeout' | 'degraded';
+
+export interface ServiceStatus {
+  code: ServiceStatusCode;
+  message?: string;
+}
+
+export interface ServiceStatuses {
+  ports: ServiceStatus;
+  processes: ServiceStatus;
+  docker: ServiceStatus;
+}
+
 export interface SystemSnapshot {
   processes: Process[];
   ports: Port[];
@@ -337,6 +350,7 @@ export interface SystemSnapshot {
     processesAgeMs: number | null;
     portsAgeMs: number | null;
     connectionsAgeMs: number | null;
+    status?: ServiceStatuses;
   };
 }
 
@@ -480,8 +494,8 @@ export interface AlertPreferences {
 export interface AlertEvent {
   id: string;
   timestamp: number;
-  type: 'down' | 'recovery' | 'degraded' | 'container-stopped' | 'container-running';
-  category: 'down' | 'recovery' | 'degraded' | 'container';
+  type: 'down' | 'recovery' | 'degraded' | 'container-stopped' | 'container-running' | 'service-discovered' | 'service-gone';
+  category: 'down' | 'recovery' | 'degraded' | 'container' | 'discovery';
   serviceName: string;
   serviceType: string;
   nodeId: string;
@@ -531,6 +545,7 @@ export interface SnapshotDelta {
     processesAgeMs: number | null;
     portsAgeMs: number | null;
     connectionsAgeMs: number | null;
+    status?: ServiceStatuses;
   };
 }
 
@@ -573,6 +588,7 @@ export interface ElectronAPI {
   getEnvironmentSummary: () => Promise<EnvironmentSummary>;
   getSystemSnapshot: () => Promise<SystemSnapshot>;
   getExternalApis: (projectPath: string) => Promise<ExternalApi[]>;
+  rescanRoutes: (projectPath: string) => Promise<{ routes: Route[]; scannedAt: number | null }>;
 
   // Docker monitoring
   getDockerContainers: () => Promise<DockerContainer[]>;
@@ -619,6 +635,10 @@ export interface ElectronAPI {
   getNetworkPolicy: () => Promise<NetworkPolicyResult>;
   setNetworkPolicy: (policy: NetworkPolicy) => Promise<{ success: boolean; error?: string }>;
 
+  // Auto-Launch
+  getAutoLaunch: () => Promise<boolean>;
+  setAutoLaunch: (enabled: boolean) => Promise<{ success: boolean; error?: string }>;
+
   // Alert Preferences
   getAlertPreferences: () => Promise<AlertPreferences>;
   setAlertPreferences: (prefs: Partial<AlertPreferences>) => Promise<{ success: boolean; error?: string }>;
@@ -644,9 +664,10 @@ export interface ElectronAPI {
   // Analytics
   getAnalyticsId: () => Promise<string>;
 
-  // Share (GitHub Gist)
+  // Share / Export
   getShareSettings: () => Promise<ShareSettings>;
   saveGithubToken: (token: string) => Promise<{ success: boolean; error?: string }>;
+  exportGraphFile: (options: PublishGraphOptions) => Promise<{ success: boolean; filePath?: string; error?: string }>;
   publishGraph: (options: PublishGraphOptions) => Promise<PublishGraphResult>;
   updateSharedGraph: (options: PublishGraphOptions) => Promise<PublishGraphResult>;
 

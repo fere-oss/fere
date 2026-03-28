@@ -123,6 +123,27 @@ const CACHE_TTL_MS = 5000;
 const listeningCache = { timestamp: 0, data: [], promise: null };
 const connectionsCache = { timestamp: 0, data: [], promise: null };
 
+// Last known port collection status (updated on each lsof call)
+let lastPortStatus = { code: 'ok' };
+
+function classifyLsofError(error) {
+  if (error.code === 1) {
+    // lsof exit code 1 = no results found, that's fine
+    return { code: 'ok' };
+  }
+  const msg = String(error?.message || error?.stderr || '');
+  if (error.code === 'ENOENT' || /not found/i.test(msg)) {
+    return { code: 'unavailable', message: 'System network tool not found' };
+  }
+  if (/permission denied/i.test(msg)) {
+    return { code: 'permission_denied', message: 'Insufficient permissions for network scanning' };
+  }
+  if (error.killed || /timed?\s*out/i.test(msg)) {
+    return { code: 'timeout', message: 'Network scanning timed out' };
+  }
+  return { code: 'degraded', message: 'Network scanning encountered an error' };
+}
+
 async function runCached(cache, fetcher) {
   const now = Date.now();
   if (cache.data.length && now - cache.timestamp < CACHE_TTL_MS) {
@@ -153,11 +174,14 @@ async function getListeningPorts() {
   return runCached(listeningCache, async () => {
     try {
       const { stdout } = await execAsync('lsof -iTCP -sTCP:LISTEN -P -n 2>/dev/null');
+      lastPortStatus = { code: 'ok' };
       return parseListeningPorts(stdout);
     } catch (error) {
-      // lsof returns exit code 1 when no results found
-      if (error.code === 1) return [];
-      console.error('Error getting listening ports:', error);
+      const status = classifyLsofError(error);
+      lastPortStatus = status;
+      if (status.code !== 'ok') {
+        console.error('Error getting listening ports:', error);
+      }
       return [];
     }
   });
@@ -172,8 +196,14 @@ async function getEstablishedConnections() {
       const { stdout } = await execAsync('lsof -iTCP -sTCP:ESTABLISHED -P -n 2>/dev/null');
       return parseConnections(stdout);
     } catch (error) {
-      if (error.code === 1) return [];
-      console.error('Error getting connections:', error);
+      const status = classifyLsofError(error);
+      // Only update lastPortStatus if it was previously ok — listening is the primary signal
+      if (lastPortStatus.code === 'ok' && status.code !== 'ok') {
+        lastPortStatus = status;
+      }
+      if (status.code !== 'ok') {
+        console.error('Error getting connections:', error);
+      }
       return [];
     }
   });
@@ -264,6 +294,7 @@ module.exports = {
   getPortCacheInfo: () => ({
     listeningTimestamp: listeningCache.timestamp || 0,
     connectionsTimestamp: connectionsCache.timestamp || 0,
+    status: lastPortStatus,
   }),
   getListeningPortNumbers,
   clearPortCache,

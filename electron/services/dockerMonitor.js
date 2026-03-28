@@ -93,6 +93,55 @@ async function isDockerAvailable() {
   }
 }
 
+// Last known Docker service status (updated by getDockerStatus)
+let lastDockerStatus = { code: 'ok' };
+
+/**
+ * Diagnose Docker availability and return a structured ServiceStatus.
+ * Distinguishes: not installed, not running, permission denied, ok.
+ */
+async function getDockerStatus() {
+  // Step 1: Can we find the binary at all?
+  const bin = await resolveDockerBinary();
+  if (!bin) {
+    lastDockerStatus = {
+      code: 'unavailable',
+      message: 'Docker Desktop is not installed',
+    };
+    return lastDockerStatus;
+  }
+
+  // Step 2: Can we talk to the daemon?
+  try {
+    await runDocker(['info'], { allowFailure: true });
+    lastDockerStatus = { code: 'ok' };
+    return lastDockerStatus;
+  } catch (error) {
+    const msg = String(error?.message || error?.stderr || '');
+    if (/cannot connect|connection refused|daemon.*not running|Is the docker daemon running/i.test(msg)) {
+      lastDockerStatus = {
+        code: 'unavailable',
+        message: 'Docker Desktop is not running',
+      };
+    } else if (/permission denied|access denied/i.test(msg)) {
+      lastDockerStatus = {
+        code: 'permission_denied',
+        message: 'Cannot access Docker',
+      };
+    } else {
+      lastDockerStatus = {
+        code: 'degraded',
+        message: 'Docker encountered an error',
+      };
+    }
+    return lastDockerStatus;
+  }
+}
+
+function getLastDockerStatus() {
+  return lastDockerStatus;
+}
+
 // Cache compose service name lookups keyed by compose file path.
 // Entries are invalidated when the file's mtime changes.
 const composeServicesCache = new Map();
@@ -468,6 +517,19 @@ function parseMounts(inspectData) {
 }
 
 /**
+ * Strip curl progress meter and other noise from health check output.
+ * Docker captures both stdout and stderr, so curl's progress table leaks in.
+ */
+function cleanHealthCheckOutput(raw) {
+  if (!raw) return '';
+  const lines = raw.split('\n')
+    .map(l => l.trim())
+    .filter(l => l && !/^% Total|% Received|Xferd|Average|Dload|Upload|--:--:--|^\s*\d+\s+\d+\s+\d+\s+\d+/.test(l));
+  const cleaned = lines.join(' ').substring(0, 200);
+  return cleaned;
+}
+
+/**
  * Parse health status from container inspect data
  */
 function parseHealth(inspectData) {
@@ -486,7 +548,7 @@ function parseHealth(inspectData) {
         start: log.Start,
         end: log.End,
         exitCode: log.ExitCode,
-        output: log.Output?.substring(0, 200), // Truncate output
+        output: cleanHealthCheckOutput(log.Output),
       })),
     };
   }
@@ -848,6 +910,8 @@ async function startContainer(containerId) {
 
 module.exports = {
   isDockerAvailable,
+  getDockerStatus,
+  getLastDockerStatus,
   getDockerContainers,
   getDockerNetworks,
   getDockerSnapshot,

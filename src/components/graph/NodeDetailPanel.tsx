@@ -1,17 +1,26 @@
-import { useEffect } from 'react';
-import type { GraphNode, GraphEdge } from '../../types/electron';
-import { getServiceColor, getTypeBadge } from './constants';
-import { NodeDetailContent } from './NodeDetailContent';
+import { useEffect } from "react";
+import type { GraphNode, GraphEdge } from "../../types/electron";
+import { getServiceColor, getTypeBadge } from "./constants";
+import { NodeDetailContent } from "./NodeDetailContent";
+import { NodeClickHint, hasSeenNodeClickHint } from "../OnboardingHints";
 
 interface NodeDetailPanelProps {
   node: GraphNode;
   edges: GraphEdge[];
   allNodes: GraphNode[];
   onClose: () => void;
+  onTraceRequest?: (node: GraphNode) => void;
 }
 
-export function NodeDetailPanel({ node, edges, allNodes, onClose }: NodeDetailPanelProps) {
+export function NodeDetailPanel({
+  node,
+  edges,
+  allNodes,
+  onClose,
+  onTraceRequest,
+}: NodeDetailPanelProps) {
   const accentColor = getServiceColor(node.type);
+  const showHint = !hasSeenNodeClickHint();
 
   const handleBackdropClick = (e: React.MouseEvent) => {
     if (e.target === e.currentTarget) {
@@ -25,20 +34,25 @@ export function NodeDetailPanel({ node, edges, allNodes, onClose }: NodeDetailPa
 
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === "Escape") onClose();
     };
-    window.addEventListener('keydown', handleEscape);
-    return () => window.removeEventListener('keydown', handleEscape);
+    window.addEventListener("keydown", handleEscape);
+    return () => window.removeEventListener("keydown", handleEscape);
   }, [onClose]);
 
   return (
-    <div className="node-detail-backdrop" onClick={handleBackdropClick} onWheel={handleWheel}>
+    <div
+      className="node-detail-backdrop"
+      onClick={handleBackdropClick}
+      onWheel={handleWheel}
+    >
+      {showHint && <NodeClickHint />}
       <div
         className="node-detail-panel"
-        onMouseDown={e => e.stopPropagation()}
-        onWheel={e => e.stopPropagation()}
-        onMouseDownCapture={e => e.stopPropagation()}
-        onWheelCapture={e => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
+        onWheel={(e) => e.stopPropagation()}
+        onMouseDownCapture={(e) => e.stopPropagation()}
+        onWheelCapture={(e) => e.stopPropagation()}
       >
         <div className="node-detail-header">
           <div className="node-detail-header-main">
@@ -64,12 +78,15 @@ export function NodeDetailPanel({ node, edges, allNodes, onClose }: NodeDetailPa
               </div>
             </div>
           </div>
-          <button className="node-detail-close" onClick={onClose}>×</button>
+          <button className="node-detail-close" onClick={onClose}>
+            ×
+          </button>
         </div>
         <NodeDetailContent
           node={node}
           edges={edges}
           allNodes={allNodes}
+          onTraceRequest={onTraceRequest}
         />
       </div>
     </div>

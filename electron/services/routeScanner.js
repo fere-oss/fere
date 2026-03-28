@@ -551,9 +551,24 @@ function matchRoutesToService(routes, service) {
   return serviceRoutes;
 }
 
+function getRouteCacheTimestamp(projectPath) {
+  const cached = routeCache.get(projectPath);
+  return cached ? cached.timestamp : null;
+}
+
+function clearRouteCache(projectPath) {
+  if (projectPath) {
+    routeCache.delete(projectPath);
+  } else {
+    routeCache.clear();
+  }
+}
+
 module.exports = {
   scanRoutes,
   matchRoutesToService,
   findFiles,
   detectFramework,
+  getRouteCacheTimestamp,
+  clearRouteCache,
 };

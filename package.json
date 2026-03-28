@@ -1,6 +1,6 @@
 {
   "name": "fere",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Visualize your local development environment in real-time",
   "author": "Rahul Thennarasu",
   "license": "MIT",
@@ -30,6 +30,7 @@
     "reactflow": "^11.11.4",
     "rehype-highlight": "^7.0.2",
     "typescript": "^4.9.5",
+    "electron-updater": "^6.8.3",
     "web-vitals": "^2.1.4"
   },
   "devDependencies": {
@@ -104,6 +105,11 @@
     ],
     "directories": {
       "buildResources": "assets"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "RahulThennarasu",
+      "repo": "fere-macOS"
     }
   },
   "eslintConfig": {
