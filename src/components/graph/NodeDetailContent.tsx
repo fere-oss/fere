@@ -405,29 +405,6 @@ export function NodeDetailContent({
                     Failing streak: {node.containerHealth.failingStreak}
                   </div>
                 )}
-              {node.containerHealth.checks &&
-                node.containerHealth.checks.length > 0 && (
-                  <div className="docker-health-checks">
-                    <span className="docker-health-checks-label">
-                      Recent checks:
-                    </span>
-                    {node.containerHealth.checks.map((check, idx) => (
-                      <div
-                        key={idx}
-                        className={`docker-health-check ${check.exitCode === 0 ? "success" : "failure"}`}
-                      >
-                        <span className="docker-health-check-code">
-                          Exit: {check.exitCode}
-                        </span>
-                        {check.output && (
-                          <span className="docker-health-check-output">
-                            {check.output.substring(0, 50)}
-                          </span>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
             </div>
           </div>
         )}
