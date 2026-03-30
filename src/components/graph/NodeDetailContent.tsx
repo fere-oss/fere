@@ -118,9 +118,9 @@ export function NodeDetailContent({
   return (
     <div className="node-detail-content">
       <div className="node-detail-section">
-        <h3 className="node-detail-section-title">Health Status</h3>
+        <h3 className="node-detail-section-title">Status</h3>
         <div className="node-detail-health">
-          <div className="node-detail-health-indicator">
+          <div className="node-detail-health-row">
             <div
               className="node-detail-health-dot"
               style={{
@@ -134,13 +134,27 @@ export function NodeDetailContent({
             >
               {healthInfo.label}
             </span>
-          </div>
-          <div className="node-detail-health-meta">
-            <span className="node-detail-label">Last seen</span>
-            <span className="node-detail-value">
+            <span className="node-detail-health-seen">
               {formatLastSeen(node.lastSeen)}
             </span>
           </div>
+          {node.isDockerContainer && (node.containerState || (node.containerHealth && node.containerHealth.status !== "unknown")) && (
+            <div className="node-detail-health-details">
+              {node.containerState && (
+                <span className={`node-detail-health-tag docker-state-${node.containerState}`}>
+                  {node.containerState}
+                </span>
+              )}
+              {node.containerHealth && node.containerHealth.status !== "unknown" && (
+                <span className={`node-detail-health-tag docker-health-${node.containerHealth.status}`}>
+                  {node.containerHealth.status}
+                  {node.containerHealth.failingStreak !== undefined &&
+                    node.containerHealth.failingStreak > 0 &&
+                    ` · ${node.containerHealth.failingStreak} failing`}
+                </span>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -335,14 +349,6 @@ export function NodeDetailContent({
               </span>
             </div>
             <div className="node-detail-item">
-              <span className="node-detail-label">State</span>
-              <span
-                className={`node-detail-value docker-state docker-state-${node.containerState}`}
-              >
-                {node.containerState}
-              </span>
-            </div>
-            <div className="node-detail-item">
               <span className="node-detail-label">CPU</span>
               <span className="node-detail-value mono">
                 {node.cpu.toFixed(1)}%
@@ -364,17 +370,6 @@ export function NodeDetailContent({
               {node.containerImage}
             </span>
           </div>
-          {node.containerStatus && (
-            <div
-              className="node-detail-item full-width"
-              style={{ marginTop: "4px" }}
-            >
-              <span className="node-detail-label">Status</span>
-              <span className="node-detail-value small">
-                {node.containerStatus}
-              </span>
-            </div>
-          )}
         </div>
       )}
 
@@ -388,26 +383,6 @@ export function NodeDetailContent({
           />
         )}
 
-      {node.isDockerContainer &&
-        node.containerHealth &&
-        node.containerHealth.status !== "unknown" && (
-          <div className="node-detail-section">
-            <h3 className="node-detail-section-title">Container Health</h3>
-            <div className="node-detail-docker-health">
-              <div
-                className={`docker-health-status docker-health-${node.containerHealth.status}`}
-              >
-                {node.containerHealth.status}
-              </div>
-              {node.containerHealth.failingStreak !== undefined &&
-                node.containerHealth.failingStreak > 0 && (
-                  <div className="docker-health-failing">
-                    Failing streak: {node.containerHealth.failingStreak}
-                  </div>
-                )}
-            </div>
-          </div>
-        )}
 
       {node.isDockerContainer &&
         node.containerNetworks &&
