@@ -10713,11 +10713,9 @@ textarea {
   width: min(420px, calc(100vw - 32px));
   max-width: calc(100vw - 24px);
   background: var(--bg-white);
-  border-radius: 22px;
+  border-radius: 12px;
   border: 1px solid var(--border-color);
-  box-shadow:
-    0 18px 56px rgba(15, 23, 42, 0.12),
-    0 2px 10px rgba(15, 23, 42, 0.04);
+  box-shadow: -4px 0 24px rgba(0, 0, 0, 0.12);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -10884,9 +10882,9 @@ textarea {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  border: 1px solid #fde68a;
-  background: #fffbeb;
-  border-radius: 14px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-primary);
+  border-radius: 10px;
   padding: 10px 12px;
 }
 
@@ -10902,13 +10900,13 @@ textarea {
   height: 8px;
   flex-shrink: 0;
   border-radius: 999px;
-  background: #d97706;
+  background: var(--blue);
 }
 
 .agp-watch-banner-title {
   font-size: 11.5px;
   font-weight: 500;
-  color: #92400e;
+  color: var(--text-secondary);
   line-height: 1.4;
 }
 
@@ -10938,13 +10936,13 @@ textarea {
 
 .agp-row {
   border: 1px solid var(--border-color);
-  border-radius: 14px;
+  border-radius: 10px;
   background: var(--bg-white);
   overflow: hidden;
 }
 
 .agp-row-new {
-  border-color: #fcd34d;
+  border-color: #f59e0b;
 }
 
 .agp-row-header {
@@ -11129,8 +11127,8 @@ textarea {
   align-items: center;
   font-size: 10px;
   font-weight: 500;
-  color: #7c3aed;
-  background: #f5f3ff;
+  color: var(--blue);
+  background: rgba(0, 120, 212, 0.08);
   padding: 1px 5px;
   border-radius: 3px;
   flex-shrink: 0;
@@ -11173,9 +11171,9 @@ textarea {
   align-items: center;
   gap: 5px;
   font-size: 11px;
-  color: #7c3aed;
-  background: #f5f3ff;
-  border: 1px solid #ede9fe;
+  color: var(--blue);
+  background: rgba(0, 120, 212, 0.08);
+  border: 1px solid rgba(0, 120, 212, 0.2);
   border-radius: 5px;
   padding: 5px 8px;
   line-height: 1.4;
@@ -11188,9 +11186,9 @@ textarea {
 
 /* Health score bar */
 .agp-score-bar {
-  background: var(--bg-white);
+  background: var(--bg-primary);
   border: 1px solid var(--border-color);
-  border-radius: 16px;
+  border-radius: 10px;
   padding: 12px 14px;
 }
 
@@ -11278,8 +11276,8 @@ textarea {
 
 /* Action row */
 .agp-action-row {
-  background: var(--bg-muted);
-  border-radius: 8px;
+  background: var(--bg-primary);
+  border-radius: 7px;
   padding: 8px 10px;
   display: flex;
   flex-direction: column;
@@ -11288,7 +11286,7 @@ textarea {
 }
 
 .agp-code-block {
-  background: #f6f8fa;
+  background: var(--bg-white);
   border-radius: 7px;
   padding: 10px 12px;
   overflow-x: auto;
@@ -11296,10 +11294,10 @@ textarea {
   font-family: var(--font-mono);
   font-size: 11.5px;
   line-height: 1.6;
-  color: #24292f;
+  color: var(--text-secondary);
   white-space: pre;
   word-break: normal;
-  border: 1px solid #e1e4e8;
+  border: 1px solid var(--border-color);
   position: relative;
 }
 
@@ -11318,7 +11316,7 @@ textarea {
   right: 10px;
   font-size: 10px;
   font-family: var(--font-mono);
-  color: #6a737d;
+  color: var(--text-faint);
   text-transform: lowercase;
   pointer-events: none;
 }

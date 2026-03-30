@@ -53,9 +53,9 @@ function CodeBlock({ code }: { code: string }) {
             return (
               <span key={i}>
                 {m[1]}
-                <span style={{ color: "#0078d4" }}>{m[2]}</span>
-                <span style={{ color: "#a3a3a3" }}>{m[3]}</span>
-                <span style={{ color: "#525252" }}>{m[4]}</span>
+                <span style={{ color: "var(--blue)" }}>{m[2]}</span>
+                <span style={{ color: "var(--text-faint)" }}>{m[3]}</span>
+                <span style={{ color: "var(--text-secondary)" }}>{m[4]}</span>
                 {"\n"}
               </span>
             );
@@ -64,8 +64,8 @@ function CodeBlock({ code }: { code: string }) {
           if (li) {
             return (
               <span key={i}>
-                <span style={{ color: "#a3a3a3" }}>{li[1]}</span>
-                <span style={{ color: "#525252" }}>{li[2]}</span>
+                <span style={{ color: "var(--text-faint)" }}>{li[1]}</span>
+                <span style={{ color: "var(--text-secondary)" }}>{li[2]}</span>
                 {"\n"}
               </span>
             );
@@ -77,15 +77,15 @@ function CodeBlock({ code }: { code: string }) {
               {parts.map((part, j) => {
                 if (j === 0) {
                   return (
-                    <span key={j} style={{ color: "#0a0a0a", fontWeight: 500 }}>
+                    <span key={j} style={{ color: "var(--text-primary)", fontWeight: 500 }}>
                       {part}
                     </span>
                   );
                 }
-                if (part === "|") return <span key={j} style={{ color: "#0078d4" }}>{part}</span>;
-                if (/^-/.test(part)) return <span key={j} style={{ color: "#a3a3a3" }}>{part}</span>;
+                if (part === "|") return <span key={j} style={{ color: "var(--blue)" }}>{part}</span>;
+                if (/^-/.test(part)) return <span key={j} style={{ color: "var(--text-faint)" }}>{part}</span>;
                 if (/^\d+$/.test(part.trim())) {
-                  return <span key={j} style={{ color: "#d97706" }}>{part}</span>;
+                  return <span key={j} style={{ color: "#b45309" }}>{part}</span>;
                 }
                 return <span key={j}>{part}</span>;
               })}
@@ -106,19 +106,19 @@ const SEVERITY_DOT: Record<string, string> = {
 };
 
 const CATEGORY_META: Record<AgentCategory, { label: string; color: string; bg: string }> = {
-  health: { label: "Health", color: "#dc2626", bg: "#fef2f2" },
-  connectivity: { label: "Connectivity", color: "#7c3aed", bg: "#f5f3ff" },
-  config: { label: "Config", color: "#b45309", bg: "#fffbeb" },
-  security: { label: "Security", color: "#c2410c", bg: "#fff7ed" },
+  health: { label: "Health", color: "#b91c1c", bg: "#fef2f2" },
+  connectivity: { label: "Connectivity", color: "var(--blue)", bg: "rgba(0, 120, 212, 0.1)" },
+  config: { label: "Config", color: "#92400e", bg: "#fffbeb" },
+  security: { label: "Security", color: "#9a3412", bg: "#fff7ed" },
   dependency: { label: "Dependency", color: "#0369a1", bg: "#f0f9ff" },
 };
 
 const KW_COLORS = {
-  keyword: "#d73a49",
-  string: "#032f62",
-  comment: "#6a737d",
-  number: "#005cc5",
-  decorator: "#e36209",
+  keyword: "var(--blue)",
+  string: "#065f46",
+  comment: "var(--text-faint)",
+  number: "#b45309",
+  decorator: "#0f766e",
 };
 
 type TokenType = keyof typeof KW_COLORS;
