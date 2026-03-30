@@ -2143,6 +2143,49 @@ textarea {
   font-weight: 600;
 }
 
+.service-node-resources {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 4px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.service-node-resource {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.service-node-resource svg {
+  opacity: 0.5;
+  flex-shrink: 0;
+}
+
+.service-node-resource-value {
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.compact-node-resources {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.compact-node-resource {
+  color: var(--text-secondary);
+}
+
+.compact-node-resource-sep {
+  opacity: 0.4;
+}
+
 .service-node-routes {
   margin-top: 12px;
   padding-top: 12px;

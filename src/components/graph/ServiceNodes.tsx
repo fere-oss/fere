@@ -158,6 +158,14 @@ export function CompactServiceNode({
         </div>
       )}
 
+      {node.pid > 0 && (
+        <div className="compact-node-resources">
+          <span className="compact-node-resource">{node.cpu.toFixed(1)}%</span>
+          <span className="compact-node-resource-sep">/</span>
+          <span className="compact-node-resource">{node.memory.toFixed(1)}%</span>
+        </div>
+      )}
+
       {node.containerNetworks && node.containerNetworks.length > 0 && (
         <div className="compact-node-networks">
           <svg
@@ -542,6 +550,41 @@ export const ServiceNode = React.memo(function ServiceNode({
           >
             :{mainPort}
           </span>
+        </div>
+      )}
+
+      {!isDownLike && (node.pid > 0 || (node.isDockerContainer && node.memoryUsage)) && (
+        <div className="service-node-resources">
+          {node.pid > 0 && (
+            <div className="service-node-resource" title={`CPU: ${node.cpu.toFixed(1)}%`}>
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="4" y="4" width="16" height="16" rx="2" />
+                <rect x="9" y="9" width="6" height="6" />
+                <path d="M15 2v2M9 2v2M15 20v2M9 20v2M2 15h2M2 9h2M20 15h2M20 9h2" />
+              </svg>
+              <span className="service-node-resource-value">{node.cpu.toFixed(1)}%</span>
+            </div>
+          )}
+          {node.pid > 0 && (
+            <div className="service-node-resource" title={`Memory: ${node.memory.toFixed(1)}%`}>
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M6 19v-14a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2z" />
+                <path d="M6 9h12" />
+                <path d="M2 6h2M2 10h2M2 14h2M2 18h2M20 6h2M20 10h2M20 14h2M20 18h2" />
+              </svg>
+              <span className="service-node-resource-value">{node.memory.toFixed(1)}%</span>
+            </div>
+          )}
+          {node.isDockerContainer && node.memoryUsage && node.pid <= 0 && (
+            <div className="service-node-resource" title={`Memory: ${node.memoryUsage}`}>
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M6 19v-14a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2z" />
+                <path d="M6 9h12" />
+                <path d="M2 6h2M2 10h2M2 14h2M2 18h2M20 6h2M20 10h2M20 14h2M20 18h2" />
+              </svg>
+              <span className="service-node-resource-value">{node.memoryUsage}</span>
+            </div>
+          )}
         </div>
       )}
 
