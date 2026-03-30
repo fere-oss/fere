@@ -31,6 +31,34 @@ const DEV_PATTERNS_RE = new RegExp(
   DEV_PATTERNS.map(p => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')
 );
 
+// IDE/editor background processes to exclude (language servers, extensions, etc.)
+const IDE_EXCLUDE_PATTERNS = [
+  // VS Code extensions & helpers
+  'vscode-', '.vscode', 'extensionhost',
+  'code helper', 'code - insiders helper',
+  // Language servers
+  'typescript-language-server', 'tsserver',
+  'pylsp', 'pyright', 'jedi-language-server',
+  'gopls', 'rust-analyzer', 'clangd', 'sourcekit-lsp',
+  'jdtls', 'eclipse.jdt', 'redhat.java',
+  'haskell-language-server', 'lua-language-server',
+  'omnisharp', 'solargraph', 'sorbet', 'ruby-lsp',
+  'tailwindcss-language-server', 'css-languageserver',
+  'html-languageserver', 'json-languageserver',
+  'yaml-language-server', 'bash-language-server',
+  // JetBrains
+  'jetbrains', 'intellij', 'pycharm', 'webstorm',
+  'goland', 'rider', 'clion', 'phpstorm', 'rubymine',
+  'datagrip', 'fsnotifier',
+  // Generic language server pattern
+  'language-server', 'languageserver', 'lsp-server',
+];
+
+const IDE_EXCLUDE_RE = new RegExp(
+  IDE_EXCLUDE_PATTERNS.map(p => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'),
+  'i'
+);
+
 // Wrapper process names that should show their script argument
 const WRAPPER_NAMES = new Set(['node', 'python', 'python3', 'ruby']);
 
@@ -61,7 +89,8 @@ function extractProcessName(command) {
  */
 function isDevProcess(process) {
   const cmdLower = process.command.toLowerCase();
-  return DEV_PATTERNS_RE.test(cmdLower);
+  if (!DEV_PATTERNS_RE.test(cmdLower)) return false;
+  return !IDE_EXCLUDE_RE.test(cmdLower);
 }
 
 function filterDevProcesses(processes) {
