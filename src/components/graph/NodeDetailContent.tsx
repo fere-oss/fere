@@ -28,6 +28,40 @@ export function NodeDetailContent({
 }: NodeDetailContentProps) {
   const accentColor = getServiceColor(node.type);
   const healthInfo = getHealthInfo(node.healthStatus);
+  const isDownLike = !!node.isGhost || node.healthStatus === "red";
+  const startCommand = node.startCommand || node.command || "";
+  const startProjectPath = node.startProjectPath || node.projectPath || "";
+  const canStart =
+    isDownLike &&
+    (node.isDockerContainer || (startCommand && startProjectPath));
+  const [starting, setStarting] = useState(false);
+
+  const handleStart = useCallback(async () => {
+    if (starting) return;
+    setStarting(true);
+    let started = false;
+    try {
+      if (node.isDockerContainer) {
+        const id = node.containerId || node.name;
+        const result = await window.electronAPI.startContainer(id);
+        started = !!result?.success;
+      } else if (startCommand && startProjectPath) {
+        const result = await window.electronAPI.startProcess(
+          startCommand,
+          startProjectPath,
+        );
+        started = !!result?.success;
+      }
+    } catch {
+      // snapshot will reflect actual state
+    } finally {
+      if (started) {
+        window.dispatchEvent(new CustomEvent("fere:refresh-snapshot"));
+      }
+      setTimeout(() => setStarting(false), 3000);
+    }
+  }, [node, startCommand, startProjectPath, starting]);
+
   const routes = node.routes || [];
   const [externalApis, setExternalApis] = useState<ExternalApi[]>([]);
   const [externalApiLoading, setExternalApiLoading] = useState(false);
@@ -154,6 +188,42 @@ export function NodeDetailContent({
                 </span>
               )}
             </div>
+          )}
+          {canStart && (
+            <button
+              className="node-detail-start-btn"
+              onClick={handleStart}
+              disabled={starting}
+            >
+              {starting ? (
+                <>
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    className="node-detail-start-spinner"
+                  >
+                    <path d="M8 1v3M8 12v3M1 8h3M12 8h3" strokeLinecap="round" />
+                  </svg>
+                  Starting...
+                </>
+              ) : (
+                <>
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 16 16"
+                    fill="currentColor"
+                  >
+                    <path d="M4 2l10 6-10 6V2z" />
+                  </svg>
+                  Start Service
+                </>
+              )}
+            </button>
           )}
         </div>
       </div>
