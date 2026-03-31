@@ -1684,7 +1684,6 @@ function App() {
                         nodes={filteredData.nodes}
                         edges={filteredData.edges}
                         debugHighlightNodeIds={debugHighlightNodeIds}
-                        labelsVisible
                       />
                     )}
                   </div>

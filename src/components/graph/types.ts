@@ -6,7 +6,6 @@ export interface GraphViewProps {
   isContainerView?: boolean;
   onDatabaseClick?: (node: GraphNode) => void;
   debugHighlightNodeIds?: Set<string>;
-  labelsVisible?: boolean;
 }
 
 export interface NodePosition {

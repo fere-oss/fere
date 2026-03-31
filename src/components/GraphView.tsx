@@ -13,10 +13,8 @@ import { ContextMenu } from "./graph/ContextMenu";
 import { NodeDetailPanel } from "./graph/NodeDetailPanel";
 import { flowNodeTypes, HoverContext } from "./graph/flowNodes";
 import { flowEdgeTypes, type ArrowEdgeData } from "./graph/ArrowEdge";
-import { getConnectionLabel } from "./graph/connectionDescriptions";
 import { FLOW_LAYOUT, buildFlowLayout } from "./graph/flowLayout";
 import type { GraphViewProps } from "./graph/types";
-import { LabelsContext } from "./graph/LabelsContext";
 import { useExternalApis } from "./graph/useExternalApis";
 import { useGraphLayoutData } from "./graph/useGraphLayoutData";
 import { useNodeMeasurements } from "./graph/useNodeMeasurements";
@@ -152,7 +150,6 @@ export function GraphView({
   isContainerView = false,
   onDatabaseClick,
   debugHighlightNodeIds,
-  labelsVisible = false,
 }: GraphViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
@@ -554,9 +551,6 @@ export function GraphView({
       }
       const src = endpoint(srcPos, srcH, srcSide);
       const tgt = endpoint(tgtPos, tgtH, tgtSide);
-      const targetNode = layoutLookup.get(edge.target)?.node;
-      const targetType = targetNode?.type || "service";
-      const targetPort = targetNode?.ports?.[0]?.port || 0;
       const data: ArrowEdgeData = {
         sx: src.x,
         sy: src.y,
@@ -566,7 +560,6 @@ export function GraphView({
         targetPos: tgt.pos,
         bundleCount: (edge as typeof edge & { _bundleCount?: number })
           ._bundleCount,
-        connectionLabel: labelsVisible ? getConnectionLabel(targetType, targetPort) : null,
       };
       return [{
         id: edge.id,
@@ -934,7 +927,6 @@ export function GraphView({
       <ActivePorts nodes={layoutNodes} reactFlowInstance={reactFlowInstance} />
 
       <div className={`graph-flow${viewportReady ? "" : " graph-flow-hidden"}`}>
-        <LabelsContext.Provider value={labelsVisible}>
         <HoverContext.Provider value={hoverState}>
           <ReactFlow
             nodes={flowLayout.nodes}
@@ -1010,7 +1002,6 @@ export function GraphView({
             </Controls>
           </ReactFlow>
         </HoverContext.Provider>
-        </LabelsContext.Provider>
       </div>
 
       {/* Context Menu */}
