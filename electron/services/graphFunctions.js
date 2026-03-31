@@ -447,6 +447,105 @@ function categorizeContainerImage(image) {
   return 'container';
 }
 
+/**
+ * Returns a specific, human-readable description for a Docker container
+ * based on its image name, instead of the generic "Docker container running X".
+ */
+function getContainerDescription(image, type) {
+  const img = (image || '').toLowerCase();
+
+  // Databases
+  if (img.includes('postgres') || img.includes('pg')) return 'PostgreSQL — relational database for structured data and complex queries.';
+  if (img.includes('mysql')) return 'MySQL — relational database for web applications and transactional workloads.';
+  if (img.includes('mariadb')) return 'MariaDB — MySQL-compatible relational database with additional storage engines.';
+  if (img.includes('mongo')) return 'MongoDB — document database that stores data as flexible JSON-like documents.';
+  if (img.includes('sqlite')) return 'SQLite — lightweight embedded database for local or single-user storage.';
+  if (img.includes('elasticsearch')) return 'Elasticsearch — distributed search and analytics engine for full-text search.';
+  if (img.includes('opensearch')) return 'OpenSearch — search and analytics engine, fork of Elasticsearch.';
+  if (img.includes('meilisearch')) return 'Meilisearch — fast, typo-tolerant search engine for user-facing search.';
+  if (img.includes('typesense')) return 'Typesense — open-source search engine optimized for instant search.';
+  if (img.includes('solr')) return 'Apache Solr — enterprise search platform built on Apache Lucene.';
+
+  // Caches
+  if (img.includes('redis')) return 'Redis — in-memory key-value store used for caching, sessions, and pub/sub.';
+  if (img.includes('memcached')) return 'Memcached — high-performance in-memory cache for reducing database load.';
+
+  // Message brokers
+  if (img.includes('rabbitmq')) return 'RabbitMQ — message broker that routes messages between services via queues.';
+  if (img.includes('kafka')) return 'Kafka — distributed event streaming platform for high-throughput data pipelines.';
+  if (img.includes('nats')) return 'NATS — lightweight messaging system for microservice communication.';
+  if (img.includes('zookeeper')) return 'ZooKeeper — coordination service for distributed systems and Kafka clusters.';
+  if (img.includes('activemq')) return 'ActiveMQ — enterprise message broker supporting multiple protocols.';
+  if (img.includes('pulsar')) return 'Apache Pulsar — distributed pub-sub messaging with built-in storage.';
+  if (img.includes('mosquitto')) return 'Mosquitto — lightweight MQTT broker for IoT and device messaging.';
+
+  // Web servers / proxies
+  if (img.includes('nginx')) return 'Nginx — reverse proxy and load balancer that routes traffic to backend services.';
+  if (img.includes('apache') || img.includes('httpd')) return 'Apache — web server that serves static files and proxies to application servers.';
+  if (img.includes('traefik')) return 'Traefik — auto-discovering reverse proxy that routes traffic based on container labels.';
+  if (img.includes('haproxy')) return 'HAProxy — high-availability load balancer for TCP and HTTP traffic.';
+  if (img.includes('envoy')) return 'Envoy — service mesh proxy for observability, security, and traffic management.';
+  if (img.includes('caddy')) return 'Caddy — web server with automatic HTTPS and reverse proxy capabilities.';
+
+  // Frontends
+  if (img.includes('react') || img.includes('vue') || img.includes('angular')) return 'Frontend dev server — serves the browser-side UI with hot reload.';
+
+  // Language runtimes / frameworks
+  if (img.includes('fastapi')) return 'FastAPI — async Python web framework for building REST APIs.';
+  if (img.includes('django')) return 'Django — Python web framework with ORM, admin, and built-in auth.';
+  if (img.includes('flask')) return 'Flask — lightweight Python web framework for APIs and microservices.';
+  if (img.includes('express')) return 'Express — minimal Node.js web framework for building APIs and web apps.';
+  if (img.includes('nestjs')) return 'NestJS — TypeScript Node.js framework with dependency injection and modules.';
+  if (img.includes('spring')) return 'Spring — Java framework for enterprise APIs and microservices.';
+  if (img.includes('rails')) return 'Ruby on Rails — full-stack web framework with convention-over-configuration.';
+  if (img.includes('laravel')) return 'Laravel — PHP web framework with expressive syntax and built-in tooling.';
+  if (img.includes('python')) return 'Python application — runs a Python process inside the container.';
+  if (img.includes('node')) return 'Node.js application — runs a JavaScript/TypeScript process inside the container.';
+  if (img.includes('ruby')) return 'Ruby application — runs a Ruby process inside the container.';
+  if (img.includes('golang') || img.includes('go:')) return 'Go application — runs a compiled Go binary inside the container.';
+  if (img.includes('openjdk') || img.includes('java')) return 'Java application — runs a JVM process inside the container.';
+  if (img.includes('php')) return 'PHP application — runs PHP scripts inside the container.';
+
+  // Workers
+  if (img.includes('celery')) return 'Celery — distributed task queue for running background jobs in Python.';
+  if (img.includes('sidekiq')) return 'Sidekiq — background job processor for Ruby applications using Redis.';
+  if (img.includes('resque')) return 'Resque — Redis-backed job queue for Ruby background processing.';
+  if (img.includes('worker')) return 'Worker process — handles background tasks and async job processing.';
+
+  // Object storage
+  if (img.includes('minio')) return 'MinIO — S3-compatible object storage for local development and testing.';
+  if (img.includes('localstack')) return 'LocalStack — local AWS cloud emulator for offline development and testing.';
+
+  // Infrastructure
+  if (img.includes('vault')) return 'HashiCorp Vault — secrets management and encryption as a service.';
+  if (img.includes('consul')) return 'HashiCorp Consul — service discovery and configuration management.';
+  if (img.includes('etcd')) return 'etcd — distributed key-value store for shared configuration and service discovery.';
+  if (img.includes('keycloak')) return 'Keycloak — identity and access management for authentication and SSO.';
+  if (img.includes('authelia')) return 'Authelia — authentication and authorization server with 2FA support.';
+
+  // Observability
+  if (img.includes('prometheus')) return 'Prometheus — metrics collection and alerting for monitoring infrastructure.';
+  if (img.includes('grafana')) return 'Grafana — dashboarding and visualization for metrics and logs.';
+  if (img.includes('jaeger')) return 'Jaeger — distributed tracing for monitoring microservice request flows.';
+
+  // Mail
+  if (img.includes('mailhog') || img.includes('mailpit') || img.includes('mailtrap')) return 'Mail catcher — captures outgoing emails for local development testing.';
+
+  const TYPE_DESCRIPTIONS = {
+    'backend': 'Backend service that handles API requests and business logic.',
+    'frontend': 'Frontend service that serves the user interface.',
+    'database': 'Database service for persistent data storage.',
+    'cache': 'In-memory cache for fast data access.',
+    'broker': 'Message broker that routes messages between services.',
+    'webserver': 'Web server that handles HTTP traffic and routing.',
+    'worker': 'Background worker that processes async tasks.',
+    'nodejs': 'Node.js service handling server-side JavaScript.',
+    'python': 'Python service handling backend logic.',
+    'realtime': 'Real-time service for live data streaming.',
+  };
+  return TYPE_DESCRIPTIONS[type] || null;
+}
+
 // Hoisted to module level — avoids Set recreation on every call
 const ALLOWED_CONTAINER_TYPES = new Set([
   'frontend', 'backend', 'webserver', 'database', 'cache', 'nodejs',
@@ -748,7 +847,7 @@ function enhanceNodeWithDockerInfo(node, container) {
   node.containerMounts = container.mounts;
   node.containerPorts = container.ports;
   node.memoryUsage = container.memoryUsage;
-  node.description = `Docker container: ${container.image}`;
+  node.description = getContainerDescription(container.image, containerType);
 
   // Override command to the "docker: {image} | {runtime}" format so that
   // brand/icon detection (inferServiceBrand) can extract the real runtime
@@ -1154,7 +1253,96 @@ function buildGraphStructure({
     node.routes = matchRoutesToService(routes, node);
   }
 
+  // Enrich descriptions with connection context so labels describe
+  // what each service does *in this project*, not just what it is generically.
+  enrichDescriptionsWithConnections(nodes, edges);
+
   return { nodes, edges, dockerSnapshot: dockerSnapshot || null };
+}
+
+// Types where "used by X, Y" makes sense (infrastructure that serves other services)
+const INFRA_TYPES = new Set(['database', 'cache', 'broker']);
+// Types where "connects to X, Y" makes sense (application services that call infra)
+const APP_TYPES = new Set(['backend', 'frontend', 'nodejs', 'python', 'worker', 'realtime']);
+
+/**
+ * Post-processing pass: enrich node descriptions with connection context.
+ * Turns "Relational database for structured data" into
+ * "Relational database — used by cart, payment" by looking at actual edges.
+ */
+function enrichDescriptionsWithConnections(nodes, edges) {
+  if (edges.length === 0) return;
+
+  const nodeById = new Map();
+  for (const node of nodes) nodeById.set(node.id, node);
+
+  // Build adjacency: for each node, collect the names of connected peers
+  // inbound = services that connect TO this node; outbound = services this node connects TO
+  const inbound = new Map();  // targetId -> Set of source node names
+  const outbound = new Map(); // sourceId -> Set of target node names
+
+  for (const edge of edges) {
+    const src = nodeById.get(edge.source);
+    const tgt = nodeById.get(edge.target);
+    if (!src || !tgt) continue;
+
+    // Use a clean display name — strip common prefixes
+    const srcName = cleanDisplayName(src.name);
+    const tgtName = cleanDisplayName(tgt.name);
+
+    if (!inbound.has(edge.target)) inbound.set(edge.target, new Set());
+    inbound.get(edge.target).add(srcName);
+
+    if (!outbound.has(edge.source)) outbound.set(edge.source, new Set());
+    outbound.get(edge.source).add(tgtName);
+  }
+
+  for (const node of nodes) {
+    if (!node.description) continue;
+
+    let suffix = null;
+
+    if (INFRA_TYPES.has(node.type)) {
+      // Infrastructure: show who uses it
+      const clients = inbound.get(node.id);
+      if (clients && clients.size > 0) {
+        suffix = `used by ${[...clients].join(', ')}`;
+      }
+    } else if (APP_TYPES.has(node.type)) {
+      // Application services: show what infra they connect to
+      const deps = outbound.get(node.id);
+      if (deps && deps.size > 0) {
+        suffix = `connects to ${[...deps].join(', ')}`;
+      }
+    }
+
+    if (suffix) {
+      // Append connection context after a separator
+      // Strip trailing period from base description for cleaner joining
+      const base = node.description.replace(/\.\s*$/, '');
+      node.description = `${base} · ${suffix}.`;
+    }
+  }
+}
+
+/**
+ * Clean a container/service name for display in connection context.
+ * Strips common prefixes like project names (e.g., "robotshop-rs-cart" → "rs-cart").
+ */
+function cleanDisplayName(name) {
+  // Remove leading project prefixes that repeat the docker-compose project name
+  // e.g. "robotshop_rs-cart_1" → "rs-cart"
+  let clean = name
+    .replace(/_\d+$/, '')      // strip trailing _1, _2 etc.
+    .replace(/-\d+$/, '');     // strip trailing -1, -2 etc.
+
+  // If the name has underscore segments (compose format), take the last meaningful part
+  const underscoreParts = clean.split('_');
+  if (underscoreParts.length > 1) {
+    clean = underscoreParts.slice(1).join('_') || underscoreParts[0];
+  }
+
+  return clean;
 }
 
 function addDockerContainerNodes(nodes, edges, dockerSnapshot, nodesByPid, portToPid, containerHealthToGraphHealth) {
@@ -1194,6 +1382,7 @@ function addDockerContainerNodes(nodes, edges, dockerSnapshot, nodesByPid, portT
       ? path.basename(containerProjectPath)
       : extractProjectFromContainerName(container.name);
 
+    const containerType = resolveContainerType(container);
     const node = {
       id: nodeId,
       pid: -1,
@@ -1201,7 +1390,7 @@ function addDockerContainerNodes(nodes, edges, dockerSnapshot, nodesByPid, portT
       command: (container.fullCommand || container.command)
         ? `docker: ${container.image} | ${container.fullCommand || container.command}`
         : `docker: ${container.image}`,
-      type: resolveContainerType(container),
+      type: containerType,
       cpu: container.cpu || 0,
       memory: container.memory || 0,
       user: 'docker',
@@ -1209,7 +1398,7 @@ function addDockerContainerNodes(nodes, edges, dockerSnapshot, nodesByPid, portT
       project: containerProject,
       projectPath: containerProjectPath,
       repoPath: containerRepoPath,
-      description: `Docker container running ${container.image}`,
+      description: getContainerDescription(container.image, containerType),
       ports: graphPorts,
       routes: [],
       healthStatus: containerHealthToGraphHealth(container),

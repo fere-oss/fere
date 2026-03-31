@@ -19,6 +19,51 @@ interface NodeDetailContentProps {
   serviceExplanationError: string | null;
 }
 
+// Strip the " · used by ..." or " · connects to ..." suffix from a description
+function getBaseDescription(description: string): string {
+  const idx = description.indexOf(' · ');
+  if (idx === -1) return description;
+  // Re-add trailing period if stripped
+  const base = description.slice(0, idx);
+  return base.endsWith('.') ? base : base + '.';
+}
+
+function DescriptionWithConnections({
+  description,
+  incomingNames,
+  outgoingNames,
+  nodeType,
+}: {
+  description: string;
+  incomingNames: string[];
+  outgoingNames: string[];
+  nodeType: string;
+}) {
+  const baseDesc = getBaseDescription(description);
+  const INFRA_TYPES = new Set(['database', 'cache', 'broker']);
+  const isInfra = INFRA_TYPES.has(nodeType);
+
+  // For infra nodes, show who uses them (incoming); for app nodes, show what they connect to (outgoing)
+  const verb = isInfra ? 'used by' : 'connects to';
+  const names = isInfra ? incomingNames : outgoingNames;
+
+  return (
+    <div className="node-detail-description">
+      <p style={{ margin: 0 }}>{baseDesc}</p>
+      {names.length > 0 && (
+        <div className="node-detail-connections-summary">
+          <span className="node-detail-connections-verb">{verb}</span>
+          <div className="node-detail-connections-chips">
+            {names.map((name) => (
+              <span key={name} className="node-detail-connection-chip">{name}</span>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function NodeDetailContent({
   node,
   edges,
@@ -93,6 +138,18 @@ export function NodeDetailContent({
     (id: string) => nodeNameMap.get(id) || id,
     [nodeNameMap],
   );
+  const dedupedIncomingNames = useMemo(() => {
+    const seen = new Set<string>();
+    return incomingEdges
+      .map((e) => nodeNameMap.get(e.source) || e.source)
+      .filter((name) => { if (seen.has(name)) return false; seen.add(name); return true; });
+  }, [incomingEdges, nodeNameMap]);
+  const dedupedOutgoingNames = useMemo(() => {
+    const seen = new Set<string>();
+    return outgoingEdges
+      .map((e) => nodeNameMap.get(e.target) || e.target)
+      .filter((name) => { if (seen.has(name)) return false; seen.add(name); return true; });
+  }, [outgoingEdges, nodeNameMap]);
   const shouldShowExternalApis = supportsExternalApiScan(node);
   const remoteAccess = node.remoteAccess;
 
@@ -238,7 +295,12 @@ export function NodeDetailContent({
               <ReactMarkdown>{serviceExplanation}</ReactMarkdown>
             </div>
           ) : node.description ? (
-            <p className="node-detail-description">{node.description}</p>
+            <DescriptionWithConnections
+              description={node.description}
+              incomingNames={dedupedIncomingNames}
+              outgoingNames={dedupedOutgoingNames}
+              nodeType={node.type}
+            />
           ) : (
             <div className="node-detail-ai-placeholder">
               Generate a concise explanation of how this service fits into the
@@ -684,45 +746,7 @@ export function NodeDetailContent({
           </div>
         )}
 
-      {(incomingEdges.length > 0 || outgoingEdges.length > 0) && (
-        <div className="node-detail-section">
-          <h3 className="node-detail-section-title">Connections</h3>
-          <div className="node-detail-connections">
-            {incomingEdges.length > 0 && (
-              <div className="node-detail-connection-group">
-                <span className="node-detail-connection-label">Incoming</span>
-                {incomingEdges.map((edge, idx) => (
-                  <div key={idx} className="node-detail-connection">
-                    <span className="connection-arrow">←</span>
-                    <span className="connection-node">
-                      {getNodeName(edge.source)}
-                    </span>
-                    <span className="connection-port">
-                      :{edge.sourcePort} → :{edge.targetPort}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
-            {outgoingEdges.length > 0 && (
-              <div className="node-detail-connection-group">
-                <span className="node-detail-connection-label">Outgoing</span>
-                {outgoingEdges.map((edge, idx) => (
-                  <div key={idx} className="node-detail-connection">
-                    <span className="connection-arrow">→</span>
-                    <span className="connection-node">
-                      {getNodeName(edge.target)}
-                    </span>
-                    <span className="connection-port">
-                      :{edge.sourcePort} → :{edge.targetPort}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+      {/* Connections are now shown in the About section via DescriptionWithConnections */}
     </div>
   );
 }

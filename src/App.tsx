@@ -44,6 +44,7 @@ const SYSTEM_TAB_ID = "__system__";
 const TAB_GROUPING_KEY = "fere.tabGrouping";
 const EDGE_MODE_KEY = "fere.edgeMode";
 const WELCOME_SEEN_KEY = "fere.hasSeenWelcome";
+const LABELS_KEY = "fere.labels";
 
 const STACK_FRAMEWORK_LABELS: Record<string, string> = {
   nextjs: "Next",
@@ -273,6 +274,14 @@ function App() {
       return saved === "expanded" ? "expanded" : "live";
     } catch {
       return "live";
+    }
+  });
+
+  const [labelsVisible, setLabelsVisible] = useState<boolean>(() => {
+    try {
+      return window.localStorage.getItem(LABELS_KEY) !== "hidden";
+    } catch {
+      return true;
     }
   });
 
@@ -875,6 +884,12 @@ function App() {
       // Ignore storage write issues
     }
   }, [edgeMode]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(LABELS_KEY, labelsVisible ? "visible" : "hidden");
+    } catch {}
+  }, [labelsVisible]);
 
   // Build tabs from unique projectPaths
   const tabs = useMemo(() => {
@@ -1658,6 +1673,12 @@ function App() {
                 Expanded
               </button>
             </div>
+            <button
+              className={`tab-grouping-btn ${labelsVisible ? "tab-grouping-btn-active" : ""}`}
+              onClick={() => setLabelsVisible(v => !v)}
+            >
+              Labels
+            </button>
           </div>
         </div>
       )}
@@ -1679,6 +1700,7 @@ function App() {
                         nodes={filteredData.nodes}
                         edges={filteredData.edges}
                         debugHighlightNodeIds={debugHighlightNodeIds}
+                        labelsVisible={labelsVisible}
                       />
                     )}
                   </div>
