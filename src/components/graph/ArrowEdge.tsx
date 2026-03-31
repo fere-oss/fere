@@ -83,7 +83,7 @@ function EdgePath({ id, edgePath, bundleCount, labelX, labelY, connectionLabel }
             y={1}
             textAnchor="middle"
             dominantBaseline="middle"
-            fill="#999"
+            fill="#1a1a1a"
             fontSize={9}
             fontFamily="system-ui, sans-serif"
           >
