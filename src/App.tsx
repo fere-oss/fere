@@ -15,6 +15,7 @@ import { ContainerLogsTab } from "./components/ContainerLogsTab";
 import { WelcomeModal } from "./components/WelcomeModal";
 import { ShareModal } from "./components/ShareModal";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { TopologyBar } from "./components/graph/TopologyBar";
 import { DebugPanel } from "./components/DebugPanel";
 import {
   CommandPalette,
@@ -1660,6 +1661,10 @@ function App() {
             </div>
           </div>
         </div>
+      )}
+
+      {viewMode === "graph" && !loading && filteredData.nodes.length > 0 && (
+        <TopologyBar nodes={filteredData.nodes} edges={filteredData.edges} />
       )}
 
       {/* Main Content */}
