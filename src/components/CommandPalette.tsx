@@ -84,6 +84,36 @@ export const CommandPalette = forwardRef<
   { graph, tabs, selectedTab, setSelectedTab, setViewMode, setIsAgentOpen },
   ref
 ) {
+  const SYSTEM_TAB_ID = "__system__";
+
+  // Find which tab contains a node by matching its paths against tab IDs
+  const findTabForNode = useCallback((node: GraphNode): string => {
+    if (!node.projectPath) return SYSTEM_TAB_ID;
+    // Check repoPath and projectPath against all tab IDs
+    for (const tab of tabs) {
+      if (tab.id === SYSTEM_TAB_ID) continue;
+      if (node.repoPath && tab.id === node.repoPath) return tab.id;
+      if (tab.id === node.projectPath) return tab.id;
+      // Also check if the node's path is a subdirectory of a tab path
+      if (node.projectPath.startsWith(tab.id + '/')) return tab.id;
+      if (node.repoPath && node.repoPath.startsWith(tab.id + '/')) return tab.id;
+    }
+    return SYSTEM_TAB_ID;
+  }, [tabs]);
+
+  // Focus a node, switching tabs first if needed
+  const focusServiceNode = useCallback((node: GraphNode) => {
+    const nodeTab = findTabForNode(node);
+    setViewMode("graph");
+    if (nodeTab !== selectedTab) {
+      setSelectedTab(nodeTab);
+      // Longer delay to let the tab switch and graph re-render
+      setTimeout(() => focusNode(node.id, true), 200);
+    } else {
+      setTimeout(() => focusNode(node.id, true), 50);
+    }
+  }, [findTabForNode, selectedTab, setSelectedTab, setViewMode]);
+
   const [query, setQuery] = useState("");
   const [isOpen, setIsOpen] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -148,10 +178,7 @@ export const CommandPalette = forwardRef<
         meta: portStr ? `:${portStr}` : node.type,
         healthColor:
           (HEALTH_COLORS[node.healthStatus] || HEALTH_COLORS.yellow).color,
-        action: () => {
-          setViewMode("graph");
-          setTimeout(() => focusNode(node.id, true), 50);
-        },
+        action: () => focusServiceNode(node),
       });
     }
     serviceResults.sort((a, b) => a.score - b.score);
@@ -174,10 +201,7 @@ export const CommandPalette = forwardRef<
               category: "Ports",
               label: `:${p.port}`,
               meta: node.name,
-              action: () => {
-                setViewMode("graph");
-                setTimeout(() => focusNode(node.id, true), 50);
-              },
+              action: () => focusServiceNode(node),
             });
             categoryCounts["Ports"]++;
           }
@@ -198,10 +222,7 @@ export const CommandPalette = forwardRef<
           category: "Routes",
           label: routeStr,
           meta: node.name,
-          action: () => {
-            setViewMode("graph");
-            setTimeout(() => focusNode(node.id, true), 50);
-          },
+          action: () => focusServiceNode(node),
         });
         categoryCounts["Routes"]++;
       }
