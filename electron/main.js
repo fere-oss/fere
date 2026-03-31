@@ -89,6 +89,7 @@ const {
   getDockerSnapshot,
   stopContainer,
   startContainer,
+  restartContainer,
 } = require("./services/dockerMonitor");
 const {
   startLogStream,
@@ -571,6 +572,26 @@ ipcMain.handle("start-container", async (event, containerId) => {
     return result;
   } catch (error) {
     console.error("Error starting container:", error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle("restart-container", async (event, containerId) => {
+  try {
+    if (!containerId || typeof containerId !== "string") {
+      return { success: false, error: "Invalid container ID" };
+    }
+    const result = await restartContainer(containerId);
+    if (result.success) {
+      clearProcessCache();
+      clearPortCache();
+      if (snapshotScheduler) {
+        setImmediate(() => snapshotScheduler.reconcile());
+      }
+    }
+    return result;
+  } catch (error) {
+    console.error("Error restarting container:", error);
     return { success: false, error: error.message };
   }
 });

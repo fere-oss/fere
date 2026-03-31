@@ -690,7 +690,15 @@ function buildContainerConnections(containers, networks) {
  * Map container health status to graph health status colors
  */
 function containerHealthToGraphHealth(container) {
-  const status = container.health?.status || container.state;
+  const healthStatus = container.health?.status;
+  const state = container.state;
+
+  // Running but unhealthy = degraded (yellow), not down
+  if (state === 'running' && healthStatus === 'unhealthy') {
+    return 'yellow';
+  }
+
+  const status = healthStatus || state;
 
   switch (status) {
     case 'running':
@@ -773,6 +781,20 @@ async function startContainer(containerId) {
   }
 }
 
+async function restartContainer(containerId) {
+  if (!sanitizeContainerId(containerId)) {
+    return { success: false, error: 'Invalid container ID' };
+  }
+
+  try {
+    await runDocker(['restart', containerId]);
+    clearDockerCache();
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
 module.exports = {
   isDockerAvailable,
   getDockerContainers,
@@ -780,6 +802,7 @@ module.exports = {
   getDockerSnapshot,
   stopContainer,
   startContainer,
+  restartContainer,
   buildContainerConnections,
   containerHealthToGraphHealth,
   clearDockerCache,

@@ -74,10 +74,11 @@ export function NodeDetailContent({
   const accentColor = getServiceColor(node.type);
   const healthInfo = getHealthInfo(node.healthStatus);
   const isDownLike = !!node.isGhost || node.healthStatus === "red";
+  const isUnhealthyRunning = node.isDockerContainer && node.containerState === 'running' && node.containerHealth?.status === 'unhealthy';
   const startCommand = node.startCommand || node.command || "";
   const startProjectPath = node.startProjectPath || node.projectPath || "";
   const canStart =
-    isDownLike &&
+    (isDownLike || isUnhealthyRunning) &&
     (node.isDockerContainer || (startCommand && startProjectPath));
   const [starting, setStarting] = useState(false);
 
@@ -88,7 +89,10 @@ export function NodeDetailContent({
     try {
       if (node.isDockerContainer) {
         const id = node.containerId || node.name;
-        const result = await window.electronAPI.startContainer(id);
+        const isRunning = node.containerState === 'running';
+        const result = isRunning
+          ? await window.electronAPI.restartContainer(id)
+          : await window.electronAPI.startContainer(id);
         started = !!result?.success;
       } else if (startCommand && startProjectPath) {
         const result = await window.electronAPI.startProcess(
@@ -277,7 +281,7 @@ export function NodeDetailContent({
                   >
                     <path d="M4 2l10 6-10 6V2z" />
                   </svg>
-                  Start Service
+                  {node.isDockerContainer && node.containerState === 'running' ? 'Restart Service' : 'Start Service'}
                 </>
               )}
             </button>

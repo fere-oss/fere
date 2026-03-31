@@ -644,6 +644,7 @@ export interface ElectronAPI {
   killProcess: (pid: number) => Promise<KillResult>;
   stopContainer: (containerId: string) => Promise<KillResult>;
   startContainer: (containerId: string) => Promise<KillResult>;
+  restartContainer: (containerId: string) => Promise<KillResult>;
   startProcess: (command: string, cwd: string) => Promise<KillResult>;
 
   // Quick actions
