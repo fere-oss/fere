@@ -127,9 +127,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Fere Agent
   agentScan: (nodeIds) => ipcRenderer.invoke('agent:scan', nodeIds),
   agentApplyFix: (action) => ipcRenderer.invoke('agent:apply-fix', action),
-  agentChat: (messages, nodeIds, tabLabel) => ipcRenderer.invoke('agent:chat', { messages, nodeIds, tabLabel }),
+  agentChat: (messages, nodeIds, tabLabel, options) =>
+    ipcRenderer.invoke('agent:chat', { messages, nodeIds, tabLabel, options }),
   onChatToken: (callback) => ipcRenderer.on('agent:chat-token', (_, token) => callback(token)),
   offChatToken: () => ipcRenderer.removeAllListeners('agent:chat-token'),
   onChatStep: (callback) => ipcRenderer.on('agent:chat-step', (_, step) => callback(step)),
   offChatStep: () => ipcRenderer.removeAllListeners('agent:chat-step'),
+  onFixProposal: (callback) => ipcRenderer.on('agent:fix-proposal', (_, proposal) => callback(proposal)),
+  offFixProposal: () => ipcRenderer.removeAllListeners('agent:fix-proposal'),
+  onProactiveFinding: (callback) => ipcRenderer.on('agent:proactive-finding', (_, findings) => callback(findings)),
+  offProactiveFinding: () => ipcRenderer.removeAllListeners('agent:proactive-finding'),
 });

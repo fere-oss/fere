@@ -10788,6 +10788,7 @@ textarea {
   align-items: center;
   gap: 6px;
   flex-shrink: 0;
+  min-width: 0;
 }
 
 .agp-scan-btn {
@@ -10819,6 +10820,114 @@ textarea {
 .agp-scan-btn:disabled {
   opacity: 0.5;
   cursor: default;
+}
+
+.agp-detect-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: var(--bg-muted);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.agp-detect-btn:hover:not(:disabled) {
+  background: var(--bg-white);
+  border-color: var(--border-hover);
+  color: var(--text-primary);
+}
+
+.agp-detect-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.agp-detect-btn-active {
+  background: color-mix(in srgb, #16a34a 10%, var(--bg-muted));
+  border-color: color-mix(in srgb, #16a34a 35%, var(--border-color));
+  color: #166534;
+}
+
+.agp-detect-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--text-faint);
+  flex-shrink: 0;
+}
+
+.agp-detect-dot-active {
+  background: #16a34a;
+}
+
+.agp-autopilot-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: var(--bg-muted);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.agp-autopilot-btn:hover:not(:disabled) {
+  background: var(--bg-white);
+  border-color: var(--border-hover);
+  color: var(--text-primary);
+}
+
+.agp-autopilot-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.agp-autopilot-btn-active {
+  background: color-mix(in srgb, #0ea5e9 10%, var(--bg-muted));
+  border-color: color-mix(in srgb, #0ea5e9 35%, var(--border-color));
+  color: #0c4a6e;
+}
+
+.agp-autopilot-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--text-faint);
+  flex-shrink: 0;
+}
+
+.agp-autopilot-dot-active {
+  background: #0ea5e9;
+}
+
+.agp-autopilot-count {
+  min-width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  padding: 0 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 700;
+  background: color-mix(in srgb, var(--text-faint) 25%, var(--bg-white));
+  color: var(--text-secondary);
 }
 
 .agp-history-btn {
@@ -10889,8 +10998,8 @@ textarea {
 }
 
 .agp-history-item-active {
-  background: color-mix(in srgb, var(--blue) 8%, var(--bg-muted));
-  border-color: color-mix(in srgb, var(--blue) 35%, var(--border-color));
+  background: color-mix(in srgb, var(--text-faint) 14%, var(--bg-muted));
+  border-color: color-mix(in srgb, var(--text-muted) 40%, var(--border-color));
 }
 
 .agp-history-item-content {
@@ -11521,6 +11630,7 @@ textarea {
   justify-content: center;
   cursor: pointer;
   margin-right: 6px;
+  position: relative;
   -webkit-app-region: no-drag;
   transition: opacity 0.15s;
 }
@@ -11820,7 +11930,7 @@ textarea {
 
 .agp-step {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 6px;
   font-size: 11px;
   color: var(--text-muted);
@@ -11837,15 +11947,18 @@ textarea {
   align-items: center;
   flex-shrink: 0;
   color: var(--text-faint);
+  margin-top: 1px;
 }
 
 .agp-step-label {
   flex: 1;
   font-family: var(--font-mono, monospace);
   font-size: 10.5px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  word-break: break-word;
+  line-height: 1.25;
 }
 
 .agp-step-spinner {
@@ -11861,6 +11974,100 @@ textarea {
 @keyframes agp-spin {
   to { transform: rotate(360deg); }
 }
+
+/* ── Auto-trigger pill ──────────────────────────────────────────── */
+.agp-auto-trigger {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: -2px 0 2px;
+  padding: 6px 8px;
+  border-radius: 7px;
+  border: 1px solid var(--border-color);
+  background: color-mix(in srgb, var(--bg-secondary) 60%, transparent);
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+/* ── Findings badge on trigger button ───────────────────────────── */
+.agp-findings-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: #ef4444;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px solid var(--bg-primary);
+  pointer-events: none;
+}
+
+/* ── Fix buttons panel ──────────────────────────────────────────── */
+.agp-fix-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--border-color);
+  background: var(--bg-primary);
+  flex-shrink: 0;
+}
+
+.agp-fix-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.agp-fix-desc {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agp-fix-btn {
+  all: unset;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  border-radius: 6px;
+  background: #111;
+  color: #fff;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: opacity 0.15s;
+}
+
+.agp-fix-btn:hover { opacity: 0.82; }
+
+.agp-fix-applying,
+.agp-fix-done,
+.agp-fix-error {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.agp-fix-applying { color: var(--text-muted); }
+.agp-fix-done { color: #16a34a; font-weight: 600; }
+.agp-fix-error { color: #ef4444; }
 
 .agp-chat-error {
   font-size: 11.5px;

@@ -351,14 +351,30 @@ function checkHealthChecks(composePath) {
 async function executeAction(action) {
   if (action.type === "kill-port") {
     const { port, pid } = action;
-    if (!Number.isInteger(port) || !Number.isInteger(pid) || pid <= 0) throw new Error("Invalid kill-port payload");
-    try { execSync(`kill ${pid}`, { timeout: 5000 }); } catch {}
+    if (!Number.isInteger(port) || port <= 0) throw new Error("Invalid kill-port payload");
+
+    let targetPid = Number.isInteger(pid) && pid > 0 ? pid : null;
+    if (!targetPid) {
+      // Fallback: resolve current listener PID for this port when caller omitted pid.
+      const out = execSync(`lsof -nP -t -iTCP:${port} -sTCP:LISTEN | head -n 1`, {
+        timeout: 5000,
+        encoding: "utf8",
+      }).trim();
+      const parsed = Number.parseInt(out, 10);
+      if (Number.isInteger(parsed) && parsed > 0) {
+        targetPid = parsed;
+      }
+    }
+    if (!targetPid) {
+      throw new Error(`No listening PID found on port ${port}`);
+    }
+    try { execSync(`kill ${targetPid}`, { timeout: 5000 }); } catch {}
     return { success: true };
   }
   if (action.type === "restart-container") {
     const { containerId } = action;
     if (typeof containerId !== "string" || containerId.length < 4) throw new Error("Invalid restart-container payload");
-    execSync(`docker start ${containerId.slice(0, 64)}`, { timeout: 15000 });
+    execSync(`docker restart ${containerId.slice(0, 64)}`, { timeout: 20000 });
     return { success: true };
   }
   if (action.type === "write-file") {

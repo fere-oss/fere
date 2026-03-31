@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
-import type { ChatStep, ExternalApiProvider, GraphNode } from "../types/electron";
+import type { AgentFinding, ChatStep, ExternalApiProvider, FixProposal, GraphNode } from "../types/electron";
 import { getServiceColor } from "./graph/constants";
 import fereLogo from "../assets/fere.png";
+import sentinelLogo from "../assets/sentinel.png";
 
 const PROVIDER_ALIAS_MAP: Record<string, string> = {
   gemini: "google gemini",
@@ -141,6 +142,17 @@ type ChatThread = {
   messages: ChatMessage[];
 };
 
+type IncidentStage = "detected" | "fixing" | "fixed" | "verified" | "escalated";
+
+type IncidentRecord = {
+  id: string;
+  service: string;
+  summary: string;
+  stage: IncidentStage;
+  updatedAt: number;
+  error?: string;
+};
+
 function ProviderMention({ text, logoUrl }: { text: string; logoUrl: string }) {
   const [imgFailed, setImgFailed] = useState(false);
 
@@ -148,13 +160,9 @@ function ProviderMention({ text, logoUrl }: { text: string; logoUrl: string }) {
     setImgFailed(false);
   }, [logoUrl]);
 
-  const fallback = text.charAt(0).toUpperCase() || "?";
-
   return (
     <span className="agp-provider-ref">
-      {imgFailed ? (
-        <span className="agp-provider-fallback" aria-hidden="true">{fallback}</span>
-      ) : (
+      {!imgFailed && (
         <img
           src={logoUrl}
           alt=""
@@ -365,15 +373,22 @@ export function AgentPanel({ nodes, tabLabel }: { nodes: GraphNode[]; tabLabel?:
   const [activeThreadId, setActiveThreadId] = useState(persistedState.activeThreadId);
   const [streamingText, setStreamingText] = useState("");
   const [steps, setSteps] = useState<ChatStep[]>([]);
+  const [pendingFixes, setPendingFixes] = useState<(FixProposal & { status: "pending" | "applying" | "done" | "error"; errorMsg?: string })[]>([]);
+  const [unreadFindings, setUnreadFindings] = useState(0);
   const [input, setInput] = useState(persistedState.input);
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [providerDomains, setProviderDomains] = useState<Record<string, string>>({});
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [detectionEnabled, setDetectionEnabled] = useState(false);
+  const [autopilotEnabled, setAutopilotEnabled] = useState(false);
+  const [incidentState, setIncidentState] = useState<Record<string, IncidentRecord>>({});
 
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const streamingTextRef = useRef("");
+  const surfacedByTabRef = useRef<Map<string, Set<string>>>(new Map());
+  const autopilotInFlightRef = useRef<Set<string>>(new Set());
 
   const activeThread = useMemo(
     () => threads.find((thread) => thread.id === activeThreadId) ?? null,
@@ -385,10 +400,21 @@ export function AgentPanel({ nodes, tabLabel }: { nodes: GraphNode[]; tabLabel?:
     () => nodes.filter((n) => n.type !== "external").map((n) => n.id),
     [nodes],
   );
+  const nodeIdsScopeSignature = useMemo(
+    () => [...nodeIdsForScan].sort().join("|"),
+    [nodeIdsForScan],
+  );
 
   const serviceCount = useMemo(
     () => nodes.filter((n) => n.type !== "external").length,
     [nodes],
+  );
+  const activeIncidentCount = useMemo(
+    () =>
+      Object.values(incidentState).filter(
+        (i) => i.stage === "detected" || i.stage === "fixing" || i.stage === "fixed",
+      ).length,
+    [incidentState],
   );
 
   const nodeMap = useMemo(() => {
@@ -398,6 +424,8 @@ export function AgentPanel({ nodes, tabLabel }: { nodes: GraphNode[]; tabLabel?:
     }
     return map;
   }, [nodes]);
+
+  const tabScopeKey = useMemo(() => tabLabel ?? "__system__", [tabLabel]);
 
   useEffect(() => {
     let mounted = true;
@@ -560,7 +588,6 @@ export function AgentPanel({ nodes, tabLabel }: { nodes: GraphNode[]; tabLabel?:
 
       window.electronAPI.onChatStep((step: ChatStep) => {
         setSteps((prev) => {
-          // If same path already in list, mark it done; otherwise append
           const idx = prev.findIndex((s) => s.path === step.path && s.type === step.type);
           if (idx !== -1) {
             const next = [...prev];
@@ -571,14 +598,24 @@ export function AgentPanel({ nodes, tabLabel }: { nodes: GraphNode[]; tabLabel?:
         });
       });
 
+      setPendingFixes([]);
+      window.electronAPI.onFixProposal((proposal: FixProposal) => {
+        setPendingFixes((prev) => {
+          if (prev.some((f) => f.id === proposal.id)) return prev;
+          return [...prev, { ...proposal, status: "pending" }];
+        });
+      });
+
       try {
         const result = await window.electronAPI.agentChat(
           updatedMessages,
           nodeIdsForScan,
           tabLabel ?? null,
+          { autopilotEnabled },
         );
         window.electronAPI.offChatToken();
         window.electronAPI.offChatStep();
+        window.electronAPI.offFixProposal();
         // Capture text NOW before finally clears the ref
         const completedText = streamingTextRef.current;
         if (result.success) {
@@ -592,6 +629,7 @@ export function AgentPanel({ nodes, tabLabel }: { nodes: GraphNode[]; tabLabel?:
       } catch (err: unknown) {
         window.electronAPI.offChatToken();
         window.electronAPI.offChatStep();
+        window.electronAPI.offFixProposal();
         setError(err instanceof Error ? err.message : "Failed to connect");
       } finally {
         setStreamingText("");
@@ -603,6 +641,7 @@ export function AgentPanel({ nodes, tabLabel }: { nodes: GraphNode[]; tabLabel?:
     },
     [
       activeThread,
+      autopilotEnabled,
       isStreaming,
       messages,
       nodeIdsForScan,
@@ -658,6 +697,269 @@ export function AgentPanel({ nodes, tabLabel }: { nodes: GraphNode[]; tabLabel?:
     }
   }, []);
 
+  const toggleDetection = useCallback(() => {
+    setDetectionEnabled((v) => !v);
+  }, []);
+
+  const toggleAutopilot = useCallback(() => {
+    setAutopilotEnabled((v) => !v);
+  }, []);
+
+  const appendAutoMessage = useCallback((content: string) => {
+    const autoMsg: ChatMessage = { role: "user", content };
+    setThreads((prev) => {
+      const idx = prev.findIndex((thread) => thread.id === activeThreadId);
+      if (idx === -1) return prev;
+      const current = prev[idx];
+      const nextMessages = [...current.messages, autoMsg];
+      const updated: ChatThread = {
+        ...current,
+        messages: nextMessages,
+        title: deriveThreadTitle(nextMessages),
+        updatedAt: Date.now(),
+      };
+      const next = [updated, ...prev.slice(0, idx), ...prev.slice(idx + 1)];
+      return next.slice(0, MAX_CHAT_THREADS);
+    });
+  }, [activeThreadId]);
+
+  const updateIncidentStage = useCallback(
+    (finding: AgentFinding, stage: IncidentStage, error?: string) => {
+      setIncidentState((prev) => ({
+        ...prev,
+        [finding.id]: {
+          id: finding.id,
+          service: finding.service,
+          summary: finding.summary,
+          stage,
+          updatedAt: Date.now(),
+          ...(error ? { error } : {}),
+        },
+      }));
+    },
+    [],
+  );
+
+  const toSafeAction = useCallback((finding: AgentFinding) => {
+    const fix = finding.fix;
+    if (!fix) return null;
+    if (fix.type === "restart-container" && typeof fix.containerId === "string") {
+      return { type: "restart-container" as const, containerId: fix.containerId };
+    }
+    if (
+      fix.type === "kill-port" &&
+      Number.isInteger(fix.port) &&
+      Number.isInteger(fix.pid)
+    ) {
+      return { type: "kill-port" as const, port: fix.port, pid: fix.pid };
+    }
+    return null;
+  }, []);
+
+  const isSafeFixProposal = useCallback((fix: FixProposal & { status: string }) => {
+    if (fix.fix_type === "restart-container" && typeof fix.container_id === "string") return true;
+    if (fix.fix_type === "kill-port" && Number.isInteger(fix.port) && Number.isInteger(fix.pid)) return true;
+    return false;
+  }, []);
+
+  const verifyAutopilotFix = useCallback(
+    async (finding: AgentFinding): Promise<{ verified: boolean; reason?: string }> => {
+      const scan = await window.electronAPI.agentScan(nodeIdsForScan);
+      if (!scan.success) return { verified: false, reason: scan.error ?? "verify scan failed" };
+      const current = scan.findings.filter(
+        (f) => f.severity === "critical" || f.severity === "warning",
+      );
+      const stillFailing = current.some(
+        (f) =>
+          f.id === finding.id ||
+          f.service === finding.service ||
+          (Array.isArray(f.affectedServices) && f.affectedServices.includes(finding.service)),
+      );
+      return stillFailing
+        ? { verified: false, reason: "service/dependency still unhealthy after fix" }
+        : { verified: true };
+    },
+    [nodeIdsForScan],
+  );
+
+  const runAutopilotForFindings = useCallback(
+    async (findings: AgentFinding[]) => {
+      for (const finding of findings) {
+        const safeAction = toSafeAction(finding);
+        if (!safeAction) {
+          updateIncidentStage(
+            finding,
+            "escalated",
+            "no safe autopilot action available",
+          );
+          appendAutoMessage(
+            `[auto-escalation] Detected issue for **${finding.service}** requires manual confirmation.`,
+          );
+          continue;
+        }
+        if (autopilotInFlightRef.current.has(finding.id)) continue;
+
+        autopilotInFlightRef.current.add(finding.id);
+        updateIncidentStage(finding, "fixing");
+        appendAutoMessage(
+          `[auto-autopilot] Autopilot applying safe fix for **${finding.service}** — ${finding.summary}.`,
+        );
+
+        try {
+          const result = await window.electronAPI.agentApplyFix(safeAction);
+          if (!result.success) {
+            updateIncidentStage(finding, "escalated", result.error ?? "autopilot apply failed");
+            appendAutoMessage(
+              `[auto-escalation] Autopilot could not apply fix for **${finding.service}**. Manual action required.`,
+            );
+            continue;
+          }
+
+          updateIncidentStage(finding, "fixed");
+          await new Promise((resolve) => setTimeout(resolve, 1600));
+          const verify = await verifyAutopilotFix(finding);
+          if (verify.verified) {
+            updateIncidentStage(finding, "verified");
+            appendAutoMessage(
+              `[auto-verify] Autopilot fixed and verified **${finding.service}**.`,
+            );
+          } else {
+            updateIncidentStage(finding, "escalated", verify.reason);
+            appendAutoMessage(
+              `[auto-escalation] Autopilot applied a fix for **${finding.service}**, but verification failed (${verify.reason}). Manual follow-up needed.`,
+            );
+          }
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          updateIncidentStage(finding, "escalated", msg);
+          appendAutoMessage(
+            `[auto-escalation] Autopilot encountered an error for **${finding.service}**: ${msg}`,
+          );
+        } finally {
+          autopilotInFlightRef.current.delete(finding.id);
+        }
+      }
+    },
+    [appendAutoMessage, toSafeAction, updateIncidentStage, verifyAutopilotFix],
+  );
+
+  const surfaceFindings = useCallback(
+    (findings: AgentFinding[]) => {
+      if (findings.length === 0) return;
+
+      const inScope = findings.filter((f) => nodeMap.has(f.service.toLowerCase()));
+      if (inScope.length === 0) return;
+
+      const existing = surfacedByTabRef.current.get(tabScopeKey) ?? new Set<string>();
+      const unseen = inScope.filter((f) => !existing.has(f.id));
+      if (unseen.length === 0) return;
+
+      unseen.forEach((f) => existing.add(f.id));
+      surfacedByTabRef.current.set(tabScopeKey, existing);
+      unseen.forEach((f) => updateIncidentStage(f, "detected"));
+
+      if (autopilotEnabled) {
+        void runAutopilotForFindings(unseen);
+        return;
+      }
+
+      if (open && !isStreaming) {
+        const top = unseen[0];
+        void send(
+          `[auto-diagnosis] A new issue was detected: **${top.service}** — ${top.summary}. Please diagnose and propose a fix.`,
+        );
+      } else {
+        setUnreadFindings((n) => n + unseen.filter((f) => f.severity === "critical").length);
+      }
+    },
+    [autopilotEnabled, isStreaming, nodeMap, open, runAutopilotForFindings, send, tabScopeKey, updateIncidentStage],
+  );
+
+  // Subscribe to proactive findings from background scan
+  useEffect(() => {
+    if (!detectionEnabled) return;
+    window.electronAPI.onProactiveFinding((findings: AgentFinding[]) => {
+      surfaceFindings(findings);
+    });
+    return () => window.electronAPI.offProactiveFinding();
+  }, [detectionEnabled, surfaceFindings]);
+
+  // On tab switch, run a fresh scoped scan so findings surface per project tab.
+  useEffect(() => {
+    if (!detectionEnabled) return;
+    let cancelled = false;
+    const runScopedRefresh = async () => {
+      try {
+        const result = await window.electronAPI.agentScan(nodeIdsForScan);
+        if (cancelled || !result.success) return;
+        const scopedFindings = result.findings.filter(
+          (f) => f.severity === "critical" || f.severity === "warning",
+        );
+        surfaceFindings(scopedFindings);
+      } catch {
+        // ignore refresh errors; live proactive stream still runs
+      }
+    };
+    void runScopedRefresh();
+    return () => {
+      cancelled = true;
+    };
+  }, [detectionEnabled, nodeIdsForScan, nodeIdsScopeSignature, surfaceFindings, tabScopeKey]);
+
+  // Clear unread badge when panel opens
+  useEffect(() => {
+    if (open) setUnreadFindings(0);
+  }, [open]);
+
+  const applyFix = useCallback(
+    async (fix: FixProposal & { status: string }) => {
+      setPendingFixes((prev) =>
+        prev.map((f) => (f.id === fix.id ? { ...f, status: "applying" } : f)),
+      );
+      try {
+        if (fix.fix_type === "restart-container" && fix.container_id) {
+          await window.electronAPI.agentApplyFix({ type: "restart-container", containerId: fix.container_id });
+        } else if (fix.fix_type === "kill-port" && fix.port != null) {
+          await window.electronAPI.agentApplyFix(
+            Number.isInteger(fix.pid)
+              ? { type: "kill-port", port: fix.port, pid: fix.pid }
+              : { type: "kill-port", port: fix.port },
+          );
+        } else if (fix.fix_type === "launch-in-terminal" && fix.command && fix.cwd) {
+          await window.electronAPI.agentChat(
+            [...messages, { role: "user", content: `Execute this now using launch_in_terminal: ${fix.command} in ${fix.cwd}` }],
+            nodeIdsForScan,
+            tabLabel ?? null,
+            { autopilotEnabled },
+          );
+        }
+        setPendingFixes((prev) =>
+          prev.map((f) => (f.id === fix.id ? { ...f, status: "done" } : f)),
+        );
+        // Trigger verification turn
+        setTimeout(() => {
+          void send(
+            `[auto-verify] The fix was applied: "${fix.description}". Please verify using your tools that the issue is resolved and confirm the service is healthy.`,
+          );
+        }, 1500);
+      } catch (err) {
+        setPendingFixes((prev) =>
+          prev.map((f) =>
+            f.id === fix.id ? { ...f, status: "error", errorMsg: String(err) } : f,
+          ),
+        );
+      }
+    },
+    [autopilotEnabled, messages, nodeIdsForScan, tabLabel, send],
+  );
+
+  useEffect(() => {
+    if (!autopilotEnabled) return;
+    const next = pendingFixes.find((f) => f.status === "pending" && isSafeFixProposal(f));
+    if (!next) return;
+    void applyFix(next);
+  }, [autopilotEnabled, applyFix, isSafeFixProposal, pendingFixes]);
+
   const startNewConversation = useCallback(() => {
     const next = createThread([]);
     setThreads((prev) => [next, ...prev].slice(0, MAX_CHAT_THREADS));
@@ -692,7 +994,10 @@ export function AgentPanel({ nodes, tabLabel }: { nodes: GraphNode[]; tabLabel?:
         onClick={() => setOpen((v) => !v)}
         title="Ask Fere"
       >
-        <img src={fereLogo} alt="Fere" className="agp-trigger-logo" />
+        <img src={sentinelLogo} alt="Sentinel" className="agp-trigger-logo" />
+        {unreadFindings > 0 && !open && (
+          <span className="agp-trigger-badge agp-findings-badge">{unreadFindings}</span>
+        )}
       </button>
 
       {open && (
@@ -700,13 +1005,34 @@ export function AgentPanel({ nodes, tabLabel }: { nodes: GraphNode[]; tabLabel?:
           {/* Header */}
           <div className="agp-header">
             <div className="agp-header-left">
-              <img src={fereLogo} alt="Fere" className="agp-avatar-logo" />
+              <img src={sentinelLogo} alt="Sentinel" className="agp-avatar-logo" />
               <div className="agp-header-text">
                 <span className="agp-header-title">Fere</span>
                 <span className="agp-header-sub">{headerSub}</span>
               </div>
             </div>
             <div className="agp-header-right">
+              <button
+                className={`agp-detect-btn${detectionEnabled ? " agp-detect-btn-active" : ""}`}
+                onClick={toggleDetection}
+                title={detectionEnabled ? "Stop detecting problems" : "Start detecting problems"}
+                disabled={isStreaming}
+              >
+                <span className={`agp-detect-dot${detectionEnabled ? " agp-detect-dot-active" : ""}`} />
+                <span>{detectionEnabled ? "Detecting" : "Detect"}</span>
+              </button>
+              <button
+                className={`agp-autopilot-btn${autopilotEnabled ? " agp-autopilot-btn-active" : ""}`}
+                onClick={toggleAutopilot}
+                title={autopilotEnabled ? "Disable autopilot" : "Enable autopilot"}
+                disabled={isStreaming}
+              >
+                <span className={`agp-autopilot-dot${autopilotEnabled ? " agp-autopilot-dot-active" : ""}`} />
+                <span>{autopilotEnabled ? "Autopilot On" : "Autopilot Off"}</span>
+                {activeIncidentCount > 0 && (
+                  <span className="agp-autopilot-count">{activeIncidentCount}</span>
+                )}
+              </button>
               {threads.length > 0 && (
                 <button
                   className={`agp-scan-btn agp-history-btn${historyOpen ? " agp-scan-btn-active" : ""}`}
@@ -796,7 +1122,7 @@ export function AgentPanel({ nodes, tabLabel }: { nodes: GraphNode[]; tabLabel?:
             {messages.length === 0 && !showStream ? (
               /* Welcome / starter screen */
               <div className="agp-welcome">
-                <img src={fereLogo} alt="Fere" className="agp-welcome-logo" />
+                <img src={sentinelLogo} alt="Sentinel" className="agp-welcome-logo" />
                 <p className="agp-welcome-title">Ask about your running stack</p>
                 <p className="agp-welcome-sub">
                   I can see your live topology, active connections, Docker
@@ -817,23 +1143,63 @@ export function AgentPanel({ nodes, tabLabel }: { nodes: GraphNode[]; tabLabel?:
             ) : (
               /* Message list */
               <div className="agp-messages">
-                {messages.map((msg, i) => (
-                  <div key={i} className={`agp-msg agp-msg-${msg.role}`}>
-                    <div className="agp-msg-bubble">
-                      {msg.role === "assistant" ? (
-                        <ReactMarkdown
-                          className="agp-markdown"
-                          rehypePlugins={[rehypeHighlight]}
-                          components={mdComponents}
-                        >
-                          {msg.content}
-                        </ReactMarkdown>
-                      ) : (
-                        msg.content
-                      )}
+                {messages.map((msg, i) => {
+                  const isAuto = msg.role === "user" && msg.content.startsWith("[auto-");
+                  if (isAuto) {
+                    const isVerify = msg.content.startsWith("[auto-verify]");
+                    const isAutopilot = msg.content.startsWith("[auto-autopilot]");
+                    const isEscalation = msg.content.startsWith("[auto-escalation]");
+                    const label = isVerify
+                      ? "Fix applied · verifying…"
+                      : isAutopilot
+                        ? "Autopilot applying safe fix…"
+                        : isEscalation
+                          ? "Escalation · manual follow-up needed"
+                          : "Issue detected · diagnosing…";
+                    return (
+                      <div key={i} className="agp-auto-trigger">
+                        <span className="agp-step-icon" aria-hidden="true">
+                          {isEscalation ? (
+                            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M6 1.5l4.5 8H1.5L6 1.5z" />
+                              <path d="M6 4.2v2.6M6 8.4h.01" />
+                            </svg>
+                          ) : isVerify ? (
+                            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                              <rect x="1" y="1.5" width="10" height="9" rx="1.5" />
+                              <path d="M3.5 4.5l2 2-2 2" />
+                              <path d="M7.5 8.5h1" />
+                            </svg>
+                          ) : (
+                            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                              <circle cx="5" cy="5" r="2.5" />
+                              <path d="M7 7l2.5 2.5" />
+                            </svg>
+                          )}
+                        </span>
+                        <span className="agp-step-label">{label}</span>
+                        {!isEscalation && <span className="agp-step-spinner" />}
+                      </div>
+                    );
+                  }
+                  return (
+                    <div key={i} className={`agp-msg agp-msg-${msg.role}`}>
+                      <div className="agp-msg-bubble">
+                        {msg.role === "assistant" ? (
+                          <ReactMarkdown
+                            className="agp-markdown"
+                            rehypePlugins={[rehypeHighlight]}
+                            components={mdComponents}
+                          >
+                            {msg.content}
+                          </ReactMarkdown>
+                        ) : (
+                          msg.content
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
 
                 {showStream && (
                   <div className="agp-msg agp-msg-assistant">
@@ -859,10 +1225,10 @@ export function AgentPanel({ nodes, tabLabel }: { nodes: GraphNode[]; tabLabel?:
                                     <path d="M7.5 8.5h1" />
                                   </svg>
                                 ) : step.type === "get_node_details" ? (
-                                  // Node/service lookup
+                                  // Service details lookup (neutral search icon)
                                   <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-                                    <circle cx="6" cy="5" r="2.5" />
-                                    <path d="M2 10c0-2.2 1.8-4 4-4s4 1.8 4 4" />
+                                    <circle cx="5" cy="5" r="2.5" />
+                                    <path d="M7 7l2.5 2.5" />
                                   </svg>
                                 ) : step.type === "docker_logs" || step.type === "docker_exec" || step.type === "docker_control" ? (
                                   // Docker container box
@@ -910,6 +1276,44 @@ export function AgentPanel({ nodes, tabLabel }: { nodes: GraphNode[]; tabLabel?:
             )}
             <div ref={endRef} />
           </div>
+
+          {/* Fix buttons proposed by agent */}
+          {pendingFixes.length > 0 && (
+            <div className="agp-fix-panel">
+              {pendingFixes.map((fix) => (
+                <div key={fix.id} className={`agp-fix-item agp-fix-${fix.status}`}>
+                  <div className="agp-fix-desc">{fix.description}</div>
+                  {fix.status === "pending" && (
+                    <button
+                      className="agp-fix-btn"
+                      onClick={() => void applyFix(fix)}
+                    >
+                      <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M2 6l3 3 5-5" />
+                      </svg>
+                      {fix.label}
+                    </button>
+                  )}
+                  {fix.status === "applying" && (
+                    <span className="agp-fix-applying">
+                      <span className="agp-step-spinner" /> Applying…
+                    </span>
+                  )}
+                  {fix.status === "done" && (
+                    <span className="agp-fix-done">
+                      <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M2 6l3 3 5-5" />
+                      </svg>
+                      Applied
+                    </span>
+                  )}
+                  {fix.status === "error" && (
+                    <span className="agp-fix-error" title={fix.errorMsg}>Failed</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
 
           {/* Input */}
           <div className="agp-input-row">

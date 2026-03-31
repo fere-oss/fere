@@ -158,6 +158,7 @@ let mainWindow;
 let snapshotScheduler = null;
 let snapshotHandler = null;
 let alertNodeMap = new Map();
+const _surfacedFindingIds = new Set();
 const logStreamsBySender = new Map();
 
 function registerSenderLogStream(sender, streamId) {
@@ -507,6 +508,31 @@ ipcMain.handle("start-snapshot-stream", async (event) => {
       } catch (err) {
         console.error("[AlertManager] Error evaluating alerts:", err);
       }
+    });
+
+    // Proactive scan: diff findings and surface new critical/warning issues
+    snapshotScheduler.on("snapshot", async (delta) => {
+      if (delta.type !== "full") return; // only run on full snapshots
+      try {
+        const snap = await getSystemSnapshot();
+        const findings = await runScan(snap);
+        const newFindings = findings.filter(
+          (f) =>
+            (f.severity === "critical" || f.severity === "warning") &&
+            !_surfacedFindingIds.has(f.id),
+        );
+        // Clear resolved findings so they can resurface if they come back
+        const currentIds = new Set(findings.map((f) => f.id));
+        for (const id of _surfacedFindingIds) {
+          if (!currentIds.has(id)) _surfacedFindingIds.delete(id);
+        }
+        if (newFindings.length === 0) return;
+        newFindings.forEach((f) => _surfacedFindingIds.add(f.id));
+        BrowserWindow.getAllWindows().forEach((win) => {
+          if (!win.isDestroyed())
+            win.webContents.send("agent:proactive-finding", newFindings);
+        });
+      } catch (_) {}
     });
 
     // Renderer listener: forward deltas to the window (removed when window goes away)
@@ -2171,8 +2197,10 @@ function agentListDirectory(dirPath, allowedPaths) {
 
 // Launch a command in a new macOS Terminal window (for long-running servers)
 async function agentLaunchInTerminal(command, cwd, projectPaths) {
-  if (typeof command !== "string" || !command.trim()) return "Error: command is empty.";
-  if (typeof cwd !== "string" || !path.isAbsolute(cwd)) return "Error: cwd must be an absolute path.";
+  if (typeof command !== "string" || !command.trim())
+    return "Error: command is empty.";
+  if (typeof cwd !== "string" || !path.isAbsolute(cwd))
+    return "Error: cwd must be an absolute path.";
   const normalizedCwd = path.normalize(cwd);
   if (!agentAllowedCommandCwd(normalizedCwd, projectPaths)) {
     return `Error: cwd ${normalizedCwd} is outside allowed project paths.`;
@@ -2184,17 +2212,39 @@ async function agentLaunchInTerminal(command, cwd, projectPaths) {
   activate
   do script "cd \\"${escapedCwd}\\" && ${escapedCmd}"
 end tell`;
-  const { output, ok } = await execAsync(`osascript -e '${script.replace(/'/g, "'\\''")}'`, { timeout: 10000 });
+  const { output, ok } = await execAsync(
+    `osascript -e '${script.replace(/'/g, "'\\''")}'`,
+    { timeout: 10000 },
+  );
   if (!ok) return `Error opening Terminal: ${output}`;
-  return `Opened Terminal and ran: ${command}`;
+  return `Launch requested in Terminal: ${command}. Status is NOT verified. Run an explicit check (for example: health endpoint, logs, or lsof on expected port) before claiming it is running.`;
 }
 
 // Blocked command patterns for run_command safety
 const BLOCKED_CMDS = [
-  /\brm\b/, /\brmdir\b/, /\bsudo\b/, /\bsu\b/, /\bchmod\b/, /\bchown\b/,
-  /\bkill\b/, /\bpkill\b/, /\bmkfs\b/, /\bdd\b/, /\bfdisk\b/, /\bformat\b/,
-  /\bmv\b.*\//, /\bcp\b.*\//, /\bcurl\b/, /\bwget\b/, /\bnc\b/, /\bncat\b/,
-  />\s*\//, /\|\s*sh/, /\|\s*bash/, /\|\s*zsh/, /`/, /\$\(/,
+  /\brm\b/,
+  /\brmdir\b/,
+  /\bsudo\b/,
+  /\bsu\b/,
+  /\bchmod\b/,
+  /\bchown\b/,
+  /\bkill\b/,
+  /\bpkill\b/,
+  /\bmkfs\b/,
+  /\bdd\b/,
+  /\bfdisk\b/,
+  /\bformat\b/,
+  /\bmv\b.*\//,
+  /\bcp\b.*\//,
+  /\bwget\b/,
+  /\bnc\b/,
+  /\bncat\b/,
+  />\s*\//,
+  /\|\s*sh/,
+  /\|\s*bash/,
+  /\|\s*zsh/,
+  /`/,
+  /\$\(/,
 ];
 
 // Long-running server commands that should never be started by the agent
@@ -2204,38 +2254,167 @@ const BLOCKED_SERVER_CMDS = [
   /\byarn\s+(run\s+)?(start|dev|serve|watch)\b/,
   /\bnpx\s+(next|vite|webpack-dev-server|nodemon|ts-node-dev|live-server)\b/,
   /\bnode\s+(server|index|app|main)\.(js|ts)\b/,
-  /\bnext\s+dev\b/, /\bvite\b/, /\bnodemon\b/, /\buvicorn\b/, /\bgunicorn\b/,
-  /\bflask\s+run\b/, /\bdjango.*runserver\b/, /\bfastapi\b/,
+  /\bnext\s+dev\b/,
+  /\bvite\b/,
+  /\bnodemon\b/,
+  /\buvicorn\b/,
+  /\bgunicorn\b/,
+  /\bflask\s+run\b/,
+  /\bdjango.*runserver\b/,
+  /\bfastapi\b/,
   /\bpython\s+-m\s+(flask|uvicorn|http\.server)\b/,
 ];
+
+const INSTALL_UPDATE_CMDS = [
+  /\bpip3?\s+install\b/i,
+  /\buv\s+pip\s+install\b/i,
+  /\bnpm\s+(install|i|update|upgrade)\b/i,
+  /\bpnpm\s+(install|add|update|up|upgrade)\b/i,
+  /\byarn\s+(install|add|upgrade|up)\b/i,
+  /\bbun\s+(install|add|update|upgrade)\b/i,
+  /\bpoetry\s+(add|install|update)\b/i,
+  /\bconda\s+install\b/i,
+  /\bbrew\s+(install|upgrade|update)\b/i,
+  /\bapt(-get)?\s+(install|upgrade|update)\b/i,
+];
+
+function isInstallOrUpdateCommand(command) {
+  return INSTALL_UPDATE_CMDS.some((pattern) => pattern.test(command));
+}
+
+function normalizeMessageText(content) {
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    return content
+      .map((part) => {
+        if (typeof part === "string") return part;
+        if (part && typeof part === "object" && typeof part.text === "string")
+          return part.text;
+        return "";
+      })
+      .join(" ");
+  }
+  return "";
+}
+
+function extractAgentPolicies(messages) {
+  const policies = {
+    disallowInstalls: false,
+    forceNoBackAndForth: false,
+  };
+  if (!Array.isArray(messages)) return policies;
+  for (const msg of messages) {
+    if (msg?.role !== "user") continue;
+    const text = normalizeMessageText(msg.content).toLowerCase();
+    if (!text) continue;
+    if (
+      /\b(do not|don't|dont|no)\s+install\b/.test(text) ||
+      /\bwithout\s+install(ing)?\b/.test(text) ||
+      /\bno\s+dependency\s+installs?\b/.test(text)
+    ) {
+      policies.disallowInstalls = true;
+    }
+    if (
+      /\bend[-\s]?to[-\s]?end\b/.test(text) ||
+      /\bno\s+back[-\s]?and[-\s]?forth\b/.test(text) ||
+      /\bauto[-\s]?fix\b/.test(text) ||
+      /\bretry\b/.test(text) ||
+      /\bdon'?t\s+ask\s+me\b/.test(text) ||
+      /\bdo\s+not\s+ask\s+me\b/.test(text)
+    ) {
+      policies.forceNoBackAndForth = true;
+    }
+  }
+  return policies;
+}
+
+function buildPolicyPrompt(policies, options = {}) {
+  const dynamicRules = [];
+  if (policies.disallowInstalls) {
+    dynamicRules.push(
+      "- The user explicitly said not to install or update dependencies. Do not suggest, run, or propose any install/update command (pip/npm/pnpm/yarn/brew/apt/conda/poetry).",
+    );
+  }
+  if (options.autopilotEnabled) {
+    dynamicRules.push(
+      "- Autopilot is ON. For safe operational actions (restart-container, kill-port), do not ask for confirmation. Execute immediately, then verify and report outcome.",
+    );
+  }
+  if (policies.forceNoBackAndForth) {
+    dynamicRules.push(
+      "- The user requested end-to-end execution with no back-and-forth. Do not ask 'Would you like me to...'. Make non-destructive project-file fixes directly, retry automatically, and report evidence.",
+    );
+  }
+  return [
+    "Additional hard rules:",
+    "- Execution-first mode: when the user asks you to run, start, fix, dockerize, or verify something, act with tools first and only then report results.",
+    "- Do not ask the user to run commands manually when an available tool can do it. Try at least one concrete execution path before asking any follow-up question.",
+    "- If a command fails, diagnose from real output, apply a fix, and retry automatically. Only ask a question after retries are exhausted or a destructive decision is required.",
+    "- For run/start requests, verify with explicit evidence (for example: docker ps, docker compose ps/logs, health endpoint, lsof) before claiming success.",
+    "- Never mention a filename/path unless you first verified it with tool output (list_directory/read_file). If uncertain, list the directory first.",
+    "- For any dockerize/containerization request, call `discover_docker_plan` first and follow its constraints before writing Dockerfile/compose files.",
+    "- When the user asks to run/start a project or service, call `discover_runbook` first for that project root and use only commands verified from files.",
+    "- When the user asks to create project config files (for example Dockerfile/docker-compose.yml), use `write_file` to create them directly inside allowed project roots.",
+    "- `launch_in_terminal` only confirms a command was sent to Terminal. Never claim a service started successfully unless you run an explicit verification command and quote the verification output.",
+    ...dynamicRules,
+  ].join("\n");
+}
+
+function looksLikeFollowUpQuestion(text) {
+  if (typeof text !== "string") return false;
+  const lower = text.toLowerCase();
+  if (!lower.includes("?")) return false;
+  return (
+    /\bwould you like me to\b/.test(lower) ||
+    /\bshall i\b/.test(lower) ||
+    /\bdo you want me to\b/.test(lower) ||
+    /\bshould i\b/.test(lower)
+  );
+}
+
+function isDockerComposeUpCommand(command) {
+  if (typeof command !== "string") return false;
+  return /\bdocker(?:-compose|\s+compose)\s+up\b/i.test(command);
+}
 
 // Promisified exec — non-blocking, runs off the main thread event loop
 const { exec: _execAsync } = require("child_process");
 function execAsync(command, options = {}) {
   return new Promise((resolve) => {
-    _execAsync(command, { encoding: "utf8", ...options }, (err, stdout, stderr) => {
-      if (err) {
-        const msg = ((stdout || "") + (stderr || "") || err.message).trim();
-        resolve({ ok: false, output: `Exit ${err.code ?? 1}:\n${msg}` });
-      } else {
-        resolve({ ok: true, output: (stdout || "").trim() || "(no output)" });
-      }
-    });
+    _execAsync(
+      command,
+      { encoding: "utf8", ...options },
+      (err, stdout, stderr) => {
+        if (err) {
+          const msg = ((stdout || "") + (stderr || "") || err.message).trim();
+          resolve({ ok: false, output: `Exit ${err.code ?? 1}:\n${msg}` });
+        } else {
+          resolve({ ok: true, output: (stdout || "").trim() || "(no output)" });
+        }
+      },
+    );
   });
 }
 
-async function agentRunCommand(command, cwd, projectPaths) {
-  if (typeof command !== "string" || !command.trim()) return "Error: command is empty.";
-  if (typeof cwd !== "string" || !path.isAbsolute(cwd)) return "Error: cwd must be an absolute path.";
+async function agentRunCommand(command, cwd, projectPaths, policies = {}) {
+  if (typeof command !== "string" || !command.trim())
+    return "Error: command is empty.";
+  if (typeof cwd !== "string" || !path.isAbsolute(cwd))
+    return "Error: cwd must be an absolute path.";
   const normalizedCwd = path.normalize(cwd);
   if (!agentAllowedCommandCwd(normalizedCwd, projectPaths)) {
     return `Error: cwd ${normalizedCwd} is outside allowed local dev roots.`;
   }
   for (const pattern of BLOCKED_SERVER_CMDS) {
-    if (pattern.test(command)) return `Error: "${command}" starts a long-running server. Use docker_control or run the command manually in a terminal instead.`;
+    if (pattern.test(command))
+      return `Error: "${command}" starts a long-running server. Use docker_control or run the command manually in a terminal instead.`;
+  }
+  if (policies.disallowInstalls && isInstallOrUpdateCommand(command)) {
+    return 'Error: install/update commands are disabled for this chat because the user explicitly requested "do not install".';
   }
   for (const pattern of BLOCKED_CMDS) {
-    if (pattern.test(command)) return `Error: command contains a blocked operation.`;
+    if (pattern.test(command))
+      return `Error: command contains a blocked operation.`;
   }
   const { output } = await execAsync(command, {
     cwd: normalizedCwd,
@@ -2247,7 +2426,8 @@ async function agentRunCommand(command, cwd, projectPaths) {
 }
 
 async function agentDockerLogs(containerId, tail = 80) {
-  if (!/^[a-zA-Z0-9_\-\.]+$/.test(containerId)) return "Error: invalid container id.";
+  if (!/^[a-zA-Z0-9_\-\.]+$/.test(containerId))
+    return "Error: invalid container id.";
   const { output } = await execAsync(
     `docker logs --tail ${Number(tail)} ${containerId} 2>&1`,
     { timeout: 10000, maxBuffer: 1024 * 100 },
@@ -2256,10 +2436,13 @@ async function agentDockerLogs(containerId, tail = 80) {
 }
 
 async function agentDockerExec(containerId, command) {
-  if (!/^[a-zA-Z0-9_\-\.]+$/.test(containerId)) return "Error: invalid container id.";
-  if (typeof command !== "string" || !command.trim()) return "Error: command is empty.";
+  if (!/^[a-zA-Z0-9_\-\.]+$/.test(containerId))
+    return "Error: invalid container id.";
+  if (typeof command !== "string" || !command.trim())
+    return "Error: command is empty.";
   for (const pattern of BLOCKED_CMDS) {
-    if (pattern.test(command)) return `Error: command contains a blocked operation.`;
+    if (pattern.test(command))
+      return `Error: command contains a blocked operation.`;
   }
   const { output } = await execAsync(
     `docker exec ${containerId} sh -c ${JSON.stringify(command)} 2>&1`,
@@ -2269,13 +2452,289 @@ async function agentDockerExec(containerId, command) {
 }
 
 async function agentDockerControl(containerId, action) {
-  if (!/^[a-zA-Z0-9_\-\.]+$/.test(containerId)) return "Error: invalid container id.";
-  if (!["start", "stop", "restart"].includes(action)) return "Error: action must be start, stop, or restart.";
-  const { ok, output } = await execAsync(`docker ${action} ${containerId} 2>&1`, { timeout: 20000 });
+  if (!/^[a-zA-Z0-9_\-\.]+$/.test(containerId))
+    return "Error: invalid container id.";
+  if (!["start", "stop", "restart"].includes(action))
+    return "Error: action must be start, stop, or restart.";
+  const { ok, output } = await execAsync(
+    `docker ${action} ${containerId} 2>&1`,
+    { timeout: 20000 },
+  );
   return ok ? `Container ${containerId} ${action}ed successfully.` : output;
 }
 
+async function agentWriteFile(filePath, content, projectPaths) {
+  if (typeof filePath !== "string" || !path.isAbsolute(filePath)) {
+    return "Error: path must be an absolute path.";
+  }
+  if (typeof content !== "string") {
+    return "Error: content must be a string.";
+  }
+  const normalized = path.normalize(filePath);
+  if (!agentAllowedCommandCwd(path.dirname(normalized), projectPaths)) {
+    return `Error: ${normalized} is outside allowed local dev roots.`;
+  }
+  if (normalized.split(path.sep).includes("..")) {
+    return "Error: path traversal not allowed.";
+  }
+  if (
+    /\.(pem|key|p12|pfx)$/i.test(normalized) ||
+    path.basename(normalized) === ".env"
+  ) {
+    return "Error: writing credential files is not allowed.";
+  }
+  try {
+    fs.mkdirSync(path.dirname(normalized), { recursive: true });
+    fs.writeFileSync(normalized, content, "utf8");
+    return `Wrote file: ${normalized}`;
+  } catch (e) {
+    return `Error writing file: ${e.message}`;
+  }
+}
+
+function safeReadText(filePath) {
+  try {
+    return fs.readFileSync(filePath, "utf8");
+  } catch {
+    return null;
+  }
+}
+
+function parsePackageScripts(packagePath) {
+  const raw = safeReadText(packagePath);
+  if (!raw) return null;
+  try {
+    const pkg = JSON.parse(raw);
+    return pkg?.scripts && typeof pkg.scripts === "object" ? pkg.scripts : {};
+  } catch {
+    return null;
+  }
+}
+
+function extractUvicornCommand(text) {
+  if (!text) return null;
+  const m = text.match(/\buvicorn\s+[^\n\r`]+/i);
+  return m ? m[0].trim() : null;
+}
+
+async function agentDiscoverRunbook(projectRoot, projectPaths) {
+  if (typeof projectRoot !== "string" || !path.isAbsolute(projectRoot)) {
+    return "Error: project_root must be an absolute path.";
+  }
+  const root = path.normalize(projectRoot);
+  if (!agentAllowedCommandCwd(root, projectPaths)) {
+    return `Error: ${root} is outside allowed local dev roots.`;
+  }
+  if (!fs.existsSync(root) || !fs.statSync(root).isDirectory()) {
+    return `Error: directory not found: ${root}`;
+  }
+
+  const candidates = [
+    root,
+    path.join(root, "frontend"),
+    path.join(root, "backend"),
+    path.join(root, "web"),
+    path.join(root, "server"),
+  ].filter(
+    (p, i, arr) =>
+      arr.indexOf(p) === i && fs.existsSync(p) && fs.statSync(p).isDirectory(),
+  );
+
+  const lines = [`Runbook discovery for ${root}`, ""];
+  let foundAny = false;
+
+  for (const dir of candidates) {
+    const rel = path.relative(root, dir) || ".";
+    lines.push(`## ${rel}`);
+
+    const pkgPath = path.join(dir, "package.json");
+    const scripts = parsePackageScripts(pkgPath);
+    if (scripts) {
+      foundAny = true;
+      const runScript =
+        (typeof scripts.dev === "string" && "dev") ||
+        (typeof scripts.start === "string" && "start");
+      lines.push(`- Verified: package.json exists (${pkgPath})`);
+      if (runScript) {
+        lines.push(
+          `- Frontend/Node run command: \`npm run ${runScript}\` (cwd: ${dir})`,
+        );
+      } else {
+        lines.push(
+          "- Frontend/Node run command: not found in scripts.dev/scripts.start",
+        );
+      }
+    } else {
+      lines.push("- package.json: not found");
+    }
+
+    const readmePath = ["README.md", "readme.md"]
+      .map((f) => path.join(dir, f))
+      .find(fs.existsSync);
+    const readmeText = readmePath ? safeReadText(readmePath) : null;
+
+    const mainPy = path.join(dir, "main.py");
+    if (fs.existsSync(mainPy)) {
+      foundAny = true;
+      const uvFromReadme = extractUvicornCommand(readmeText);
+      lines.push(`- Verified: Python entrypoint exists (${mainPy})`);
+      lines.push(
+        `- Backend run command: \`${uvFromReadme || "uvicorn main:app --reload --port 8000"}\` (cwd: ${dir})`,
+      );
+    } else {
+      lines.push("- main.py: not found");
+    }
+
+    const reqPath = path.join(dir, "requirements.txt");
+    if (fs.existsSync(reqPath)) lines.push(`- requirements file: ${reqPath}`);
+    if (readmePath) lines.push(`- docs checked: ${readmePath}`);
+    lines.push("");
+  }
+
+  if (!foundAny) {
+    lines.push(
+      "No runnable frontend/backend commands found from package.json/main.py.",
+    );
+    lines.push(
+      "Next step: inspect subdirectories with list_directory then read relevant README files.",
+    );
+  }
+
+  return lines.join("\n");
+}
+
+async function agentDiscoverDockerPlan(projectRoot, projectPaths) {
+  if (typeof projectRoot !== "string" || !path.isAbsolute(projectRoot)) {
+    return "Error: project_root must be an absolute path.";
+  }
+  const root = path.normalize(projectRoot);
+  if (!agentAllowedCommandCwd(root, projectPaths)) {
+    return `Error: ${root} is outside allowed local dev roots.`;
+  }
+  if (!fs.existsSync(root) || !fs.statSync(root).isDirectory()) {
+    return `Error: directory not found: ${root}`;
+  }
+
+  const files = {
+    compose: [
+      "docker-compose.yml",
+      "docker-compose.yaml",
+      "compose.yml",
+      "compose.yaml",
+    ].map((f) => path.join(root, f)).find(fs.existsSync),
+    rootDockerfile: path.join(root, "Dockerfile"),
+    backendDockerfile: path.join(root, "Dockerfile.backend"),
+    frontendDockerfile: path.join(root, "Dockerfile.frontend"),
+    backendMain: path.join(root, "backend", "main.py"),
+    backendReqs: path.join(root, "backend", "requirements.txt"),
+    frontendPkg: path.join(root, "frontend", "package.json"),
+    frontendLock: path.join(root, "frontend", "package-lock.json"),
+    agentsDir: path.join(root, "agents"),
+  };
+
+  const has = {
+    compose: !!files.compose,
+    rootDockerfile: fs.existsSync(files.rootDockerfile),
+    backendDockerfile: fs.existsSync(files.backendDockerfile),
+    frontendDockerfile: fs.existsSync(files.frontendDockerfile),
+    backendMain: fs.existsSync(files.backendMain),
+    backendReqs: fs.existsSync(files.backendReqs),
+    frontendPkg: fs.existsSync(files.frontendPkg),
+    frontendLock: fs.existsSync(files.frontendLock),
+    agentsDir: fs.existsSync(files.agentsDir) && fs.statSync(files.agentsDir).isDirectory(),
+  };
+
+  const lines = [];
+  lines.push(`Docker preflight for ${root}`);
+  lines.push("");
+  lines.push("Detected files:");
+  lines.push(`- compose file: ${has.compose ? files.compose : "none"}`);
+  lines.push(`- root Dockerfile: ${has.rootDockerfile ? "present" : "absent"}`);
+  lines.push(`- Dockerfile.backend: ${has.backendDockerfile ? "present" : "absent"}`);
+  lines.push(`- Dockerfile.frontend: ${has.frontendDockerfile ? "present" : "absent"}`);
+  lines.push(`- backend/main.py: ${has.backendMain ? "present" : "absent"}`);
+  lines.push(`- backend/requirements.txt: ${has.backendReqs ? "present" : "absent"}`);
+  lines.push(`- frontend/package.json: ${has.frontendPkg ? "present" : "absent"}`);
+  lines.push(`- agents/: ${has.agentsDir ? "present" : "absent"}`);
+  lines.push("");
+  lines.push("Required dockerization constraints:");
+  lines.push("- Never invent server.js or package.json in project root unless they already exist.");
+  lines.push("- For split repos (backend + frontend), do not use one generic root Dockerfile for both.");
+  lines.push("- Backend image must include backend/main.py entrypoint target and include agents/ when imports use agents.*");
+  lines.push("- If google-genai==1.29.0 is present, httpx must be >=0.28.1.");
+  lines.push("- Prefer docker compose up --build -d, then verify with compose ps + compose logs + health checks.");
+
+  if (has.backendReqs) {
+    try {
+      const reqText = fs.readFileSync(files.backendReqs, "utf8");
+      const hasGenai = /google-genai==1\.29\.0/.test(reqText);
+      const hasBadHttpx = /^httpx<0\.28$/m.test(reqText);
+      if (hasGenai && hasBadHttpx) {
+        lines.push("");
+        lines.push("Known blocker detected:");
+        lines.push("- backend/requirements.txt has google-genai==1.29.0 with httpx<0.28 (conflict).");
+      }
+    } catch {}
+  }
+
+  return lines.join("\n");
+}
+
 const AGENT_TOOLS = [
+  {
+    type: "function",
+    function: {
+      name: "discover_docker_plan",
+      description:
+        "Preflight dockerization inspection for a project root. Detects existing docker/app files, highlights required constraints, and flags known blockers. Use this before writing Dockerfile/docker-compose.",
+      parameters: {
+        type: "object",
+        properties: {
+          project_root: {
+            type: "string",
+            description:
+              "Absolute path to the project root directory (for example /Users/me/Documents/GitHub/impasse)",
+          },
+        },
+        required: ["project_root"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "write_file",
+      description:
+        "Create or overwrite a text file in an allowed project directory. Use for scaffolding config files like Dockerfile, docker-compose.yml, and small project setup files.",
+      parameters: {
+        type: "object",
+        properties: {
+          path: { type: "string", description: "Absolute file path to write" },
+          content: { type: "string", description: "UTF-8 text file contents" },
+        },
+        required: ["path", "content"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "discover_runbook",
+      description:
+        "Deterministically inspect a project folder to discover verified run commands from package.json scripts, README instructions, and main.py presence. Use this before launching frontend/backend services.",
+      parameters: {
+        type: "object",
+        properties: {
+          project_root: {
+            type: "string",
+            description:
+              "Absolute path to the project root directory (for example /Users/me/Documents/GitHub/impasse)",
+          },
+        },
+        required: ["project_root"],
+      },
+    },
+  },
   {
     type: "function",
     function: {
@@ -2400,12 +2859,20 @@ const AGENT_TOOLS = [
     type: "function",
     function: {
       name: "launch_in_terminal",
-      description: "Open macOS Terminal and run a long-running command (e.g. dev servers, uvicorn, npm run dev, flask run). Use this instead of run_command for anything that stays running. The command runs in a new Terminal window so the user can see its output.",
+      description:
+        "Open macOS Terminal and run a long-running command (e.g. dev servers, uvicorn, npm run dev, flask run). Use this instead of run_command for anything that stays running. The command runs in a new Terminal window so the user can see its output.",
       parameters: {
         type: "object",
         properties: {
-          command: { type: "string", description: "The command to run (e.g. 'uvicorn main:app --host 0.0.0.0 --port 8000')" },
-          cwd: { type: "string", description: "Absolute path of the directory to run the command in" },
+          command: {
+            type: "string",
+            description:
+              "The command to run (e.g. 'uvicorn main:app --host 0.0.0.0 --port 8000')",
+          },
+          cwd: {
+            type: "string",
+            description: "Absolute path of the directory to run the command in",
+          },
         },
         required: ["command", "cwd"],
       },
@@ -2433,14 +2900,57 @@ const AGENT_TOOLS = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "propose_fix",
+      description:
+        "Propose a concrete fix to the user as a clickable button in the chat UI. Use this after diagnosing an issue when you know exactly how to fix it. The user clicks the button to apply it — you don't need to call docker_control or run_command yourself.",
+      parameters: {
+        type: "object",
+        properties: {
+          label: {
+            type: "string",
+            description: "Short button label, e.g. 'Restart Redis'",
+          },
+          description: {
+            type: "string",
+            description: "One-line description of what this fix does",
+          },
+          fix_type: {
+            type: "string",
+            enum: ["restart-container", "kill-port", "launch-in-terminal"],
+            description: "Category of fix",
+          },
+          container_id: {
+            type: "string",
+            description: "Container ID or name (restart-container)",
+          },
+          port: { type: "number", description: "Port number (kill-port)" },
+          pid: { type: "number", description: "PID to kill (kill-port)" },
+          command: {
+            type: "string",
+            description: "Shell command (launch-in-terminal)",
+          },
+          cwd: {
+            type: "string",
+            description: "Working directory (launch-in-terminal)",
+          },
+        },
+        required: ["label", "description", "fix_type"],
+      },
+    },
+  },
 ];
 
 function sendStep(event, step) {
   if (!event.sender.isDestroyed()) event.sender.send("agent:chat-step", step);
 }
 
-ipcMain.handle("agent:chat", async (event, { messages, nodeIds, tabLabel }) => {
+ipcMain.handle("agent:chat", async (event, payload) => {
   try {
+    const { messages, nodeIds, tabLabel, options = {} } = payload || {};
+    const safeMessages = Array.isArray(messages) ? messages : [];
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey)
       return {
@@ -2482,17 +2992,29 @@ ipcMain.handle("agent:chat", async (event, { messages, nodeIds, tabLabel }) => {
       snapshot,
       Array.isArray(nodeIds) ? nodeIds : undefined,
     );
-    const systemPrompt = await buildChatContext(snapshot, findings, typeof tabLabel === "string" ? tabLabel : null);
+    const policies = extractAgentPolicies(safeMessages);
+    const baseSystemPrompt = await buildChatContext(
+      snapshot,
+      findings,
+      typeof tabLabel === "string" ? tabLabel : null,
+    );
+    const systemPrompt = `${baseSystemPrompt}\n\n${buildPolicyPrompt(policies, options)}`;
 
     const openai = new OpenAI({ apiKey });
 
-    async function runTurn(turnMessages) {
+    const dockerPreflightRoots = new Set();
+
+    async function runTurn(
+      turnMessages,
+      continuationDepth = 0,
+      forcedExecutionAttempted = false,
+    ) {
       const stream = await openai.chat.completions.create({
         model: "gpt-4o-mini",
         messages: turnMessages,
         tools: AGENT_TOOLS,
         tool_choice: "auto",
-        max_tokens: 1200,
+        max_tokens: 2000,
         temperature: 0.3,
         stream: true,
       });
@@ -2551,6 +3073,62 @@ ipcMain.handle("agent:chat", async (event, { messages, nodeIds, tabLabel }) => {
                   path: args.path,
                 });
                 result = agentReadFile(args.path, projectPaths);
+              } else if (tc.function.name === "write_file") {
+                const targetPath = typeof args.path === "string" ? path.normalize(args.path) : "";
+                const targetBase = path.basename(targetPath).toLowerCase();
+                const isDockerConfigWrite =
+                  targetBase === "dockerfile" ||
+                  targetBase.startsWith("dockerfile.") ||
+                  targetBase === "docker-compose.yml" ||
+                  targetBase === "docker-compose.yaml" ||
+                  targetBase === "compose.yml" ||
+                  targetBase === "compose.yaml";
+                if (isDockerConfigWrite) {
+                  const hasPreflight = Array.from(dockerPreflightRoots).some(
+                    (rootPath) => targetPath === rootPath || targetPath.startsWith(rootPath + path.sep),
+                  );
+                  if (!hasPreflight) {
+                    result = `Error: must call discover_docker_plan(project_root) for this project before writing Dockerfile/compose files.`;
+                    return {
+                      role: "tool",
+                      tool_call_id: tc.id,
+                      content: result,
+                    };
+                  }
+                }
+                sendStep(event, {
+                  type: "run_command",
+                  label: `write: ${path.basename(args.path)}`,
+                  path: args.path,
+                });
+                result = await agentWriteFile(
+                  args.path,
+                  args.content,
+                  projectPaths,
+                );
+              } else if (tc.function.name === "discover_runbook") {
+                sendStep(event, {
+                  type: "list_directory",
+                  label: `runbook: ${args.project_root}`,
+                  path: args.project_root,
+                });
+                result = await agentDiscoverRunbook(
+                  args.project_root,
+                  projectPaths,
+                );
+              } else if (tc.function.name === "discover_docker_plan") {
+                sendStep(event, {
+                  type: "list_directory",
+                  label: `docker-plan: ${args.project_root}`,
+                  path: args.project_root,
+                });
+                result = await agentDiscoverDockerPlan(
+                  args.project_root,
+                  projectPaths,
+                );
+                if (typeof result === "string" && !result.startsWith("Error:")) {
+                  dockerPreflightRoots.add(path.normalize(args.project_root));
+                }
               } else if (tc.function.name === "list_directory") {
                 sendStep(event, {
                   type: "list_directory",
@@ -2570,23 +3148,116 @@ ipcMain.handle("agent:chat", async (event, { messages, nodeIds, tabLabel }) => {
                   (n) => n.name.toLowerCase() === args.name.toLowerCase(),
                 );
                 result = buildNodeDetails(node, allNodes, allEdges);
+              } else if (tc.function.name === "propose_fix") {
+                if (options.autopilotEnabled) {
+                  const autopilotAction =
+                    args.fix_type === "restart-container" &&
+                    typeof args.container_id === "string"
+                      ? {
+                          type: "restart-container",
+                          containerId: args.container_id,
+                        }
+                      : args.fix_type === "kill-port" &&
+                          Number.isInteger(args.port) &&
+                          Number.isInteger(args.pid)
+                        ? {
+                            type: "kill-port",
+                            port: args.port,
+                            pid: args.pid,
+                          }
+                        : null;
+
+                  if (autopilotAction) {
+                    sendStep(event, {
+                      type:
+                        args.fix_type === "restart-container"
+                          ? "docker_control"
+                          : "run_command",
+                      label: `[autopilot] ${args.label ?? args.fix_type}`,
+                      path:
+                        args.fix_type === "restart-container"
+                          ? args.container_id
+                          : String(args.port ?? ""),
+                    });
+                    const applyResult = await executeAction(autopilotAction);
+                    result = applyResult?.success
+                      ? `Autopilot applied safe fix immediately: ${args.label ?? args.fix_type}.`
+                      : `Autopilot failed to apply safe fix: ${args.label ?? args.fix_type}.`;
+                  } else {
+                    const fixId = `fix_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+                    const proposal = { id: fixId, ...args };
+                    if (!event.sender.isDestroyed())
+                      event.sender.send("agent:fix-proposal", proposal);
+                    result = `Autopilot could not auto-apply this fix type. Fix button shown to user (id: ${fixId}).`;
+                  }
+                } else {
+                  const fixId = `fix_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+                  const proposal = { id: fixId, ...args };
+                  if (!event.sender.isDestroyed())
+                    event.sender.send("agent:fix-proposal", proposal);
+                  result = `Fix button shown to user (id: ${fixId}). Continue your explanation — the user will click the button to apply.`;
+                }
               } else if (tc.function.name === "launch_in_terminal") {
-                sendStep(event, { type: "run_command", label: `terminal: ${args.command}`, path: args.cwd });
-                result = await agentLaunchInTerminal(args.command, args.cwd, projectPaths);
+                sendStep(event, {
+                  type: "run_command",
+                  label: `terminal: ${args.command}`,
+                  path: args.cwd,
+                });
+                if (
+                  policies.disallowInstalls &&
+                  isInstallOrUpdateCommand(args.command)
+                ) {
+                  result =
+                    'Error: install/update commands are disabled for this chat because the user explicitly requested "do not install".';
+                } else {
+                  result = await agentLaunchInTerminal(
+                    args.command,
+                    args.cwd,
+                    projectPaths,
+                  );
+                  // For docker compose launches, immediately verify from the same cwd
+                  // so the assistant returns concrete evidence instead of guesses.
+                  if (
+                    typeof result === "string" &&
+                    !result.startsWith("Error:") &&
+                    isDockerComposeUpCommand(args.command)
+                  ) {
+                    sendStep(event, {
+                      type: "run_command",
+                      label: "verify: docker compose ps/logs",
+                      path: args.cwd,
+                    });
+                    const verifyOutput = await agentRunCommand(
+                      "docker compose ps -a && echo '---' && docker compose logs --tail=120",
+                      args.cwd,
+                      projectPaths,
+                      policies,
+                    );
+                    result = `${result}\n\nVerification output:\n${verifyOutput}`;
+                  }
+                }
               } else if (tc.function.name === "run_command") {
                 sendStep(event, {
                   type: "run_command",
                   label: args.command,
                   path: args.cwd,
                 });
-                result = await agentRunCommand(args.command, args.cwd, projectPaths);
+                result = await agentRunCommand(
+                  args.command,
+                  args.cwd,
+                  projectPaths,
+                  policies,
+                );
               } else if (tc.function.name === "docker_logs") {
                 sendStep(event, {
                   type: "docker_logs",
                   label: `logs: ${args.container_id}`,
                   path: args.container_id,
                 });
-                result = await agentDockerLogs(args.container_id, args.tail ?? 80);
+                result = await agentDockerLogs(
+                  args.container_id,
+                  args.tail ?? 80,
+                );
               } else if (tc.function.name === "docker_exec") {
                 sendStep(event, {
                   type: "docker_exec",
@@ -2600,22 +3271,86 @@ ipcMain.handle("agent:chat", async (event, { messages, nodeIds, tabLabel }) => {
                   label: `${args.action}: ${args.container_id}`,
                   path: args.container_id,
                 });
-                result = await agentDockerControl(args.container_id, args.action);
+                result = await agentDockerControl(
+                  args.container_id,
+                  args.action,
+                );
               } else {
                 result = "Unknown tool.";
               }
             } catch (e) {
               result = `Parse error: ${e.message}`;
             }
-            return { role: "tool", tool_call_id: tc.id, content: typeof result === "string" ? result : JSON.stringify(result) };
+            return {
+              role: "tool",
+              tool_call_id: tc.id,
+              content:
+                typeof result === "string" ? result : JSON.stringify(result),
+            };
           }),
         );
 
-        await runTurn([...turnMessages, assistantMsg, ...toolResults]);
+        await runTurn(
+          [...turnMessages, assistantMsg, ...toolResults],
+          continuationDepth,
+          forcedExecutionAttempted,
+        );
+        return;
+      }
+
+      if (
+        policies.forceNoBackAndForth &&
+        !forcedExecutionAttempted &&
+        typeof assistantMsg.content === "string" &&
+        looksLikeFollowUpQuestion(assistantMsg.content)
+      ) {
+        await runTurn(
+          [
+            ...turnMessages,
+            { role: "assistant", content: assistantMsg.content },
+            {
+              role: "user",
+              content:
+                "Do not ask me for confirmation. Continue end-to-end: execute the fix yourself with available tools, retry automatically on failure, verify with concrete command output, then summarize changes/commands/verification/blockers.",
+            },
+          ],
+          continuationDepth,
+          true,
+        );
+        return;
+      }
+
+      if (
+        finishReason === "length" &&
+        typeof assistantMsg.content === "string" &&
+        assistantMsg.content.trim().length > 0
+      ) {
+        if (continuationDepth >= 2) {
+          if (!event.sender.isDestroyed()) {
+            event.sender.send(
+              "agent:chat-token",
+              "\n\n_(Response reached length limit. Ask me to continue if you want more.)_",
+            );
+          }
+          return;
+        }
+        await runTurn(
+          [
+            ...turnMessages,
+            { role: "assistant", content: assistantMsg.content },
+            {
+              role: "user",
+              content:
+                "Continue from exactly where you left off. Do not repeat prior text. Keep formatting consistent and finish the answer.",
+            },
+          ],
+          continuationDepth + 1,
+          forcedExecutionAttempted,
+        );
       }
     }
 
-    await runTurn([{ role: "system", content: systemPrompt }, ...messages]);
+    await runTurn([{ role: "system", content: systemPrompt }, ...safeMessages]);
     return { success: true };
   } catch (err) {
     console.error("agent:chat error:", err);

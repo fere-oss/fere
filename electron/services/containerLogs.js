@@ -34,7 +34,17 @@ function getDockerBinaries() {
 // Probe all candidates in parallel so worst-case time = one timeout (3s)
 // instead of N × timeout (Bug 29).
 async function resolveDockerBinary() {
-  if (resolvedDockerBin) return resolvedDockerBin;
+  if (resolvedDockerBin) {
+    try {
+      await execFileAsync(resolvedDockerBin, ['version', '--format', '{{.Client.Version}}'], {
+        timeout: DOCKER_EXEC_TIMEOUT_MS,
+        maxBuffer: 1024 * 1024,
+      });
+      return resolvedDockerBin;
+    } catch {
+      resolvedDockerBin = null;
+    }
+  }
 
   const candidates = getDockerBinaries();
   try {

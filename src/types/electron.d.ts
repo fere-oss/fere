@@ -687,18 +687,47 @@ export interface ElectronAPI {
   // Fere Agent
   agentScan: (nodeIds?: string[]) => Promise<{ success: boolean; findings: AgentFinding[]; error?: string }>;
   agentApplyFix: (action: AgentFixAction) => Promise<{ success: boolean; error?: string }>;
-  agentChat: (messages: { role: 'user' | 'assistant'; content: string }[], nodeIds?: string[], tabLabel?: string | null) => Promise<{ success: boolean; error?: string }>;
+  agentChat: (
+    messages: { role: 'user' | 'assistant'; content: string }[],
+    nodeIds?: string[],
+    tabLabel?: string | null,
+    options?: { autopilotEnabled?: boolean }
+  ) => Promise<{ success: boolean; error?: string }>;
   onChatToken: (callback: (token: string) => void) => void;
   offChatToken: () => void;
   onChatStep: (callback: (step: ChatStep) => void) => void;
   offChatStep: () => void;
+  onFixProposal: (callback: (proposal: FixProposal) => void) => void;
+  offFixProposal: () => void;
+  onProactiveFinding: (callback: (findings: AgentFinding[]) => void) => void;
+  offProactiveFinding: () => void;
 }
 
 export interface ChatStep {
-  type: 'read_file' | 'list_directory' | 'run_command' | 'docker_logs' | 'docker_exec' | 'docker_control' | 'get_node_details';
+  type: 'read_file' | 'list_directory' | 'run_command' | 'docker_logs' | 'docker_exec' | 'docker_control' | 'get_node_details' | 'propose_fix';
   label: string;
   path: string;
   done?: boolean;
+}
+
+export interface FixProposal {
+  id: string;
+  label: string;
+  description: string;
+  fix_type: 'restart-container' | 'kill-port' | 'launch-in-terminal';
+  container_id?: string;
+  port?: number;
+  pid?: number;
+  command?: string;
+  cwd?: string;
+}
+
+export interface ProactiveFinding {
+  id: string;
+  severity: AgentSeverity;
+  service: string;
+  summary: string;
+  detail: string;
 }
 
 export type AgentSeverity = 'critical' | 'warning' | 'suggestion';

@@ -54,9 +54,10 @@ async function runDocker(args, options = {}) {
   const normalizedArgs = Array.isArray(args) ? args : [];
   const allowFailure = !!options.allowFailure;
   const preferred = await resolveDockerBinary();
+  const discovered = getDockerBinaries();
   const candidates = preferred
-    ? [preferred]
-    : getDockerBinaries();
+    ? [preferred, ...discovered.filter((bin) => bin !== preferred)]
+    : discovered;
 
   let lastError = null;
   for (const bin of candidates) {
@@ -70,7 +71,10 @@ async function runDocker(args, options = {}) {
     } catch (error) {
       lastError = error;
       const isMissingBinary = error?.code === 'ENOENT' || /not found/i.test(String(error?.message || ''));
-      if (isMissingBinary) continue;
+      if (isMissingBinary) {
+        if (bin === resolvedDockerBin) resolvedDockerBin = null;
+        continue;
+      }
       throw error;
     }
   }
