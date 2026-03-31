@@ -237,7 +237,7 @@ function SharePreview() {
             <line x1="5.7" y1="7" x2="10.3" y2="4" />
             <line x1="5.7" y1="9" x2="10.3" y2="12" />
           </svg>
-          <span className="share-preview-title">Share Service Map</span>
+          <span className="share-preview-title">Share Localhost Map</span>
         </div>
         <div className="share-preview-url-row">
           <div className="share-preview-url">
@@ -275,7 +275,7 @@ const ONBOARDING_STEPS: OnboardingStep[] = [
     ],
   },
   {
-    title: "Service Map",
+    title: "Localhost Map",
     description: "See your entire architecture at a glance",
     icon: <ServiceMapPreview />,
     iconClassName: "welcome-icon-service-map",

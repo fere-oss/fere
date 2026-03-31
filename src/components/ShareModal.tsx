@@ -130,7 +130,7 @@ export function ShareModal({ onClose, graphNodes, graphEdges, activeTabLabel }: 
               <line x1="6" y1="8" x2="12" y2="5" />
               <line x1="6" y1="10" x2="12" y2="13" />
             </svg>
-            <span className="modal-title" id="share-modal-title">Share Service Map</span>
+            <span className="modal-title" id="share-modal-title">Share Localhost Map</span>
           </div>
           <button className="modal-close" onClick={onClose} aria-label="Close">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">

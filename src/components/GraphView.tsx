@@ -307,7 +307,7 @@ export function GraphView({
   // Listen for debug focus events to center camera on a specific node
   useEffect(() => {
     const handleFocus = (e: Event) => {
-      const { nodeId } = (e as CustomEvent).detail;
+      const { nodeId, select } = (e as CustomEvent).detail;
       if (!reactFlowInstance) return;
       const rfNode = reactFlowInstance.getNode(nodeId);
       if (rfNode) {
@@ -317,10 +317,14 @@ export function GraphView({
           { zoom: 1.2, duration: 400 },
         );
       }
+      if (select) {
+        const graphNode = nodes.find((n) => n.id === nodeId);
+        if (graphNode) setSelectedNode(graphNode);
+      }
     };
     window.addEventListener("fere:debug-focus-node", handleFocus);
     return () => window.removeEventListener("fere:debug-focus-node", handleFocus);
-  }, [reactFlowInstance]);
+  }, [reactFlowInstance, nodes]);
 
   const hoverEdgeGeometry = useMemo(() => {
     const W = FLOW_LAYOUT.NODE_WIDTH;

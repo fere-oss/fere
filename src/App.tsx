@@ -17,6 +17,10 @@ import { ShareModal } from "./components/ShareModal";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { DebugPanel } from "./components/DebugPanel";
 import {
+  CommandPalette,
+  CommandPaletteHandle,
+} from "./components/CommandPalette";
+import {
   useKnownServices,
   serviceKey,
   nodeServiceKey,
@@ -345,6 +349,7 @@ function App() {
 
   // Sliding indicator for view-mode tabs
   const viewModeTabsRef = useRef<HTMLDivElement>(null);
+  const commandPaletteRef = useRef<CommandPaletteHandle>(null);
   const [indicatorStyle, setIndicatorStyle] = useState<{
     left: number;
     width: number;
@@ -523,6 +528,18 @@ function App() {
       window.removeEventListener("fere:assess-service", handleAssessService);
     };
   }, [viewMode]);
+
+  // Cmd+K / Ctrl+K to focus command palette
+  useEffect(() => {
+    const handleCmdK = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
+        commandPaletteRef.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", handleCmdK);
+    return () => window.removeEventListener("keydown", handleCmdK);
+  }, []);
 
   useEffect(() => {
     if (optimisticDownNodes.size === 0) return;
@@ -1205,7 +1222,7 @@ function App() {
                 />
               </svg>
             </span>
-            Service Map
+            Localhost Map
             {traceState.phase !== "idle" && viewMode !== "graph" && (
               <span className="trace-tab-indicator" />
             )}
@@ -1285,6 +1302,17 @@ function App() {
             Database
           </button>
         </div>
+
+        {/* Command Palette */}
+        <CommandPalette
+          ref={commandPaletteRef}
+          graph={graph}
+          tabs={tabs}
+          selectedTab={selectedTab}
+          setSelectedTab={setSelectedTab}
+          setViewMode={setViewMode}
+          setIsAgentOpen={setIsAgentOpen}
+        />
 
         {/* Header Actions */}
         <div className="app-header-actions">
