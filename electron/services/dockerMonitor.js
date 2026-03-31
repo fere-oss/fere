@@ -795,6 +795,194 @@ async function restartContainer(containerId) {
   }
 }
 
+// ============================================
+// Compose File Parsing — Ghost Node Support
+// ============================================
+
+const COMPOSE_FILENAMES = ['docker-compose.yml', 'docker-compose.yaml', 'compose.yml', 'compose.yaml'];
+
+/**
+ * Scan project directories for compose files.
+ * Returns array of absolute paths to compose files.
+ */
+function findComposeFiles(projectPaths) {
+  const found = [];
+  for (const projectPath of projectPaths) {
+    for (const name of COMPOSE_FILENAMES) {
+      const candidate = path.join(projectPath, name);
+      try {
+        if (fs.existsSync(candidate)) {
+          found.push(candidate);
+          break; // first match wins per project
+        }
+      } catch { /* skip inaccessible dirs */ }
+    }
+  }
+  return found;
+}
+
+// Extended cache for full compose metadata (not just service names)
+const composeMetadataCache = new Map();
+
+/**
+ * Parse a compose file for full service metadata.
+ * Returns array of { name, image, buildContext, ports, dependsOn }.
+ */
+function parseComposeServices(composePath) {
+  try {
+    const mtime = fs.statSync(composePath).mtimeMs;
+    const cached = composeMetadataCache.get(composePath);
+    if (cached && cached.mtime === mtime) return cached.services;
+
+    const content = fs.readFileSync(composePath, 'utf8');
+    const composeDir = path.dirname(composePath);
+
+    const servicesBlockMatch = content.match(/^services:\s*\n([\s\S]*?)(?=\n\S|$)/m);
+    if (!servicesBlockMatch) {
+      composeMetadataCache.set(composePath, { mtime, services: [] });
+      return [];
+    }
+
+    const servicesBlock = servicesBlockMatch[1];
+    const services = [];
+
+    // Find each service name (2-space-indented top-level key under services:)
+    const serviceNames = [...servicesBlock.matchAll(/^  ([A-Za-z0-9][A-Za-z0-9_-]*):/gm)].map(m => m[1]);
+
+    for (const name of serviceNames) {
+      // Extract this service's block (everything until next service or end)
+      const nameEscaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const blockMatch = servicesBlock.match(
+        new RegExp(`^  ${nameEscaped}[ \\t]*:[ \\t]*\\n([\\s\\S]*?)(?=\\n  [A-Za-z0-9]|$)`, 'm')
+      );
+      const block = blockMatch ? blockMatch[1] : '';
+
+      // Parse image
+      const imageMatch = block.match(/image:[ \t]*([^\n\r]+)/);
+      const image = imageMatch ? imageMatch[1].trim() : null;
+
+      // Parse build context
+      const buildContext = resolveServiceBuildContext(composeDir, block);
+
+      // Parse ports (host:container format)
+      const ports = [];
+      const portsMatch = block.match(/ports:\s*\n((?:[ \t]*-[^\n]*\n?)*)/);
+      if (portsMatch) {
+        for (const pm of portsMatch[1].matchAll(/- ["']?(\d+):(\d+)/g)) {
+          ports.push({ host: parseInt(pm[1], 10), container: parseInt(pm[2], 10) });
+        }
+      }
+
+      // Parse depends_on (list format)
+      const dependsOn = [];
+      const dependsMatch = block.match(/depends_on:\s*\n((?:[ \t]*-[^\n]*\n?|[ \t]+[A-Za-z0-9][^\n]*\n?)*)/);
+      if (dependsMatch) {
+        // List format: - service_name
+        for (const dm of dependsMatch[1].matchAll(/- [ \t]*([A-Za-z0-9][A-Za-z0-9_-]*)/g)) {
+          dependsOn.push(dm[1]);
+        }
+        // Map format: service_name:\n  condition: ...
+        if (dependsOn.length === 0) {
+          for (const dm of dependsMatch[1].matchAll(/^[ \t]+([A-Za-z0-9][A-Za-z0-9_-]*):/gm)) {
+            dependsOn.push(dm[1]);
+          }
+        }
+      }
+
+      services.push({ name, image, buildContext, ports, dependsOn });
+    }
+
+    composeMetadataCache.set(composePath, { mtime, services });
+    return services;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Discover all compose-defined services from both running container labels
+ * and project path scanning.
+ * Returns { composeFiles: [{ filePath, projectName, projectPath, services }] }
+ */
+function getComposeDefinedServices(containers, projectPaths) {
+  const composeFiles = new Map(); // filePath -> info
+
+  // 1. From running container labels
+  for (const container of containers) {
+    const configFiles = container.labels?.['com.docker.compose.project.config_files'];
+    const projectName = container.labels?.['com.docker.compose.project'];
+    const workingDir = container.labels?.['com.docker.compose.project.working_dir'];
+    if (!configFiles) continue;
+
+    const filePath = configFiles.split(',')[0].trim();
+    if (composeFiles.has(filePath)) continue;
+
+    const services = parseComposeServices(filePath);
+    composeFiles.set(filePath, {
+      filePath,
+      projectName: projectName || path.basename(path.dirname(filePath)),
+      projectPath: workingDir || path.dirname(filePath),
+      services,
+    });
+  }
+
+  // 2. From project path scanning
+  const discoveredFiles = findComposeFiles(projectPaths);
+  for (const filePath of discoveredFiles) {
+    if (composeFiles.has(filePath)) continue;
+
+    const services = parseComposeServices(filePath);
+    if (services.length === 0) continue;
+
+    composeFiles.set(filePath, {
+      filePath,
+      projectName: path.basename(path.dirname(filePath)),
+      projectPath: path.dirname(filePath),
+      services,
+    });
+  }
+
+  return { composeFiles: [...composeFiles.values()] };
+}
+
+// ============================================
+// Start Compose Project
+// ============================================
+
+async function startComposeProject(composeFilePath, services = []) {
+  // Validate file path
+  const resolved = path.resolve(composeFilePath);
+  if (!fs.existsSync(resolved)) {
+    return { success: false, error: 'Compose file not found' };
+  }
+  const ext = path.extname(resolved).toLowerCase();
+  if (ext !== '.yml' && ext !== '.yaml') {
+    return { success: false, error: 'Invalid compose file extension' };
+  }
+
+  // Validate service names against actual compose file to prevent injection
+  if (services.length > 0) {
+    const definedServices = getServiceNamesFromCompose(resolved);
+    if (definedServices) {
+      for (const svc of services) {
+        if (!definedServices.has(svc)) {
+          return { success: false, error: `Unknown service: ${svc}` };
+        }
+      }
+    }
+  }
+
+  try {
+    const args = ['compose', '-f', resolved, 'up', '-d'];
+    if (services.length > 0) args.push(...services);
+    await runDocker(args);
+    clearDockerCache();
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
 module.exports = {
   isDockerAvailable,
   getDockerContainers,
@@ -806,4 +994,6 @@ module.exports = {
   buildContainerConnections,
   containerHealthToGraphHealth,
   clearDockerCache,
+  getComposeDefinedServices,
+  startComposeProject,
 };

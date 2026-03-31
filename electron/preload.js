@@ -40,6 +40,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   stopContainer: (containerId) => ipcRenderer.invoke('stop-container', containerId),
   startContainer: (containerId) => ipcRenderer.invoke('start-container', containerId),
   restartContainer: (containerId) => ipcRenderer.invoke('restart-container', containerId),
+  startComposeProject: (composeFilePath, services) => ipcRenderer.invoke('start-compose-project', composeFilePath, services),
   startProcess: (command, cwd) => ipcRenderer.invoke('start-process', command, cwd),
 
   // Quick actions

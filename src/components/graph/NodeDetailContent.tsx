@@ -80,14 +80,41 @@ export function NodeDetailContent({
   const canStart =
     (isDownLike || isUnhealthyRunning) &&
     (node.isDockerContainer || (startCommand && startProjectPath));
+  const canStop = node.isDockerContainer && node.containerState === 'running' && !node.isGhost;
   const [starting, setStarting] = useState(false);
+  const [stopping, setStopping] = useState(false);
+
+  const handleStop = useCallback(async () => {
+    if (stopping) return;
+    setStopping(true);
+    let stopped = false;
+    try {
+      const id = node.containerId || node.name;
+      const result = await window.electronAPI.stopContainer(id);
+      stopped = !!result?.success;
+    } catch {
+      // snapshot will reflect actual state
+    } finally {
+      if (stopped) {
+        setTimeout(() => {
+          window.dispatchEvent(new CustomEvent("fere:refresh-snapshot"));
+          setStopping(false);
+        }, 1500);
+      } else {
+        setStopping(false);
+      }
+    }
+  }, [node, stopping]);
 
   const handleStart = useCallback(async () => {
     if (starting) return;
     setStarting(true);
     let started = false;
     try {
-      if (node.isDockerContainer) {
+      if (node.isComposeGhost && node.composeFile) {
+        const result = await window.electronAPI.startComposeProject(node.composeFile, [node.name]);
+        started = !!result?.success;
+      } else if (node.isDockerContainer) {
         const id = node.containerId || node.name;
         const isRunning = node.containerState === 'running';
         const result = isRunning
@@ -105,9 +132,16 @@ export function NodeDetailContent({
       // snapshot will reflect actual state
     } finally {
       if (started) {
-        window.dispatchEvent(new CustomEvent("fere:refresh-snapshot"));
+        // Give Docker a moment to update container state before refreshing
+        // to avoid a stale intermediate render. The main process already
+        // triggers scheduler.reconcile(), so this just nudges the renderer.
+        setTimeout(() => {
+          window.dispatchEvent(new CustomEvent("fere:refresh-snapshot"));
+          setStarting(false);
+        }, 1500);
+      } else {
+        setStarting(false);
       }
-      setTimeout(() => setStarting(false), 3000);
     }
   }, [node, startCommand, startProjectPath, starting]);
 
@@ -282,6 +316,42 @@ export function NodeDetailContent({
                     <path d="M4 2l10 6-10 6V2z" />
                   </svg>
                   {node.isDockerContainer && node.containerState === 'running' ? 'Restart Service' : 'Start Service'}
+                </>
+              )}
+            </button>
+          )}
+          {canStop && (
+            <button
+              className="node-detail-stop-btn"
+              onClick={handleStop}
+              disabled={stopping}
+            >
+              {stopping ? (
+                <>
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    className="node-detail-start-spinner"
+                  >
+                    <path d="M8 1v3M8 12v3M1 8h3M12 8h3" strokeLinecap="round" />
+                  </svg>
+                  Stopping...
+                </>
+              ) : (
+                <>
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 16 16"
+                    fill="currentColor"
+                  >
+                    <rect x="3" y="3" width="10" height="10" rx="1" />
+                  </svg>
+                  Stop Service
                 </>
               )}
             </button>

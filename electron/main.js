@@ -90,6 +90,7 @@ const {
   stopContainer,
   startContainer,
   restartContainer,
+  startComposeProject,
 } = require("./services/dockerMonitor");
 const {
   startLogStream,
@@ -592,6 +593,27 @@ ipcMain.handle("restart-container", async (event, containerId) => {
     return result;
   } catch (error) {
     console.error("Error restarting container:", error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle("start-compose-project", async (event, composeFilePath, services) => {
+  try {
+    if (!composeFilePath || typeof composeFilePath !== "string") {
+      return { success: false, error: "Invalid compose file path" };
+    }
+    const serviceList = Array.isArray(services) ? services : [];
+    const result = await startComposeProject(composeFilePath, serviceList);
+    if (result.success) {
+      clearProcessCache();
+      clearPortCache();
+      if (snapshotScheduler) {
+        setImmediate(() => snapshotScheduler.reconcile());
+      }
+    }
+    return result;
+  } catch (error) {
+    console.error("Error starting compose project:", error);
     return { success: false, error: error.message };
   }
 });

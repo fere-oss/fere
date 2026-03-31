@@ -291,6 +291,7 @@ async function buildConnectionGraph(snapshot = null) {
     routesByProject,
     healthByPid,
     containerHealthToGraphHealth,
+    projectPaths: [...projectPaths],
   });
 
   perfLog('Total buildConnectionGraph', Date.now() - startTotal);

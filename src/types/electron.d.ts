@@ -296,6 +296,10 @@ export interface GraphNode {
   isGhost?: boolean;
   startCommand?: string;
   startProjectPath?: string;
+  // Compose ghost node properties
+  isComposeGhost?: boolean;
+  composeProject?: string;
+  composeFile?: string;
 }
 
 export interface GraphEdge {
@@ -646,6 +650,7 @@ export interface ElectronAPI {
   startContainer: (containerId: string) => Promise<KillResult>;
   restartContainer: (containerId: string) => Promise<KillResult>;
   startProcess: (command: string, cwd: string) => Promise<KillResult>;
+  startComposeProject: (composeFilePath: string, services?: string[]) => Promise<KillResult>;
 
   // Quick actions
   openUrl: (url: string) => Promise<{ success: boolean; error?: string }>;

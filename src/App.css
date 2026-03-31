@@ -1928,7 +1928,7 @@ textarea {
   height: auto;
   box-sizing: border-box;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-  transition: box-shadow 0.25s ease;
+  transition: box-shadow 0.25s ease, opacity 0.4s ease, filter 0.4s ease, border-style 0.4s ease;
   -webkit-app-region: no-drag;
   cursor: pointer;
   animation: nodeAppear 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
@@ -2940,6 +2940,32 @@ textarea {
 
 .node-detail-start-spinner {
   animation: node-detail-spin 0.8s linear infinite;
+}
+
+.node-detail-stop-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid rgba(220, 53, 69, 0.3);
+  border-radius: 6px;
+  background: rgba(220, 53, 69, 0.08);
+  color: #dc3545;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s, background 0.15s;
+}
+
+.node-detail-stop-btn:hover {
+  background: rgba(220, 53, 69, 0.15);
+}
+
+.node-detail-stop-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .node-detail-count {

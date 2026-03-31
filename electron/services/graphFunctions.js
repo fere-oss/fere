@@ -15,6 +15,9 @@ const {
   extractAppNameFromCommand,
   HOME_DIR_PATH_PREFIXES,
 } = require('./platform');
+const {
+  getComposeDefinedServices,
+} = require('./dockerMonitor');
 
 // ============================================
 // Known Services Dictionary
@@ -932,6 +935,7 @@ function buildGraphStructure({
   processes, ports, connections,
   cwdMap = {}, dockerSnapshot = null, routesByProject = {},
   healthByPid = {}, containerHealthToGraphHealth = () => 'yellow',
+  projectPaths = [],
 }) {
   const sshPerfStart = PERF_SSH_LOGGING ? Date.now() : 0;
   let remoteAccessEnrichCount = 0;
@@ -1253,6 +1257,11 @@ function buildGraphStructure({
     node.routes = matchRoutesToService(routes, node);
   }
 
+  // Add ghost nodes for compose services that are defined but not running
+  if (dockerSnapshot) {
+    addComposeGhostNodes(nodes, edges, dockerSnapshot, projectPaths, containerHealthToGraphHealth);
+  }
+
   // Enrich descriptions with connection context so labels describe
   // what each service does *in this project*, not just what it is generically.
   enrichDescriptionsWithConnections(nodes, edges);
@@ -1343,6 +1352,143 @@ function cleanDisplayName(name) {
   }
 
   return clean;
+}
+
+/**
+ * Infer node type from a compose service definition.
+ * Uses the image name or service name to categorize.
+ */
+function inferTypeFromComposeService(service) {
+  const imageName = (service.image || service.name || '').toLowerCase();
+  return categorizeContainerImage(imageName);
+}
+
+/**
+ * Add ghost nodes for compose services that are defined in docker-compose.yml
+ * but not currently running as containers.
+ */
+function addComposeGhostNodes(nodes, edges, dockerSnapshot, projectPaths, containerHealthToGraphHealth) {
+  const containers = dockerSnapshot.containers || [];
+  const composeData = getComposeDefinedServices(containers, projectPaths);
+  if (!composeData.composeFiles.length) return;
+
+  // Build a set of running compose services: "projectName/serviceName"
+  const runningComposeServices = new Set();
+  for (const container of containers) {
+    const project = container.labels?.['com.docker.compose.project'];
+    const service = container.labels?.['com.docker.compose.service'];
+    if (project && service) {
+      runningComposeServices.add(`${project}/${service}`);
+    }
+  }
+
+  // Build a map of existing node IDs for edge creation
+  const nodeById = new Map();
+  for (const node of nodes) nodeById.set(node.id, node);
+  // Also index by compose service name for depends_on edges
+  const nodeByComposeName = new Map();
+  for (const node of nodes) {
+    const composeService = node.containerImage ? null : null;
+    // Match by name (compose service names often match container names)
+    nodeByComposeName.set(node.name, node);
+  }
+
+  for (const composeFile of composeData.composeFiles) {
+    const { filePath, projectName, projectPath, services } = composeFile;
+
+    // Index compose services by name for ghost-to-ghost edges
+    const ghostNodeIds = new Map(); // serviceName -> nodeId
+
+    for (const service of services) {
+      const composeKey = `${projectName}/${service.name}`;
+      if (runningComposeServices.has(composeKey)) continue; // already running
+
+      const nodeId = `compose-ghost-${projectName}-${service.name}`;
+      const nodeType = inferTypeFromComposeService(service);
+
+      const ghostNode = {
+        id: nodeId,
+        pid: -1,
+        name: service.name,
+        command: service.image ? `docker: ${service.image}` : `build: ${service.buildContext || service.name}`,
+        type: nodeType,
+        cpu: 0,
+        memory: 0,
+        user: 'docker',
+        tty: null,
+        project: projectName,
+        projectPath: projectPath,
+        repoPath: projectPath,
+        description: getContainerDescription(service.image || service.name, nodeType) || 'Defined in docker-compose.yml but not running.',
+        ports: service.ports.map(p => ({
+          port: p.host,
+          host: '0.0.0.0',
+          description: `→ container:${p.container}`,
+        })),
+        routes: [],
+        healthStatus: 'red',
+        lastSeen: Date.now(),
+        isDockerContainer: true,
+        isGhost: true,
+        isComposeGhost: true,
+        composeProject: projectName,
+        composeFile: filePath,
+        containerId: null,
+        containerImage: service.image || `${projectName}-${service.name}`,
+        containerState: 'not started',
+        containerStatus: 'Not running',
+        containerHealth: null,
+        containerNetworks: [],
+        containerMounts: [],
+        containerPorts: [],
+        startCommand: `docker compose -f "${filePath}" up -d ${service.name}`,
+        startProjectPath: projectPath,
+      };
+
+      nodes.push(ghostNode);
+      nodeById.set(nodeId, ghostNode);
+      ghostNodeIds.set(service.name, nodeId);
+      nodeByComposeName.set(service.name, ghostNode);
+    }
+
+    // Create edges from depends_on
+    for (const service of services) {
+      const sourceId = ghostNodeIds.get(service.name)
+        || findNodeIdByComposeName(nodes, projectName, service.name);
+      if (!sourceId) continue;
+
+      for (const dep of service.dependsOn) {
+        const targetId = ghostNodeIds.get(dep)
+          || findNodeIdByComposeName(nodes, projectName, dep);
+        if (!targetId) continue;
+
+        const edgeId = `compose-dep-${projectName}-${service.name}->${dep}`;
+        edges.push({
+          id: edgeId,
+          source: sourceId,
+          target: targetId,
+          sourcePort: 0,
+          targetPort: 0,
+          protocol: 'compose-dependency',
+          confidence: 0.7,
+        });
+      }
+    }
+  }
+}
+
+/**
+ * Find a node ID matching a compose service name within a project.
+ */
+function findNodeIdByComposeName(nodes, projectName, serviceName) {
+  for (const node of nodes) {
+    if (!node.isDockerContainer) continue;
+    // Match by compose labels (running containers)
+    if (node.composeProject === projectName && node.name === serviceName) return node.id;
+    // Match by name containing the service name
+    if (node.name && node.name.includes(serviceName) && node.project === projectName) return node.id;
+  }
+  return null;
 }
 
 function addDockerContainerNodes(nodes, edges, dockerSnapshot, nodesByPid, portToPid, containerHealthToGraphHealth) {

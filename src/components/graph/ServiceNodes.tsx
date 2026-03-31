@@ -399,9 +399,13 @@ export const ServiceNode = React.memo(function ServiceNode({
         // silently fail — snapshot will reflect actual state
       } finally {
         if (started) {
-          window.dispatchEvent(new CustomEvent("fere:refresh-snapshot"));
+          setTimeout(() => {
+            window.dispatchEvent(new CustomEvent("fere:refresh-snapshot"));
+            setStarting(false);
+          }, 1500);
+        } else {
+          setStarting(false);
         }
-        setTimeout(() => setStarting(false), 3000);
       }
     },
     [node, startCommand, startProjectPath, starting],

@@ -156,6 +156,41 @@ export function GraphView({
 }: GraphViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
+
+  // Keep selectedNode in sync with fresh graph data so the detail panel
+  // always shows current info. Also handles ghost→running transitions:
+  // when a compose ghost disappears and the real container appears, transfer
+  // the selection to the new node so the panel stays open smoothly.
+  useEffect(() => {
+    if (!selectedNode) return;
+
+    // Try to find the same node by ID in the fresh data
+    const freshNode = nodes.find((n) => n.id === selectedNode.id);
+    if (freshNode) {
+      // Same node still exists — update with fresh data
+      if (freshNode !== selectedNode) setSelectedNode(freshNode);
+      return;
+    }
+
+    // Node disappeared — if it was a compose ghost, find the new running container
+    if (selectedNode.isComposeGhost && selectedNode.composeProject) {
+      const replacement = nodes.find(
+        (n) =>
+          n.isDockerContainer &&
+          !n.isGhost &&
+          n.name === selectedNode.name &&
+          n.project === selectedNode.composeProject,
+      );
+      if (replacement) {
+        setSelectedNode(replacement);
+        return;
+      }
+    }
+
+    // Node is gone with no replacement — close the panel
+    setSelectedNode(null);
+  }, [nodes]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const [reactFlowInstance, setReactFlowInstance] =
     useState<ReactFlowInstance | null>(null);
   const animatedNodeIdsRef = useRef<Set<string>>(new Set());

@@ -256,6 +256,7 @@ class SnapshotScheduler extends EventEmitter {
         dockerSnapshot,
         routesByProject,
         healthByPid,
+        projectPaths: [...projectPaths],
       };
 
       if (this.workerReady) {
