@@ -10873,11 +10873,10 @@ textarea {
   background: var(--bg-muted);
   border: 1px solid var(--border-color);
   border-radius: 8px;
-  text-align: left;
   padding: 8px 10px;
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  align-items: center;
+  gap: 6px;
   cursor: pointer;
 }
 
@@ -10885,9 +10884,41 @@ textarea {
   border-color: var(--border-hover);
 }
 
+.agp-history-item:hover .agp-history-delete {
+  opacity: 1;
+}
+
 .agp-history-item-active {
   background: color-mix(in srgb, var(--blue) 8%, var(--bg-muted));
   border-color: color-mix(in srgb, var(--blue) 35%, var(--border-color));
+}
+
+.agp-history-item-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.agp-history-delete {
+  all: unset;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  color: var(--text-faint);
+  opacity: 0;
+  cursor: pointer;
+  transition: opacity 0.15s, background 0.15s, color 0.15s;
+}
+
+.agp-history-delete:hover {
+  background: #fee2e2;
+  color: #ef4444;
 }
 
 .agp-history-title {

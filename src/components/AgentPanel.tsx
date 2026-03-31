@@ -358,7 +358,7 @@ function loadPersistedChatState(): PersistedChatState {
   }
 }
 
-export function AgentPanel({ nodes }: { nodes: GraphNode[] }) {
+export function AgentPanel({ nodes, tabLabel }: { nodes: GraphNode[]; tabLabel?: string | null }) {
   const persistedState = useMemo(() => loadPersistedChatState(), []);
   const [open, setOpen] = useState(persistedState.open);
   const [threads, setThreads] = useState<ChatThread[]>(persistedState.threads);
@@ -575,6 +575,7 @@ export function AgentPanel({ nodes }: { nodes: GraphNode[] }) {
         const result = await window.electronAPI.agentChat(
           updatedMessages,
           nodeIdsForScan,
+          tabLabel ?? null,
         );
         window.electronAPI.offChatToken();
         window.electronAPI.offChatStep();
@@ -666,6 +667,24 @@ export function AgentPanel({ nodes }: { nodes: GraphNode[] }) {
     setHistoryOpen(false);
   }, []);
 
+  const deleteThread = useCallback((e: React.MouseEvent, threadId: string) => {
+    e.stopPropagation();
+    setThreads((prev) => {
+      const next = prev.filter((t) => t.id !== threadId);
+      // If we deleted the active thread, switch to the first remaining one (or create new)
+      if (threadId === activeThreadId) {
+        const fallback = next[0] ?? createThread([]);
+        if (!next[0]) {
+          setActiveThreadId(fallback.id);
+          return [fallback];
+        }
+        setActiveThreadId(fallback.id);
+      }
+      return next;
+    });
+    setError(null);
+  }, [activeThreadId]);
+
   return (
     <>
       <button
@@ -742,7 +761,7 @@ export function AgentPanel({ nodes }: { nodes: GraphNode[] }) {
                 <div className="agp-history-empty">No saved chats yet.</div>
               ) : (
                 sortedThreads.map((thread) => (
-                  <button
+                  <div
                     key={thread.id}
                     className={`agp-history-item${thread.id === activeThreadId ? " agp-history-item-active" : ""}`}
                     onClick={() => {
@@ -751,11 +770,22 @@ export function AgentPanel({ nodes }: { nodes: GraphNode[] }) {
                       setError(null);
                     }}
                   >
-                    <span className="agp-history-title">{thread.title}</span>
-                    <span className="agp-history-meta">
-                      {thread.messages.length} msg · {formatThreadTimestamp(thread.updatedAt)}
-                    </span>
-                  </button>
+                    <div className="agp-history-item-content">
+                      <span className="agp-history-title">{thread.title}</span>
+                      <span className="agp-history-meta">
+                        {thread.messages.length} msg · {formatThreadTimestamp(thread.updatedAt)}
+                      </span>
+                    </div>
+                    <button
+                      className="agp-history-delete"
+                      onClick={(e) => deleteThread(e, thread.id)}
+                      title="Delete chat"
+                    >
+                      <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
+                        <path d="M1.5 1.5l8 8M9.5 1.5l-8 8" />
+                      </svg>
+                    </button>
+                  </div>
                 ))
               )}
             </div>

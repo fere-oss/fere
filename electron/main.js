@@ -2169,123 +2169,110 @@ function agentListDirectory(dirPath, allowedPaths) {
   }
 }
 
-// Blocked command prefixes / patterns for run_command safety
+// Launch a command in a new macOS Terminal window (for long-running servers)
+async function agentLaunchInTerminal(command, cwd, projectPaths) {
+  if (typeof command !== "string" || !command.trim()) return "Error: command is empty.";
+  if (typeof cwd !== "string" || !path.isAbsolute(cwd)) return "Error: cwd must be an absolute path.";
+  const normalizedCwd = path.normalize(cwd);
+  if (!agentAllowedCommandCwd(normalizedCwd, projectPaths)) {
+    return `Error: cwd ${normalizedCwd} is outside allowed project paths.`;
+  }
+  // Escape for AppleScript string literal
+  const escapedCwd = normalizedCwd.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  const escapedCmd = command.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  const script = `tell application "Terminal"
+  activate
+  do script "cd \\"${escapedCwd}\\" && ${escapedCmd}"
+end tell`;
+  const { output, ok } = await execAsync(`osascript -e '${script.replace(/'/g, "'\\''")}'`, { timeout: 10000 });
+  if (!ok) return `Error opening Terminal: ${output}`;
+  return `Opened Terminal and ran: ${command}`;
+}
+
+// Blocked command patterns for run_command safety
 const BLOCKED_CMDS = [
-  /\brm\b/,
-  /\brmdir\b/,
-  /\bsudo\b/,
-  /\bsu\b/,
-  /\bchmod\b/,
-  /\bchown\b/,
-  /\bkill\b/,
-  /\bpkill\b/,
-  /\bmkfs\b/,
-  /\bdd\b/,
-  /\bfdisk\b/,
-  /\bformat\b/,
-  /\bmv\b.*\//,
-  /\bcp\b.*\//,
-  /\bcurl\b/,
-  /\bwget\b/,
-  /\bnc\b/,
-  /\bncat\b/,
-  />\s*\//,
-  /\|\s*sh/,
-  /\|\s*bash/,
-  /\|\s*zsh/,
-  /`/,
-  /\$\(/,
+  /\brm\b/, /\brmdir\b/, /\bsudo\b/, /\bsu\b/, /\bchmod\b/, /\bchown\b/,
+  /\bkill\b/, /\bpkill\b/, /\bmkfs\b/, /\bdd\b/, /\bfdisk\b/, /\bformat\b/,
+  /\bmv\b.*\//, /\bcp\b.*\//, /\bcurl\b/, /\bwget\b/, /\bnc\b/, /\bncat\b/,
+  />\s*\//, /\|\s*sh/, /\|\s*bash/, /\|\s*zsh/, /`/, /\$\(/,
 ];
 
-function agentRunCommand(command, cwd, projectPaths) {
-  if (typeof command !== "string" || !command.trim())
-    return "Error: command is empty.";
-  if (typeof cwd !== "string" || !path.isAbsolute(cwd))
-    return "Error: cwd must be an absolute path.";
+// Long-running server commands that should never be started by the agent
+const BLOCKED_SERVER_CMDS = [
+  /\bnpm\s+(run\s+)?(start|dev|serve|watch)\b/,
+  /\bpnpm\s+(run\s+)?(start|dev|serve|watch)\b/,
+  /\byarn\s+(run\s+)?(start|dev|serve|watch)\b/,
+  /\bnpx\s+(next|vite|webpack-dev-server|nodemon|ts-node-dev|live-server)\b/,
+  /\bnode\s+(server|index|app|main)\.(js|ts)\b/,
+  /\bnext\s+dev\b/, /\bvite\b/, /\bnodemon\b/, /\buvicorn\b/, /\bgunicorn\b/,
+  /\bflask\s+run\b/, /\bdjango.*runserver\b/, /\bfastapi\b/,
+  /\bpython\s+-m\s+(flask|uvicorn|http\.server)\b/,
+];
+
+// Promisified exec — non-blocking, runs off the main thread event loop
+const { exec: _execAsync } = require("child_process");
+function execAsync(command, options = {}) {
+  return new Promise((resolve) => {
+    _execAsync(command, { encoding: "utf8", ...options }, (err, stdout, stderr) => {
+      if (err) {
+        const msg = ((stdout || "") + (stderr || "") || err.message).trim();
+        resolve({ ok: false, output: `Exit ${err.code ?? 1}:\n${msg}` });
+      } else {
+        resolve({ ok: true, output: (stdout || "").trim() || "(no output)" });
+      }
+    });
+  });
+}
+
+async function agentRunCommand(command, cwd, projectPaths) {
+  if (typeof command !== "string" || !command.trim()) return "Error: command is empty.";
+  if (typeof cwd !== "string" || !path.isAbsolute(cwd)) return "Error: cwd must be an absolute path.";
   const normalizedCwd = path.normalize(cwd);
   if (!agentAllowedCommandCwd(normalizedCwd, projectPaths)) {
     return `Error: cwd ${normalizedCwd} is outside allowed local dev roots.`;
   }
+  for (const pattern of BLOCKED_SERVER_CMDS) {
+    if (pattern.test(command)) return `Error: "${command}" starts a long-running server. Use docker_control or run the command manually in a terminal instead.`;
+  }
   for (const pattern of BLOCKED_CMDS) {
-    if (pattern.test(command))
-      return `Error: command contains a blocked operation (${pattern}).`;
+    if (pattern.test(command)) return `Error: command contains a blocked operation.`;
   }
-  try {
-    const { execSync } = require("child_process");
-    const output = execSync(command, {
-      cwd: normalizedCwd,
-      timeout: 15000,
-      maxBuffer: 1024 * 100,
-      encoding: "utf8",
-      env: { ...process.env, TERM: "dumb" },
-    });
-    return output.trim() || "(no output)";
-  } catch (err) {
-    const msg = (err.stdout || "") + (err.stderr || "") || err.message;
-    return `Exit ${err.status ?? 1}:\n${msg.trim()}`;
-  }
+  const { output } = await execAsync(command, {
+    cwd: normalizedCwd,
+    timeout: 15000,
+    maxBuffer: 1024 * 100,
+    env: { ...process.env, TERM: "dumb" },
+  });
+  return output;
 }
 
-function agentDockerLogs(containerId, tail = 80) {
-  if (!/^[a-zA-Z0-9_\-\.]+$/.test(containerId))
-    return "Error: invalid container id.";
-  try {
-    const { execSync } = require("child_process");
-    const out = execSync(
-      `docker logs --tail ${Number(tail)} ${containerId} 2>&1`,
-      {
-        timeout: 10000,
-        maxBuffer: 1024 * 100,
-        encoding: "utf8",
-      },
-    );
-    return out.trim() || "(no logs)";
-  } catch (err) {
-    return `Error: ${err.message}`;
-  }
+async function agentDockerLogs(containerId, tail = 80) {
+  if (!/^[a-zA-Z0-9_\-\.]+$/.test(containerId)) return "Error: invalid container id.";
+  const { output } = await execAsync(
+    `docker logs --tail ${Number(tail)} ${containerId} 2>&1`,
+    { timeout: 10000, maxBuffer: 1024 * 100 },
+  );
+  return output || "(no logs)";
 }
 
-function agentDockerExec(containerId, command) {
-  if (!/^[a-zA-Z0-9_\-\.]+$/.test(containerId))
-    return "Error: invalid container id.";
-  if (typeof command !== "string" || !command.trim())
-    return "Error: command is empty.";
+async function agentDockerExec(containerId, command) {
+  if (!/^[a-zA-Z0-9_\-\.]+$/.test(containerId)) return "Error: invalid container id.";
+  if (typeof command !== "string" || !command.trim()) return "Error: command is empty.";
   for (const pattern of BLOCKED_CMDS) {
-    if (pattern.test(command))
-      return `Error: command contains a blocked operation.`;
+    if (pattern.test(command)) return `Error: command contains a blocked operation.`;
   }
-  try {
-    const { execSync } = require("child_process");
-    const out = execSync(
-      `docker exec ${containerId} sh -c ${JSON.stringify(command)} 2>&1`,
-      {
-        timeout: 15000,
-        maxBuffer: 1024 * 100,
-        encoding: "utf8",
-      },
-    );
-    return out.trim() || "(no output)";
-  } catch (err) {
-    const msg = (err.stdout || "") + (err.stderr || "") || err.message;
-    return `Exit ${err.status ?? 1}:\n${msg.trim()}`;
-  }
+  const { output } = await execAsync(
+    `docker exec ${containerId} sh -c ${JSON.stringify(command)} 2>&1`,
+    { timeout: 15000, maxBuffer: 1024 * 100 },
+  );
+  return output;
 }
 
-function agentDockerControl(containerId, action) {
-  if (!/^[a-zA-Z0-9_\-\.]+$/.test(containerId))
-    return "Error: invalid container id.";
-  if (!["start", "stop", "restart"].includes(action))
-    return "Error: action must be start, stop, or restart.";
-  try {
-    const { execSync } = require("child_process");
-    execSync(`docker ${action} ${containerId}`, {
-      timeout: 20000,
-      encoding: "utf8",
-    });
-    return `Container ${containerId} ${action}ed successfully.`;
-  } catch (err) {
-    return `Error: ${err.message}`;
-  }
+async function agentDockerControl(containerId, action) {
+  if (!/^[a-zA-Z0-9_\-\.]+$/.test(containerId)) return "Error: invalid container id.";
+  if (!["start", "stop", "restart"].includes(action)) return "Error: action must be start, stop, or restart.";
+  const { ok, output } = await execAsync(`docker ${action} ${containerId} 2>&1`, { timeout: 20000 });
+  return ok ? `Container ${containerId} ${action}ed successfully.` : output;
 }
 
 const AGENT_TOOLS = [
@@ -2412,6 +2399,21 @@ const AGENT_TOOLS = [
   {
     type: "function",
     function: {
+      name: "launch_in_terminal",
+      description: "Open macOS Terminal and run a long-running command (e.g. dev servers, uvicorn, npm run dev, flask run). Use this instead of run_command for anything that stays running. The command runs in a new Terminal window so the user can see its output.",
+      parameters: {
+        type: "object",
+        properties: {
+          command: { type: "string", description: "The command to run (e.g. 'uvicorn main:app --host 0.0.0.0 --port 8000')" },
+          cwd: { type: "string", description: "Absolute path of the directory to run the command in" },
+        },
+        required: ["command", "cwd"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "docker_control",
       description: "Start, stop, or restart a Docker container.",
       parameters: {
@@ -2437,7 +2439,7 @@ function sendStep(event, step) {
   if (!event.sender.isDestroyed()) event.sender.send("agent:chat-step", step);
 }
 
-ipcMain.handle("agent:chat", async (event, { messages, nodeIds }) => {
+ipcMain.handle("agent:chat", async (event, { messages, nodeIds, tabLabel }) => {
   try {
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey)
@@ -2480,7 +2482,7 @@ ipcMain.handle("agent:chat", async (event, { messages, nodeIds }) => {
       snapshot,
       Array.isArray(nodeIds) ? nodeIds : undefined,
     );
-    const systemPrompt = await buildChatContext(snapshot, findings);
+    const systemPrompt = await buildChatContext(snapshot, findings, typeof tabLabel === "string" ? tabLabel : null);
 
     const openai = new OpenAI({ apiKey });
 
@@ -2568,41 +2570,44 @@ ipcMain.handle("agent:chat", async (event, { messages, nodeIds }) => {
                   (n) => n.name.toLowerCase() === args.name.toLowerCase(),
                 );
                 result = buildNodeDetails(node, allNodes, allEdges);
+              } else if (tc.function.name === "launch_in_terminal") {
+                sendStep(event, { type: "run_command", label: `terminal: ${args.command}`, path: args.cwd });
+                result = await agentLaunchInTerminal(args.command, args.cwd, projectPaths);
               } else if (tc.function.name === "run_command") {
                 sendStep(event, {
                   type: "run_command",
                   label: args.command,
                   path: args.cwd,
                 });
-                result = agentRunCommand(args.command, args.cwd, projectPaths);
+                result = await agentRunCommand(args.command, args.cwd, projectPaths);
               } else if (tc.function.name === "docker_logs") {
                 sendStep(event, {
                   type: "docker_logs",
                   label: `logs: ${args.container_id}`,
                   path: args.container_id,
                 });
-                result = agentDockerLogs(args.container_id, args.tail ?? 80);
+                result = await agentDockerLogs(args.container_id, args.tail ?? 80);
               } else if (tc.function.name === "docker_exec") {
                 sendStep(event, {
                   type: "docker_exec",
                   label: `exec: ${args.command}`,
                   path: args.container_id,
                 });
-                result = agentDockerExec(args.container_id, args.command);
+                result = await agentDockerExec(args.container_id, args.command);
               } else if (tc.function.name === "docker_control") {
                 sendStep(event, {
                   type: "docker_control",
                   label: `${args.action}: ${args.container_id}`,
                   path: args.container_id,
                 });
-                result = agentDockerControl(args.container_id, args.action);
+                result = await agentDockerControl(args.container_id, args.action);
               } else {
                 result = "Unknown tool.";
               }
             } catch (e) {
               result = `Parse error: ${e.message}`;
             }
-            return { role: "tool", tool_call_id: tc.id, content: result };
+            return { role: "tool", tool_call_id: tc.id, content: typeof result === "string" ? result : JSON.stringify(result) };
           }),
         );
 

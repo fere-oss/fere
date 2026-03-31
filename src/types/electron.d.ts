@@ -687,7 +687,7 @@ export interface ElectronAPI {
   // Fere Agent
   agentScan: (nodeIds?: string[]) => Promise<{ success: boolean; findings: AgentFinding[]; error?: string }>;
   agentApplyFix: (action: AgentFixAction) => Promise<{ success: boolean; error?: string }>;
-  agentChat: (messages: { role: 'user' | 'assistant'; content: string }[], nodeIds?: string[]) => Promise<{ success: boolean; error?: string }>;
+  agentChat: (messages: { role: 'user' | 'assistant'; content: string }[], nodeIds?: string[], tabLabel?: string | null) => Promise<{ success: boolean; error?: string }>;
   onChatToken: (callback: (token: string) => void) => void;
   offChatToken: () => void;
   onChatStep: (callback: (step: ChatStep) => void) => void;

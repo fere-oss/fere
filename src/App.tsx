@@ -1232,7 +1232,10 @@ function App() {
 
         {/* Header Actions */}
         <div className="app-header-actions">
-          <AgentPanel nodes={visibleGraphNodes} />
+          <AgentPanel
+            nodes={filteredData.nodes}
+            tabLabel={selectedTab === SYSTEM_TAB_ID ? null : (tabs.find((t) => t.id === selectedTab)?.label ?? null)}
+          />
           <button
             className="feedback-btn"
             onClick={() =>

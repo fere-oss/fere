@@ -460,7 +460,7 @@ async function readCodebaseContext(nodes) {
   return lines.join("\n");
 }
 
-async function buildChatContext(snapshot, findings) {
+async function buildChatContext(snapshot, findings, tabLabel = null) {
   const nodes = snapshot.graph?.nodes ?? [];
   const edges = snapshot.graph?.edges ?? [];
   const ports = snapshot.ports ?? [];
@@ -553,7 +553,13 @@ async function buildChatContext(snapshot, findings) {
 
   const codebaseContext = await readCodebaseContext(nodes);
 
+  const scopeLine = tabLabel
+    ? `The user is currently viewing the **${tabLabel}** project tab. All services, connections, and findings listed below are scoped to that project only. Do not reference or assume the existence of services from other projects.`
+    : `The user is viewing the system-wide tab showing all running services.`;
+
   return `You are Fere's built-in runtime intelligence for a local development environment. You have real-time visibility into what is actually running on this machine — something no IDE assistant or code editor can see.
+
+${scopeLine}
 
 Snapshot captured at: ${new Date().toISOString()}
 
@@ -586,7 +592,8 @@ Rules:
 - Keep answers focused and actionable. Lead with the direct answer, then explain.
 - You have a \`get_node_details\` tool. Use it whenever the user asks about a specific service to get full details: all routes, external API calls, Docker image/networks/mounts, health check output, CPU/memory, inbound/outbound connections, and more.
 - You have a \`read_file\` tool. Use it proactively when the user asks about code logic, bugs, or implementation details. Use \`list_directory\` first if unsure of the path.
-- You have \`run_command\` to execute diagnostic shell commands (tests, log inspection, etc.) inside project directories.
+- You have \`run_command\` for short diagnostic commands (e.g. \`npm test\`, \`python -c\`, \`cat error.log\`). NEVER use it for long-running servers.
+- You have \`launch_in_terminal\` for starting dev servers and long-running processes (uvicorn, npm run dev, next dev, flask run, nodemon, etc.). This opens macOS Terminal and runs the command there so the user can see its output. Always use this when the user asks you to start or run a service.
 - You have \`docker_logs\`, \`docker_exec\`, and \`docker_control\` to read container output, run commands inside containers, and start/stop/restart them.
 - Do not tell the user to run commands manually when a tool can run it. Use the tools first and return the output.
 - Do not claim generic sandbox/restriction limitations. If a tool returns an error, quote that exact error and then propose a next step.
