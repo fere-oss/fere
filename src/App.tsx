@@ -1663,10 +1663,6 @@ function App() {
         </div>
       )}
 
-      {viewMode === "graph" && !loading && filteredData.nodes.length > 0 && (
-        <TopologyBar nodes={filteredData.nodes} edges={filteredData.edges} />
-      )}
-
       {/* Main Content */}
       <div className="app-body">
         <main className="main-content">

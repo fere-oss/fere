@@ -8,6 +8,19 @@ import {
   subscribeExternalApiCacheUpdates,
 } from "./externalApis";
 import { BrandIcon, inferServiceBrand } from "./brandIcons";
+import { useLabelsVisible } from "./LabelsContext";
+
+function shortenDescription(desc: string): string {
+  let dashIdx = desc.indexOf(' — ');
+  let skipLen = 3;
+  if (dashIdx === -1) {
+    dashIdx = desc.indexOf(' - ');
+    skipLen = 3;
+  }
+  if (dashIdx === -1) return desc;
+  const shortened = desc.slice(dashIdx + skipLen);
+  return shortened.charAt(0).toUpperCase() + shortened.slice(1);
+}
 
 // Hoisted to module level — avoids Set recreation on every ServiceNode render
 const DOCKER_BADGE_TYPES = new Set(["container", "cache", "database", "broker"]);
@@ -253,6 +266,7 @@ export const ServiceNode = React.memo(function ServiceNode({
   onContextMenu: (e: React.MouseEvent, node: GraphNode) => void;
   animationIndex?: number;
 }) {
+  const labelsVisible = useLabelsVisible();
   const isGhost = !!node.isGhost;
   const isDownLike = isGhost || node.healthStatus === "red";
   const accentColor = getServiceColor(node.type);
@@ -554,6 +568,12 @@ export const ServiceNode = React.memo(function ServiceNode({
           >
             :{mainPort}
           </span>
+        </div>
+      )}
+
+      {labelsVisible && !isDownLike && node.description && (
+        <div className="service-node-learning-label">
+          {shortenDescription(node.description)}
         </div>
       )}
 
