@@ -461,6 +461,13 @@ function App() {
       window.removeEventListener("fere:view-container-logs", handleViewLogs);
   }, []);
 
+  // Navigate to service map when Fere chat focuses a node
+  useEffect(() => {
+    const handler = () => setViewMode("graph");
+    window.addEventListener("fere:show-graph", handler);
+    return () => window.removeEventListener("fere:show-graph", handler);
+  }, []);
+
   useEffect(() => {
     if (optimisticDownNodes.size === 0) return;
     const liveNodeById = new Map(graph.nodes.map((node) => [node.id, node]));

@@ -1,4 +1,14 @@
-const { app, BrowserWindow, ipcMain, shell, nativeImage, Notification, clipboard, powerMonitor, dialog } = require("electron");
+const {
+  app,
+  BrowserWindow,
+  ipcMain,
+  shell,
+  nativeImage,
+  Notification,
+  clipboard,
+  powerMonitor,
+  dialog,
+} = require("electron");
 const { autoUpdater } = require("electron-updater");
 const path = require("path");
 const fs = require("fs");
@@ -38,7 +48,11 @@ function validateRemoteDbUri(uri) {
   }
 
   if (isPrivateHost(parsed.hostname)) {
-    return { valid: false, reason: "Connections to private/internal addresses are not allowed for remote URIs" };
+    return {
+      valid: false,
+      reason:
+        "Connections to private/internal addresses are not allowed for remote URIs",
+    };
   }
 
   return { valid: true };
@@ -63,8 +77,15 @@ const {
 } = require("./services/connectionGraph");
 const { getSystemSnapshot } = require("./services/systemSnapshot");
 const { SnapshotScheduler } = require("./services/snapshotScheduler");
-const { scanExternalApis } = require("./services/externalApiScanner");
-const { scanRoutes, clearRouteCache, getRouteCacheTimestamp } = require("./services/routeScanner");
+const {
+  scanExternalApis,
+  getExternalApiProviders,
+} = require("./services/externalApiScanner");
+const {
+  scanRoutes,
+  clearRouteCache,
+  getRouteCacheTimestamp,
+} = require("./services/routeScanner");
 const {
   loadHistory,
   saveHistoryEntry,
@@ -111,10 +132,20 @@ const {
   markIntentionalStopForContainer,
 } = require("./services/alertManager");
 const analytics = require("./analytics");
-const { runScan, executeAction } = require("./services/fereAgent");
+const {
+  runScan,
+  executeAction,
+  buildChatContext,
+  buildNodeDetails,
+} = require("./services/fereAgent");
+const OpenAI = require("openai").default;
 const sentry = require("./sentry");
 const { generateHTML } = require("./services/graphExporter");
-const { createGist, updateGist, buildPreviewUrl } = require("./services/gistPublisher");
+const {
+  createGist,
+  updateGist,
+  buildPreviewUrl,
+} = require("./services/gistPublisher");
 const { executeTracedRequest } = require("./services/traceCapture");
 
 app.setName("Fere");
@@ -180,7 +211,9 @@ process.on("uncaughtException", (err) => {
 });
 
 process.on("unhandledRejection", (reason) => {
-  sentry.captureException(reason instanceof Error ? reason : new Error(String(reason)));
+  sentry.captureException(
+    reason instanceof Error ? reason : new Error(String(reason)),
+  );
   console.error("Unhandled rejection:", reason);
 });
 
@@ -226,9 +259,7 @@ function createWindow() {
 
   // Security: Set up navigation blocking
   // Allow only dev server in development, file:// protocol in production
-  const allowedOrigins = isDev
-    ? ["http://localhost:3001"]
-    : ["file://"];
+  const allowedOrigins = isDev ? ["http://localhost:3001"] : ["file://"];
   setupNavigationBlocking(mainWindow.webContents, allowedOrigins);
 
   // Security: Block new windows, open http/https in external browser
@@ -297,18 +328,16 @@ app.whenReady().then(() => {
   analytics.capture("app_launched", { is_dev: isDev });
 
   if (process.platform === "darwin" && isDev) {
-    const icon = nativeImage.createFromPath(
-      resolveAppIconPath()
-    );
+    const icon = nativeImage.createFromPath(resolveAppIconPath());
     if (!icon.isEmpty()) {
       app.dock.setIcon(icon);
     }
   }
   // Power-aware scheduling: slow down on battery
-  powerMonitor.on('on-ac', () => {
+  powerMonitor.on("on-ac", () => {
     if (snapshotScheduler) snapshotScheduler.setBattery(false);
   });
-  powerMonitor.on('on-battery', () => {
+  powerMonitor.on("on-battery", () => {
     if (snapshotScheduler) snapshotScheduler.setBattery(true);
   });
 
@@ -352,8 +381,12 @@ app.on("activate", () => {
  * for alert evaluation purposes.
  */
 function updateAlertNodeMap(delta) {
-  if (delta.type === 'full' && delta.graph && Array.isArray(delta.graph.nodes)) {
-    alertNodeMap = new Map(delta.graph.nodes.map(n => [n.id, n]));
+  if (
+    delta.type === "full" &&
+    delta.graph &&
+    Array.isArray(delta.graph.nodes)
+  ) {
+    alertNodeMap = new Map(delta.graph.nodes.map((n) => [n.id, n]));
     return;
   }
   if (delta.graph && delta.graph.nodes) {
@@ -454,7 +487,7 @@ ipcMain.handle("start-snapshot-stream", async (event) => {
     }
 
     snapshotScheduler = new SnapshotScheduler();
-    if (typeof powerMonitor.isOnBatteryPower === 'function') {
+    if (typeof powerMonitor.isOnBatteryPower === "function") {
       snapshotScheduler.setBattery(powerMonitor.isOnBatteryPower());
     }
 
@@ -551,7 +584,8 @@ ipcMain.handle("get-external-apis", async (event, projectPath) => {
     // Periodic sweep: if the cache has grown large, prune all expired entries
     if (_externalApisCache.size > 50) {
       for (const [k, v] of _externalApisCache) {
-        if (now - v.time >= _EXTERNAL_APIS_CACHE_TTL) _externalApisCache.delete(k);
+        if (now - v.time >= _EXTERNAL_APIS_CACHE_TTL)
+          _externalApisCache.delete(k);
       }
     }
 
@@ -567,6 +601,15 @@ ipcMain.handle("get-external-apis", async (event, projectPath) => {
     return data;
   } catch (error) {
     console.error("Error getting external APIs:", error);
+    return [];
+  }
+});
+
+ipcMain.handle("get-external-api-providers", async () => {
+  try {
+    return getExternalApiProviders();
+  } catch (error) {
+    console.error("Error getting external API providers:", error);
     return [];
   }
 });
@@ -652,24 +695,59 @@ ipcMain.handle("start-container", async (event, containerId) => {
 // Allowlisted binaries for start-process (prevents arbitrary command execution)
 const ALLOWED_BINARIES = new Set([
   // Node.js / JavaScript
-  "node", "npm", "npx", "yarn", "pnpm", "bun", "deno", "tsx", "ts-node",
+  "node",
+  "npm",
+  "npx",
+  "yarn",
+  "pnpm",
+  "bun",
+  "deno",
+  "tsx",
+  "ts-node",
   // Python
-  "python", "python3", "pip", "pip3", "uvicorn", "gunicorn", "flask",
-  "django-admin", "poetry", "pipenv", "uv",
+  "python",
+  "python3",
+  "pip",
+  "pip3",
+  "uvicorn",
+  "gunicorn",
+  "flask",
+  "django-admin",
+  "poetry",
+  "pipenv",
+  "uv",
   // Ruby
-  "ruby", "rails", "bundle", "bundler", "rake", "puma",
+  "ruby",
+  "rails",
+  "bundle",
+  "bundler",
+  "rake",
+  "puma",
   // Java / JVM
-  "java", "javac", "mvn", "mvnw", "gradle", "gradlew", "./gradlew", "./mvnw",
+  "java",
+  "javac",
+  "mvn",
+  "mvnw",
+  "gradle",
+  "gradlew",
+  "./gradlew",
+  "./mvnw",
   // Go
-  "go", "air",
+  "go",
+  "air",
   // Rust
-  "cargo", "rustc",
+  "cargo",
+  "rustc",
   // PHP
-  "php", "composer", "artisan",
+  "php",
+  "composer",
+  "artisan",
   // .NET
   "dotnet",
   // Elixir / Erlang
-  "mix", "elixir", "iex",
+  "mix",
+  "elixir",
+  "iex",
   // Docker (compose only)
   "docker-compose",
   // General
@@ -747,7 +825,10 @@ ipcMain.handle("start-process", async (event, command, cwd) => {
     try {
       const stat = fs.statSync(cwd);
       if (!stat.isDirectory()) {
-        return { success: false, error: "Working directory is not a directory" };
+        return {
+          success: false,
+          error: "Working directory is not a directory",
+        };
       }
     } catch {
       return { success: false, error: "Working directory does not exist" };
@@ -755,12 +836,18 @@ ipcMain.handle("start-process", async (event, command, cwd) => {
 
     // Reject shell metacharacters that indicate shell piping/chaining
     if (/[|;&`$><\n]/.test(command)) {
-      return { success: false, error: "Command contains disallowed shell metacharacters" };
+      return {
+        success: false,
+        error: "Command contains disallowed shell metacharacters",
+      };
     }
 
     const parts = parseCommand(command);
     if (!parts) {
-      return { success: false, error: "Malformed command (unmatched quote or escape)" };
+      return {
+        success: false,
+        error: "Malformed command (unmatched quote or escape)",
+      };
     }
     if (parts.length === 0) {
       return { success: false, error: "Empty command" };
@@ -771,15 +858,25 @@ ipcMain.handle("start-process", async (event, command, cwd) => {
 
     // Prevent allowlist bypass via arbitrary absolute/relative paths.
     // Allow explicit wrapper scripts only from the selected cwd.
-    const usesPath = requestedBinary.includes("/") || requestedBinary.includes("\\");
-    const isAllowedWrapper = requestedBinary === "./gradlew" || requestedBinary === "./mvnw";
+    const usesPath =
+      requestedBinary.includes("/") || requestedBinary.includes("\\");
+    const isAllowedWrapper =
+      requestedBinary === "./gradlew" || requestedBinary === "./mvnw";
     if (usesPath && !isAllowedWrapper) {
-      return { success: false, error: "Binary path must be a known wrapper or bare command" };
+      return {
+        success: false,
+        error: "Binary path must be a known wrapper or bare command",
+      };
     }
 
     if (!ALLOWED_BINARIES.has(binary)) {
-      console.warn(`start-process: blocked disallowed binary "${requestedBinary}"`);
-      return { success: false, error: `Binary "${binary}" is not in the allowlist` };
+      console.warn(
+        `start-process: blocked disallowed binary "${requestedBinary}"`,
+      );
+      return {
+        success: false,
+        error: `Binary "${binary}" is not in the allowlist`,
+      };
     }
 
     let spawnBinary = requestedBinary;
@@ -792,7 +889,10 @@ ipcMain.handle("start-process", async (event, command, cwd) => {
       try {
         fs.accessSync(wrapperPath, fs.constants.X_OK);
       } catch {
-        return { success: false, error: `Wrapper script not executable: ${requestedBinary}` };
+        return {
+          success: false,
+          error: `Wrapper script not executable: ${requestedBinary}`,
+        };
       }
       spawnBinary = wrapperPath;
     }
@@ -860,7 +960,12 @@ ipcMain.handle("open-url", async (event, url) => {
     // Security: Validate URL protocol (only http/https allowed)
     const validation = validateExternalUrl(url);
     if (!validation.valid) {
-      console.warn("[Security] Blocked open-url request:", url, "-", validation.reason);
+      console.warn(
+        "[Security] Blocked open-url request:",
+        url,
+        "-",
+        validation.reason,
+      );
       return { success: false, error: validation.reason };
     }
 
@@ -893,7 +998,12 @@ ipcMain.handle("execute-http-request", async (event, options) => {
     const allowPrivate = getNetworkPolicy() === "local";
     const validation = validateHttpRequestUrl(url, allowPrivate);
     if (!validation.valid) {
-      console.warn("[Security] Blocked HTTP request:", url, "-", validation.reason);
+      console.warn(
+        "[Security] Blocked HTTP request:",
+        url,
+        "-",
+        validation.reason,
+      );
       return { success: false, error: validation.reason };
     }
 
@@ -910,8 +1020,16 @@ ipcMain.handle("execute-http-request", async (event, options) => {
         body.length > 0 &&
         !["GET", "HEAD"].includes(normalizedMethod);
 
-      if (shouldSendBody && !Object.keys(requestHeaders).some((k) => k.toLowerCase() === "content-length")) {
-        requestHeaders["Content-Length"] = Buffer.byteLength(body, "utf8").toString();
+      if (
+        shouldSendBody &&
+        !Object.keys(requestHeaders).some(
+          (k) => k.toLowerCase() === "content-length",
+        )
+      ) {
+        requestHeaders["Content-Length"] = Buffer.byteLength(
+          body,
+          "utf8",
+        ).toString();
       }
 
       const requestOptions = {
@@ -1055,8 +1173,16 @@ ipcMain.handle("execute-traced-request", async (event, options) => {
           body.length > 0 &&
           !["GET", "HEAD"].includes(normalizedMethod);
 
-        if (shouldSendBody && !Object.keys(requestHeaders).some((k) => k.toLowerCase() === "content-length")) {
-          requestHeaders["Content-Length"] = Buffer.byteLength(body, "utf8").toString();
+        if (
+          shouldSendBody &&
+          !Object.keys(requestHeaders).some(
+            (k) => k.toLowerCase() === "content-length",
+          )
+        ) {
+          requestHeaders["Content-Length"] = Buffer.byteLength(
+            body,
+            "utf8",
+          ).toString();
         }
 
         const requestOptions = {
@@ -1097,7 +1223,7 @@ ipcMain.handle("execute-traced-request", async (event, options) => {
 
     const trace = await executeTracedRequest(
       { method, url, headers, body, graphNodes, graphEdges: graphEdges || [] },
-      makeRequest
+      makeRequest,
     );
 
     return { success: true, trace };
@@ -1384,77 +1510,99 @@ function validateDbParams(containerId, containerImage) {
 }
 
 // Get database tables from a container
-ipcMain.handle("get-database-tables", async (_, containerId, containerImage) => {
-  const err = validateDbParams(containerId, containerImage);
-  if (err) return { error: err, tables: [] };
-  try {
-    return await getDatabaseTables(containerId, containerImage);
-  } catch (error) {
-    console.error("Error getting database tables:", error);
-    return { error: error.message, tables: [] };
-  }
-});
+ipcMain.handle(
+  "get-database-tables",
+  async (_, containerId, containerImage) => {
+    const err = validateDbParams(containerId, containerImage);
+    if (err) return { error: err, tables: [] };
+    try {
+      return await getDatabaseTables(containerId, containerImage);
+    } catch (error) {
+      console.error("Error getting database tables:", error);
+      return { error: error.message, tables: [] };
+    }
+  },
+);
 
 // Get table data from a database container
-ipcMain.handle("get-table-data", async (_, containerId, containerImage, tableName, limit) => {
-  const err = validateDbParams(containerId, containerImage);
-  if (err) return { error: err, columns: [], rows: [] };
-  if (!tableName || typeof tableName !== "string") {
-    return { error: "Invalid table name", columns: [], rows: [] };
-  }
-  try {
-    return await getTableData(containerId, containerImage, tableName, limit || 100);
-  } catch (error) {
-    console.error("Error getting table data:", error);
-    return { error: error.message, columns: [], rows: [] };
-  }
-});
+ipcMain.handle(
+  "get-table-data",
+  async (_, containerId, containerImage, tableName, limit) => {
+    const err = validateDbParams(containerId, containerImage);
+    if (err) return { error: err, columns: [], rows: [] };
+    if (!tableName || typeof tableName !== "string") {
+      return { error: "Invalid table name", columns: [], rows: [] };
+    }
+    try {
+      return await getTableData(
+        containerId,
+        containerImage,
+        tableName,
+        limit || 100,
+      );
+    } catch (error) {
+      console.error("Error getting table data:", error);
+      return { error: error.message, columns: [], rows: [] };
+    }
+  },
+);
 
 // Execute a query on a database container
-ipcMain.handle("execute-database-query", async (_, containerId, containerImage, query) => {
-  const err = validateDbParams(containerId, containerImage);
-  if (err) return { error: err, result: null };
-  if (!query || typeof query !== "string") {
-    return { error: "Invalid query", result: null };
-  }
-  try {
-    const result = await executeQuery(containerId, containerImage, query);
-    analytics.capture("database_query_executed", {
-      db_type: (containerImage || "").includes("mongo") ? "mongodb" : "sql",
-      success: !result.error,
-    });
-    return result;
-  } catch (error) {
-    console.error("Error executing database query:", error);
-    return { error: error.message, result: null };
-  }
-});
+ipcMain.handle(
+  "execute-database-query",
+  async (_, containerId, containerImage, query) => {
+    const err = validateDbParams(containerId, containerImage);
+    if (err) return { error: err, result: null };
+    if (!query || typeof query !== "string") {
+      return { error: "Invalid query", result: null };
+    }
+    try {
+      const result = await executeQuery(containerId, containerImage, query);
+      analytics.capture("database_query_executed", {
+        db_type: (containerImage || "").includes("mongo") ? "mongodb" : "sql",
+        success: !result.error,
+      });
+      return result;
+    } catch (error) {
+      console.error("Error executing database query:", error);
+      return { error: error.message, result: null };
+    }
+  },
+);
 
 // Create a new table in a database container
-ipcMain.handle("create-database-table", async (_, containerId, containerImage, tableName, columns) => {
-  const err = validateDbParams(containerId, containerImage);
-  if (err) return { error: err, success: false };
-  if (!tableName || typeof tableName !== "string") {
-    return { error: "Invalid table name", success: false };
-  }
-  if (!Array.isArray(columns) || columns.length === 0) {
-    return { error: "Invalid columns", success: false };
-  }
-  try {
-    return await createTable(containerId, containerImage, tableName, columns);
-  } catch (error) {
-    console.error("Error creating database table:", error);
-    return { error: error.message, success: false };
-  }
-});
+ipcMain.handle(
+  "create-database-table",
+  async (_, containerId, containerImage, tableName, columns) => {
+    const err = validateDbParams(containerId, containerImage);
+    if (err) return { error: err, success: false };
+    if (!tableName || typeof tableName !== "string") {
+      return { error: "Invalid table name", success: false };
+    }
+    if (!Array.isArray(columns) || columns.length === 0) {
+      return { error: "Invalid columns", success: false };
+    }
+    try {
+      return await createTable(containerId, containerImage, tableName, columns);
+    } catch (error) {
+      console.error("Error creating database table:", error);
+      return { error: error.message, success: false };
+    }
+  },
+);
 
 // Connect directly to remote MongoDB via URI
 ipcMain.handle("connect-mongo-uri", async (_, uri) => {
   const check = validateRemoteDbUri(uri);
-  if (!check.valid) return { error: check.reason, tables: [], dbType: "mongodb" };
+  if (!check.valid)
+    return { error: check.reason, tables: [], dbType: "mongodb" };
   try {
     const result = await connectMongoUri(uri);
-    analytics.capture("database_connected", { db_type: "mongodb", mode: "remote_uri", success: !result.error });
+    analytics.capture("database_connected", {
+      db_type: "mongodb",
+      mode: "remote_uri",
+      success: !result.error,
+    });
     return result;
   } catch (error) {
     console.error("Error connecting Mongo URI:", error);
@@ -1463,16 +1611,20 @@ ipcMain.handle("connect-mongo-uri", async (_, uri) => {
 });
 
 // Get collection data from remote MongoDB URI
-ipcMain.handle("get-mongo-uri-collection-data", async (_, uri, collectionName, limit) => {
-  const check = validateRemoteDbUri(uri);
-  if (!check.valid) return { error: check.reason, columns: [], rows: [], dbType: "mongodb" };
-  try {
-    return await getMongoUriCollectionData(uri, collectionName, limit || 100);
-  } catch (error) {
-    console.error("Error loading Mongo URI collection data:", error);
-    return { error: error.message, columns: [], rows: [], dbType: "mongodb" };
-  }
-});
+ipcMain.handle(
+  "get-mongo-uri-collection-data",
+  async (_, uri, collectionName, limit) => {
+    const check = validateRemoteDbUri(uri);
+    if (!check.valid)
+      return { error: check.reason, columns: [], rows: [], dbType: "mongodb" };
+    try {
+      return await getMongoUriCollectionData(uri, collectionName, limit || 100);
+    } catch (error) {
+      console.error("Error loading Mongo URI collection data:", error);
+      return { error: error.message, columns: [], rows: [], dbType: "mongodb" };
+    }
+  },
+);
 
 // Execute Mongo command against remote URI
 ipcMain.handle("execute-mongo-uri-query", async (_, uri, command) => {
@@ -1489,10 +1641,15 @@ ipcMain.handle("execute-mongo-uri-query", async (_, uri, command) => {
 // Connect directly to remote PostgreSQL via URI
 ipcMain.handle("connect-postgres-uri", async (_, uri) => {
   const check = validateRemoteDbUri(uri);
-  if (!check.valid) return { error: check.reason, tables: [], dbType: "postgresql" };
+  if (!check.valid)
+    return { error: check.reason, tables: [], dbType: "postgresql" };
   try {
     const result = await connectPostgresUri(uri);
-    analytics.capture("database_connected", { db_type: "postgresql", mode: "remote_uri", success: !result.error });
+    analytics.capture("database_connected", {
+      db_type: "postgresql",
+      mode: "remote_uri",
+      success: !result.error,
+    });
     return result;
   } catch (error) {
     console.error("Error connecting PostgreSQL URI:", error);
@@ -1501,16 +1658,30 @@ ipcMain.handle("connect-postgres-uri", async (_, uri) => {
 });
 
 // Get table data from remote PostgreSQL URI
-ipcMain.handle("get-postgres-uri-table-data", async (_, uri, tableName, limit) => {
-  const check = validateRemoteDbUri(uri);
-  if (!check.valid) return { error: check.reason, columns: [], rows: [], dbType: "postgresql" };
-  try {
-    return await getPostgresUriTableData(uri, tableName, limit || 100);
-  } catch (error) {
-    console.error("Error loading PostgreSQL URI table data:", error);
-    return { error: error.message, columns: [], rows: [], dbType: "postgresql" };
-  }
-});
+ipcMain.handle(
+  "get-postgres-uri-table-data",
+  async (_, uri, tableName, limit) => {
+    const check = validateRemoteDbUri(uri);
+    if (!check.valid)
+      return {
+        error: check.reason,
+        columns: [],
+        rows: [],
+        dbType: "postgresql",
+      };
+    try {
+      return await getPostgresUriTableData(uri, tableName, limit || 100);
+    } catch (error) {
+      console.error("Error loading PostgreSQL URI table data:", error);
+      return {
+        error: error.message,
+        columns: [],
+        rows: [],
+        dbType: "postgresql",
+      };
+    }
+  },
+);
 
 // Execute PostgreSQL query against remote URI
 ipcMain.handle("execute-postgres-uri-query", async (_, uri, query) => {
@@ -1527,7 +1698,8 @@ ipcMain.handle("execute-postgres-uri-query", async (_, uri, query) => {
 // Connect to Elasticsearch via HTTP URL
 ipcMain.handle("connect-elasticsearch-uri", async (_, baseUrl) => {
   const check = validateRemoteDbUri(baseUrl);
-  if (!check.valid) return { error: check.reason, tables: [], dbType: "elasticsearch" };
+  if (!check.valid)
+    return { error: check.reason, tables: [], dbType: "elasticsearch" };
   try {
     return await connectElasticsearchUri(baseUrl);
   } catch (error) {
@@ -1537,16 +1709,30 @@ ipcMain.handle("connect-elasticsearch-uri", async (_, baseUrl) => {
 });
 
 // Fetch index data from Elasticsearch
-ipcMain.handle("get-elasticsearch-uri-index-data", async (_, baseUrl, indexName, limit) => {
-  const check = validateRemoteDbUri(baseUrl);
-  if (!check.valid) return { columns: [], rows: [], error: check.reason, dbType: "elasticsearch" };
-  try {
-    return await getElasticsearchUriIndexData(baseUrl, indexName, limit);
-  } catch (error) {
-    console.error("Error fetching Elasticsearch index data:", error);
-    return { columns: [], rows: [], error: error.message, dbType: "elasticsearch" };
-  }
-});
+ipcMain.handle(
+  "get-elasticsearch-uri-index-data",
+  async (_, baseUrl, indexName, limit) => {
+    const check = validateRemoteDbUri(baseUrl);
+    if (!check.valid)
+      return {
+        columns: [],
+        rows: [],
+        error: check.reason,
+        dbType: "elasticsearch",
+      };
+    try {
+      return await getElasticsearchUriIndexData(baseUrl, indexName, limit);
+    } catch (error) {
+      console.error("Error fetching Elasticsearch index data:", error);
+      return {
+        columns: [],
+        rows: [],
+        error: error.message,
+        dbType: "elasticsearch",
+      };
+    }
+  },
+);
 
 // Execute search query against Elasticsearch
 ipcMain.handle("execute-elasticsearch-uri-query", async (_, baseUrl, query) => {
@@ -1565,59 +1751,68 @@ ipcMain.handle("execute-elasticsearch-uri-query", async (_, baseUrl, query) => {
 // ============================================
 
 // Start streaming logs from a container
-ipcMain.handle("start-container-logs", async (event, containerId, options = {}) => {
-  try {
-    const sender = event.sender;
-    const safeSend = (channel, payload) => {
-      if (!sender || sender.isDestroyed()) return false;
-      try {
-        sender.send(channel, payload);
-        return true;
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        if (!message.includes("Object has been destroyed")) {
-          console.error(`Error sending ${channel} to renderer:`, err);
+ipcMain.handle(
+  "start-container-logs",
+  async (event, containerId, options = {}) => {
+    try {
+      const sender = event.sender;
+      const safeSend = (channel, payload) => {
+        if (!sender || sender.isDestroyed()) return false;
+        try {
+          sender.send(channel, payload);
+          return true;
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          if (!message.includes("Object has been destroyed")) {
+            console.error(`Error sending ${channel} to renderer:`, err);
+          }
+          return false;
         }
-        return false;
-      }
-    };
+      };
 
-    // Bug 24 fix: callbacks use only the streamId provided by startLogStream
-    // (via logData.streamId or the sid parameter), never the outer variable
-    // which may still be unassigned if data arrives before the await resolves.
-    const streamId = await startLogStream(
-      containerId,
-      options,
-      (logData) => {
-        if (!safeSend("container-log-data", logData)) {
-          if (logData.streamId) stopLogStream(logData.streamId);
-        }
-      },
-      (error, sid) => {
-        if (!safeSend("container-log-error", { streamId: sid, containerId, error: error.message })) {
-          if (sid) stopLogStream(sid);
-        }
-      },
-      (code, sid) => {
-        const id = sid || streamId;
-        if (id) unregisterSenderLogStream(sender, id);
-        safeSend("container-log-close", {
-          streamId: id,
-          containerId,
-          exitCode: code,
-        });
-      }
-    );
+      // Bug 24 fix: callbacks use only the streamId provided by startLogStream
+      // (via logData.streamId or the sid parameter), never the outer variable
+      // which may still be unassigned if data arrives before the await resolves.
+      const streamId = await startLogStream(
+        containerId,
+        options,
+        (logData) => {
+          if (!safeSend("container-log-data", logData)) {
+            if (logData.streamId) stopLogStream(logData.streamId);
+          }
+        },
+        (error, sid) => {
+          if (
+            !safeSend("container-log-error", {
+              streamId: sid,
+              containerId,
+              error: error.message,
+            })
+          ) {
+            if (sid) stopLogStream(sid);
+          }
+        },
+        (code, sid) => {
+          const id = sid || streamId;
+          if (id) unregisterSenderLogStream(sender, id);
+          safeSend("container-log-close", {
+            streamId: id,
+            containerId,
+            exitCode: code,
+          });
+        },
+      );
 
-    registerSenderLogStream(sender, streamId);
+      registerSenderLogStream(sender, streamId);
 
-    analytics.capture("container_logs_started");
-    return { success: true, streamId };
-  } catch (error) {
-    console.error("Error starting container logs:", error);
-    return { success: false, error: error.message };
-  }
-});
+      analytics.capture("container_logs_started");
+      return { success: true, streamId };
+    } catch (error) {
+      console.error("Error starting container logs:", error);
+      return { success: false, error: error.message };
+    }
+  },
+);
 
 // Stop a specific log stream
 ipcMain.handle("stop-container-logs", async (_, streamId) => {
@@ -1634,9 +1829,13 @@ ipcMain.handle("stop-container-logs", async (_, streamId) => {
 // Stop all log streams for a container
 ipcMain.handle("stop-container-streams", async (_, containerId) => {
   try {
-    const beforeActive = new Set(getActiveStreams().map((stream) => stream.streamId));
+    const beforeActive = new Set(
+      getActiveStreams().map((stream) => stream.streamId),
+    );
     const count = stopContainerStreams(containerId);
-    const afterActive = new Set(getActiveStreams().map((stream) => stream.streamId));
+    const afterActive = new Set(
+      getActiveStreams().map((stream) => stream.streamId),
+    );
     beforeActive.forEach((id) => {
       if (!afterActive.has(id)) unregisterLogStreamEverywhere(id);
     });
@@ -1650,8 +1849,8 @@ ipcMain.handle("stop-container-streams", async (_, containerId) => {
 // Stop all active log streams
 ipcMain.handle("stop-all-container-logs", async () => {
   try {
-    const allStreamIds = Array.from(logStreamsBySender.values()).flatMap((entry) =>
-      Array.from(entry.streamIds),
+    const allStreamIds = Array.from(logStreamsBySender.values()).flatMap(
+      (entry) => Array.from(entry.streamIds),
     );
     stopAllStreams();
     allStreamIds.forEach((id) => unregisterLogStreamEverywhere(id));
@@ -1719,14 +1918,17 @@ ipcMain.handle("save-github-token", async (_, token) => {
 async function doPublish({ graphData, metadata }, isUpdate) {
   const settings = readShareSettings();
   const token = settings.githubToken;
-  if (!token) throw new Error("No GitHub token configured. Please add one in the Share settings.");
+  if (!token)
+    throw new Error(
+      "No GitHub token configured. Please add one in the Share settings.",
+    );
 
   // REACT_APP_ vars aren't loaded into Electron main by CRA — read .env directly
   let logoDevToken = process.env.REACT_APP_LOGO_DEV_TOKEN || "";
   if (!logoDevToken) {
     try {
-      const envPath = path.join(__dirname, '../.env');
-      const envContent = require('fs').readFileSync(envPath, 'utf8');
+      const envPath = path.join(__dirname, "../.env");
+      const envContent = require("fs").readFileSync(envPath, "utf8");
       const m = envContent.match(/^REACT_APP_LOGO_DEV_TOKEN=(.+)$/m);
       if (m) logoDevToken = m[1].trim();
     } catch {}
@@ -1757,21 +1959,24 @@ ipcMain.handle("export-graph-file", async (_, { graphData, metadata }) => {
     let logoDevToken = process.env.REACT_APP_LOGO_DEV_TOKEN || "";
     if (!logoDevToken) {
       try {
-        const envPath = path.join(__dirname, '../.env');
-        const envContent = fs.readFileSync(envPath, 'utf8');
+        const envPath = path.join(__dirname, "../.env");
+        const envContent = fs.readFileSync(envPath, "utf8");
         const m = envContent.match(/^REACT_APP_LOGO_DEV_TOKEN=(.+)$/m);
         if (m) logoDevToken = m[1].trim();
       } catch {}
     }
     const html = await generateHTML({ graphData, metadata, logoDevToken });
-    const tabName = (metadata.tabName || 'service-map').replace(/[^a-zA-Z0-9_-]/g, '-');
+    const tabName = (metadata.tabName || "service-map").replace(
+      /[^a-zA-Z0-9_-]/g,
+      "-",
+    );
     const result = await dialog.showSaveDialog(mainWindow, {
-      title: 'Save Service Map',
-      defaultPath: path.join(app.getPath('downloads'), `fere-${tabName}.html`),
-      filters: [{ name: 'HTML', extensions: ['html'] }],
+      title: "Save Service Map",
+      defaultPath: path.join(app.getPath("downloads"), `fere-${tabName}.html`),
+      filters: [{ name: "HTML", extensions: ["html"] }],
     });
     if (result.canceled || !result.filePath) return { success: false };
-    fs.writeFileSync(result.filePath, html, 'utf8');
+    fs.writeFileSync(result.filePath, html, "utf8");
     return { success: true, filePath: result.filePath };
   } catch (err) {
     console.error("export-graph-file error:", err);
@@ -1802,7 +2007,10 @@ ipcMain.handle("update-shared-graph", async (_, options) => {
 ipcMain.handle("agent:scan", async (_, nodeIds) => {
   try {
     const snapshot = await getSystemSnapshot();
-    const findings = await runScan(snapshot, Array.isArray(nodeIds) ? nodeIds : undefined);
+    const findings = await runScan(
+      snapshot,
+      Array.isArray(nodeIds) ? nodeIds : undefined,
+    );
     return { success: true, findings };
   } catch (err) {
     console.error("agent:scan error:", err);
@@ -1820,3 +2028,568 @@ ipcMain.handle("agent:apply-fix", async (_, action) => {
   }
 });
 
+// ── Agent tools (filesystem + runtime) ───────────────────────────────────────
+
+function agentAllowedPath(normalized, allowedPaths) {
+  // Allow the path itself, children of it, or its parent (one level up)
+  return allowedPaths.some((ap) => {
+    const parent = path.dirname(ap);
+    return (
+      normalized.startsWith(ap + path.sep) ||
+      normalized === ap ||
+      normalized.startsWith(parent + path.sep) ||
+      normalized === parent
+    );
+  });
+}
+
+function agentReadFile(filePath, allowedPaths) {
+  if (typeof filePath !== "string" || !path.isAbsolute(filePath)) {
+    return "Error: path must be absolute.";
+  }
+  const normalized = path.normalize(filePath);
+  if (normalized.split(path.sep).includes(".."))
+    return "Error: path traversal not allowed.";
+  if (!agentAllowedPath(normalized, allowedPaths)) {
+    return `Error: ${normalized} is outside known project paths (${allowedPaths.join(", ")}).`;
+  }
+  const base = path.basename(normalized);
+  if (base === ".env" || /\.(key|pem|cert|p12|pfx)$/i.test(base)) {
+    return "Error: cannot read credential files.";
+  }
+  const ALLOWED_EXT = new Set([
+    ".py",
+    ".js",
+    ".ts",
+    ".tsx",
+    ".jsx",
+    ".go",
+    ".rb",
+    ".rs",
+    ".java",
+    ".cpp",
+    ".c",
+    ".h",
+    ".cs",
+    ".php",
+    ".swift",
+    ".kt",
+    ".scala",
+    ".yml",
+    ".yaml",
+    ".toml",
+    ".json",
+    ".xml",
+    ".html",
+    ".css",
+    ".scss",
+    ".sh",
+    ".bash",
+    ".zsh",
+    ".dockerfile",
+    ".txt",
+    ".md",
+    ".conf",
+    ".config",
+    ".ini",
+    ".cfg",
+    ".env.example",
+    ".gitignore",
+    ".lock",
+  ]);
+  const ext = path.extname(normalized).toLowerCase();
+  if (ext && !ALLOWED_EXT.has(ext))
+    return `Error: file type ${ext} is not readable.`;
+  try {
+    if (!fs.existsSync(normalized))
+      return `Error: file not found: ${normalized}`;
+    const stat = fs.statSync(normalized);
+    if (!stat.isFile()) return `Error: ${normalized} is not a file.`;
+    if (stat.size > 80 * 1024) {
+      return `File is ${Math.round(stat.size / 1024)}KB — too large. Ask about a specific section.`;
+    }
+    return fs.readFileSync(normalized, "utf8");
+  } catch (e) {
+    return `Error reading file: ${e.message}`;
+  }
+}
+
+function agentListDirectory(dirPath, allowedPaths) {
+  if (typeof dirPath !== "string" || !path.isAbsolute(dirPath)) {
+    return "Error: path must be absolute.";
+  }
+  const normalized = path.normalize(dirPath);
+  if (normalized.split(path.sep).includes(".."))
+    return "Error: path traversal not allowed.";
+  if (!agentAllowedPath(normalized, allowedPaths)) {
+    return `Error: ${normalized} is outside known project paths.`;
+  }
+  try {
+    if (!fs.existsSync(normalized))
+      return `Error: directory not found: ${normalized}`;
+    const stat = fs.statSync(normalized);
+    if (!stat.isDirectory()) return `Error: ${normalized} is not a directory.`;
+    const entries = fs.readdirSync(normalized, { withFileTypes: true });
+    const lines = entries
+      .filter(
+        (e) =>
+          e.name !== "node_modules" &&
+          e.name !== "__pycache__" &&
+          e.name !== ".git",
+      )
+      .map((e) => (e.isDirectory() ? `${e.name}/` : e.name))
+      .sort();
+    return `${normalized}:\n${lines.join("\n")}`;
+  } catch (e) {
+    return `Error listing directory: ${e.message}`;
+  }
+}
+
+// Blocked command prefixes / patterns for run_command safety
+const BLOCKED_CMDS = [
+  /\brm\b/,
+  /\brmdir\b/,
+  /\bsudo\b/,
+  /\bsu\b/,
+  /\bchmod\b/,
+  /\bchown\b/,
+  /\bkill\b/,
+  /\bpkill\b/,
+  /\bmkfs\b/,
+  /\bdd\b/,
+  /\bfdisk\b/,
+  /\bformat\b/,
+  /\bmv\b.*\//,
+  /\bcp\b.*\//,
+  /\bcurl\b/,
+  /\bwget\b/,
+  /\bnc\b/,
+  /\bncat\b/,
+  />\s*\//,
+  /\|\s*sh/,
+  /\|\s*bash/,
+  /\|\s*zsh/,
+  /`/,
+  /\$\(/,
+];
+
+function agentRunCommand(command, cwd, projectPaths) {
+  if (typeof command !== "string" || !command.trim())
+    return "Error: command is empty.";
+  if (typeof cwd !== "string" || !path.isAbsolute(cwd))
+    return "Error: cwd must be an absolute path.";
+  const normalizedCwd = path.normalize(cwd);
+  if (!agentAllowedPath(normalizedCwd, projectPaths)) {
+    return `Error: cwd ${normalizedCwd} is outside known project paths.`;
+  }
+  for (const pattern of BLOCKED_CMDS) {
+    if (pattern.test(command))
+      return `Error: command contains a blocked operation (${pattern}).`;
+  }
+  try {
+    const { execSync } = require("child_process");
+    const output = execSync(command, {
+      cwd: normalizedCwd,
+      timeout: 15000,
+      maxBuffer: 1024 * 100,
+      encoding: "utf8",
+      env: { ...process.env, TERM: "dumb" },
+    });
+    return output.trim() || "(no output)";
+  } catch (err) {
+    const msg = (err.stdout || "") + (err.stderr || "") || err.message;
+    return `Exit ${err.status ?? 1}:\n${msg.trim()}`;
+  }
+}
+
+function agentDockerLogs(containerId, tail = 80) {
+  if (!/^[a-zA-Z0-9_\-\.]+$/.test(containerId))
+    return "Error: invalid container id.";
+  try {
+    const { execSync } = require("child_process");
+    const out = execSync(
+      `docker logs --tail ${Number(tail)} ${containerId} 2>&1`,
+      {
+        timeout: 10000,
+        maxBuffer: 1024 * 100,
+        encoding: "utf8",
+      },
+    );
+    return out.trim() || "(no logs)";
+  } catch (err) {
+    return `Error: ${err.message}`;
+  }
+}
+
+function agentDockerExec(containerId, command) {
+  if (!/^[a-zA-Z0-9_\-\.]+$/.test(containerId))
+    return "Error: invalid container id.";
+  if (typeof command !== "string" || !command.trim())
+    return "Error: command is empty.";
+  for (const pattern of BLOCKED_CMDS) {
+    if (pattern.test(command))
+      return `Error: command contains a blocked operation.`;
+  }
+  try {
+    const { execSync } = require("child_process");
+    const out = execSync(
+      `docker exec ${containerId} sh -c ${JSON.stringify(command)} 2>&1`,
+      {
+        timeout: 15000,
+        maxBuffer: 1024 * 100,
+        encoding: "utf8",
+      },
+    );
+    return out.trim() || "(no output)";
+  } catch (err) {
+    const msg = (err.stdout || "") + (err.stderr || "") || err.message;
+    return `Exit ${err.status ?? 1}:\n${msg.trim()}`;
+  }
+}
+
+function agentDockerControl(containerId, action) {
+  if (!/^[a-zA-Z0-9_\-\.]+$/.test(containerId))
+    return "Error: invalid container id.";
+  if (!["start", "stop", "restart"].includes(action))
+    return "Error: action must be start, stop, or restart.";
+  try {
+    const { execSync } = require("child_process");
+    execSync(`docker ${action} ${containerId}`, {
+      timeout: 20000,
+      encoding: "utf8",
+    });
+    return `Container ${containerId} ${action}ed successfully.`;
+  } catch (err) {
+    return `Error: ${err.message}`;
+  }
+}
+
+const AGENT_TOOLS = [
+  {
+    type: "function",
+    function: {
+      name: "read_file",
+      description:
+        "Read the full contents of a source file. Use when the user asks about a specific file, code logic, or implementation. If unsure of the exact path, use list_directory first.",
+      parameters: {
+        type: "object",
+        properties: {
+          path: { type: "string", description: "Absolute file path to read" },
+        },
+        required: ["path"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "list_directory",
+      description:
+        "List the files and subdirectories inside a directory. Use this to explore and find the right file before reading it.",
+      parameters: {
+        type: "object",
+        properties: {
+          path: {
+            type: "string",
+            description: "Absolute directory path to list",
+          },
+        },
+        required: ["path"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "run_command",
+      description:
+        "Run a shell command inside a project directory and return its stdout/stderr output. Use for running tests, checking logs, inspecting running processes, or any diagnostic command. cwd must be an absolute path inside a known project.",
+      parameters: {
+        type: "object",
+        properties: {
+          command: {
+            type: "string",
+            description:
+              "Shell command to execute (e.g. 'npm test', 'python manage.py check', 'cat error.log')",
+          },
+          cwd: {
+            type: "string",
+            description:
+              "Absolute path of the project directory to run the command in",
+          },
+        },
+        required: ["command", "cwd"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "docker_logs",
+      description:
+        "Fetch recent log output from a Docker container. Use when the user asks about container errors, crashes, or runtime output.",
+      parameters: {
+        type: "object",
+        properties: {
+          container_id: {
+            type: "string",
+            description: "Docker container ID or name",
+          },
+          tail: {
+            type: "number",
+            description: "Number of log lines to return (default 80)",
+          },
+        },
+        required: ["container_id"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "docker_exec",
+      description:
+        "Run a shell command inside a running Docker container and return the output. Useful for inspecting container state, checking files, or running diagnostics.",
+      parameters: {
+        type: "object",
+        properties: {
+          container_id: {
+            type: "string",
+            description: "Docker container ID or name",
+          },
+          command: {
+            type: "string",
+            description: "Shell command to run inside the container",
+          },
+        },
+        required: ["container_id", "command"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_node_details",
+      description:
+        "Get full details for a specific service node: ports, routes, external APIs, CPU/memory, Docker image, networks, mounts, health check output, and all inbound/outbound connections. Use when the user asks about a specific service.",
+      parameters: {
+        type: "object",
+        properties: {
+          name: {
+            type: "string",
+            description:
+              "Service name (as shown in the topology, case-insensitive)",
+          },
+        },
+        required: ["name"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "docker_control",
+      description: "Start, stop, or restart a Docker container.",
+      parameters: {
+        type: "object",
+        properties: {
+          container_id: {
+            type: "string",
+            description: "Docker container ID or name",
+          },
+          action: {
+            type: "string",
+            enum: ["start", "stop", "restart"],
+            description: "Action to perform",
+          },
+        },
+        required: ["container_id", "action"],
+      },
+    },
+  },
+];
+
+function sendStep(event, step) {
+  if (!event.sender.isDestroyed()) event.sender.send("agent:chat-step", step);
+}
+
+ipcMain.handle("agent:chat", async (event, { messages, nodeIds }) => {
+  try {
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey)
+      return {
+        success: false,
+        error: "No OPENAI_API_KEY set. Add it to your .env file.",
+      };
+
+    const snapshot = await getSystemSnapshot();
+
+    // Enrich nodes with external APIs (not in snapshot by default — on-demand only)
+    const projectPaths = [
+      ...new Set(
+        (snapshot.graph?.nodes ?? [])
+          .filter((n) => typeof n.projectPath === "string" && n.projectPath)
+          .map((n) => n.projectPath),
+      ),
+    ];
+
+    // Run external API scan for each project path and attach results to nodes
+    const externalApisByPath = new Map();
+    await Promise.all(
+      projectPaths.map(async (pp) => {
+        try {
+          const apis = await scanExternalApis(pp);
+          externalApisByPath.set(pp, apis);
+        } catch (_) {}
+      }),
+    );
+    // Attach scanned externalApis to each node so buildChatContext + buildNodeDetails see them
+    if (snapshot.graph?.nodes) {
+      for (const node of snapshot.graph.nodes) {
+        if (node.projectPath && externalApisByPath.has(node.projectPath)) {
+          node.externalApis = externalApisByPath.get(node.projectPath);
+        }
+      }
+    }
+
+    const findings = await runScan(
+      snapshot,
+      Array.isArray(nodeIds) ? nodeIds : undefined,
+    );
+    const systemPrompt = await buildChatContext(snapshot, findings);
+
+    const openai = new OpenAI({ apiKey });
+
+    async function runTurn(turnMessages) {
+      const stream = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: turnMessages,
+        tools: AGENT_TOOLS,
+        tool_choice: "auto",
+        max_tokens: 1200,
+        temperature: 0.3,
+        stream: true,
+      });
+
+      const pendingCalls = {};
+      const assistantMsg = {
+        role: "assistant",
+        content: null,
+        tool_calls: undefined,
+      };
+      let finishReason = null;
+
+      for await (const chunk of stream) {
+        const delta = chunk.choices[0]?.delta ?? {};
+        finishReason = chunk.choices[0]?.finish_reason ?? finishReason;
+
+        if (delta.content) {
+          if (!event.sender.isDestroyed())
+            event.sender.send("agent:chat-token", delta.content);
+          assistantMsg.content = (assistantMsg.content ?? "") + delta.content;
+        }
+
+        if (delta.tool_calls) {
+          for (const tc of delta.tool_calls) {
+            const i = tc.index ?? 0;
+            if (!pendingCalls[i])
+              pendingCalls[i] = { id: "", name: "", args: "" };
+            if (tc.id) pendingCalls[i].id = tc.id;
+            if (tc.function?.name) pendingCalls[i].name = tc.function.name;
+            if (tc.function?.arguments)
+              pendingCalls[i].args += tc.function.arguments;
+          }
+        }
+      }
+
+      if (
+        finishReason === "tool_calls" &&
+        Object.keys(pendingCalls).length > 0
+      ) {
+        const toolCallList = Object.values(pendingCalls).map((tc) => ({
+          id: tc.id,
+          type: "function",
+          function: { name: tc.name, arguments: tc.args },
+        }));
+        assistantMsg.tool_calls = toolCallList;
+
+        const toolResults = await Promise.all(
+          toolCallList.map(async (tc) => {
+            let result;
+            try {
+              const args = JSON.parse(tc.function.arguments);
+              if (tc.function.name === "read_file") {
+                sendStep(event, {
+                  type: "read_file",
+                  label: path.basename(args.path),
+                  path: args.path,
+                });
+                result = agentReadFile(args.path, projectPaths);
+              } else if (tc.function.name === "list_directory") {
+                sendStep(event, {
+                  type: "list_directory",
+                  label: args.path,
+                  path: args.path,
+                });
+                result = agentListDirectory(args.path, projectPaths);
+              } else if (tc.function.name === "get_node_details") {
+                sendStep(event, {
+                  type: "get_node_details",
+                  label: `details: ${args.name}`,
+                  path: args.name,
+                });
+                const allNodes = snapshot.graph?.nodes ?? [];
+                const allEdges = snapshot.graph?.edges ?? [];
+                const node = allNodes.find(
+                  (n) => n.name.toLowerCase() === args.name.toLowerCase(),
+                );
+                result = buildNodeDetails(node, allNodes, allEdges);
+              } else if (tc.function.name === "run_command") {
+                sendStep(event, {
+                  type: "run_command",
+                  label: args.command,
+                  path: args.cwd,
+                });
+                result = agentRunCommand(args.command, args.cwd, projectPaths);
+              } else if (tc.function.name === "docker_logs") {
+                sendStep(event, {
+                  type: "docker_logs",
+                  label: `logs: ${args.container_id}`,
+                  path: args.container_id,
+                });
+                result = agentDockerLogs(args.container_id, args.tail ?? 80);
+              } else if (tc.function.name === "docker_exec") {
+                sendStep(event, {
+                  type: "docker_exec",
+                  label: `exec: ${args.command}`,
+                  path: args.container_id,
+                });
+                result = agentDockerExec(args.container_id, args.command);
+              } else if (tc.function.name === "docker_control") {
+                sendStep(event, {
+                  type: "docker_control",
+                  label: `${args.action}: ${args.container_id}`,
+                  path: args.container_id,
+                });
+                result = agentDockerControl(args.container_id, args.action);
+              } else {
+                result = "Unknown tool.";
+              }
+            } catch (e) {
+              result = `Parse error: ${e.message}`;
+            }
+            return { role: "tool", tool_call_id: tc.id, content: result };
+          }),
+        );
+
+        await runTurn([...turnMessages, assistantMsg, ...toolResults]);
+      }
+    }
+
+    await runTurn([{ role: "system", content: systemPrompt }, ...messages]);
+    return { success: true };
+  } catch (err) {
+    console.error("agent:chat error:", err);
+    return { success: false, error: err.message };
+  }
+});

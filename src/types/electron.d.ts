@@ -326,6 +326,11 @@ export interface ExternalApi {
   hosts?: string[];
 }
 
+export interface ExternalApiProvider {
+  name: string;
+  domains: string[];
+}
+
 export type ServiceStatusCode = 'ok' | 'unavailable' | 'permission_denied' | 'timeout' | 'degraded';
 
 export interface ServiceStatus {
@@ -588,6 +593,7 @@ export interface ElectronAPI {
   getEnvironmentSummary: () => Promise<EnvironmentSummary>;
   getSystemSnapshot: () => Promise<SystemSnapshot>;
   getExternalApis: (projectPath: string) => Promise<ExternalApi[]>;
+  getExternalApiProviders: () => Promise<ExternalApiProvider[]>;
   rescanRoutes: (projectPath: string) => Promise<{ routes: Route[]; scannedAt: number | null }>;
 
   // Docker monitoring
@@ -676,10 +682,23 @@ export interface ElectronAPI {
 
   // Platform info
   platform: string;
+  logoDevToken: string | null;
 
   // Fere Agent
   agentScan: (nodeIds?: string[]) => Promise<{ success: boolean; findings: AgentFinding[]; error?: string }>;
   agentApplyFix: (action: AgentFixAction) => Promise<{ success: boolean; error?: string }>;
+  agentChat: (messages: { role: 'user' | 'assistant'; content: string }[], nodeIds?: string[]) => Promise<{ success: boolean; error?: string }>;
+  onChatToken: (callback: (token: string) => void) => void;
+  offChatToken: () => void;
+  onChatStep: (callback: (step: ChatStep) => void) => void;
+  offChatStep: () => void;
+}
+
+export interface ChatStep {
+  type: 'read_file' | 'list_directory' | 'run_command' | 'docker_logs' | 'docker_exec' | 'docker_control' | 'get_node_details';
+  label: string;
+  path: string;
+  done?: boolean;
 }
 
 export type AgentSeverity = 'critical' | 'warning' | 'suggestion';

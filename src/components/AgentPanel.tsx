@@ -1,744 +1,917 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { AgentCategory, AgentFinding, AgentFixAction, GraphNode } from "../types/electron";
+import ReactMarkdown from "react-markdown";
+import rehypeHighlight from "rehype-highlight";
+import type { ChatStep, ExternalApiProvider, GraphNode } from "../types/electron";
+import { getServiceColor } from "./graph/constants";
+import fereLogo from "../assets/fere.png";
 
-const BACKGROUND_SCAN_INTERVAL_MS = 45000;
-const TOPOLOGY_SCAN_DEBOUNCE_MS = 1200;
-
-const FINDING_SEVERITY_ORDER: Record<AgentFinding["severity"], number> = {
-  critical: 0,
-  warning: 1,
-  suggestion: 2,
+const PROVIDER_ALIAS_MAP: Record<string, string> = {
+  gemini: "google gemini",
+  aws: "aws bedrock",
+  bedrock: "aws bedrock",
 };
 
-function sortFindings(findings: AgentFinding[]): AgentFinding[] {
-  return [...findings].sort((a, b) => {
-    const severityDiff =
-      FINDING_SEVERITY_ORDER[a.severity] - FINDING_SEVERITY_ORDER[b.severity];
-    if (severityDiff !== 0) return severityDiff;
-    const blastRadiusDiff =
-      (b.affectedServices?.length ?? 0) - (a.affectedServices?.length ?? 0);
-    if (blastRadiusDiff !== 0) return blastRadiusDiff;
-    return a.summary.localeCompare(b.summary);
+const RAW_LOGO_TOKEN = (window.electronAPI.logoDevToken || "").trim();
+const LOGO_TOKEN = RAW_LOGO_TOKEN.startsWith("pk_") ? RAW_LOGO_TOKEN : "";
+
+function normalizeLabel(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function normalizeDomain(domain: string): string | null {
+  const cleaned = domain
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, "")
+    .split("/")[0]
+    .split(":")[0];
+  if (!cleaned || !cleaned.includes(".")) return null;
+  const parts = cleaned.split(".").filter(Boolean);
+  if (parts.length < 2) return null;
+  const secondLevelSuffixes = new Set(["co", "com", "org", "net", "gov", "ac"]);
+  if (parts.length >= 3) {
+    const tld = parts[parts.length - 1];
+    const sld = parts[parts.length - 2];
+    if (tld.length === 2 && secondLevelSuffixes.has(sld)) {
+      return parts.slice(-3).join(".");
+    }
+  }
+  return parts.slice(-2).join(".");
+}
+
+function buildProviderDomainMap(providers: ExternalApiProvider[]): Record<string, string> {
+  const map: Record<string, string> = {};
+  for (const provider of providers) {
+    const key = normalizeLabel(provider.name);
+    const domains = Array.isArray(provider.domains) ? provider.domains : [];
+    let selected = "";
+    for (const domain of domains) {
+      const normalized = normalizeDomain(domain);
+      if (!normalized) continue;
+      if (!selected) selected = normalized;
+      if (!domain.toLowerCase().startsWith("api.")) {
+        selected = normalized;
+        break;
+      }
+    }
+    if (selected) map[key] = selected;
+  }
+  return map;
+}
+
+function getLogoUrl(name: string, providerDomains: Record<string, string>): string | null {
+  const normalizedName = normalizeLabel(name);
+  const aliased = PROVIDER_ALIAS_MAP[normalizedName];
+  const domain = providerDomains[normalizedName] || (aliased ? providerDomains[aliased] : "");
+  if (!domain) return null;
+  const params = new URLSearchParams({
+    size: "32",
+    format: "png",
+    fallback: "monogram",
+  });
+  params.set("token", LOGO_TOKEN || "pk_free");
+  return `https://img.logo.dev/${encodeURIComponent(domain)}?${params.toString()}`;
+}
+
+function isWordChar(char: string): boolean {
+  return /[a-z0-9]/i.test(char);
+}
+
+function hasTokenBoundaries(text: string, start: number, length: number): boolean {
+  const before = start > 0 ? text[start - 1] : "";
+  const after = start + length < text.length ? text[start + length] : "";
+  const beforeOk = !before || !isWordChar(before);
+  const afterOk = !after || !isWordChar(after);
+  return beforeOk && afterOk;
+}
+
+type ProviderMentionHit = {
+  start: number;
+  end: number;
+  text: string;
+};
+
+function findProviderMentionHits(
+  text: string,
+  providerDomains: Record<string, string>,
+): ProviderMentionHit[] {
+  if (!text.trim()) return [];
+  const lookupTerms = Array.from(
+    new Set([...Object.keys(providerDomains), ...Object.keys(PROVIDER_ALIAS_MAP)]),
+  ).sort((a, b) => b.length - a.length);
+  if (lookupTerms.length === 0) return [];
+
+  const lower = text.toLowerCase();
+  const hits: ProviderMentionHit[] = [];
+  let cursor = 0;
+
+  while (cursor < lower.length) {
+    let bestStart = -1;
+    let bestEnd = -1;
+    for (const term of lookupTerms) {
+      let idx = lower.indexOf(term, cursor);
+      while (idx !== -1 && !hasTokenBoundaries(lower, idx, term.length)) {
+        idx = lower.indexOf(term, idx + 1);
+      }
+      if (idx === -1) continue;
+      const end = idx + term.length;
+      if (
+        bestStart === -1 ||
+        idx < bestStart ||
+        (idx === bestStart && end > bestEnd)
+      ) {
+        bestStart = idx;
+        bestEnd = end;
+      }
+    }
+
+    if (bestStart === -1) break;
+    hits.push({ start: bestStart, end: bestEnd, text: text.slice(bestStart, bestEnd) });
+    cursor = bestEnd;
+  }
+
+  return hits;
+}
+
+type ChatMessage = { role: "user" | "assistant"; content: string };
+type ChatThread = {
+  id: string;
+  title: string;
+  updatedAt: number;
+  messages: ChatMessage[];
+};
+
+function ProviderMention({ text, logoUrl }: { text: string; logoUrl: string }) {
+  const [imgFailed, setImgFailed] = useState(false);
+
+  useEffect(() => {
+    setImgFailed(false);
+  }, [logoUrl]);
+
+  const fallback = text.charAt(0).toUpperCase() || "?";
+
+  return (
+    <span className="agp-provider-ref">
+      {imgFailed ? (
+        <span className="agp-provider-fallback" aria-hidden="true">{fallback}</span>
+      ) : (
+        <img
+          src={logoUrl}
+          alt=""
+          className="agp-provider-logo"
+          loading="lazy"
+          decoding="async"
+          referrerPolicy="origin"
+          onError={() => setImgFailed(true)}
+        />
+      )}
+      <strong>{text}</strong>
+    </span>
+  );
+}
+
+function renderProviderMentionsInText(
+  text: string,
+  providerDomains: Record<string, string>,
+): React.ReactNode {
+  const hits = findProviderMentionHits(text, providerDomains);
+  if (hits.length === 0) return text;
+
+  const nodes: React.ReactNode[] = [];
+  let cursor = 0;
+  hits.forEach((hit, idx) => {
+    if (hit.start > cursor) nodes.push(text.slice(cursor, hit.start));
+    const logoUrl = getLogoUrl(hit.text, providerDomains);
+    if (logoUrl) {
+      nodes.push(<ProviderMention key={`provider-${idx}-${hit.start}`} text={hit.text} logoUrl={logoUrl} />);
+    } else {
+      nodes.push(hit.text);
+    }
+    cursor = hit.end;
+  });
+  if (cursor < text.length) nodes.push(text.slice(cursor));
+  return nodes;
+}
+
+function renderProviderMentionsInChildren(
+  children: React.ReactNode,
+  providerDomains: Record<string, string>,
+): React.ReactNode {
+  if (typeof children === "string") {
+    return renderProviderMentionsInText(children, providerDomains);
+  }
+  if (children == null) return children;
+  if (Array.isArray(children)) {
+    return children.map((child, index) => (
+      <React.Fragment key={index}>
+        {renderProviderMentionsInChildren(child, providerDomains)}
+      </React.Fragment>
+    ));
+  }
+  if (!React.isValidElement(children)) return children;
+
+  const element = children as React.ReactElement<{ children?: React.ReactNode }>;
+  const elementType = typeof element.type === "string" ? element.type : "";
+  if (elementType === "code" || elementType === "pre" || elementType === "a" || elementType === "strong") {
+    return element;
+  }
+
+  if (!("children" in element.props)) return element;
+  return React.cloneElement(element, {
+    ...element.props,
+    children: renderProviderMentionsInChildren(element.props.children, providerDomains),
   });
 }
 
-function AgentGlyph({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      width="18"
-      height="18"
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.3"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M8 1.5 L13.5 4v4c0 3-2.5 5.2-5.5 6C5 13.2 2.5 11 2.5 8V4Z" />
-      <path d="M5.8 8l1.5 1.5 3-3" />
-    </svg>
-  );
-}
+// ── Node-linking helpers ──────────────────────────────────────────────────────
 
-function CodeBlock({ code }: { code: string }) {
-  const isYaml = /^[\w-]+:/m.test(code.trim());
-  return (
-    <pre className="agp-row-code">
-      {code.split("\n").map((line, i) => {
-        if (isYaml) {
-          const m = line.match(/^(\s*)([\w-]+)(:)(.*)$/);
-          if (m) {
-            return (
-              <span key={i}>
-                {m[1]}
-                <span style={{ color: "var(--blue)" }}>{m[2]}</span>
-                <span style={{ color: "var(--text-faint)" }}>{m[3]}</span>
-                <span style={{ color: "var(--text-secondary)" }}>{m[4]}</span>
-                {"\n"}
-              </span>
-            );
-          }
-          const li = line.match(/^(\s*-\s*)(.*)/);
-          if (li) {
-            return (
-              <span key={i}>
-                <span style={{ color: "var(--text-faint)" }}>{li[1]}</span>
-                <span style={{ color: "var(--text-secondary)" }}>{li[2]}</span>
-                {"\n"}
-              </span>
-            );
-          }
-        } else {
-          const parts = line.split(/(\s+|\|)/);
-          return (
-            <span key={i}>
-              {parts.map((part, j) => {
-                if (j === 0) {
-                  return (
-                    <span key={j} style={{ color: "var(--text-primary)", fontWeight: 500 }}>
-                      {part}
-                    </span>
-                  );
-                }
-                if (part === "|") return <span key={j} style={{ color: "var(--blue)" }}>{part}</span>;
-                if (/^-/.test(part)) return <span key={j} style={{ color: "var(--text-faint)" }}>{part}</span>;
-                if (/^\d+$/.test(part.trim())) {
-                  return <span key={j} style={{ color: "#b45309" }}>{part}</span>;
-                }
-                return <span key={j}>{part}</span>;
-              })}
-              {"\n"}
-            </span>
-          );
-        }
-        return <span key={i}>{line}{"\n"}</span>;
-      })}
-    </pre>
-  );
-}
-
-const SEVERITY_DOT: Record<string, string> = {
-  critical: "#ef4444",
-  warning: "#f59e0b",
-  suggestion: "#a3a3a3",
-};
-
-const CATEGORY_META: Record<AgentCategory, { label: string; color: string; bg: string }> = {
-  health: { label: "Health", color: "#b91c1c", bg: "#fef2f2" },
-  connectivity: { label: "Connectivity", color: "var(--blue)", bg: "rgba(0, 120, 212, 0.1)" },
-  config: { label: "Config", color: "#92400e", bg: "#fffbeb" },
-  security: { label: "Security", color: "#9a3412", bg: "#fff7ed" },
-  dependency: { label: "Dependency", color: "#0369a1", bg: "#f0f9ff" },
-};
-
-const KW_COLORS = {
-  keyword: "var(--blue)",
-  string: "#065f46",
-  comment: "var(--text-faint)",
-  number: "#b45309",
-  decorator: "#0f766e",
-};
-
-type TokenType = keyof typeof KW_COLORS;
-type Token = { text: string; type?: TokenType };
-
-const LANG_PATTERNS: Record<string, Array<[RegExp, TokenType]>> = {
-  python: [
-    [/#[^\n]*/g, "comment"],
-    [/"""[\s\S]*?"""|'''[\s\S]*?'''|f?"[^"\n\\]*(?:\\.[^"\n\\]*)*"|f?'[^'\n\\]*(?:\\.[^'\n\\]*)*'/g, "string"],
-    [/\b(False|None|True|and|as|assert|async|await|break|class|continue|def|del|elif|else|except|finally|for|from|global|if|import|in|is|lambda|nonlocal|not|or|pass|raise|return|self|try|while|with|yield)\b/g, "keyword"],
-    [/@\w+/g, "decorator"],
-    [/\b\d+\.?\d*\b/g, "number"],
-  ],
-  javascript: [
-    [/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, "comment"],
-    [/"[^"\\]*(?:\\.[^"\\]*)*"|'[^'\\]*(?:\\.[^'\\]*)*'|`[^`\\]*(?:\\.[^`\\]*)*`/g, "string"],
-    [/\b(async|await|break|case|catch|class|const|continue|debugger|default|delete|do|else|export|extends|false|finally|for|from|function|if|import|in|instanceof|let|new|null|of|return|static|super|switch|this|throw|true|try|typeof|undefined|var|void|while|with|yield)\b/g, "keyword"],
-    [/\b\d+\.?\d*\b/g, "number"],
-  ],
-  yaml: [
-    [/#[^\n]*/g, "comment"],
-    [/"[^"]*"|'[^']*'/g, "string"],
-    [/^\s*[\w-]+(?=\s*:)/gm, "keyword"],
-    [/\b(true|false|null|yes|no)\b/g, "decorator"],
-  ],
-  json: [
-    [/"[^"\\]*(?:\\.[^"\\]*)*"(?=\s*:)/g, "keyword"],
-    [/"[^"\\]*(?:\\.[^"\\]*)*"/g, "string"],
-    [/\b(true|false|null)\b/g, "decorator"],
-    [/\b\d+\.?\d*\b/g, "number"],
-  ],
-  bash: [
-    [/#[^\n]*/g, "comment"],
-    [/"[^"\\]*(?:\\.[^"\\]*)*"|'[^']*'/g, "string"],
-    [/\b(case|cd|chmod|cp|do|docker|done|echo|elif|else|esac|export|fi|for|function|git|grep|if|ls|mkdir|mv|npm|return|rm|source|sudo|then|while|yarn)\b/g, "keyword"],
-    [/\$\{?\w+\}?/g, "decorator"],
-  ],
-};
-LANG_PATTERNS.ts = LANG_PATTERNS.javascript;
-LANG_PATTERNS.tsx = LANG_PATTERNS.javascript;
-LANG_PATTERNS.jsx = LANG_PATTERNS.javascript;
-LANG_PATTERNS.py = LANG_PATTERNS.python;
-LANG_PATTERNS.sh = LANG_PATTERNS.bash;
-LANG_PATTERNS.shell = LANG_PATTERNS.bash;
-LANG_PATTERNS.yml = LANG_PATTERNS.yaml;
-
-function tokenize(code: string, lang: string): Token[] {
-  const patterns = LANG_PATTERNS[lang.toLowerCase()];
-  if (!patterns) return [{ text: code }];
-  const spans: Array<{ start: number; end: number; type: TokenType }> = [];
-  for (const [rx, type] of patterns) {
-    rx.lastIndex = 0;
-    let m: RegExpExecArray | null;
-    while ((m = rx.exec(code)) !== null) {
-      const start = m.index;
-      const end = start + m[0].length;
-      if (!spans.some((span) => span.start < end && span.end > start)) {
-        spans.push({ start, end, type });
-      }
-    }
+// Extract plain text from React children so we can match against node names.
+function extractText(children: React.ReactNode): string {
+  if (typeof children === "string") return children;
+  if (children == null) return "";
+  if (Array.isArray(children))
+    return children.map(extractText).join("");
+  if (React.isValidElement(children)) {
+    const el = children as React.ReactElement<{ children?: React.ReactNode }>;
+    return extractText(el.props.children);
   }
-  spans.sort((a, b) => a.start - b.start);
-  const tokens: Token[] = [];
-  let pos = 0;
-  for (const { start, end, type } of spans) {
-    if (start > pos) tokens.push({ text: code.slice(pos, start) });
-    tokens.push({ text: code.slice(start, end), type });
-    pos = end;
+  return "";
+}
+
+const STARTER_PROMPTS = [
+  "What would break if I stopped the database right now?",
+  "Walk me through the live topology — what connects to what?",
+  "Why aren't my services talking to each other?",
+  "Are there any hidden issues I should know about?",
+  "Which services are making external API calls?",
+];
+
+const CHAT_STORAGE_KEY = "fere.agent-panel.chat.v1";
+const MAX_CHAT_THREADS = 30;
+
+type PersistedChatState = {
+  open: boolean;
+  activeThreadId: string;
+  threads: ChatThread[];
+  input: string;
+};
+
+function createThreadId(): string {
+  return `chat_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function deriveThreadTitle(messages: ChatMessage[]): string {
+  const firstUser = messages.find((msg) => msg.role === "user" && msg.content.trim().length > 0);
+  if (!firstUser) return "New chat";
+  const oneLine = firstUser.content.replace(/\s+/g, " ").trim();
+  if (!oneLine) return "New chat";
+  return oneLine.length > 56 ? `${oneLine.slice(0, 56)}…` : oneLine;
+}
+
+function sanitizeMessages(input: unknown): ChatMessage[] {
+  if (!Array.isArray(input)) return [];
+  return input.filter(
+    (m): m is ChatMessage =>
+      !!m &&
+      (m as ChatMessage).role !== undefined &&
+      ((m as ChatMessage).role === "user" || (m as ChatMessage).role === "assistant") &&
+      typeof (m as ChatMessage).content === "string",
+  );
+}
+
+function sanitizeThreads(input: unknown): ChatThread[] {
+  if (!Array.isArray(input)) return [];
+  const threads: ChatThread[] = [];
+  for (const raw of input) {
+    if (!raw || typeof raw !== "object") continue;
+    const maybe = raw as Partial<ChatThread>;
+    const messages = sanitizeMessages(maybe.messages);
+    const updatedAt =
+      typeof maybe.updatedAt === "number" && Number.isFinite(maybe.updatedAt)
+        ? maybe.updatedAt
+        : Date.now();
+    threads.push({
+      id: typeof maybe.id === "string" && maybe.id.trim() ? maybe.id : createThreadId(),
+      title:
+        typeof maybe.title === "string" && maybe.title.trim()
+          ? maybe.title.trim()
+          : deriveThreadTitle(messages),
+      updatedAt,
+      messages,
+    });
   }
-  if (pos < code.length) tokens.push({ text: code.slice(pos) });
-  return tokens;
+  return threads.slice(0, MAX_CHAT_THREADS);
 }
 
-function HighlightedCode({ code, lang }: { code: string; lang: string }) {
-  const tokens = tokenize(code, lang);
-  return (
-    <>
-      {tokens.map((token, i) =>
-        token.type ? (
-          <span key={i} style={{ color: KW_COLORS[token.type] }}>
-            {token.text}
-          </span>
-        ) : (
-          <span key={i}>{token.text}</span>
-        ),
-      )}
-    </>
-  );
+function createThread(messages: ChatMessage[] = []): ChatThread {
+  return {
+    id: createThreadId(),
+    title: deriveThreadTitle(messages),
+    updatedAt: Date.now(),
+    messages,
+  };
 }
 
-function ActionRow({ action }: { action: AgentFixAction }) {
-  const [state, setState] = useState<"idle" | "confirming" | "applying" | "done" | "error">("idle");
-  const [err, setErr] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
-
-  const handleApply = async () => {
-    if (state === "idle") {
-      setState("confirming");
-      return;
+function loadPersistedChatState(): PersistedChatState {
+  try {
+    const raw = window.localStorage.getItem(CHAT_STORAGE_KEY);
+    if (!raw) {
+      const initialThread = createThread([]);
+      return {
+        open: false,
+        activeThreadId: initialThread.id,
+        threads: [initialThread],
+        input: "",
+      };
     }
-    setState("applying");
-    try {
-      const result = await window.electronAPI.agentApplyFix(action);
-      if (result.success) setState("done");
-      else {
-        setErr(result.error ?? "Failed");
-        setState("error");
-      }
-    } catch (error: unknown) {
-      setErr(error instanceof Error ? error.message : "Unknown");
-      setState("error");
+    const parsed = JSON.parse(raw) as Partial<PersistedChatState>;
+    const parsedAny = parsed as Partial<PersistedChatState> & {
+      messages?: unknown;
+    };
+    let threads = sanitizeThreads(parsedAny.threads);
+
+    // Migration from old single-chat schema: { open, messages, input }
+    if (threads.length === 0) {
+      const migratedMessages = sanitizeMessages(parsedAny.messages);
+      threads = [createThread(migratedMessages)];
     }
-  };
 
-  const isWriteFile = action.type === "write-file";
-  const previewContent =
-    isWriteFile && action.content
-      ? action.content.slice(0, 600) + (action.content.length > 600 ? "\n..." : "")
-      : action.preview;
-  const lang = isWriteFile && action.filePath ? action.filePath.split(".").pop() ?? "" : "";
-
-  return (
-    <div className="agp-action-row">
-      {isWriteFile && action.filePath && (
-        <div className="agp-action-filepath">
-          <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-            <path d="M2 2h5l3 3v5H2z" />
-            <path d="M7 2v3h3" />
-          </svg>
-          <code>{action.filePath}</code>
-        </div>
-      )}
-      {previewContent && (
-        <pre className="agp-code-block agp-action-code">
-          <code>
-            <HighlightedCode code={previewContent} lang={lang} />
-          </code>
-        </pre>
-      )}
-      <div className="agp-row-actions">
-        {state === "done" ? (
-          <span className="agp-applied">{isWriteFile ? "File written" : "Applied"}</span>
-        ) : state === "applying" ? (
-          <span className="agp-muted-text">Applying...</span>
-        ) : state === "error" ? (
-          <span className="agp-error-text">{err}</span>
-        ) : state === "confirming" ? (
-          <>
-            <span className="agp-muted-text">
-              {isWriteFile ? `Write ${action.filePath?.split("/").pop()}?` : "Run this fix?"}
-            </span>
-            <button className="agp-btn agp-btn-confirm" onClick={handleApply}>Confirm</button>
-            <button className="agp-btn agp-btn-ghost" onClick={() => setState("idle")}>Cancel</button>
-          </>
-        ) : (
-          <>
-            {action.type !== "copy-only" && (
-              <button className="agp-btn agp-btn-primary" onClick={handleApply}>Apply Fix</button>
-            )}
-            {previewContent && (
-              <button
-                className="agp-btn agp-btn-ghost"
-                onClick={() => {
-                  navigator.clipboard.writeText(previewContent).catch(() => {});
-                  setCopied(true);
-                  setTimeout(() => setCopied(false), 1800);
-                }}
-              >
-                {copied ? "Copied" : "Copy"}
-              </button>
-            )}
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function FindingRow({
-  finding,
-  isNew,
-  onDismiss,
-  onFocusService,
-}: {
-  finding: AgentFinding;
-  isNew?: boolean;
-  onDismiss: (id: string) => void;
-  onFocusService: (finding: AgentFinding) => void;
-}) {
-  const [expanded, setExpanded] = useState(false);
-  const [confirmState, setConfirmState] = useState<"idle" | "confirming" | "applying" | "done" | "error">("idle");
-  const [copied, setCopied] = useState(false);
-  const [applyError, setApplyError] = useState<string | null>(null);
-  const fix = finding.fix;
-  const canApply = fix && fix.type !== "copy-only";
-  const catMeta = CATEGORY_META[finding.category] ?? CATEGORY_META.config;
-
-  const handleCopy = () => {
-    if (fix?.preview) navigator.clipboard.writeText(fix.preview).catch(() => {});
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1800);
-  };
-
-  const handleConfirm = async () => {
-    if (!fix || fix.type === "copy-only") return;
-    setConfirmState("applying");
-    setApplyError(null);
-    try {
-      const result = await window.electronAPI.agentApplyFix(fix);
-      if (result.success) setConfirmState("done");
-      else {
-        setApplyError(result.error ?? "Failed");
-        setConfirmState("error");
-      }
-    } catch (error: unknown) {
-      setApplyError(error instanceof Error ? error.message : "Unknown error");
-      setConfirmState("error");
-    }
-  };
-
-  return (
-    <div className={`agp-row${expanded ? " agp-row-open" : ""}${isNew ? " agp-row-new" : ""}`}>
-      <div className="agp-row-header" onClick={() => setExpanded((v) => !v)}>
-        <span className="agp-dot" style={{ background: SEVERITY_DOT[finding.severity] }} />
-        <div className="agp-row-text">
-          <div className="agp-row-title-line">
-            <span className="agp-row-title">{finding.summary}</span>
-            {isNew && <span className="agp-new-chip">New</span>}
-          </div>
-          <div className="agp-row-meta">
-            <span className="agp-row-service">{finding.service}</span>
-            <span className="agp-cat-badge" style={{ color: catMeta.color, background: catMeta.bg }}>
-              {catMeta.label}
-            </span>
-            {finding.affectedServices.length > 0 && (
-              <span className="agp-impact-chip">{finding.affectedServices.length} affected</span>
-            )}
-          </div>
-        </div>
-        <svg className={`agp-chevron${expanded ? " agp-chevron-open" : ""}`} width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
-          <path d="M3 4.5l3 3 3-3" />
-        </svg>
-      </div>
-      {expanded && (
-        <div className="agp-row-body">
-          <p className="agp-row-detail">{finding.detail}</p>
-          {finding.impact && (
-            <div className="agp-row-impact">
-              <svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
-                <path d="M6 2v4l3 2" />
-                <circle cx="6" cy="6" r="4.5" />
-              </svg>
-              {finding.impact}
-            </div>
-          )}
-          {fix?.preview && <CodeBlock code={fix.preview} />}
-          <div className="agp-row-actions">
-            {confirmState === "done" ? (
-              <span className="agp-applied">Applied</span>
-            ) : confirmState === "applying" ? (
-              <span className="agp-muted-text">Applying...</span>
-            ) : confirmState === "error" ? (
-              <span className="agp-error-text">{applyError}</span>
-            ) : confirmState === "confirming" ? (
-              <>
-                <span className="agp-muted-text">Run this fix?</span>
-                <button className="agp-btn agp-btn-confirm" onClick={handleConfirm}>Confirm</button>
-                <button className="agp-btn agp-btn-ghost" onClick={() => setConfirmState("idle")}>Cancel</button>
-              </>
-            ) : (
-              <>
-                {canApply && <button className="agp-btn agp-btn-primary" onClick={() => setConfirmState("confirming")}>Apply Fix</button>}
-                {fix?.preview && <button className="agp-btn agp-btn-ghost" onClick={handleCopy}>{copied ? "Copied" : "Copy"}</button>}
-                <button className="agp-btn agp-btn-ghost" onClick={() => onFocusService(finding)}>
-                  Focus Service
-                </button>
-                <button className="agp-btn agp-btn-ghost agp-btn-dismiss" onClick={() => onDismiss(finding.id)}>Dismiss</button>
-              </>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-  );
+    const activeThreadId =
+      typeof parsed.activeThreadId === "string" &&
+      threads.some((thread) => thread.id === parsed.activeThreadId)
+        ? parsed.activeThreadId
+        : threads[0].id;
+    return {
+      open: parsed.open === true,
+      activeThreadId,
+      threads,
+      input: typeof parsed.input === "string" ? parsed.input : "",
+    };
+  } catch {
+    const initialThread = createThread([]);
+    return {
+      open: false,
+      activeThreadId: initialThread.id,
+      threads: [initialThread],
+      input: "",
+    };
+  }
 }
 
 export function AgentPanel({ nodes }: { nodes: GraphNode[] }) {
-  const [open, setOpen] = useState(false);
-  const [findings, setFindings] = useState<AgentFinding[]>([]);
-  const [scanning, setScanning] = useState(false);
-  const [scanError, setScanError] = useState<string | null>(null);
-  const [lastScanAt, setLastScanAt] = useState<number | null>(null);
-  const [newFindingIds, setNewFindingIds] = useState<string[]>([]);
-  const latestActionableIdsRef = useRef<Set<string>>(new Set());
-  const scanRequestIdRef = useRef(0);
+  const persistedState = useMemo(() => loadPersistedChatState(), []);
+  const [open, setOpen] = useState(persistedState.open);
+  const [threads, setThreads] = useState<ChatThread[]>(persistedState.threads);
+  const [activeThreadId, setActiveThreadId] = useState(persistedState.activeThreadId);
+  const [streamingText, setStreamingText] = useState("");
+  const [steps, setSteps] = useState<ChatStep[]>([]);
+  const [input, setInput] = useState(persistedState.input);
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [providerDomains, setProviderDomains] = useState<Record<string, string>>({});
+  const [historyOpen, setHistoryOpen] = useState(false);
+
+  const endRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const streamingTextRef = useRef("");
+
+  const activeThread = useMemo(
+    () => threads.find((thread) => thread.id === activeThreadId) ?? null,
+    [threads, activeThreadId],
+  );
+  const messages = activeThread?.messages ?? [];
 
   const nodeIdsForScan = useMemo(
-    () => nodes.filter((node) => node.type !== "external").map((node) => node.id),
+    () => nodes.filter((n) => n.type !== "external").map((n) => n.id),
     [nodes],
   );
-  const scanFingerprint = useMemo(
-    () =>
-      nodes
-        .filter((node) => node.type !== "external")
-        .map((node) => {
-          const ports = (node.ports ?? [])
-            .map((port) => port.port)
-            .sort((a, b) => a - b)
-            .join(",");
-          return [
-            node.id,
-            node.name,
-            node.healthStatus,
-            node.containerState ?? "",
-            node.isGhost ? "ghost" : "live",
-            ports,
-          ].join(":");
-        })
-        .sort()
-        .join("|"),
+
+  const serviceCount = useMemo(
+    () => nodes.filter((n) => n.type !== "external").length,
     [nodes],
   );
-  const hasScanned = useMemo(
-    () => lastScanAt !== null || scanError !== null,
-    [lastScanAt, scanError],
-  );
 
-  const criticalCount = findings.filter((finding) => finding.severity === "critical").length;
-  const warningCount = findings.filter((finding) => finding.severity === "warning").length;
-  const suggestionCount = findings.filter((finding) => finding.severity === "suggestion").length;
-  const totalIssues = criticalCount + warningCount;
-  const unseenIssueCount = useMemo(
-    () =>
-      newFindingIds.filter((id) =>
-        findings.some(
-          (finding) => finding.id === id && finding.severity !== "suggestion",
-        ),
-      ).length,
-    [findings, newFindingIds],
-  );
-
-  const healthScore = hasScanned
-    ? Math.max(0, 100 - criticalCount * 15 - warningCount * 5 - suggestionCount)
-    : null;
-  const healthGrade =
-    healthScore === null
-      ? null
-      : healthScore >= 90
-        ? { label: "Excellent", color: "#16a34a" }
-        : healthScore >= 75
-          ? { label: "Good", color: "#65a30d" }
-          : healthScore >= 60
-            ? { label: "Fair", color: "#ca8a04" }
-            : healthScore >= 40
-              ? { label: "Poor", color: "#ea580c" }
-              : { label: "Critical", color: "#dc2626" };
-
-  const runScan = useCallback(async (source: "manual" | "background" = "manual") => {
-    const requestId = scanRequestIdRef.current + 1;
-    scanRequestIdRef.current = requestId;
-    if (source === "manual") {
-      setScanning(true);
-      setScanError(null);
+  const nodeMap = useMemo(() => {
+    const map = new Map<string, GraphNode>();
+    for (const node of nodes) {
+      if (node.type !== "external") map.set(node.name.toLowerCase(), node);
     }
-    if (nodeIdsForScan.length === 0) {
-      latestActionableIdsRef.current = new Set();
-      setFindings([]);
-      setNewFindingIds([]);
-      setLastScanAt(Date.now());
-      if (source === "manual") setScanning(false);
-      return;
-    }
+    return map;
+  }, [nodes]);
+
+  useEffect(() => {
+    let mounted = true;
+    window.electronAPI
+      .getExternalApiProviders()
+      .then((providers) => {
+        if (!mounted) return;
+        setProviderDomains(buildProviderDomainMap(providers));
+      })
+      .catch(() => {
+        if (!mounted) return;
+        setProviderDomains({});
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
     try {
-      const result = await window.electronAPI.agentScan(nodeIdsForScan);
-      if (requestId !== scanRequestIdRef.current) return;
-      if (result.success) {
-        const nextFindings = sortFindings(result.findings);
-        const nextActionableIds = new Set(
-          nextFindings
-            .filter((finding) => finding.severity !== "suggestion")
-            .map((finding) => finding.id),
-        );
-        if (source === "background" && !open) {
-          const newlyDetected = Array.from(nextActionableIds).filter(
-            (id) => !latestActionableIdsRef.current.has(id),
+      const nextState: PersistedChatState = {
+        open,
+        activeThreadId,
+        threads: threads.slice(0, MAX_CHAT_THREADS),
+        input,
+      };
+      window.localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(nextState));
+    } catch {
+      // Ignore localStorage write failures
+    }
+  }, [open, activeThreadId, threads, input]);
+
+  useEffect(() => {
+    if (threads.length > 0) return;
+    const next = createThread([]);
+    setThreads([next]);
+    setActiveThreadId(next.id);
+  }, [threads]);
+
+  useEffect(() => {
+    if (!threads.some((thread) => thread.id === activeThreadId) && threads[0]) {
+      setActiveThreadId(threads[0].id);
+    }
+  }, [threads, activeThreadId]);
+
+  const focusNode = useCallback((node: GraphNode) => {
+    // Switch to service map first, then focus the node
+    window.dispatchEvent(new CustomEvent("fere:show-graph"));
+    setTimeout(() => {
+      window.dispatchEvent(
+        new CustomEvent("fere:focus-node", {
+          detail: { nodeId: node.id, nodeName: node.name },
+        }),
+      );
+    }, 80);
+  }, []);
+
+  const mdComponents = useMemo(
+    () => ({
+      // Only intercept strong — AI is instructed to bold service names.
+      // Checking the full text of the <strong> avoids double-processing
+      // that happens when both p and strong components clone children.
+      strong: ({ children }: { children?: React.ReactNode }) => {
+        const text = extractText(children).trim();
+        const node = nodeMap.get(text.toLowerCase());
+        if (node) {
+          const color = getServiceColor(node.type ?? "");
+          return (
+            <button
+              className="agp-node-ref"
+              style={{ "--node-color": color } as React.CSSProperties}
+              onClick={() => focusNode(node)}
+              title={`Focus ${node.name} · ${node.type ?? "service"}`}
+            >
+              {text}
+            </button>
           );
-          if (newlyDetected.length > 0) {
-            setNewFindingIds((prev) => Array.from(new Set([...prev, ...newlyDetected])));
+        }
+        const logoUrl = getLogoUrl(text, providerDomains);
+        if (logoUrl) {
+          return <ProviderMention text={text} logoUrl={logoUrl} />;
+        }
+        return <strong>{children}</strong>;
+      },
+      p: ({ children }: { children?: React.ReactNode }) => (
+        <p>{renderProviderMentionsInChildren(children, providerDomains)}</p>
+      ),
+      li: ({ children }: { children?: React.ReactNode }) => (
+        <li>{renderProviderMentionsInChildren(children, providerDomains)}</li>
+      ),
+      blockquote: ({ children }: { children?: React.ReactNode }) => (
+        <blockquote>{renderProviderMentionsInChildren(children, providerDomains)}</blockquote>
+      ),
+      h1: ({ children }: { children?: React.ReactNode }) => (
+        <h1>{renderProviderMentionsInChildren(children, providerDomains)}</h1>
+      ),
+      h2: ({ children }: { children?: React.ReactNode }) => (
+        <h2>{renderProviderMentionsInChildren(children, providerDomains)}</h2>
+      ),
+      h3: ({ children }: { children?: React.ReactNode }) => (
+        <h3>{renderProviderMentionsInChildren(children, providerDomains)}</h3>
+      ),
+    }),
+    [nodeMap, focusNode, providerDomains],
+  );
+
+  // Auto-resize textarea
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = Math.min(el.scrollHeight, 120) + "px";
+  }, [input]);
+
+  const scrollToEnd = useCallback((smooth = true) => {
+    endRef.current?.scrollIntoView({ behavior: smooth ? "smooth" : "auto" });
+  }, []);
+
+  const updateActiveThreadMessages = useCallback(
+    (nextMessages: ChatMessage[]) => {
+      setThreads((prev) => {
+        const idx = prev.findIndex((thread) => thread.id === activeThreadId);
+        if (idx === -1) return prev;
+        const current = prev[idx];
+        const updated: ChatThread = {
+          ...current,
+          messages: nextMessages,
+          title: deriveThreadTitle(nextMessages),
+          updatedAt: Date.now(),
+        };
+        const next = [updated, ...prev.slice(0, idx), ...prev.slice(idx + 1)];
+        return next.slice(0, MAX_CHAT_THREADS);
+      });
+    },
+    [activeThreadId],
+  );
+
+  const send = useCallback(
+    async (text: string) => {
+      const trimmed = text.trim();
+      if (!trimmed || isStreaming || !activeThread) return;
+
+      const userMsg: ChatMessage = { role: "user", content: trimmed };
+      const updatedMessages = [...messages, userMsg];
+      updateActiveThreadMessages(updatedMessages);
+      setInput("");
+      setIsStreaming(true);
+      streamingTextRef.current = "";
+      setStreamingText("");
+      setSteps([]);
+      setError(null);
+
+      setTimeout(() => scrollToEnd(true), 50);
+
+      window.electronAPI.onChatToken((token: string) => {
+        streamingTextRef.current += token;
+        setStreamingText(streamingTextRef.current);
+        scrollToEnd(false);
+      });
+
+      window.electronAPI.onChatStep((step: ChatStep) => {
+        setSteps((prev) => {
+          // If same path already in list, mark it done; otherwise append
+          const idx = prev.findIndex((s) => s.path === step.path && s.type === step.type);
+          if (idx !== -1) {
+            const next = [...prev];
+            next[idx] = { ...next[idx], done: true };
+            return next;
           }
-        } else if (source === "manual") {
-          setNewFindingIds([]);
-        }
-        latestActionableIdsRef.current = nextActionableIds;
-        setFindings(nextFindings);
-        setLastScanAt(Date.now());
-        if (source === "manual") setScanError(null);
-      } else {
-        if (source === "manual") {
-          setScanError(result.error ?? "Scan failed");
-        }
-      }
-    } catch (error: unknown) {
-      if (requestId !== scanRequestIdRef.current) return;
-      if (source === "manual") {
-        setScanError(error instanceof Error ? error.message : "Scan failed");
-      }
-    } finally {
-      if (source === "manual" && requestId === scanRequestIdRef.current) {
-        setScanning(false);
-      }
-    }
-  }, [nodeIdsForScan, open]);
+          return [...prev, step];
+        });
+      });
 
-  useEffect(() => {
-    if (!scanFingerprint) {
-      latestActionableIdsRef.current = new Set();
-      setFindings([]);
-      setNewFindingIds([]);
-      setLastScanAt(null);
-      setScanError(null);
-      return;
-    }
-    const timeout = window.setTimeout(
-      () => void runScan("background"),
-      hasScanned ? TOPOLOGY_SCAN_DEBOUNCE_MS : 0,
-    );
-    return () => window.clearTimeout(timeout);
-  }, [hasScanned, runScan, scanFingerprint]);
-
-  useEffect(() => {
-    if (!scanFingerprint) return;
-    const interval = window.setInterval(() => {
-      void runScan("background");
-    }, BACKGROUND_SCAN_INTERVAL_MS);
-    return () => window.clearInterval(interval);
-  }, [runScan, scanFingerprint]);
+      try {
+        const result = await window.electronAPI.agentChat(
+          updatedMessages,
+          nodeIdsForScan,
+        );
+        window.electronAPI.offChatToken();
+        window.electronAPI.offChatStep();
+        // Capture text NOW before finally clears the ref
+        const completedText = streamingTextRef.current;
+        if (result.success) {
+          updateActiveThreadMessages([
+            ...updatedMessages,
+            { role: "assistant", content: completedText },
+          ]);
+        } else {
+          setError(result.error ?? "No response");
+        }
+      } catch (err: unknown) {
+        window.electronAPI.offChatToken();
+        window.electronAPI.offChatStep();
+        setError(err instanceof Error ? err.message : "Failed to connect");
+      } finally {
+        setStreamingText("");
+        streamingTextRef.current = "";
+        setSteps([]);
+        setIsStreaming(false);
+        setTimeout(() => scrollToEnd(true), 100);
+      }
+    },
+    [
+      activeThread,
+      isStreaming,
+      messages,
+      nodeIdsForScan,
+      scrollToEnd,
+      updateActiveThreadMessages,
+    ],
+  );
 
   useEffect(() => {
     if (!open) return;
-    const handler = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [open]);
 
-  const handleFocusService = useCallback(
-    (finding: AgentFinding) => {
-      const target = nodes.find(
-        (node) =>
-          node.name === finding.service ||
-          node.name.toLowerCase() === finding.service.toLowerCase() ||
-          finding.affectedServices.includes(node.name),
-      );
-      if (!target) return;
-      window.dispatchEvent(
-        new CustomEvent("fere:focus-node", {
-          detail: { nodeId: target.id, nodeName: target.name },
-        }),
-      );
+  useEffect(() => {
+    if (open) setTimeout(() => inputRef.current?.focus(), 120);
+  }, [open]);
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        void send(input);
+      }
     },
-    [nodes],
+    [send, input],
   );
 
-  const issues = findings.filter((finding) => finding.severity !== "suggestion");
-  const suggestions = findings.filter((finding) => finding.severity === "suggestion");
-  const clearNewFindings = useCallback(() => setNewFindingIds([]), []);
-  const showIssueBadge = totalIssues > 0 && !open;
-  const showUnreadDot = unseenIssueCount > 0 && !open && !showIssueBadge;
-  const headerSubtext =
-    scanning
-      ? "Scanning the live runtime"
-      : unseenIssueCount > 0
-        ? `${unseenIssueCount} new issue${unseenIssueCount !== 1 ? "s" : ""} detected in background`
-        : scanError
-          ? "Scan failed"
-          : totalIssues > 0
-            ? `${totalIssues} actionable issue${totalIssues !== 1 ? "s" : ""}`
-            : findings.length > 0
-              ? `${findings.length} low-priority suggestion${findings.length !== 1 ? "s" : ""}`
-              : hasScanned
-                ? "All clear"
-                : "Watching your stack";
+  const headerSub =
+    serviceCount > 0
+      ? `${serviceCount} service${serviceCount !== 1 ? "s" : ""} running`
+      : "Watching for services";
+
+  const showStream = isStreaming || streamingText.length > 0;
+  const sortedThreads = useMemo(
+    () => [...threads].sort((a, b) => b.updatedAt - a.updatedAt),
+    [threads],
+  );
+
+  const formatThreadTimestamp = useCallback((ts: number) => {
+    try {
+      return new Date(ts).toLocaleString([], {
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      });
+    } catch {
+      return "";
+    }
+  }, []);
+
+  const startNewConversation = useCallback(() => {
+    const next = createThread([]);
+    setThreads((prev) => [next, ...prev].slice(0, MAX_CHAT_THREADS));
+    setActiveThreadId(next.id);
+    setInput("");
+    setError(null);
+    setHistoryOpen(false);
+  }, []);
 
   return (
     <>
       <button
-        className={`agp-trigger-btn${open ? " agp-trigger-btn-active" : ""}`}
-        onClick={() => setOpen((value) => !value)}
-        title="Open Sentinel"
+        className={`agp-trigger-logo-btn${open ? " agp-trigger-btn-active" : ""}`}
+        onClick={() => setOpen((v) => !v)}
+        title="Ask Fere"
       >
-        <AgentGlyph className="agp-trigger-icon" />
-        <span className="agp-trigger-label">Sentinel</span>
-        {showUnreadDot && <span className="agp-trigger-ping" aria-hidden="true" />}
-        {showIssueBadge && (
-          <span
-            className={`agp-trigger-badge${unseenIssueCount > 0 ? " agp-trigger-badge-unreviewed" : ""}`}
-          >
-            {totalIssues}
-          </span>
-        )}
+        <img src={fereLogo} alt="Fere" className="agp-trigger-logo" />
       </button>
 
       {open && (
         <div className="agp-popup">
+          {/* Header */}
           <div className="agp-header">
             <div className="agp-header-left">
-              <AgentGlyph className="agp-avatar-icon" />
+              <img src={fereLogo} alt="Fere" className="agp-avatar-logo" />
               <div className="agp-header-text">
-                <span className="agp-header-title">Sentinel</span>
-                <span className="agp-header-sub">{headerSubtext}</span>
+                <span className="agp-header-title">Fere</span>
+                <span className="agp-header-sub">{headerSub}</span>
               </div>
             </div>
             <div className="agp-header-right">
-              <button className="agp-scan-btn" onClick={() => void runScan()} disabled={scanning} title="Re-scan">
-                <svg className={scanning ? "agp-spin" : ""} width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
-                  <path d="M7 2a5 5 0 1 1-3.54 1.46" />
-                </svg>
+              {threads.length > 0 && (
+                <button
+                  className={`agp-scan-btn agp-history-btn${historyOpen ? " agp-scan-btn-active" : ""}`}
+                  onClick={() => setHistoryOpen((v) => !v)}
+                  title="Chat history"
+                  disabled={isStreaming}
+                >
+                  <svg
+                    className="agp-history-icon"
+                    width="14"
+                    height="14"
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.6"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <circle cx="8" cy="8" r="5.5" />
+                    <path d="M8 5.2v3.1l2 1.2" />
+                  </svg>
+                </button>
+              )}
+              {threads.length > 0 && (
+                <button
+                  className="agp-scan-btn"
+                  onClick={startNewConversation}
+                  title="New conversation"
+                  disabled={isStreaming}
+                >
+                  <svg
+                    width="12"
+                    height="12"
+                    viewBox="0 0 14 14"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.7"
+                    strokeLinecap="round"
+                  >
+                    <path d="M1 7h12M7 1v12" />
+                  </svg>
+                </button>
+              )}
+              <button className="agp-close" onClick={() => setOpen(false)}>
+                ×
               </button>
-              <button className="agp-close" onClick={() => setOpen(false)}>×</button>
             </div>
           </div>
+          {historyOpen && (
+            <div className="agp-history-panel">
+              {sortedThreads.length === 0 ? (
+                <div className="agp-history-empty">No saved chats yet.</div>
+              ) : (
+                sortedThreads.map((thread) => (
+                  <button
+                    key={thread.id}
+                    className={`agp-history-item${thread.id === activeThreadId ? " agp-history-item-active" : ""}`}
+                    onClick={() => {
+                      setActiveThreadId(thread.id);
+                      setHistoryOpen(false);
+                      setError(null);
+                    }}
+                  >
+                    <span className="agp-history-title">{thread.title}</span>
+                    <span className="agp-history-meta">
+                      {thread.messages.length} msg · {formatThreadTimestamp(thread.updatedAt)}
+                    </span>
+                  </button>
+                ))
+              )}
+            </div>
+          )}
 
-          <div className="agp-body">
-            {scanning ? (
-              <div className="agp-empty">
-                <svg className="agp-spin" width="22" height="22" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
-                  <path d="M7 2a5 5 0 1 1-3.54 1.46" />
-                </svg>
-                <span>Scanning your stack...</span>
-                <span className="agp-empty-sub">Checking health, dependencies, connectivity, and config drift</span>
-              </div>
-            ) : scanError ? (
-              <div className="agp-empty">
-                <span>{scanError}</span>
-                <button className="agp-btn agp-btn-ghost" onClick={() => void runScan()}>Retry</button>
-              </div>
-            ) : findings.length === 0 ? (
-              <div className="agp-findings">
-                <div className="agp-empty agp-all-clear">
-                  <div className="agp-clear-icon">
-                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                      <circle cx="12" cy="12" r="9" />
-                      <path d="M8.5 12l2.5 2.5 4.5-4.5" />
-                    </svg>
-                  </div>
-                  <span className="agp-clear-title">All systems nominal</span>
-                  <span className="agp-empty-sub">No unhealthy services, missing dependencies, or obvious config drift detected</span>
+          {/* Chat body */}
+          <div className="agp-chat-body">
+            {messages.length === 0 && !showStream ? (
+              /* Welcome / starter screen */
+              <div className="agp-welcome">
+                <img src={fereLogo} alt="Fere" className="agp-welcome-logo" />
+                <p className="agp-welcome-title">Ask about your running stack</p>
+                <p className="agp-welcome-sub">
+                  I can see your live topology, active connections, Docker
+                  containers, and codebase config — things no IDE agent can see.
+                </p>
+                <div className="agp-starters">
+                  {STARTER_PROMPTS.map((p) => (
+                    <button
+                      key={p}
+                      className="agp-starter-chip"
+                      onClick={() => void send(p)}
+                    >
+                      {p}
+                    </button>
+                  ))}
                 </div>
               </div>
             ) : (
-              <div className="agp-findings">
-                {unseenIssueCount > 0 && (
-                  <div className="agp-watch-banner">
-                    <div className="agp-watch-banner-copy">
-                      <span className="agp-watch-dot" aria-hidden="true" />
-                      <span className="agp-watch-banner-title">
-                        {unseenIssueCount} new issue{unseenIssueCount !== 1 ? "s" : ""} detected in background
-                      </span>
+              /* Message list */
+              <div className="agp-messages">
+                {messages.map((msg, i) => (
+                  <div key={i} className={`agp-msg agp-msg-${msg.role}`}>
+                    <div className="agp-msg-bubble">
+                      {msg.role === "assistant" ? (
+                        <ReactMarkdown
+                          className="agp-markdown"
+                          rehypePlugins={[rehypeHighlight]}
+                          components={mdComponents}
+                        >
+                          {msg.content}
+                        </ReactMarkdown>
+                      ) : (
+                        msg.content
+                      )}
                     </div>
-                    <button className="agp-btn agp-btn-ghost" onClick={clearNewFindings}>
-                      Mark reviewed
-                    </button>
+                  </div>
+                ))}
+
+                {showStream && (
+                  <div className="agp-msg agp-msg-assistant">
+                    <div className="agp-msg-bubble">
+                      {steps.length > 0 && (
+                        <div className="agp-steps">
+                          {steps.map((step, i) => (
+                            <div
+                              key={i}
+                              className={`agp-step${step.done ? " agp-step-done" : ""}`}
+                            >
+                              <span className="agp-step-icon">
+                                {step.type === "list_directory" ? (
+                                  // Folder
+                                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M1 3.5C1 2.95 1.45 2.5 2 2.5h2.5l1 1H10c.55 0 1 .45 1 1v4.5c0 .55-.45 1-1 1H2c-.55 0-1-.45-1-1V3.5z" />
+                                  </svg>
+                                ) : step.type === "run_command" ? (
+                                  // Terminal prompt
+                                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                                    <rect x="1" y="1.5" width="10" height="9" rx="1.5" />
+                                    <path d="M3.5 4.5l2 2-2 2" />
+                                    <path d="M7.5 8.5h1" />
+                                  </svg>
+                                ) : step.type === "get_node_details" ? (
+                                  // Node/service lookup
+                                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                                    <circle cx="6" cy="5" r="2.5" />
+                                    <path d="M2 10c0-2.2 1.8-4 4-4s4 1.8 4 4" />
+                                  </svg>
+                                ) : step.type === "docker_logs" || step.type === "docker_exec" || step.type === "docker_control" ? (
+                                  // Docker container box
+                                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                                    <rect x="1.5" y="3" width="9" height="7" rx="1" />
+                                    <path d="M4 3V2M8 3V2" />
+                                    <path d="M4 6.5h4M4 8.5h2" />
+                                  </svg>
+                                ) : (
+                                  // File (read_file)
+                                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M2 1.5h5.5L10 4v7H2V1.5z" />
+                                    <path d="M7.5 1.5V4H10" />
+                                    <path d="M4 6.5h4M4 8.5h2.5" />
+                                  </svg>
+                                )}
+                              </span>
+                              <span className="agp-step-label">{step.label}</span>
+                              {!step.done && <span className="agp-step-spinner" />}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {streamingText ? (
+                        <ReactMarkdown
+                          className="agp-markdown"
+                          rehypePlugins={[rehypeHighlight]}
+                          components={mdComponents}
+                        >
+                          {streamingText}
+                        </ReactMarkdown>
+                      ) : steps.length === 0 ? (
+                        <div className="agp-thinking">
+                          <span className="agp-dot" />
+                          <span className="agp-dot" />
+                          <span className="agp-dot" />
+                        </div>
+                      ) : null}
+                    </div>
                   </div>
                 )}
 
-                {healthScore !== null && healthGrade !== null && (
-                  <div className="agp-score-bar">
-                    <div className="agp-score-header">
-                      <span className="agp-score-label">Environment Health</span>
-                      <span className="agp-score-value" style={{ color: healthGrade.color }}>
-                        {healthScore}% — {healthGrade.label}
-                      </span>
-                    </div>
-                    <div className="agp-score-track">
-                      <div className="agp-score-fill" style={{ width: `${healthScore}%`, background: healthGrade.color }} />
-                    </div>
-                    <div className="agp-score-counts">
-                      {criticalCount > 0 && <span className="agp-count-chip agp-count-critical">{criticalCount} critical</span>}
-                      {warningCount > 0 && <span className="agp-count-chip agp-count-warning">{warningCount} warning{warningCount !== 1 ? "s" : ""}</span>}
-                      {suggestionCount > 0 && <span className="agp-count-chip agp-count-suggestion">{suggestionCount} suggestion{suggestionCount !== 1 ? "s" : ""}</span>}
-                    </div>
-                  </div>
-                )}
-
-                {issues.length > 0 && (
-                  <div className="agp-section">
-                    <span className="agp-section-label">Issues</span>
-                    {issues.map((finding) => (
-                      <FindingRow
-                        key={finding.id}
-                        finding={finding}
-                        isNew={newFindingIds.includes(finding.id)}
-                        onDismiss={(id) => setFindings((prev) => prev.filter((item) => item.id !== id))}
-                        onFocusService={handleFocusService}
-                      />
-                    ))}
-                  </div>
-                )}
-
-                {suggestions.length > 0 && (
-                  <div className="agp-section">
-                    <span className="agp-section-label">Suggestions</span>
-                    {suggestions.map((finding) => (
-                      <FindingRow
-                        key={finding.id}
-                        finding={finding}
-                        isNew={newFindingIds.includes(finding.id)}
-                        onDismiss={(id) => setFindings((prev) => prev.filter((item) => item.id !== id))}
-                        onFocusService={handleFocusService}
-                      />
-                    ))}
-                  </div>
-                )}
-
-                <div className="agp-empty-sub" style={{ textAlign: "left" }}>
-                  Sentinel watches the live stack in the background, reacts to topology changes, and rescans on an interval. It is meant to catch concrete runtime drift that a general coding assistant cannot see from code alone.
-                </div>
+                {error && <div className="agp-chat-error">{error}</div>}
               </div>
             )}
+            <div ref={endRef} />
+          </div>
+
+          {/* Input */}
+          <div className="agp-input-row">
+            <textarea
+              ref={inputRef}
+              className="agp-input"
+              placeholder="Ask anything about your running stack… (Enter to send)"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              disabled={isStreaming}
+            />
+            <button
+              className="agp-send-btn"
+              onClick={() => void send(input)}
+              disabled={isStreaming || !input.trim()}
+              title="Send (Enter)"
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 16 16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M13 8H3" />
+                <path d="M9 4l4 4-4 4" />
+              </svg>
+            </button>
           </div>
         </div>
       )}

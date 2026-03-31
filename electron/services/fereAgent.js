@@ -374,4 +374,286 @@ async function executeAction(action) {
   throw new Error(`Unknown action type: ${action.type}`);
 }
 
-module.exports = { runScan, executeAction };
+// ── Chat Context Builder ───────────────────────────────────────────────────────
+
+async function readCodebaseContext(nodes) {
+  const projectPaths = [
+    ...new Set(
+      nodes
+        .filter((n) => n.type !== "external" && typeof n.projectPath === "string" && n.projectPath)
+        .map((n) => n.projectPath),
+    ),
+  ].slice(0, 4);
+
+  if (projectPaths.length === 0) return "";
+
+  const lines = ["\n## Codebase Context"];
+  for (const projectPath of projectPaths) {
+    try {
+      const name = path.basename(projectPath);
+      lines.push(`\n### ${name} (${projectPath})`);
+
+      // Top-level directory
+      try {
+        const entries = fs
+          .readdirSync(projectPath)
+          .filter((e) => !e.startsWith(".") && e !== "node_modules" && e !== "__pycache__")
+          .slice(0, 24);
+        lines.push(`  Structure: ${entries.join(", ")}`);
+      } catch (_) {}
+
+      // package.json
+      const pkgPath = path.join(projectPath, "package.json");
+      if (fs.existsSync(pkgPath)) {
+        try {
+          const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
+          if (pkg.name) lines.push(`  Package: ${pkg.name}${pkg.version ? ` v${pkg.version}` : ""}`);
+          if (pkg.description) lines.push(`  Description: ${pkg.description}`);
+          const deps = Object.keys({ ...(pkg.dependencies ?? {}), ...(pkg.devDependencies ?? {}) }).slice(0, 20);
+          if (deps.length) lines.push(`  Dependencies: ${deps.join(", ")}`);
+          const scripts = Object.keys(pkg.scripts ?? {}).slice(0, 10);
+          if (scripts.length) lines.push(`  Scripts: ${scripts.join(", ")}`);
+        } catch (_) {}
+      }
+
+      // requirements.txt (Python)
+      const reqPath = path.join(projectPath, "requirements.txt");
+      if (fs.existsSync(reqPath)) {
+        try {
+          const reqs = fs.readFileSync(reqPath, "utf8").split("\n")
+            .map((l) => l.trim().split(/[>=<!]/)[0])
+            .filter(Boolean)
+            .slice(0, 16);
+          if (reqs.length) lines.push(`  Python deps: ${reqs.join(", ")}`);
+        } catch (_) {}
+      }
+
+      // docker-compose
+      const composePath = ["docker-compose.yml", "docker-compose.yaml"]
+        .map((f) => path.join(projectPath, f))
+        .find((p) => fs.existsSync(p));
+      if (composePath) {
+        try {
+          const raw = fs.readFileSync(composePath, "utf8");
+          const services = [...raw.matchAll(/^\s{2}([\w-]+):\s*$/gm)]
+            .map((m) => m[1])
+            .filter((s) => s !== "services" && s !== "networks" && s !== "volumes");
+          if (services.length) lines.push(`  Compose services: ${services.join(", ")}`);
+        } catch (_) {}
+      }
+
+      // .env keys (not values — privacy)
+      const envPath = path.join(projectPath, ".env");
+      if (fs.existsSync(envPath)) {
+        try {
+          const keys = fs.readFileSync(envPath, "utf8")
+            .split("\n")
+            .map((l) => l.split("=")[0].trim())
+            .filter((k) => /^[A-Z_][A-Z0-9_]*$/.test(k))
+            .slice(0, 20);
+          if (keys.length) lines.push(`  .env keys: ${keys.join(", ")}`);
+        } catch (_) {}
+      }
+    } catch (_) {}
+  }
+
+  return lines.join("\n");
+}
+
+async function buildChatContext(snapshot, findings) {
+  const nodes = snapshot.graph?.nodes ?? [];
+  const edges = snapshot.graph?.edges ?? [];
+  const ports = snapshot.ports ?? [];
+  const containers = snapshot.docker?.containers ?? [];
+
+  const serviceLines = nodes
+    .filter((n) => n.type !== "external")
+    .map((n) => {
+      const portList = (n.ports ?? []).map((p) => p.port).join(", ") || "none";
+      const pid =
+        n.pid > 0
+          ? `PID ${n.pid}`
+          : n.pids?.length
+            ? `PIDs ${n.pids.join(",")}`
+            : "no PID";
+      const health = n.healthStatus ?? "unknown";
+      const cpu = n.cpu != null ? ` | cpu: ${n.cpu.toFixed(1)}%` : "";
+      const mem = n.memoryUsage ? ` | mem: ${n.memoryUsage}` : n.memory != null ? ` | mem: ${n.memory.toFixed(1)}MB` : "";
+      const typeTag = n.type ? ` | type: ${n.type}` : "";
+      const cmd = n.command ? ` | cmd: ${n.command.slice(0, 80)}` : "";
+      const projectTag = n.projectPath ? ` | path: ${n.projectPath}` : "";
+
+      let containerTag = "";
+      if (n.isDockerContainer) {
+        const hStatus = n.containerHealth?.status ?? "no healthcheck";
+        const image = n.containerImage ? ` image: ${n.containerImage}` : "";
+        const nets = (n.containerNetworks ?? []).map((net) => net.name).join(", ");
+        containerTag = ` | container: ${n.containerState ?? "unknown"} | health: ${hStatus}${image}${nets ? ` | networks: ${nets}` : ""}`;
+      }
+
+      const routes = (n.routes ?? []).slice(0, 8);
+      const routeTag = routes.length
+        ? `\n      routes: ${routes.map((r) => `${r.method} ${r.path}`).join(", ")}`
+        : "";
+
+      const apis = (n.externalApis ?? []).slice(0, 6);
+      const apiTag = apis.length
+        ? `\n      external APIs: ${apis.map((a) => a.name).join(", ")}`
+        : "";
+
+      return `  - ${n.name}${typeTag} | port(s): ${portList} | ${pid} | health: ${health}${cpu}${mem}${cmd}${projectTag}${containerTag}${routeTag}${apiTag}`;
+    })
+    .join("\n");
+
+  const externalNodes = nodes.filter((n) => n.type === "external");
+  const externalLines = externalNodes.length
+    ? externalNodes.map((n) => `  - ${n.name}`).join("\n")
+    : "  (none)";
+
+  const edgeLines = edges.length
+    ? edges
+        .map((e) => {
+          const src = nodes.find((n) => n.id === e.source)?.name ?? e.source;
+          const tgt = nodes.find((n) => n.id === e.target)?.name ?? e.target;
+          return `  - ${src} → ${tgt}`;
+        })
+        .join("\n")
+    : "  (no active connections)";
+
+  const containerLines = containers.length
+    ? containers
+        .map((c) => {
+          const restarts = c.restartCount != null ? ` | restarts: ${c.restartCount}` : "";
+          const image = c.image ? ` | image: ${c.image}` : "";
+          const hStatus = c.health?.status ?? "no healthcheck";
+          const mappedPorts = (c.ports ?? [])
+            .filter((p) => p.hostPort)
+            .map((p) => `${p.hostPort}→${p.containerPort}`)
+            .join(", ");
+          const portTag = mappedPorts ? ` | ports: ${mappedPorts}` : "";
+          const nets = Object.keys(c.networks ?? {}).join(", ");
+          const netTag = nets ? ` | networks: ${nets}` : "";
+          return `  - ${c.name}${image} | state: ${c.state} | health: ${hStatus}${portTag}${netTag}${restarts}`;
+        })
+        .join("\n")
+    : "  (no containers)";
+
+  const listeningPortLines = ports.length
+    ? ports
+        .map((p) => `  - :${p.port} → PID ${p.pid} (${p.process ?? "unknown"})`)
+        .slice(0, 30)
+        .join("\n")
+    : "  (none)";
+
+  const findingLines = findings.length
+    ? findings
+        .map((f) => `  - [${f.severity.toUpperCase()}] ${f.service}: ${f.summary}`)
+        .join("\n")
+    : "  (no issues detected)";
+
+  const codebaseContext = await readCodebaseContext(nodes);
+
+  return `You are Fere's built-in runtime intelligence for a local development environment. You have real-time visibility into what is actually running on this machine — something no IDE assistant or code editor can see.
+
+Snapshot captured at: ${new Date().toISOString()}
+
+## Services Running
+${serviceLines || "  (none running)"}
+
+## External Services Detected
+${externalLines}
+
+## Service Topology (active TCP connections)
+${edgeLines}
+
+## Docker Containers
+${containerLines}
+
+## All Listening Ports
+${listeningPortLines}
+
+## Issues Detected (deterministic scan)
+${findingLines}
+${codebaseContext}
+
+---
+
+Rules:
+- Ground every answer in the live data above. Reference actual service names, ports, PIDs, health states, and connection graphs.
+- When asked about blast radius or dependencies, trace the edges in the topology.
+- When asked why something isn't working, cross-reference health status, connections, and port ownership.
+- Format responses with Markdown: use **bold** for service names and key terms, \`code\` for ports/PIDs/commands, bullet lists for multi-item answers.
+- Keep answers focused and actionable. Lead with the direct answer, then explain.
+- You have a \`get_node_details\` tool. Use it whenever the user asks about a specific service to get full details: all routes, external API calls, Docker image/networks/mounts, health check output, CPU/memory, inbound/outbound connections, and more.
+- You have a \`read_file\` tool. Use it proactively when the user asks about code logic, bugs, or implementation details. Use \`list_directory\` first if unsure of the path.
+- You have \`run_command\` to execute diagnostic shell commands (tests, log inspection, etc.) inside project directories.
+- You have \`docker_logs\`, \`docker_exec\`, and \`docker_control\` to read container output, run commands inside containers, and start/stop/restart them.
+- If the data doesn't contain enough information to answer, say so clearly rather than guessing.`;
+}
+
+function buildNodeDetails(node, allNodes, edges) {
+  if (!node) return "Node not found.";
+  const lines = [];
+  lines.push(`# ${node.name}`);
+  lines.push(`Type: ${node.type ?? "unknown"}`);
+  lines.push(`Health: ${node.healthStatus ?? "unknown"}`);
+  if (node.pid > 0) lines.push(`PID: ${node.pid}`);
+  if (node.pids?.length) lines.push(`PIDs: ${node.pids.join(", ")}`);
+  if (node.command) lines.push(`Command: ${node.command}`);
+  if (node.user) lines.push(`User: ${node.user}`);
+  if (node.cpu != null) lines.push(`CPU: ${node.cpu.toFixed(2)}%`);
+  if (node.memoryUsage) lines.push(`Memory: ${node.memoryUsage}`);
+  else if (node.memory != null) lines.push(`Memory: ${node.memory.toFixed(1)} MB`);
+  if (node.projectPath) lines.push(`Project path: ${node.projectPath}`);
+  if (node.repoPath) lines.push(`Repo path: ${node.repoPath}`);
+  if (node.description) lines.push(`Description: ${node.description}`);
+
+  const ports = node.ports ?? [];
+  if (ports.length) lines.push(`Ports: ${ports.map((p) => `:${p.port}${p.description ? ` (${p.description})` : ""}`).join(", ")}`);
+
+  const routes = node.routes ?? [];
+  if (routes.length) {
+    lines.push(`\nAPI Routes (${routes.length}):`);
+    for (const r of routes) lines.push(`  ${r.method} ${r.path}${r.framework ? ` [${r.framework}]` : ""}`);
+  }
+
+  const apis = node.externalApis ?? [];
+  if (apis.length) {
+    lines.push(`\nExternal APIs used (${apis.length}):`);
+    for (const a of apis) lines.push(`  ${a.name} (matched: ${(a.matchedOn ?? []).join(", ")})`);
+  }
+
+  if (node.isDockerContainer) {
+    lines.push(`\nDocker:`);
+    if (node.containerImage) lines.push(`  Image: ${node.containerImage}`);
+    if (node.containerId) lines.push(`  Container ID: ${node.containerId}`);
+    if (node.containerState) lines.push(`  State: ${node.containerState}`);
+    if (node.containerStatus) lines.push(`  Status: ${node.containerStatus}`);
+    const h = node.containerHealth;
+    if (h) {
+      lines.push(`  Health: ${h.status}${h.failingStreak ? ` (${h.failingStreak} failures)` : ""}`);
+      const last = h.checks?.[h.checks.length - 1];
+      if (last?.output) lines.push(`  Last health output: ${last.output.slice(0, 200)}`);
+    }
+    const nets = node.containerNetworks ?? [];
+    if (nets.length) lines.push(`  Networks: ${nets.map((n) => `${n.name} (${n.ipAddress})`).join(", ")}`);
+    const mounts = node.containerMounts ?? [];
+    if (mounts.length) lines.push(`  Mounts: ${mounts.map((m) => `${m.source}→${m.destination}`).join(", ")}`);
+    const cPorts = node.containerPorts ?? [];
+    if (cPorts.length) lines.push(`  Mapped ports: ${cPorts.filter((p) => p.hostPort).map((p) => `${p.hostPort}→${p.containerPort}`).join(", ")}`);
+  }
+
+  // Connections
+  const outbound = edges.filter((e) => e.source === node.id);
+  const inbound = edges.filter((e) => e.target === node.id);
+  if (inbound.length) {
+    lines.push(`\nInbound connections from: ${inbound.map((e) => allNodes.find((n) => n.id === e.source)?.name ?? e.source).join(", ")}`);
+  }
+  if (outbound.length) {
+    lines.push(`Outbound connections to: ${outbound.map((e) => allNodes.find((n) => n.id === e.target)?.name ?? e.target).join(", ")}`);
+  }
+
+  return lines.join("\n");
+}
+
+module.exports = { runScan, executeAction, buildChatContext, readCodebaseContext, buildNodeDetails };

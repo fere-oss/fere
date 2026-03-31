@@ -1,4 +1,6 @@
 const { contextBridge, ipcRenderer } = require('electron');
+const rawLogoDevToken = (process.env.REACT_APP_LOGO_DEV_TOKEN || process.env.LOGO_DEV_TOKEN || "").trim();
+const logoDevToken = rawLogoDevToken.startsWith("pk_") ? rawLogoDevToken : null;
 
 // Expose protected methods to the renderer process
 contextBridge.exposeInMainWorld('electronAPI', {
@@ -13,6 +15,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getEnvironmentSummary: () => ipcRenderer.invoke('get-environment-summary'),
   getSystemSnapshot: () => ipcRenderer.invoke('get-system-snapshot'),
   getExternalApis: (projectPath) => ipcRenderer.invoke('get-external-apis', projectPath),
+  getExternalApiProviders: () => ipcRenderer.invoke('get-external-api-providers'),
   rescanRoutes: (projectPath) => ipcRenderer.invoke('rescan-routes', projectPath),
 
   // Docker monitoring
@@ -119,8 +122,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Platform info
   platform: process.platform,
+  logoDevToken,
 
   // Fere Agent
   agentScan: (nodeIds) => ipcRenderer.invoke('agent:scan', nodeIds),
   agentApplyFix: (action) => ipcRenderer.invoke('agent:apply-fix', action),
+  agentChat: (messages, nodeIds) => ipcRenderer.invoke('agent:chat', { messages, nodeIds }),
+  onChatToken: (callback) => ipcRenderer.on('agent:chat-token', (_, token) => callback(token)),
+  offChatToken: () => ipcRenderer.removeAllListeners('agent:chat-token'),
+  onChatStep: (callback) => ipcRenderer.on('agent:chat-step', (_, step) => callback(step)),
+  offChatStep: () => ipcRenderer.removeAllListeners('agent:chat-step'),
 });
