@@ -942,6 +942,18 @@ function getComposeDefinedServices(containers, projectPaths) {
     });
   }
 
+  // 3. Deduplicate: remove compose files whose directory is a subdirectory
+  // of another compose project. e.g. robot-shop/payment/docker-compose.yaml
+  // is redundant when robot-shop/docker-compose.yaml exists.
+  const projectDirs = [...composeFiles.values()].map(f => f.projectPath);
+  for (const [filePath, info] of composeFiles) {
+    const dir = info.projectPath;
+    const isSubdir = projectDirs.some(
+      parentDir => dir !== parentDir && dir.startsWith(parentDir + '/')
+    );
+    if (isSubdir) composeFiles.delete(filePath);
+  }
+
   return { composeFiles: [...composeFiles.values()] };
 }
 
