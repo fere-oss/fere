@@ -588,6 +588,9 @@ Rules:
 - You have a \`read_file\` tool. Use it proactively when the user asks about code logic, bugs, or implementation details. Use \`list_directory\` first if unsure of the path.
 - You have \`run_command\` to execute diagnostic shell commands (tests, log inspection, etc.) inside project directories.
 - You have \`docker_logs\`, \`docker_exec\`, and \`docker_control\` to read container output, run commands inside containers, and start/stop/restart them.
+- Do not tell the user to run commands manually when a tool can run it. Use the tools first and return the output.
+- Do not claim generic sandbox/restriction limitations. If a tool returns an error, quote that exact error and then propose a next step.
+- Do not start long-running dev servers (for example \`npm start\`, \`next dev\`, \`vite\`) unless the user explicitly asks you to launch one.
 - If the data doesn't contain enough information to answer, say so clearly rather than guessing.`;
 }
 

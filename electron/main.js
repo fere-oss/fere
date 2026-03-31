@@ -12,6 +12,7 @@ const {
 const { autoUpdater } = require("electron-updater");
 const path = require("path");
 const fs = require("fs");
+const os = require("os");
 require("dotenv").config({ path: path.join(__dirname, "../.env") });
 
 // Import security utilities
@@ -259,7 +260,14 @@ function createWindow() {
 
   // Security: Set up navigation blocking
   // Allow only dev server in development, file:// protocol in production
-  const allowedOrigins = isDev ? ["http://localhost:3001"] : ["file://"];
+  const allowedOrigins = isDev
+    ? [
+        "http://localhost:3001",
+        "http://127.0.0.1:3001",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+      ]
+    : ["file://"];
   setupNavigationBlocking(mainWindow.webContents, allowedOrigins);
 
   // Security: Block new windows, open http/https in external browser
@@ -1873,8 +1881,6 @@ ipcMain.handle("get-analytics-id", () => {
 // IPC Handlers - Share (GitHub Gist)
 // ============================================
 
-const os = require("os");
-
 const SHARE_SETTINGS_FILE = path.join(os.homedir(), ".fere", "settings.json");
 
 function readShareSettings() {
@@ -2043,6 +2049,24 @@ function agentAllowedPath(normalized, allowedPaths) {
   });
 }
 
+const AGENT_TRUSTED_DEV_ROOTS = [
+  path.join(os.homedir(), "Documents", "GitHub"),
+  path.join(os.homedir(), "GitHub"),
+  path.join(os.homedir(), "Documents", "Projects"),
+  path.join(os.homedir(), "Projects"),
+].map((p) => path.normalize(p));
+
+function pathWithinRoot(normalized, root) {
+  return normalized === root || normalized.startsWith(root + path.sep);
+}
+
+function agentAllowedCommandCwd(normalizedCwd, projectPaths) {
+  if (agentAllowedPath(normalizedCwd, projectPaths)) return true;
+  return AGENT_TRUSTED_DEV_ROOTS.some((root) =>
+    pathWithinRoot(normalizedCwd, root),
+  );
+}
+
 function agentReadFile(filePath, allowedPaths) {
   if (typeof filePath !== "string" || !path.isAbsolute(filePath)) {
     return "Error: path must be absolute.";
@@ -2179,8 +2203,8 @@ function agentRunCommand(command, cwd, projectPaths) {
   if (typeof cwd !== "string" || !path.isAbsolute(cwd))
     return "Error: cwd must be an absolute path.";
   const normalizedCwd = path.normalize(cwd);
-  if (!agentAllowedPath(normalizedCwd, projectPaths)) {
-    return `Error: cwd ${normalizedCwd} is outside known project paths.`;
+  if (!agentAllowedCommandCwd(normalizedCwd, projectPaths)) {
+    return `Error: cwd ${normalizedCwd} is outside allowed local dev roots.`;
   }
   for (const pattern of BLOCKED_CMDS) {
     if (pattern.test(command))
@@ -2303,7 +2327,7 @@ const AGENT_TOOLS = [
     function: {
       name: "run_command",
       description:
-        "Run a shell command inside a project directory and return its stdout/stderr output. Use for running tests, checking logs, inspecting running processes, or any diagnostic command. cwd must be an absolute path inside a known project.",
+        "Run a shell command in a local development project directory and return stdout/stderr output. Use for running tests, checking logs, inspecting processes, and diagnostics. cwd must be an absolute path in a known project or trusted local dev root.",
       parameters: {
         type: "object",
         properties: {
@@ -2315,7 +2339,7 @@ const AGENT_TOOLS = [
           cwd: {
             type: "string",
             description:
-              "Absolute path of the project directory to run the command in",
+              "Absolute project path to run the command in (for example under ~/Documents/GitHub)",
           },
         },
         required: ["command", "cwd"],
