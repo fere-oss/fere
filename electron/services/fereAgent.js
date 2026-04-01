@@ -302,8 +302,51 @@ function detectCascadeImpact(nodes, edges) {
 }
 
 function detectStoppedContainers(docker) {
-  if (!docker?.containers) return [];
-  return docker.containers
+  const normalized = new Map();
+  for (const c of docker?.containers ?? []) {
+    if (!c?.name) continue;
+    normalized.set(String(c.name), c);
+  }
+
+  // Fallback: include exited/dead containers from `docker ps -a` so manual
+  // `docker stop` is still detected even if snapshot only includes running ones.
+  try {
+    const raw = execSync("docker ps -a --format '{{json .}}'", {
+      timeout: 10000,
+      encoding: "utf8",
+    });
+    for (const line of raw.split("\n").filter(Boolean)) {
+      try {
+        const row = JSON.parse(line);
+        const name = String(row.Names || "").trim();
+        if (!name) continue;
+        const status = String(row.Status || "").toLowerCase();
+        const state = status.startsWith("exited")
+          ? "exited"
+          : status.startsWith("dead")
+            ? "dead"
+            : status.startsWith("restarting")
+              ? "restarting"
+              : status.startsWith("up")
+                ? "running"
+                : "unknown";
+        if (!normalized.has(name)) {
+          normalized.set(name, {
+            id: String(row.ID || name),
+            name,
+            image: String(row.Image || ""),
+            state,
+          });
+        }
+      } catch {
+        // Ignore malformed row
+      }
+    }
+  } catch {
+    // Docker not available or command failed; rely on snapshot only.
+  }
+
+  return Array.from(normalized.values())
     .filter((c) => c.state === "exited" || c.state === "dead")
     .map((c) => ({
       id: `container-stopped-${c.id.slice(0, 12)}`,

@@ -1042,7 +1042,7 @@ export function AgentPanel({
           if (verify.verified) {
             updateIncidentStage(finding, "verified");
             appendAutoMessage(
-              `[auto-verify] Autopilot fixed and verified **${finding.service}**.`,
+              `[auto-verified] Autopilot fixed and verified **${finding.service}**.`,
             );
           } else {
             updateIncidentStage(finding, "escalated", verify.reason);
@@ -1192,7 +1192,8 @@ export function AgentPanel({
     if (
       !secondLast ||
       secondLast.role !== "user" ||
-      !secondLast.content.startsWith("[auto-verify]")
+      (!secondLast.content.startsWith("[auto-verifying]") &&
+        !secondLast.content.startsWith("[auto-verify]"))
     ) return;
     if (!last || last.role !== "assistant") return;
     // Run a scan to clear incidents that are no longer present
@@ -1316,12 +1317,30 @@ export function AgentPanel({
         setPendingFixes((prev) =>
           prev.map((f) => (f.id === fix.id ? { ...f, status: "done" } : f)),
         );
-        // Trigger verification turn
-        setTimeout(() => {
-          void send(
-            `[auto-verify] The fix was applied: "${fix.description}". Please verify using your tools that the issue is resolved and confirm the service is healthy.`,
-          );
-        }, 1500);
+        if (autopilotEnabled) {
+          // Keep autopilot deterministic: verify with a scan instead of waiting
+          // on an extra LLM verification turn.
+          const verifyResult = await window.electronAPI.agentScan(nodeIdsForScan);
+          if (!verifyResult.success) {
+            appendAutoMessage(
+              `[auto-escalation] Autopilot applied a fix, but verification scan failed (${verifyResult.error ?? "scan failed"}).`,
+            );
+          } else {
+            const activeIssues = verifyResult.findings.filter(
+              (f) => f.severity === "critical" || f.severity === "warning",
+            ).length;
+            appendAutoMessage(
+              `[auto-verified] Autopilot applied and verified fix: "${fix.description}". Active issues remaining: ${activeIssues}.`,
+            );
+          }
+        } else {
+          // Trigger verification turn
+          setTimeout(() => {
+            void send(
+              `[auto-verifying] The fix was applied: "${fix.description}". Please verify using your tools that the issue is resolved and confirm the service is healthy.`,
+            );
+          }, 1500);
+        }
       } catch (err) {
         setPendingFixes((prev) =>
           prev.map((f) =>
@@ -1447,7 +1466,7 @@ export function AgentPanel({
                   title="Active findings"
                   disabled={isStreaming}
                 >
-                  <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                  <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M6.5 1.5l5 9H1.5l5-9z" />
                     <path d="M6.5 5v2.5M6.5 9.2h.01" />
                   </svg>
@@ -1626,12 +1645,17 @@ export function AgentPanel({
                   const isAuto =
                     msg.role === "user" && msg.content.startsWith("[auto-");
                   if (isAuto) {
-                    const isVerify = msg.content.startsWith("[auto-verify]");
+                    const isVerifying =
+                      msg.content.startsWith("[auto-verifying]") ||
+                      msg.content.startsWith("[auto-verify]");
+                    const isVerified = msg.content.startsWith("[auto-verified]");
                     const isAutopilot =
                       msg.content.startsWith("[auto-autopilot]");
                     const isEscalation =
                       msg.content.startsWith("[auto-escalation]");
-                    const label = isVerify
+                    const label = isVerified
+                      ? "Fix verified"
+                      : isVerifying
                       ? "Fix applied · verifying…"
                       : isAutopilot
                         ? "Autopilot applying safe fix…"
@@ -1655,7 +1679,20 @@ export function AgentPanel({
                               <path d="M6 1.5l4.5 8H1.5L6 1.5z" />
                               <path d="M6 4.2v2.6M6 8.4h.01" />
                             </svg>
-                          ) : isVerify ? (
+                          ) : isVerified ? (
+                            <svg
+                              width="12"
+                              height="12"
+                              viewBox="0 0 12 12"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="1.4"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            >
+                              <path d="M2.2 6.3l2.3 2.3 5-5" />
+                            </svg>
+                          ) : isVerifying ? (
                             <svg
                               width="12"
                               height="12"
@@ -1693,7 +1730,9 @@ export function AgentPanel({
                           )}
                         </span>
                         <span className="agp-step-label">{label}</span>
-                        {!isEscalation && <span className="agp-step-spinner" />}
+                        {(isAutopilot || isVerifying || (!isEscalation && !isVerified && !isAutopilot)) && (
+                          <span className="agp-step-spinner" />
+                        )}
                       </div>
                     );
                   }
