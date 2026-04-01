@@ -1461,7 +1461,7 @@ export function AgentPanel({
               </button>
               {Object.keys(incidentState).length > 0 && (
                 <button
-                  className={`agp-scan-btn${findingsOpen ? " agp-scan-btn-active" : ""}`}
+                  className={`agp-scan-btn agp-findings-btn${findingsOpen ? " agp-scan-btn-active" : ""}`}
                   onClick={() => { setFindingsOpen((v) => !v); setHistoryOpen(false); }}
                   title="Active findings"
                   disabled={isStreaming}
@@ -1475,7 +1475,7 @@ export function AgentPanel({
               )}
               {threads.length > 0 && (
                 <button
-                  className={`agp-scan-btn agp-history-btn${historyOpen ? " agp-scan-btn-active" : ""}`}
+                  className={`agp-scan-btn agp-history-btn agp-header-utility${historyOpen ? " agp-scan-btn-active" : ""}`}
                   onClick={() => { setHistoryOpen((v) => !v); setFindingsOpen(false); }}
                   title="Chat history"
                   disabled={isStreaming}
@@ -1498,7 +1498,7 @@ export function AgentPanel({
               )}
               {threads.length > 0 && (
                 <button
-                  className="agp-scan-btn"
+                  className="agp-scan-btn agp-new-chat-btn agp-header-utility"
                   onClick={startNewConversation}
                   title="New conversation"
                   disabled={isStreaming}
@@ -1516,7 +1516,7 @@ export function AgentPanel({
                   </svg>
                 </button>
               )}
-              <button className="agp-close" onClick={() => setOpen(false)}>
+              <button className="agp-close agp-header-utility agp-close-top" onClick={() => setOpen(false)}>
                 ×
               </button>
             </div>
