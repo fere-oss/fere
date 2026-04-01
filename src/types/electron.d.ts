@@ -701,6 +701,10 @@ export interface ElectronAPI {
   offFixProposal: () => void;
   onProactiveFinding: (callback: (findings: AgentFinding[]) => void) => void;
   offProactiveFinding: () => void;
+  onFindingResolved: (callback: (ids: string[]) => void) => void;
+  offFindingResolved: () => void;
+  onFindingWorsened: (callback: (findings: AgentFinding[]) => void) => void;
+  offFindingWorsened: () => void;
 }
 
 export interface ChatStep {

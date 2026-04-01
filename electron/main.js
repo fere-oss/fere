@@ -159,6 +159,10 @@ let snapshotScheduler = null;
 let snapshotHandler = null;
 let alertNodeMap = new Map();
 const _surfacedFindingIds = new Set();
+// id → severity of last surfaced finding, for worsened detection
+const _surfacedFindingSeverity = new Map();
+// Suppress repeated critical notifications within 60s per finding id
+const _notifiedCriticalAt = new Map();
 const logStreamsBySender = new Map();
 
 function registerSenderLogStream(sender, streamId) {
@@ -510,28 +514,86 @@ ipcMain.handle("start-snapshot-stream", async (event) => {
       }
     });
 
-    // Proactive scan: diff findings and surface new critical/warning issues
+    // Proactive scan: diff findings and surface new/worsened/resolved issues
     snapshotScheduler.on("snapshot", async (delta) => {
       if (delta.type !== "full") return; // only run on full snapshots
       try {
         const snap = await getSystemSnapshot();
         const findings = await runScan(snap);
-        const newFindings = findings.filter(
-          (f) =>
-            (f.severity === "critical" || f.severity === "warning") &&
-            !_surfacedFindingIds.has(f.id),
-        );
-        // Clear resolved findings so they can resurface if they come back
         const currentIds = new Set(findings.map((f) => f.id));
+        const severityRank = { critical: 2, warning: 1, suggestion: 0 };
+
+        // Detect resolved findings (previously surfaced, no longer present)
+        const resolvedIds = [];
         for (const id of _surfacedFindingIds) {
-          if (!currentIds.has(id)) _surfacedFindingIds.delete(id);
+          if (!currentIds.has(id)) {
+            resolvedIds.push(id);
+            _surfacedFindingIds.delete(id);
+            _surfacedFindingSeverity.delete(id);
+          }
         }
-        if (newFindings.length === 0) return;
-        newFindings.forEach((f) => _surfacedFindingIds.add(f.id));
-        BrowserWindow.getAllWindows().forEach((win) => {
-          if (!win.isDestroyed())
-            win.webContents.send("agent:proactive-finding", newFindings);
-        });
+
+        // Detect new findings and worsened findings
+        const newFindings = [];
+        const worsenedFindings = [];
+        for (const f of findings) {
+          if (f.severity !== "critical" && f.severity !== "warning") continue;
+          const prevSev = _surfacedFindingSeverity.get(f.id);
+          if (!_surfacedFindingIds.has(f.id)) {
+            newFindings.push(f);
+            _surfacedFindingIds.add(f.id);
+            _surfacedFindingSeverity.set(f.id, f.severity);
+          } else if (
+            prevSev &&
+            (severityRank[f.severity] ?? 0) > (severityRank[prevSev] ?? 0)
+          ) {
+            worsenedFindings.push(f);
+            _surfacedFindingSeverity.set(f.id, f.severity);
+          }
+        }
+
+        const windows = BrowserWindow.getAllWindows().filter((w) => !w.isDestroyed());
+
+        // Broadcast resolved finding IDs
+        if (resolvedIds.length > 0) {
+          windows.forEach((win) =>
+            win.webContents.send("agent:finding-resolved", resolvedIds),
+          );
+        }
+
+        // Broadcast worsened findings
+        if (worsenedFindings.length > 0) {
+          windows.forEach((win) =>
+            win.webContents.send("agent:finding-worsened", worsenedFindings),
+          );
+        }
+
+        // Broadcast new findings
+        if (newFindings.length > 0) {
+          windows.forEach((win) =>
+            win.webContents.send("agent:proactive-finding", newFindings),
+          );
+
+          // OS notification for critical findings when window is not focused
+          const criticals = newFindings.filter((f) => f.severity === "critical");
+          const now = Date.now();
+          const notifyThrottle = 60_000; // 1 notification per finding per minute
+          for (const f of criticals) {
+            const lastNotified = _notifiedCriticalAt.get(f.id) ?? 0;
+            if (now - lastNotified < notifyThrottle) continue;
+            const focused = windows.some((w) => w.isFocused());
+            if (!focused) {
+              try {
+                new Notification({
+                  title: `Sentinel — ${f.severity === "critical" ? "Critical" : "Warning"}`,
+                  body: `${f.service}: ${f.summary}`,
+                  silent: false,
+                }).show();
+              } catch (_) {}
+            }
+            _notifiedCriticalAt.set(f.id, now);
+          }
+        }
       } catch (_) {}
     });
 
@@ -2352,10 +2414,13 @@ function buildPolicyPrompt(policies, options = {}) {
     "- If a command fails, diagnose from real output, apply a fix, and retry automatically. Only ask a question after retries are exhausted or a destructive decision is required.",
     "- For run/start requests, verify with explicit evidence (for example: docker ps, docker compose ps/logs, health endpoint, lsof) before claiming success.",
     "- Never mention a filename/path unless you first verified it with tool output (list_directory/read_file). If uncertain, list the directory first.",
+    "- When asked about how a library, service, or external API is used: you MUST grep the codebase for it before answering. Always use case-insensitive grep (e.g. run_command: grep -irl \"groq\" --include=\"*.py\" .). Library names in Python source are lowercase even when the user writes them capitalized (Groq→groq, Gemini→genai or google.generativeai, OpenAI→openai). Reading one file and not finding it is NOT sufficient — grep case-insensitively, then read the files that match.",
+    "- NEVER respond with 'it might be elsewhere' or 'let me know if you have specific files' when asked about source code. That answer is always wrong. Grep first, then read, then answer.",
     "- For any dockerize/containerization request, call `discover_docker_plan` first and follow its constraints before writing Dockerfile/compose files.",
     "- When the user asks to run/start a project or service, call `discover_runbook` first for that project root and use only commands verified from files.",
     "- When the user asks to create project config files (for example Dockerfile/docker-compose.yml), use `write_file` to create them directly inside allowed project roots.",
     "- `launch_in_terminal` only confirms a command was sent to Terminal. Never claim a service started successfully unless you run an explicit verification command and quote the verification output.",
+    "- NEVER use run_command for stress tests, CPU/memory benchmarks, or any looping process. These must use launch_in_terminal so they appear as independent processes visible to system monitoring. For a CPU stress test use: `python3 -c 'import time; end=time.time()+10\nwhile time.time()<end: pass'` via launch_in_terminal — never via run_command.",
     ...dynamicRules,
   ].join("\n");
 }
@@ -2773,14 +2838,14 @@ const AGENT_TOOLS = [
     function: {
       name: "run_command",
       description:
-        "Run a shell command in a local development project directory and return stdout/stderr output. Use for running tests, checking logs, inspecting processes, and diagnostics. cwd must be an absolute path in a known project or trusted local dev root.",
+        "Run a short-lived shell command and return its output. Use for: running tests, checking logs, grepping source files, inspecting processes (ps/lsof), one-shot diagnostics. NEVER use this for: stress tests, benchmarks, anything that loops forever, or any process that should be visible to monitoring — those must go through launch_in_terminal so they appear as independent processes. cwd must be an absolute path in a known project or trusted local dev root.",
       parameters: {
         type: "object",
         properties: {
           command: {
             type: "string",
             description:
-              "Shell command to execute (e.g. 'npm test', 'python manage.py check', 'cat error.log')",
+              "Shell command to execute (e.g. 'npm test', 'python manage.py check', 'cat error.log'). Must terminate on its own within 15 seconds.",
           },
           cwd: {
             type: "string",
@@ -2952,11 +3017,47 @@ ipcMain.handle("agent:chat", async (event, payload) => {
     const { messages, nodeIds, tabLabel, options = {} } = payload || {};
     const safeMessages = Array.isArray(messages) ? messages : [];
     const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey)
-      return {
-        success: false,
-        error: "No OPENAI_API_KEY set. Add it to your .env file.",
-      };
+    if (!apiKey) {
+      // Offline fallback: run deterministic scan and stream findings as response
+      try {
+        const offlineSnap = await getSystemSnapshot();
+        const offlineFindings = await runScan(offlineSnap, Array.isArray(nodeIds) ? nodeIds : undefined);
+        const criticals = offlineFindings.filter((f) => f.severity === "critical");
+        const warnings = offlineFindings.filter((f) => f.severity === "warning");
+        const suggestions = offlineFindings.filter((f) => f.severity === "suggestion");
+
+        let text = "**Sentinel — Deterministic scan results** *(no LLM — set `OPENAI_API_KEY` to enable AI chat)*\n\n";
+        if (offlineFindings.length === 0) {
+          text += "No issues detected across your running services.";
+        } else {
+          if (criticals.length > 0) {
+            text += `### Critical (${criticals.length})\n`;
+            for (const f of criticals) text += `- **${f.service}**: ${f.summary}\n  ${f.detail}\n`;
+            text += "\n";
+          }
+          if (warnings.length > 0) {
+            text += `### Warnings (${warnings.length})\n`;
+            for (const f of warnings) text += `- **${f.service}**: ${f.summary}\n`;
+            text += "\n";
+          }
+          if (suggestions.length > 0) {
+            text += `### Suggestions (${suggestions.length})\n`;
+            for (const f of suggestions) text += `- **${f.service}**: ${f.summary}\n`;
+          }
+        }
+
+        // Stream the text token-by-token so UI renders it normally
+        const chunkSize = 8;
+        for (let i = 0; i < text.length; i += chunkSize) {
+          if (!event.sender.isDestroyed())
+            event.sender.send("agent:chat-token", text.slice(i, i + chunkSize));
+          await new Promise((r) => setTimeout(r, 4));
+        }
+        return { success: true };
+      } catch (err) {
+        return { success: false, error: err.message };
+      }
+    }
 
     const snapshot = await getSystemSnapshot();
 
@@ -3010,11 +3111,11 @@ ipcMain.handle("agent:chat", async (event, payload) => {
       forcedExecutionAttempted = false,
     ) {
       const stream = await openai.chat.completions.create({
-        model: "gpt-4o-mini",
+        model: "gpt-4o",
         messages: turnMessages,
         tools: AGENT_TOOLS,
         tool_choice: "auto",
-        max_tokens: 2000,
+        max_tokens: 4096,
         temperature: 0.3,
         stream: true,
       });

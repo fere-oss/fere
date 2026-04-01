@@ -6,6 +6,111 @@ const fs = require("fs");
 const path = require("path");
 const { execSync } = require("child_process");
 
+const os = require("os");
+
+// ── Custom Rules ──────────────────────────────────────────────────────────────
+// Load user-defined rules from ~/.fere/custom-rules.json
+// Rule schema: { id, name, severity, category, service?, check: { type, ... } }
+// Supported check types:
+//   port-absent:   { port }                  — fire if port not listening
+//   process-regex: { pattern }               — fire if no running process matches regex
+//   env-key-missing: { key, projectPath? }   — fire if env key not found in any .env
+
+function loadCustomRules() {
+  const rulesPath = path.join(os.homedir(), ".fere", "custom-rules.json");
+  if (!fs.existsSync(rulesPath)) return [];
+  try {
+    const raw = fs.readFileSync(rulesPath, "utf8");
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function runCustomRules(snapshot, rules) {
+  if (!rules || rules.length === 0) return [];
+  const findings = [];
+  const activePorts = new Set(
+    (snapshot.ports ?? []).map((p) => p.port),
+  );
+  const allCommands = (snapshot.processes ?? []).map((p) => (p.command ?? "") + " " + (p.name ?? ""));
+
+  for (const rule of rules) {
+    if (!rule.id || !rule.check?.type) continue;
+    const sev = rule.severity ?? "warning";
+    const cat = rule.category ?? "health";
+    const svc = rule.service ?? "custom";
+
+    try {
+      if (rule.check.type === "port-absent") {
+        const port = Number(rule.check.port);
+        if (!activePorts.has(port)) {
+          findings.push({
+            id: `custom-${rule.id}`,
+            severity: sev,
+            category: cat,
+            service: svc,
+            summary: rule.name ?? `Port ${port} not listening`,
+            detail: rule.detail ?? `Custom rule: no process is bound to port ${port}.`,
+            impact: rule.impact ?? null,
+            affectedServices: rule.affectedServices ?? [],
+            fix: rule.fix ?? null,
+          });
+        }
+      } else if (rule.check.type === "process-regex") {
+        const regex = new RegExp(rule.check.pattern, "i");
+        const found = allCommands.some((cmd) => regex.test(cmd));
+        if (!found) {
+          findings.push({
+            id: `custom-${rule.id}`,
+            severity: sev,
+            category: cat,
+            service: svc,
+            summary: rule.name ?? `Process not found: ${rule.check.pattern}`,
+            detail: rule.detail ?? `Custom rule: no running process matched "${rule.check.pattern}".`,
+            impact: rule.impact ?? null,
+            affectedServices: rule.affectedServices ?? [],
+            fix: rule.fix ?? null,
+          });
+        }
+      } else if (rule.check.type === "env-key-missing") {
+        const key = rule.check.key;
+        const searchPaths = rule.check.projectPath
+          ? [rule.check.projectPath]
+          : [...new Set((snapshot.graph?.nodes ?? []).map((n) => n.projectPath).filter(Boolean))];
+        let found = false;
+        for (const projectPath of searchPaths) {
+          const envFiles = [".env", ".env.local", ".env.development"]
+            .map((f) => path.join(projectPath, f))
+            .filter(fs.existsSync);
+          for (const envFile of envFiles) {
+            try {
+              const content = fs.readFileSync(envFile, "utf8");
+              if (new RegExp(`^${key}\\s*=`, "m").test(content)) { found = true; break; }
+            } catch { /* skip */ }
+          }
+          if (found) break;
+        }
+        if (!found) {
+          findings.push({
+            id: `custom-${rule.id}`,
+            severity: sev,
+            category: cat,
+            service: svc,
+            summary: rule.name ?? `Missing env key: ${key}`,
+            detail: rule.detail ?? `Custom rule: env var "${key}" was not found in any .env file.`,
+            impact: rule.impact ?? null,
+            affectedServices: rule.affectedServices ?? [],
+            fix: rule.fix ?? null,
+          });
+        }
+      }
+    } catch { /* malformed rule — skip */ }
+  }
+  return findings;
+}
+
 const DEP_PORT_MAP = {
   ioredis: { port: 6379, label: "Redis" },
   redis: { port: 6379, label: "Redis" },
@@ -33,6 +138,7 @@ async function runScan(snapshot, nodeIds) {
   const docker = snapshot.docker ?? null;
   const findings = [];
 
+  findings.push(...detectHighResourceUsage(nodes));
   findings.push(...detectPortConflicts(ports, nodes));
   findings.push(...detectDownServices(nodes, edges));
   findings.push(...detectCascadeImpact(nodes, edges));
@@ -42,10 +148,54 @@ async function runScan(snapshot, nodeIds) {
   findings.push(...detectDisconnectedServices(nodes, edges));
   findings.push(...(await detectAdvisory(nodes)));
   findings.push(...(await detectEnvMismatches(nodes)));
+  findings.push(...runCustomRules(snapshot, loadCustomRules()));
 
   // Deduplicate by id
   const seen = new Set();
   return findings.filter((f) => { if (seen.has(f.id)) return false; seen.add(f.id); return true; });
+}
+
+const CPU_WARN_THRESHOLD = 80;   // %
+const MEM_WARN_THRESHOLD_MB = 512; // MB
+
+function detectHighResourceUsage(nodes) {
+  const findings = [];
+  for (const n of nodes) {
+    if (n.isContainer || n.isDockerContainer) continue;
+    if (n.pid === -1 && !n.pids?.length) continue;
+
+    const cpu = n.cpu ?? null;
+    const memMB = n.memory ?? null;
+
+    if (cpu !== null && cpu >= CPU_WARN_THRESHOLD) {
+      findings.push({
+        id: `high-cpu-${n.id}`,
+        severity: cpu >= 95 ? "critical" : "warning",
+        category: "health",
+        service: n.name,
+        summary: `${n.name} CPU at ${cpu.toFixed(1)}%`,
+        detail: `${n.name} (PID ${n.pid}) is consuming ${cpu.toFixed(1)}% CPU. This may indicate a hot loop, runaway request, or misconfigured worker count. Check logs or run \`top -pid ${n.pid}\` for details.`,
+        impact: `High CPU can starve other services on the same machine`,
+        affectedServices: [],
+        fix: { type: "copy-only", preview: `top -pid ${n.pid}`, label: `Inspect ${n.name} in top` },
+      });
+    }
+
+    if (memMB !== null && memMB >= MEM_WARN_THRESHOLD_MB) {
+      findings.push({
+        id: `high-mem-${n.id}`,
+        severity: memMB >= 2048 ? "critical" : "warning",
+        category: "health",
+        service: n.name,
+        summary: `${n.name} using ${memMB >= 1024 ? (memMB / 1024).toFixed(1) + " GB" : memMB.toFixed(0) + " MB"} memory`,
+        detail: `${n.name} (PID ${n.pid}) is using ${memMB.toFixed(0)} MB of memory${memMB >= 2048 ? " — above critical threshold" : ""}. This may indicate a memory leak or an unusually large in-memory dataset.`,
+        impact: memMB >= 2048 ? `Risk of OOM kill on this machine` : null,
+        affectedServices: [],
+        fix: { type: "copy-only", preview: `vmmap -summary ${n.pid}`, label: `Inspect ${n.name} memory` },
+      });
+    }
+  }
+  return findings;
 }
 
 function detectPortConflicts(ports, nodes) {
@@ -607,14 +757,15 @@ Rules:
 - Format responses with Markdown: use **bold** for service names and key terms, \`code\` for ports/PIDs/commands, bullet lists for multi-item answers.
 - Keep answers focused and actionable. Lead with the direct answer, then explain.
 - You have a \`get_node_details\` tool. Use it whenever the user asks about a specific service to get full details: all routes, external API calls, Docker image/networks/mounts, health check output, CPU/memory, inbound/outbound connections, and more.
-- You have a \`read_file\` tool. Use it proactively when the user asks about code logic, bugs, or implementation details. Use \`list_directory\` first if unsure of the path.
+- You have a \`read_file\` tool. You MUST call it before answering any question about implementation details, code logic, which function handles what, fallback/retry logic, or how two libraries interact. Never answer implementation questions from memory — always read the actual file first. Use \`list_directory\` first if unsure of the path. If a file read fails or returns nothing useful, do NOT give up — use \`run_command\` with grep to locate the right file (e.g. \`grep -rl "groq\\|gemini" --include="*.py" .\`) then read it. When asked about multiple things (e.g. "Groq AND Gemini"), you must locate ALL of them in source before answering — finding one does not mean you are done. Only after exhausting file reads and grep should you say you can't find the information.
 - You have \`run_command\` for short diagnostic commands (e.g. \`npm test\`, \`python -c\`, \`cat error.log\`). NEVER use it for long-running servers.
 - You have \`launch_in_terminal\` for starting dev servers and long-running processes (uvicorn, npm run dev, next dev, flask run, nodemon, etc.). This opens macOS Terminal and runs the command there so the user can see its output. Always use this when the user asks you to start or run a service.
 - You have \`docker_logs\`, \`docker_exec\`, and \`docker_control\` to read container output, run commands inside containers, and start/stop/restart them.
 - Do not tell the user to run commands manually when a tool can run it. Use the tools first and return the output.
 - Do not claim generic sandbox/restriction limitations. If a tool returns an error, quote that exact error and then propose a next step.
 - Do not start long-running dev servers (for example \`npm start\`, \`next dev\`, \`vite\`) unless the user explicitly asks you to launch one.
-- If the data doesn't contain enough information to answer, say so clearly rather than guessing.`;
+- If the data doesn't contain enough information to answer, say so clearly rather than guessing.
+- When the user asks you to "run a deterministic scan" or "show all findings": the scan already ran before this conversation started. All findings are listed under "## Issues Detected" above and all service CPU/memory is in "## Services Running". Read those sections and report from them directly — do NOT run shell commands or try to invoke any scan tool.`;
 }
 
 function buildNodeDetails(node, allNodes, edges) {

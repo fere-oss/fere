@@ -1,7 +1,19 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
-import type { AgentFinding, ChatStep, ExternalApiProvider, FixProposal, GraphNode } from "../types/electron";
+import type {
+  AgentFinding,
+  ChatStep,
+  ExternalApiProvider,
+  FixProposal,
+  GraphNode,
+} from "../types/electron";
 import { getServiceColor } from "./graph/constants";
 import fereLogo from "../assets/fere.png";
 import sentinelLogo from "../assets/sentinel.png";
@@ -40,7 +52,9 @@ function normalizeDomain(domain: string): string | null {
   return parts.slice(-2).join(".");
 }
 
-function buildProviderDomainMap(providers: ExternalApiProvider[]): Record<string, string> {
+function buildProviderDomainMap(
+  providers: ExternalApiProvider[],
+): Record<string, string> {
   const map: Record<string, string> = {};
   for (const provider of providers) {
     const key = normalizeLabel(provider.name);
@@ -60,10 +74,15 @@ function buildProviderDomainMap(providers: ExternalApiProvider[]): Record<string
   return map;
 }
 
-function getLogoUrl(name: string, providerDomains: Record<string, string>): string | null {
+function getLogoUrl(
+  name: string,
+  providerDomains: Record<string, string>,
+): string | null {
   const normalizedName = normalizeLabel(name);
   const aliased = PROVIDER_ALIAS_MAP[normalizedName];
-  const domain = providerDomains[normalizedName] || (aliased ? providerDomains[aliased] : "");
+  const domain =
+    providerDomains[normalizedName] ||
+    (aliased ? providerDomains[aliased] : "");
   if (!domain) return null;
   const params = new URLSearchParams({
     size: "32",
@@ -78,7 +97,11 @@ function isWordChar(char: string): boolean {
   return /[a-z0-9]/i.test(char);
 }
 
-function hasTokenBoundaries(text: string, start: number, length: number): boolean {
+function hasTokenBoundaries(
+  text: string,
+  start: number,
+  length: number,
+): boolean {
   const before = start > 0 ? text[start - 1] : "";
   const after = start + length < text.length ? text[start + length] : "";
   const beforeOk = !before || !isWordChar(before);
@@ -98,7 +121,10 @@ function findProviderMentionHits(
 ): ProviderMentionHit[] {
   if (!text.trim()) return [];
   const lookupTerms = Array.from(
-    new Set([...Object.keys(providerDomains), ...Object.keys(PROVIDER_ALIAS_MAP)]),
+    new Set([
+      ...Object.keys(providerDomains),
+      ...Object.keys(PROVIDER_ALIAS_MAP),
+    ]),
   ).sort((a, b) => b.length - a.length);
   if (lookupTerms.length === 0) return [];
 
@@ -127,7 +153,11 @@ function findProviderMentionHits(
     }
 
     if (bestStart === -1) break;
-    hits.push({ start: bestStart, end: bestEnd, text: text.slice(bestStart, bestEnd) });
+    hits.push({
+      start: bestStart,
+      end: bestEnd,
+      text: text.slice(bestStart, bestEnd),
+    });
     cursor = bestEnd;
   }
 
@@ -191,7 +221,13 @@ function renderProviderMentionsInText(
     if (hit.start > cursor) nodes.push(text.slice(cursor, hit.start));
     const logoUrl = getLogoUrl(hit.text, providerDomains);
     if (logoUrl) {
-      nodes.push(<ProviderMention key={`provider-${idx}-${hit.start}`} text={hit.text} logoUrl={logoUrl} />);
+      nodes.push(
+        <ProviderMention
+          key={`provider-${idx}-${hit.start}`}
+          text={hit.text}
+          logoUrl={logoUrl}
+        />,
+      );
     } else {
       nodes.push(hit.text);
     }
@@ -218,16 +254,26 @@ function renderProviderMentionsInChildren(
   }
   if (!React.isValidElement(children)) return children;
 
-  const element = children as React.ReactElement<{ children?: React.ReactNode }>;
+  const element = children as React.ReactElement<{
+    children?: React.ReactNode;
+  }>;
   const elementType = typeof element.type === "string" ? element.type : "";
-  if (elementType === "code" || elementType === "pre" || elementType === "a" || elementType === "strong") {
+  if (
+    elementType === "code" ||
+    elementType === "pre" ||
+    elementType === "a" ||
+    elementType === "strong"
+  ) {
     return element;
   }
 
   if (!("children" in element.props)) return element;
   return React.cloneElement(element, {
     ...element.props,
-    children: renderProviderMentionsInChildren(element.props.children, providerDomains),
+    children: renderProviderMentionsInChildren(
+      element.props.children,
+      providerDomains,
+    ),
   });
 }
 
@@ -237,8 +283,7 @@ function renderProviderMentionsInChildren(
 function extractText(children: React.ReactNode): string {
   if (typeof children === "string") return children;
   if (children == null) return "";
-  if (Array.isArray(children))
-    return children.map(extractText).join("");
+  if (Array.isArray(children)) return children.map(extractText).join("");
   if (React.isValidElement(children)) {
     const el = children as React.ReactElement<{ children?: React.ReactNode }>;
     return extractText(el.props.children);
@@ -269,7 +314,9 @@ function createThreadId(): string {
 }
 
 function deriveThreadTitle(messages: ChatMessage[]): string {
-  const firstUser = messages.find((msg) => msg.role === "user" && msg.content.trim().length > 0);
+  const firstUser = messages.find(
+    (msg) => msg.role === "user" && msg.content.trim().length > 0,
+  );
   if (!firstUser) return "New chat";
   const oneLine = firstUser.content.replace(/\s+/g, " ").trim();
   if (!oneLine) return "New chat";
@@ -282,7 +329,8 @@ function sanitizeMessages(input: unknown): ChatMessage[] {
     (m): m is ChatMessage =>
       !!m &&
       (m as ChatMessage).role !== undefined &&
-      ((m as ChatMessage).role === "user" || (m as ChatMessage).role === "assistant") &&
+      ((m as ChatMessage).role === "user" ||
+        (m as ChatMessage).role === "assistant") &&
       typeof (m as ChatMessage).content === "string",
   );
 }
@@ -299,7 +347,10 @@ function sanitizeThreads(input: unknown): ChatThread[] {
         ? maybe.updatedAt
         : Date.now();
     threads.push({
-      id: typeof maybe.id === "string" && maybe.id.trim() ? maybe.id : createThreadId(),
+      id:
+        typeof maybe.id === "string" && maybe.id.trim()
+          ? maybe.id
+          : createThreadId(),
       title:
         typeof maybe.title === "string" && maybe.title.trim()
           ? maybe.title.trim()
@@ -366,23 +417,41 @@ function loadPersistedChatState(): PersistedChatState {
   }
 }
 
-export function AgentPanel({ nodes, tabLabel }: { nodes: GraphNode[]; tabLabel?: string | null }) {
+export function AgentPanel({
+  nodes,
+  tabLabel,
+}: {
+  nodes: GraphNode[];
+  tabLabel?: string | null;
+}) {
   const persistedState = useMemo(() => loadPersistedChatState(), []);
   const [open, setOpen] = useState(persistedState.open);
   const [threads, setThreads] = useState<ChatThread[]>(persistedState.threads);
-  const [activeThreadId, setActiveThreadId] = useState(persistedState.activeThreadId);
+  const [activeThreadId, setActiveThreadId] = useState(
+    persistedState.activeThreadId,
+  );
   const [streamingText, setStreamingText] = useState("");
   const [steps, setSteps] = useState<ChatStep[]>([]);
-  const [pendingFixes, setPendingFixes] = useState<(FixProposal & { status: "pending" | "applying" | "done" | "error"; errorMsg?: string })[]>([]);
+  const [pendingFixes, setPendingFixes] = useState<
+    (FixProposal & {
+      status: "pending" | "applying" | "done" | "error";
+      errorMsg?: string;
+    })[]
+  >([]);
   const [unreadFindings, setUnreadFindings] = useState(0);
   const [input, setInput] = useState(persistedState.input);
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [providerDomains, setProviderDomains] = useState<Record<string, string>>({});
+  const [providerDomains, setProviderDomains] = useState<
+    Record<string, string>
+  >({});
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [findingsOpen, setFindingsOpen] = useState(false);
   const [detectionEnabled, setDetectionEnabled] = useState(false);
   const [autopilotEnabled, setAutopilotEnabled] = useState(false);
-  const [incidentState, setIncidentState] = useState<Record<string, IncidentRecord>>({});
+  const [incidentState, setIncidentState] = useState<
+    Record<string, IncidentRecord>
+  >({});
 
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -412,7 +481,8 @@ export function AgentPanel({ nodes, tabLabel }: { nodes: GraphNode[]; tabLabel?:
   const activeIncidentCount = useMemo(
     () =>
       Object.values(incidentState).filter(
-        (i) => i.stage === "detected" || i.stage === "fixing" || i.stage === "fixed",
+        (i) =>
+          i.stage === "detected" || i.stage === "fixing" || i.stage === "fixed",
       ).length,
     [incidentState],
   );
@@ -517,7 +587,9 @@ export function AgentPanel({ nodes, tabLabel }: { nodes: GraphNode[]; tabLabel?:
         <li>{renderProviderMentionsInChildren(children, providerDomains)}</li>
       ),
       blockquote: ({ children }: { children?: React.ReactNode }) => (
-        <blockquote>{renderProviderMentionsInChildren(children, providerDomains)}</blockquote>
+        <blockquote>
+          {renderProviderMentionsInChildren(children, providerDomains)}
+        </blockquote>
       ),
       h1: ({ children }: { children?: React.ReactNode }) => (
         <h1>{renderProviderMentionsInChildren(children, providerDomains)}</h1>
@@ -588,7 +660,9 @@ export function AgentPanel({ nodes, tabLabel }: { nodes: GraphNode[]; tabLabel?:
 
       window.electronAPI.onChatStep((step: ChatStep) => {
         setSteps((prev) => {
-          const idx = prev.findIndex((s) => s.path === step.path && s.type === step.type);
+          const idx = prev.findIndex(
+            (s) => s.path === step.path && s.type === step.type,
+          );
           if (idx !== -1) {
             const next = [...prev];
             next[idx] = { ...next[idx], done: true };
@@ -705,23 +779,26 @@ export function AgentPanel({ nodes, tabLabel }: { nodes: GraphNode[]; tabLabel?:
     setAutopilotEnabled((v) => !v);
   }, []);
 
-  const appendAutoMessage = useCallback((content: string) => {
-    const autoMsg: ChatMessage = { role: "user", content };
-    setThreads((prev) => {
-      const idx = prev.findIndex((thread) => thread.id === activeThreadId);
-      if (idx === -1) return prev;
-      const current = prev[idx];
-      const nextMessages = [...current.messages, autoMsg];
-      const updated: ChatThread = {
-        ...current,
-        messages: nextMessages,
-        title: deriveThreadTitle(nextMessages),
-        updatedAt: Date.now(),
-      };
-      const next = [updated, ...prev.slice(0, idx), ...prev.slice(idx + 1)];
-      return next.slice(0, MAX_CHAT_THREADS);
-    });
-  }, [activeThreadId]);
+  const appendAutoMessage = useCallback(
+    (content: string) => {
+      const autoMsg: ChatMessage = { role: "user", content };
+      setThreads((prev) => {
+        const idx = prev.findIndex((thread) => thread.id === activeThreadId);
+        if (idx === -1) return prev;
+        const current = prev[idx];
+        const nextMessages = [...current.messages, autoMsg];
+        const updated: ChatThread = {
+          ...current,
+          messages: nextMessages,
+          title: deriveThreadTitle(nextMessages),
+          updatedAt: Date.now(),
+        };
+        const next = [updated, ...prev.slice(0, idx), ...prev.slice(idx + 1)];
+        return next.slice(0, MAX_CHAT_THREADS);
+      });
+    },
+    [activeThreadId],
+  );
 
   const updateIncidentStage = useCallback(
     (finding: AgentFinding, stage: IncidentStage, error?: string) => {
@@ -743,8 +820,14 @@ export function AgentPanel({ nodes, tabLabel }: { nodes: GraphNode[]; tabLabel?:
   const toSafeAction = useCallback((finding: AgentFinding) => {
     const fix = finding.fix;
     if (!fix) return null;
-    if (fix.type === "restart-container" && typeof fix.containerId === "string") {
-      return { type: "restart-container" as const, containerId: fix.containerId };
+    if (
+      fix.type === "restart-container" &&
+      typeof fix.containerId === "string"
+    ) {
+      return {
+        type: "restart-container" as const,
+        containerId: fix.containerId,
+      };
     }
     if (
       fix.type === "kill-port" &&
@@ -756,16 +839,31 @@ export function AgentPanel({ nodes, tabLabel }: { nodes: GraphNode[]; tabLabel?:
     return null;
   }, []);
 
-  const isSafeFixProposal = useCallback((fix: FixProposal & { status: string }) => {
-    if (fix.fix_type === "restart-container" && typeof fix.container_id === "string") return true;
-    if (fix.fix_type === "kill-port" && Number.isInteger(fix.port) && Number.isInteger(fix.pid)) return true;
-    return false;
-  }, []);
+  const isSafeFixProposal = useCallback(
+    (fix: FixProposal & { status: string }) => {
+      if (
+        fix.fix_type === "restart-container" &&
+        typeof fix.container_id === "string"
+      )
+        return true;
+      if (
+        fix.fix_type === "kill-port" &&
+        Number.isInteger(fix.port) &&
+        Number.isInteger(fix.pid)
+      )
+        return true;
+      return false;
+    },
+    [],
+  );
 
   const verifyAutopilotFix = useCallback(
-    async (finding: AgentFinding): Promise<{ verified: boolean; reason?: string }> => {
+    async (
+      finding: AgentFinding,
+    ): Promise<{ verified: boolean; reason?: string }> => {
       const scan = await window.electronAPI.agentScan(nodeIdsForScan);
-      if (!scan.success) return { verified: false, reason: scan.error ?? "verify scan failed" };
+      if (!scan.success)
+        return { verified: false, reason: scan.error ?? "verify scan failed" };
       const current = scan.findings.filter(
         (f) => f.severity === "critical" || f.severity === "warning",
       );
@@ -773,10 +871,14 @@ export function AgentPanel({ nodes, tabLabel }: { nodes: GraphNode[]; tabLabel?:
         (f) =>
           f.id === finding.id ||
           f.service === finding.service ||
-          (Array.isArray(f.affectedServices) && f.affectedServices.includes(finding.service)),
+          (Array.isArray(f.affectedServices) &&
+            f.affectedServices.includes(finding.service)),
       );
       return stillFailing
-        ? { verified: false, reason: "service/dependency still unhealthy after fix" }
+        ? {
+            verified: false,
+            reason: "service/dependency still unhealthy after fix",
+          }
         : { verified: true };
     },
     [nodeIdsForScan],
@@ -808,7 +910,11 @@ export function AgentPanel({ nodes, tabLabel }: { nodes: GraphNode[]; tabLabel?:
         try {
           const result = await window.electronAPI.agentApplyFix(safeAction);
           if (!result.success) {
-            updateIncidentStage(finding, "escalated", result.error ?? "autopilot apply failed");
+            updateIncidentStage(
+              finding,
+              "escalated",
+              result.error ?? "autopilot apply failed",
+            );
             appendAutoMessage(
               `[auto-escalation] Autopilot could not apply fix for **${finding.service}**. Manual action required.`,
             );
@@ -847,10 +953,13 @@ export function AgentPanel({ nodes, tabLabel }: { nodes: GraphNode[]; tabLabel?:
     (findings: AgentFinding[]) => {
       if (findings.length === 0) return;
 
-      const inScope = findings.filter((f) => nodeMap.has(f.service.toLowerCase()));
+      const inScope = findings.filter((f) =>
+        nodeMap.has(f.service.toLowerCase()),
+      );
       if (inScope.length === 0) return;
 
-      const existing = surfacedByTabRef.current.get(tabScopeKey) ?? new Set<string>();
+      const existing =
+        surfacedByTabRef.current.get(tabScopeKey) ?? new Set<string>();
       const unseen = inScope.filter((f) => !existing.has(f.id));
       if (unseen.length === 0) return;
 
@@ -869,10 +978,21 @@ export function AgentPanel({ nodes, tabLabel }: { nodes: GraphNode[]; tabLabel?:
           `[auto-diagnosis] A new issue was detected: **${top.service}** — ${top.summary}. Please diagnose and propose a fix.`,
         );
       } else {
-        setUnreadFindings((n) => n + unseen.filter((f) => f.severity === "critical").length);
+        setUnreadFindings(
+          (n) => n + unseen.filter((f) => f.severity === "critical").length,
+        );
       }
     },
-    [autopilotEnabled, isStreaming, nodeMap, open, runAutopilotForFindings, send, tabScopeKey, updateIncidentStage],
+    [
+      autopilotEnabled,
+      isStreaming,
+      nodeMap,
+      open,
+      runAutopilotForFindings,
+      send,
+      tabScopeKey,
+      updateIncidentStage,
+    ],
   );
 
   // Subscribe to proactive findings from background scan
@@ -883,6 +1003,108 @@ export function AgentPanel({ nodes, tabLabel }: { nodes: GraphNode[]; tabLabel?:
     });
     return () => window.electronAPI.offProactiveFinding();
   }, [detectionEnabled, surfaceFindings]);
+
+  // Subscribe to resolved findings — transition to "verified" and clear from surfaced set
+  useEffect(() => {
+    if (!detectionEnabled) return;
+    window.electronAPI.onFindingResolved((ids: string[]) => {
+      setIncidentState((prev) => {
+        const next = { ...prev };
+        for (const id of ids) {
+          if (next[id] && next[id].stage !== "verified") {
+            next[id] = { ...next[id], stage: "verified", updatedAt: Date.now() };
+          }
+        }
+        return next;
+      });
+      // Allow resolved findings to resurface if they return
+      const existing = surfacedByTabRef.current.get(tabScopeKey);
+      if (existing) ids.forEach((id) => existing.delete(id));
+    });
+    return () => window.electronAPI.offFindingResolved();
+  }, [detectionEnabled, tabScopeKey]);
+
+  // Subscribe to worsened findings — bump severity in incidentState
+  useEffect(() => {
+    if (!detectionEnabled) return;
+    window.electronAPI.onFindingWorsened((findings: AgentFinding[]) => {
+      setIncidentState((prev) => {
+        const next = { ...prev };
+        for (const f of findings) {
+          if (next[f.id]) {
+            next[f.id] = { ...next[f.id], stage: "detected", updatedAt: Date.now() };
+          }
+        }
+        return next;
+      });
+      const criticals = findings.filter((f) => f.severity === "critical");
+      if (criticals.length > 0) setUnreadFindings((n) => n + criticals.length);
+    });
+    return () => window.electronAPI.offFindingWorsened();
+  }, [detectionEnabled]);
+
+  // After a verify turn completes, scan and auto-resolve incidents that are gone
+  const isStreamingRef = useRef(isStreaming);
+  isStreamingRef.current = isStreaming;
+  useEffect(() => {
+    if (isStreaming) return;
+    const last = messages[messages.length - 1];
+    const secondLast = messages[messages.length - 2];
+    if (
+      !secondLast ||
+      secondLast.role !== "user" ||
+      !secondLast.content.startsWith("[auto-verify]")
+    ) return;
+    if (!last || last.role !== "assistant") return;
+    // Run a scan to clear incidents that are no longer present
+    let cancelled = false;
+    window.electronAPI.agentScan(nodeIdsForScan).then((result) => {
+      if (cancelled || !result.success) return;
+      const currentIds = new Set(result.findings.map((f) => f.id));
+      setIncidentState((prev) => {
+        const next = { ...prev };
+        let changed = false;
+        for (const [id, inc] of Object.entries(next)) {
+          if (
+            (inc.stage === "fixed" || inc.stage === "detected") &&
+            !currentIds.has(id)
+          ) {
+            next[id] = { ...inc, stage: "verified", updatedAt: Date.now() };
+            changed = true;
+          }
+        }
+        return changed ? next : prev;
+      });
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isStreaming]);
+
+  const dismissFinding = useCallback((id: string) => {
+    setIncidentState((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+    const existing = surfacedByTabRef.current.get(tabScopeKey);
+    if (existing) existing.delete(id);
+  }, [tabScopeKey]);
+
+  const dismissAllFindings = useCallback(() => {
+    setIncidentState({});
+    surfacedByTabRef.current.delete(tabScopeKey);
+  }, [tabScopeKey]);
+
+  const exportFindings = useCallback(() => {
+    const data = Object.values(incidentState);
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `sentinel-findings-${new Date().toISOString().slice(0, 19).replace(/:/g, "-")}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [incidentState]);
 
   // On tab switch, run a fresh scoped scan so findings surface per project tab.
   useEffect(() => {
@@ -904,7 +1126,13 @@ export function AgentPanel({ nodes, tabLabel }: { nodes: GraphNode[]; tabLabel?:
     return () => {
       cancelled = true;
     };
-  }, [detectionEnabled, nodeIdsForScan, nodeIdsScopeSignature, surfaceFindings, tabScopeKey]);
+  }, [
+    detectionEnabled,
+    nodeIdsForScan,
+    nodeIdsScopeSignature,
+    surfaceFindings,
+    tabScopeKey,
+  ]);
 
   // Clear unread badge when panel opens
   useEffect(() => {
@@ -918,16 +1146,29 @@ export function AgentPanel({ nodes, tabLabel }: { nodes: GraphNode[]; tabLabel?:
       );
       try {
         if (fix.fix_type === "restart-container" && fix.container_id) {
-          await window.electronAPI.agentApplyFix({ type: "restart-container", containerId: fix.container_id });
+          await window.electronAPI.agentApplyFix({
+            type: "restart-container",
+            containerId: fix.container_id,
+          });
         } else if (fix.fix_type === "kill-port" && fix.port != null) {
           await window.electronAPI.agentApplyFix(
             Number.isInteger(fix.pid)
               ? { type: "kill-port", port: fix.port, pid: fix.pid }
               : { type: "kill-port", port: fix.port },
           );
-        } else if (fix.fix_type === "launch-in-terminal" && fix.command && fix.cwd) {
+        } else if (
+          fix.fix_type === "launch-in-terminal" &&
+          fix.command &&
+          fix.cwd
+        ) {
           await window.electronAPI.agentChat(
-            [...messages, { role: "user", content: `Execute this now using launch_in_terminal: ${fix.command} in ${fix.cwd}` }],
+            [
+              ...messages,
+              {
+                role: "user",
+                content: `Execute this now using launch_in_terminal: ${fix.command} in ${fix.cwd}`,
+              },
+            ],
             nodeIdsForScan,
             tabLabel ?? null,
             { autopilotEnabled },
@@ -945,7 +1186,9 @@ export function AgentPanel({ nodes, tabLabel }: { nodes: GraphNode[]; tabLabel?:
       } catch (err) {
         setPendingFixes((prev) =>
           prev.map((f) =>
-            f.id === fix.id ? { ...f, status: "error", errorMsg: String(err) } : f,
+            f.id === fix.id
+              ? { ...f, status: "error", errorMsg: String(err) }
+              : f,
           ),
         );
       }
@@ -955,7 +1198,9 @@ export function AgentPanel({ nodes, tabLabel }: { nodes: GraphNode[]; tabLabel?:
 
   useEffect(() => {
     if (!autopilotEnabled) return;
-    const next = pendingFixes.find((f) => f.status === "pending" && isSafeFixProposal(f));
+    const next = pendingFixes.find(
+      (f) => f.status === "pending" && isSafeFixProposal(f),
+    );
     if (!next) return;
     void applyFix(next);
   }, [autopilotEnabled, applyFix, isSafeFixProposal, pendingFixes]);
@@ -969,34 +1214,39 @@ export function AgentPanel({ nodes, tabLabel }: { nodes: GraphNode[]; tabLabel?:
     setHistoryOpen(false);
   }, []);
 
-  const deleteThread = useCallback((e: React.MouseEvent, threadId: string) => {
-    e.stopPropagation();
-    setThreads((prev) => {
-      const next = prev.filter((t) => t.id !== threadId);
-      // If we deleted the active thread, switch to the first remaining one (or create new)
-      if (threadId === activeThreadId) {
-        const fallback = next[0] ?? createThread([]);
-        if (!next[0]) {
+  const deleteThread = useCallback(
+    (e: React.MouseEvent, threadId: string) => {
+      e.stopPropagation();
+      setThreads((prev) => {
+        const next = prev.filter((t) => t.id !== threadId);
+        // If we deleted the active thread, switch to the first remaining one (or create new)
+        if (threadId === activeThreadId) {
+          const fallback = next[0] ?? createThread([]);
+          if (!next[0]) {
+            setActiveThreadId(fallback.id);
+            return [fallback];
+          }
           setActiveThreadId(fallback.id);
-          return [fallback];
         }
-        setActiveThreadId(fallback.id);
-      }
-      return next;
-    });
-    setError(null);
-  }, [activeThreadId]);
+        return next;
+      });
+      setError(null);
+    },
+    [activeThreadId],
+  );
 
   return (
     <>
       <button
         className={`agp-trigger-logo-btn${open ? " agp-trigger-btn-active" : ""}`}
         onClick={() => setOpen((v) => !v)}
-        title="Ask Fere"
+        title="Ask Sentinel"
       >
         <img src={sentinelLogo} alt="Sentinel" className="agp-trigger-logo" />
         {unreadFindings > 0 && !open && (
-          <span className="agp-trigger-badge agp-findings-badge">{unreadFindings}</span>
+          <span className="agp-trigger-badge agp-findings-badge">
+            {unreadFindings}
+          </span>
         )}
       </button>
 
@@ -1005,9 +1255,13 @@ export function AgentPanel({ nodes, tabLabel }: { nodes: GraphNode[]; tabLabel?:
           {/* Header */}
           <div className="agp-header">
             <div className="agp-header-left">
-              <img src={sentinelLogo} alt="Sentinel" className="agp-avatar-logo" />
+              <img
+                src={sentinelLogo}
+                alt="Sentinel"
+                className="agp-avatar-logo"
+              />
               <div className="agp-header-text">
-                <span className="agp-header-title">Fere</span>
+                <span className="agp-header-title">Sentinel</span>
                 <span className="agp-header-sub">{headerSub}</span>
               </div>
             </div>
@@ -1015,28 +1269,56 @@ export function AgentPanel({ nodes, tabLabel }: { nodes: GraphNode[]; tabLabel?:
               <button
                 className={`agp-detect-btn${detectionEnabled ? " agp-detect-btn-active" : ""}`}
                 onClick={toggleDetection}
-                title={detectionEnabled ? "Stop detecting problems" : "Start detecting problems"}
+                title={
+                  detectionEnabled
+                    ? "Stop detecting problems"
+                    : "Start detecting problems"
+                }
                 disabled={isStreaming}
               >
-                <span className={`agp-detect-dot${detectionEnabled ? " agp-detect-dot-active" : ""}`} />
+                <span
+                  className={`agp-detect-dot${detectionEnabled ? " agp-detect-dot-active" : ""}`}
+                />
                 <span>{detectionEnabled ? "Detecting" : "Detect"}</span>
               </button>
               <button
                 className={`agp-autopilot-btn${autopilotEnabled ? " agp-autopilot-btn-active" : ""}`}
                 onClick={toggleAutopilot}
-                title={autopilotEnabled ? "Disable autopilot" : "Enable autopilot"}
+                title={
+                  autopilotEnabled ? "Disable autopilot" : "Enable autopilot"
+                }
                 disabled={isStreaming}
               >
-                <span className={`agp-autopilot-dot${autopilotEnabled ? " agp-autopilot-dot-active" : ""}`} />
-                <span>{autopilotEnabled ? "Autopilot On" : "Autopilot Off"}</span>
+                <span
+                  className={`agp-autopilot-dot${autopilotEnabled ? " agp-autopilot-dot-active" : ""}`}
+                />
+                <span>
+                  {autopilotEnabled ? "Autopilot On" : "Autopilot Off"}
+                </span>
                 {activeIncidentCount > 0 && (
-                  <span className="agp-autopilot-count">{activeIncidentCount}</span>
+                  <span className="agp-autopilot-count">
+                    {activeIncidentCount}
+                  </span>
                 )}
               </button>
+              {Object.keys(incidentState).length > 0 && (
+                <button
+                  className={`agp-scan-btn${findingsOpen ? " agp-scan-btn-active" : ""}`}
+                  onClick={() => { setFindingsOpen((v) => !v); setHistoryOpen(false); }}
+                  title="Active findings"
+                  disabled={isStreaming}
+                >
+                  <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M6.5 1.5l5 9H1.5l5-9z" />
+                    <path d="M6.5 5v2.5M6.5 9.2h.01" />
+                  </svg>
+                  <span style={{ marginLeft: 3 }}>{Object.keys(incidentState).length}</span>
+                </button>
+              )}
               {threads.length > 0 && (
                 <button
                   className={`agp-scan-btn agp-history-btn${historyOpen ? " agp-scan-btn-active" : ""}`}
-                  onClick={() => setHistoryOpen((v) => !v)}
+                  onClick={() => { setHistoryOpen((v) => !v); setFindingsOpen(false); }}
                   title="Chat history"
                   disabled={isStreaming}
                 >
@@ -1099,7 +1381,8 @@ export function AgentPanel({ nodes, tabLabel }: { nodes: GraphNode[]; tabLabel?:
                     <div className="agp-history-item-content">
                       <span className="agp-history-title">{thread.title}</span>
                       <span className="agp-history-meta">
-                        {thread.messages.length} msg · {formatThreadTimestamp(thread.updatedAt)}
+                        {thread.messages.length} msg ·{" "}
+                        {formatThreadTimestamp(thread.updatedAt)}
                       </span>
                     </div>
                     <button
@@ -1107,7 +1390,15 @@ export function AgentPanel({ nodes, tabLabel }: { nodes: GraphNode[]; tabLabel?:
                       onClick={(e) => deleteThread(e, thread.id)}
                       title="Delete chat"
                     >
-                      <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
+                      <svg
+                        width="11"
+                        height="11"
+                        viewBox="0 0 11 11"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.6"
+                        strokeLinecap="round"
+                      >
                         <path d="M1.5 1.5l8 8M9.5 1.5l-8 8" />
                       </svg>
                     </button>
@@ -1117,13 +1408,62 @@ export function AgentPanel({ nodes, tabLabel }: { nodes: GraphNode[]; tabLabel?:
             </div>
           )}
 
+          {findingsOpen && (
+            <div className="agp-history-panel">
+              <div className="agp-findings-toolbar">
+                <span className="agp-findings-toolbar-title">
+                  {Object.keys(incidentState).length} finding{Object.keys(incidentState).length !== 1 ? "s" : ""}
+                </span>
+                <div className="agp-findings-toolbar-actions">
+                  <button className="agp-findings-action-btn" onClick={exportFindings} title="Export as JSON">
+                    <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M6 1v7M3.5 5.5L6 8l2.5-2.5" />
+                      <path d="M2 10h8" />
+                    </svg>
+                    Export
+                  </button>
+                  <button className="agp-findings-action-btn agp-findings-dismiss-all" onClick={dismissAllFindings} title="Dismiss all">
+                    Clear all
+                  </button>
+                </div>
+              </div>
+              {Object.values(incidentState)
+                .sort((a, b) => b.updatedAt - a.updatedAt)
+                .map((inc) => (
+                  <div key={inc.id} className={`agp-history-item agp-finding-item agp-finding-stage-${inc.stage}`}>
+                    <div className="agp-history-item-content">
+                      <span className="agp-history-title">{inc.service}: {inc.summary}</span>
+                      <span className="agp-history-meta agp-finding-stage-label">
+                        {inc.stage}{inc.error ? ` — ${inc.error}` : ""}
+                      </span>
+                    </div>
+                    <button
+                      className="agp-history-delete"
+                      onClick={() => dismissFinding(inc.id)}
+                      title="Dismiss"
+                    >
+                      <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
+                        <path d="M1.5 1.5l8 8M9.5 1.5l-8 8" />
+                      </svg>
+                    </button>
+                  </div>
+                ))}
+            </div>
+          )}
+
           {/* Chat body */}
           <div className="agp-chat-body">
             {messages.length === 0 && !showStream ? (
               /* Welcome / starter screen */
               <div className="agp-welcome">
-                <img src={sentinelLogo} alt="Sentinel" className="agp-welcome-logo" />
-                <p className="agp-welcome-title">Ask about your running stack</p>
+                <img
+                  src={sentinelLogo}
+                  alt="Sentinel"
+                  className="agp-welcome-logo"
+                />
+                <p className="agp-welcome-title">
+                  Ask about your running stack
+                </p>
                 <p className="agp-welcome-sub">
                   I can see your live topology, active connections, Docker
                   containers, and codebase config — things no IDE agent can see.
@@ -1144,11 +1484,14 @@ export function AgentPanel({ nodes, tabLabel }: { nodes: GraphNode[]; tabLabel?:
               /* Message list */
               <div className="agp-messages">
                 {messages.map((msg, i) => {
-                  const isAuto = msg.role === "user" && msg.content.startsWith("[auto-");
+                  const isAuto =
+                    msg.role === "user" && msg.content.startsWith("[auto-");
                   if (isAuto) {
                     const isVerify = msg.content.startsWith("[auto-verify]");
-                    const isAutopilot = msg.content.startsWith("[auto-autopilot]");
-                    const isEscalation = msg.content.startsWith("[auto-escalation]");
+                    const isAutopilot =
+                      msg.content.startsWith("[auto-autopilot]");
+                    const isEscalation =
+                      msg.content.startsWith("[auto-escalation]");
                     const label = isVerify
                       ? "Fix applied · verifying…"
                       : isAutopilot
@@ -1160,18 +1503,51 @@ export function AgentPanel({ nodes, tabLabel }: { nodes: GraphNode[]; tabLabel?:
                       <div key={i} className="agp-auto-trigger">
                         <span className="agp-step-icon" aria-hidden="true">
                           {isEscalation ? (
-                            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                            <svg
+                              width="12"
+                              height="12"
+                              viewBox="0 0 12 12"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="1.4"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            >
                               <path d="M6 1.5l4.5 8H1.5L6 1.5z" />
                               <path d="M6 4.2v2.6M6 8.4h.01" />
                             </svg>
                           ) : isVerify ? (
-                            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-                              <rect x="1" y="1.5" width="10" height="9" rx="1.5" />
+                            <svg
+                              width="12"
+                              height="12"
+                              viewBox="0 0 12 12"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="1.4"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            >
+                              <rect
+                                x="1"
+                                y="1.5"
+                                width="10"
+                                height="9"
+                                rx="1.5"
+                              />
                               <path d="M3.5 4.5l2 2-2 2" />
                               <path d="M7.5 8.5h1" />
                             </svg>
                           ) : (
-                            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                            <svg
+                              width="12"
+                              height="12"
+                              viewBox="0 0 12 12"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="1.4"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            >
                               <circle cx="5" cy="5" r="2.5" />
                               <path d="M7 7l2.5 2.5" />
                             </svg>
@@ -1214,40 +1590,103 @@ export function AgentPanel({ nodes, tabLabel }: { nodes: GraphNode[]; tabLabel?:
                               <span className="agp-step-icon">
                                 {step.type === "list_directory" ? (
                                   // Folder
-                                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                                  <svg
+                                    width="12"
+                                    height="12"
+                                    viewBox="0 0 12 12"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="1.4"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                  >
                                     <path d="M1 3.5C1 2.95 1.45 2.5 2 2.5h2.5l1 1H10c.55 0 1 .45 1 1v4.5c0 .55-.45 1-1 1H2c-.55 0-1-.45-1-1V3.5z" />
                                   </svg>
                                 ) : step.type === "run_command" ? (
                                   // Terminal prompt
-                                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-                                    <rect x="1" y="1.5" width="10" height="9" rx="1.5" />
+                                  <svg
+                                    width="12"
+                                    height="12"
+                                    viewBox="0 0 12 12"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="1.4"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                  >
+                                    <rect
+                                      x="1"
+                                      y="1.5"
+                                      width="10"
+                                      height="9"
+                                      rx="1.5"
+                                    />
                                     <path d="M3.5 4.5l2 2-2 2" />
                                     <path d="M7.5 8.5h1" />
                                   </svg>
                                 ) : step.type === "get_node_details" ? (
                                   // Service details lookup (neutral search icon)
-                                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                                  <svg
+                                    width="12"
+                                    height="12"
+                                    viewBox="0 0 12 12"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="1.4"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                  >
                                     <circle cx="5" cy="5" r="2.5" />
                                     <path d="M7 7l2.5 2.5" />
                                   </svg>
-                                ) : step.type === "docker_logs" || step.type === "docker_exec" || step.type === "docker_control" ? (
+                                ) : step.type === "docker_logs" ||
+                                  step.type === "docker_exec" ||
+                                  step.type === "docker_control" ? (
                                   // Docker container box
-                                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-                                    <rect x="1.5" y="3" width="9" height="7" rx="1" />
+                                  <svg
+                                    width="12"
+                                    height="12"
+                                    viewBox="0 0 12 12"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="1.4"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                  >
+                                    <rect
+                                      x="1.5"
+                                      y="3"
+                                      width="9"
+                                      height="7"
+                                      rx="1"
+                                    />
                                     <path d="M4 3V2M8 3V2" />
                                     <path d="M4 6.5h4M4 8.5h2" />
                                   </svg>
                                 ) : (
                                   // File (read_file)
-                                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                                  <svg
+                                    width="12"
+                                    height="12"
+                                    viewBox="0 0 12 12"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="1.4"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                  >
                                     <path d="M2 1.5h5.5L10 4v7H2V1.5z" />
                                     <path d="M7.5 1.5V4H10" />
                                     <path d="M4 6.5h4M4 8.5h2.5" />
                                   </svg>
                                 )}
                               </span>
-                              <span className="agp-step-label">{step.label}</span>
-                              {!step.done && <span className="agp-step-spinner" />}
+                              <span className="agp-step-label">
+                                {step.label}
+                              </span>
+                              {!step.done && (
+                                <span className="agp-step-spinner" />
+                              )}
                             </div>
                           ))}
                         </div>
@@ -1281,14 +1720,26 @@ export function AgentPanel({ nodes, tabLabel }: { nodes: GraphNode[]; tabLabel?:
           {pendingFixes.length > 0 && (
             <div className="agp-fix-panel">
               {pendingFixes.map((fix) => (
-                <div key={fix.id} className={`agp-fix-item agp-fix-${fix.status}`}>
+                <div
+                  key={fix.id}
+                  className={`agp-fix-item agp-fix-${fix.status}`}
+                >
                   <div className="agp-fix-desc">{fix.description}</div>
                   {fix.status === "pending" && (
                     <button
                       className="agp-fix-btn"
                       onClick={() => void applyFix(fix)}
                     >
-                      <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                      <svg
+                        width="11"
+                        height="11"
+                        viewBox="0 0 12 12"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
                         <path d="M2 6l3 3 5-5" />
                       </svg>
                       {fix.label}
@@ -1301,14 +1752,25 @@ export function AgentPanel({ nodes, tabLabel }: { nodes: GraphNode[]; tabLabel?:
                   )}
                   {fix.status === "done" && (
                     <span className="agp-fix-done">
-                      <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                      <svg
+                        width="11"
+                        height="11"
+                        viewBox="0 0 12 12"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.8"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
                         <path d="M2 6l3 3 5-5" />
                       </svg>
                       Applied
                     </span>
                   )}
                   {fix.status === "error" && (
-                    <span className="agp-fix-error" title={fix.errorMsg}>Failed</span>
+                    <span className="agp-fix-error" title={fix.errorMsg}>
+                      Failed
+                    </span>
                   )}
                 </div>
               ))}

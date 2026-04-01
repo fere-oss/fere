@@ -45,8 +45,17 @@ const perfLog = (label, duration) => {
 
 // Persistent cache for process CWD (survives across polls)
 const CWD_CACHE_TTL_MS = 60000; // 60 seconds
-const CWD_NULL_CACHE_TTL_MS = 10000; // Retry missing CWDs sooner
+const CWD_NULL_CACHE_TTL_MS = 2000; // Retry missing CWDs quickly — new/restarting processes need fast re-probe
 const persistentCwdCache = new Map();
+
+// Resolve parent PID for a given PID (macOS ps)
+function getParentPid(pid) {
+  try {
+    const out = require('child_process').execSync(`ps -o ppid= -p ${pid} 2>/dev/null`, { timeout: 2000, encoding: 'utf8' }).trim();
+    const ppid = parseInt(out, 10);
+    return Number.isFinite(ppid) && ppid > 1 ? ppid : null;
+  } catch { return null; }
+}
 
 function parseBatchedLsofCwdOutput(output = '') {
   const cwdByPid = new Map();
@@ -111,11 +120,25 @@ async function batchGetProcessCwds(pids) {
       persistentCwdCache.set(pid, { cwd, timestamp: now });
     }
 
-    for (const pid of uncached) {
-      if (!result.has(pid)) {
-        result.set(pid, null);
-        persistentCwdCache.set(pid, { cwd: null, timestamp: now });
+    // For PIDs that still have no CWD, try parent process CWD.
+    // This covers interpreter workers (uvicorn, gunicorn, node) where the
+    // worker process itself has no detectable CWD but inherits it from the
+    // reloader/master that spawned it.
+    const stillMissing = uncached.filter((pid) => !result.get(pid));
+    for (const pid of stillMissing) {
+      const ppid = getParentPid(pid);
+      if (!ppid) { result.set(pid, null); persistentCwdCache.set(pid, { cwd: null, timestamp: now }); continue; }
+      const parentEntry = persistentCwdCache.get(ppid);
+      let parentCwd = (parentEntry && Date.now() - parentEntry.timestamp < CWD_CACHE_TTL_MS) ? parentEntry.cwd : null;
+      if (!parentCwd) {
+        try {
+          const { stdout: ps } = await execAsync(`lsof -a -d cwd -Fn -p ${ppid} 2>/dev/null`);
+          parentCwd = parseBatchedLsofCwdOutput(ps).get(ppid) ?? null;
+          if (parentCwd) persistentCwdCache.set(ppid, { cwd: parentCwd, timestamp: now });
+        } catch { parentCwd = null; }
       }
+      result.set(pid, parentCwd);
+      persistentCwdCache.set(pid, { cwd: parentCwd, timestamp: now });
     }
     perfLog(`Batched CWD lookups (${uncached.length} uncached of ${pids.length} total)`, Date.now() - startCwd);
   }

@@ -137,4 +137,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   offFixProposal: () => ipcRenderer.removeAllListeners('agent:fix-proposal'),
   onProactiveFinding: (callback) => ipcRenderer.on('agent:proactive-finding', (_, findings) => callback(findings)),
   offProactiveFinding: () => ipcRenderer.removeAllListeners('agent:proactive-finding'),
+  onFindingResolved: (callback) => ipcRenderer.on('agent:finding-resolved', (_, ids) => callback(ids)),
+  offFindingResolved: () => ipcRenderer.removeAllListeners('agent:finding-resolved'),
+  onFindingWorsened: (callback) => ipcRenderer.on('agent:finding-worsened', (_, findings) => callback(findings)),
+  offFindingWorsened: () => ipcRenderer.removeAllListeners('agent:finding-worsened'),
 });

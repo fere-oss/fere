@@ -1159,6 +1159,44 @@ function buildGraphStructure({
     );
   }
 
+  // Add portless processes that are spiking CPU/memory — these never get a port-based node
+  // but should still appear in the graph so Sentinel can detect and surface them.
+  const CPU_SPIKE_THRESHOLD = 50;  // % — only surface genuinely hot processes
+  const MEM_SPIKE_THRESHOLD_MB = 200; // MB rss
+  for (const proc of processes) {
+    if (nodesByPid.has(proc.pid)) continue; // already has a node from port
+    const cpuHigh = proc.cpu != null && proc.cpu >= CPU_SPIKE_THRESHOLD;
+    const memHigh = proc.memory != null && proc.memory >= MEM_SPIKE_THRESHOLD_MB;
+    if (!cpuHigh && !memHigh) continue;
+    const rawName = proc.name;
+    const name = getServiceDisplayName(rawName, proc.command);
+    const health = healthByPid[proc.pid] || { healthStatus: 'yellow', lastSeen: Date.now() };
+    const cwd = cwdMap[proc.pid] || null;
+    let projectPath = cwd ? findProjectRoot(cwd) : null;
+    if (!projectPath && proc.command) projectPath = inferProjectPathFromCommand(proc.command);
+    const node = {
+      id: `proc-${proc.pid}`,
+      pid: proc.pid,
+      name,
+      command: proc.command,
+      type: categorizeProcess(rawName, proc.command),
+      cpu: proc.cpu || 0,
+      memory: proc.memory || 0,
+      user: proc.user || 'unknown',
+      tty: proc.tty || null,
+      project: projectPath ? path.basename(projectPath) : null,
+      projectPath,
+      repoPath: projectPath,
+      description: getServiceDescription(rawName, proc.command),
+      ports: [],
+      routes: [],
+      healthStatus: health.healthStatus,
+      lastSeen: health.lastSeen,
+    };
+    nodes.push(node);
+    nodesByPid.set(proc.pid, node);
+  }
+
   // Track node count before Docker additions for optimized re-matching
   const preDockerNodeCount = nodes.length;
 
