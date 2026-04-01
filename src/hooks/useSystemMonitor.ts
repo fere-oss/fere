@@ -230,6 +230,8 @@ export function useSystemSnapshot(pollInterval = 2000) {
   const refreshQueuedRef = useRef(false);
   const unmountedRef = useRef(false);
   const streamReceivedDeltaRef = useRef(false);
+  // Track known health per node id to detect transitions
+  const nodeHealthRef = useRef<Map<string, string>>(new Map());
 
   const getAdaptivePollInterval = useCallback(() => {
     if (typeof document === 'undefined') return pollInterval;
@@ -313,6 +315,27 @@ export function useSystemSnapshot(pollInterval = 2000) {
         lastSeqRef.current = delta.seq;
 
         const patched = applyDelta(snapshotRef.current, delta);
+
+        // Detect health degradations: fire fere:health-degraded when a node transitions to 'red'
+        if (delta.graph && 'nodes' in (delta.graph as object)) {
+          const nd = (delta.graph as { nodes?: { modified?: Array<Partial<GraphNode> & { id: string }> } }).nodes;
+          if (nd?.modified?.length) {
+            for (const mod of nd.modified) {
+              if (mod.healthStatus !== 'red') continue;
+              const prevHealth = nodeHealthRef.current.get(mod.id);
+              if (prevHealth === 'red') continue; // already red — not a new transition
+              const node = patched.graph.nodes.find(n => n.id === mod.id);
+              if (node) {
+                window.dispatchEvent(new CustomEvent('fere:health-degraded', { detail: { node } }));
+              }
+            }
+          }
+          // Keep health map in sync with latest state
+          for (const node of patched.graph.nodes) {
+            if (node.healthStatus) nodeHealthRef.current.set(node.id, node.healthStatus);
+          }
+        }
+
         snapshotRef.current = patched;
 
         const newKey = createSnapshotKey(patched);

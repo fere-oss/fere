@@ -601,6 +601,7 @@ export interface ElectronAPI {
   getDockerNetworks: () => Promise<DockerNetworkInfo[]>;
   getDockerSnapshot: () => Promise<DockerSnapshot>;
   isDockerAvailable: () => Promise<boolean>;
+  getContainerLogTail: (containerId: string, tail?: number) => Promise<{ success: boolean; logs: string }>;
 
   // Database queries
   getDatabaseTables: (containerId: string, containerImage: string) => Promise<DatabaseTablesResult>;

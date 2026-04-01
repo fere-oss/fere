@@ -1957,6 +1957,16 @@ ipcMain.handle("stop-all-container-logs", async () => {
   }
 });
 
+// One-shot container log tail — used by Sentinel health alerts
+ipcMain.handle("get-container-log-tail", async (_, containerId, tail = 20) => {
+  try {
+    const logs = await agentDockerLogs(containerId, tail);
+    return { success: true, logs };
+  } catch (err) {
+    return { success: false, logs: "" };
+  }
+});
+
 // ============================================
 // IPC Handlers - Analytics
 // ============================================

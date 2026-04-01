@@ -214,10 +214,25 @@ function detectPortConflicts(ports, nodes) {
     if (!portGroups.has(entry.port)) portGroups.set(entry.port, []);
     portGroups.get(entry.port).push(entry);
   }
+
+  const isDockerPortForwarderProcess = (procName = "") => {
+    const n = String(procName).toLowerCase();
+    // macOS Docker Desktop may show "com.docke" (truncated) in lsof output.
+    return n.includes("docker-proxy") || n.includes("com.docke") || n.includes("com.docker");
+  };
+
   for (const [portNum, entries] of portGroups) {
     const node = nodeByPort.get(portNum);
     if (!node) continue;
-    const stale = entries.filter((e) => e.pid > 0 && !knownPids.has(e.pid));
+
+    let stale = entries.filter((e) => e.pid > 0 && !knownPids.has(e.pid));
+
+    // If this port belongs to a running Docker container, a Docker Desktop
+    // port-forwarder process owning the host port is expected, not a conflict.
+    if (node.isDockerContainer && node.containerState === "running") {
+      stale = stale.filter((e) => !isDockerPortForwarderProcess(e.process));
+    }
+
     if (stale.length > 0) {
       const { pid, process: proc = "unknown" } = stale[0];
       findings.push({

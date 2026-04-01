@@ -458,6 +458,8 @@ export function AgentPanel({
   const streamingTextRef = useRef("");
   const surfacedByTabRef = useRef<Map<string, Set<string>>>(new Map());
   const autopilotInFlightRef = useRef<Set<string>>(new Set());
+  // Pending investigation message — sent once activeThread settles after thread switch
+  const pendingInvestigationRef = useRef<string | null>(null);
 
   const activeThread = useMemo(
     () => threads.find((thread) => thread.id === activeThreadId) ?? null,
@@ -527,6 +529,40 @@ export function AgentPanel({
       // Ignore localStorage write failures
     }
   }, [open, activeThreadId, threads, input]);
+
+  // Shift main content when panel opens (VS Code-style layout push)
+  useEffect(() => {
+    if (open) {
+      document.body.classList.add("sentinel-panel-open");
+    } else {
+      document.body.classList.remove("sentinel-panel-open");
+    }
+    return () => document.body.classList.remove("sentinel-panel-open");
+  }, [open]);
+
+  // Keep panel top aligned with .app-body so it matches Service Map height.
+  useEffect(() => {
+    const root = document.documentElement;
+    const appBody = document.querySelector(".app-body") as HTMLElement | null;
+    if (!appBody) return;
+
+    const updateTopOffset = () => {
+      const { top } = appBody.getBoundingClientRect();
+      root.style.setProperty("--agp-top-offset", `${Math.max(0, Math.round(top))}px`);
+    };
+
+    updateTopOffset();
+
+    const resizeObserver = new ResizeObserver(updateTopOffset);
+    resizeObserver.observe(appBody);
+    window.addEventListener("resize", updateTopOffset);
+
+    return () => {
+      resizeObserver.disconnect();
+      window.removeEventListener("resize", updateTopOffset);
+      root.style.removeProperty("--agp-top-offset");
+    };
+  }, []);
 
   useEffect(() => {
     if (threads.length > 0) return;
@@ -736,6 +772,85 @@ export function AgentPanel({
   useEffect(() => {
     if (open) setTimeout(() => inputRef.current?.focus(), 120);
   }, [open]);
+
+  // Drain pending investigation once activeThread has settled on the fresh thread
+  useEffect(() => {
+    if (!pendingInvestigationRef.current || isStreaming) return;
+    const msg = pendingInvestigationRef.current;
+    pendingInvestigationRef.current = null;
+    void send(msg);
+  }, [activeThread, isStreaming, send]);
+
+  // Feature: click a node → Sentinel auto-investigates
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { nodeName, healthStatus, ports, command } =
+        (e as CustomEvent).detail ?? {};
+      if (!nodeName) return;
+
+      const portStr = ports?.length ? ` on port ${(ports as number[]).join(", ")}` : "";
+      const cmdStr = command ? ` (${String(command).slice(0, 60)})` : "";
+      const isUnhealthy = healthStatus === "red" || healthStatus === "yellow";
+      const msg = isUnhealthy
+        ? `Investigate **${nodeName}**${portStr}${cmdStr} — health is ${healthStatus}. What's wrong and how do I fix it? Check ports, connections, and logs if it's a container.`
+        : `Tell me about **${nodeName}**${portStr}${cmdStr} — its current health, routes, and connections.`;
+
+      // Open panel and start a fresh thread — send fires once activeThread settles
+      setOpen(true);
+      const freshThread = createThread([]);
+      pendingInvestigationRef.current = msg;
+      setThreads((prev) => [freshThread, ...prev].slice(0, MAX_CHAT_THREADS));
+      setActiveThreadId(freshThread.id);
+    };
+    window.addEventListener("fere:investigate-node", handler);
+    return () => window.removeEventListener("fere:investigate-node", handler);
+  }, []);
+
+  // Feature: health degradation → surface alert + fetch logs for containers
+  useEffect(() => {
+    const handler = async (e: Event) => {
+      const { node } = (e as CustomEvent<{ node: GraphNode }>).detail ?? {};
+      if (!node) return;
+
+      const incidentId = `health-${node.id}`;
+      let logExcerpt = "";
+
+      // Fetch last 20 log lines for Docker containers
+      if (node.isDockerContainer && node.containerId) {
+        try {
+          const result = await window.electronAPI.getContainerLogTail(node.containerId, 20);
+          if (result.success && result.logs) {
+            // Extract last meaningful lines, skip empty
+            const lines = result.logs.split("\n").filter(Boolean).slice(-10);
+            logExcerpt = lines.join("\n");
+          }
+        } catch {
+          // non-critical, skip
+        }
+      }
+
+      const portStr = (node.ports ?? []).map(p => p.port).join(", ");
+      const detail = logExcerpt
+        ? `**${node.name}** went red${portStr ? ` (port ${portStr})` : ""}.\n\nLast logs:\n\`\`\`\n${logExcerpt}\n\`\`\``
+        : `**${node.name}** health dropped to red${portStr ? ` (port ${portStr})` : ""}. No container logs available.`;
+
+      setIncidentState((prev) => ({
+        ...prev,
+        [incidentId]: {
+          id: incidentId,
+          service: node.name,
+          summary: `${node.name} went red`,
+          stage: "detected",
+          updatedAt: Date.now(),
+          error: detail,
+        },
+      }));
+      setUnreadFindings((n) => n + 1);
+    };
+
+    window.addEventListener("fere:health-degraded", handler as EventListener);
+    return () => window.removeEventListener("fere:health-degraded", handler as EventListener);
+  }, []);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -953,9 +1068,33 @@ export function AgentPanel({
     (findings: AgentFinding[]) => {
       if (findings.length === 0) return;
 
-      const inScope = findings.filter((f) =>
-        nodeMap.has(f.service.toLowerCase()),
-      );
+      const normalizedTab = (tabLabel ?? "").trim().toLowerCase();
+      const inScope = findings.filter((f) => {
+        const serviceName = f.service.toLowerCase();
+        if (nodeMap.has(serviceName)) return true;
+
+        // System tab: allow findings even when a service dropped out of graph
+        // (for example, just-stopped containers).
+        if (!tabLabel) return true;
+
+        // Project tabs: keep findings scoped by tab label fallback when the
+        // service is no longer present in the current node map.
+        if (normalizedTab && serviceName.includes(normalizedTab)) return true;
+
+        if (
+          Array.isArray(f.affectedServices) &&
+          f.affectedServices.some((svc) => {
+            const name = svc.toLowerCase();
+            return (
+              nodeMap.has(name) || (normalizedTab && name.includes(normalizedTab))
+            );
+          })
+        ) {
+          return true;
+        }
+
+        return false;
+      });
       if (inScope.length === 0) return;
 
       const existing =

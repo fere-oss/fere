@@ -78,9 +78,31 @@ export function NodeDetailPanel({
               </div>
             </div>
           </div>
-          <button className="node-detail-close" onClick={onClose}>
-            ×
-          </button>
+          <div className="node-detail-header-actions">
+            <button
+              className="node-detail-investigate-btn"
+              title="Investigate with Sentinel"
+              onClick={() => {
+                onClose();
+                window.dispatchEvent(
+                  new CustomEvent("fere:investigate-node", {
+                    detail: {
+                      nodeId: node.id,
+                      nodeName: node.name,
+                      healthStatus: node.healthStatus,
+                      ports: (node.ports ?? []).map(p => p.port),
+                      command: node.command,
+                    },
+                  }),
+                );
+              }}
+            >
+              Investigate
+            </button>
+            <button className="node-detail-close" onClick={onClose}>
+              ×
+            </button>
+          </div>
         </div>
         <NodeDetailContent
           node={node}

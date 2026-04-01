@@ -23,6 +23,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getDockerContainers: () => ipcRenderer.invoke('get-docker-containers'),
   getDockerNetworks: () => ipcRenderer.invoke('get-docker-networks'),
   getDockerSnapshot: () => ipcRenderer.invoke('get-docker-snapshot'),
+  getContainerLogTail: (containerId, tail) => ipcRenderer.invoke('get-container-log-tail', containerId, tail),
 
   // Database queries
   getDatabaseTables: (containerId, containerImage) => ipcRenderer.invoke('get-database-tables', containerId, containerImage),
