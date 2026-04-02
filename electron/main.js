@@ -3108,6 +3108,7 @@ ipcMain.handle("agent:chat", async (event, payload) => {
       snapshot,
       findings,
       typeof tabLabel === "string" ? tabLabel : null,
+      Array.isArray(nodeIds) ? nodeIds : null,
     );
     const systemPrompt = `${baseSystemPrompt}\n\n${buildPolicyPrompt(policies, options)}`;
 

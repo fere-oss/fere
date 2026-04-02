@@ -684,11 +684,33 @@ async function readCodebaseContext(nodes) {
   return lines.join("\n");
 }
 
-async function buildChatContext(snapshot, findings, tabLabel = null) {
-  const nodes = snapshot.graph?.nodes ?? [];
-  const edges = snapshot.graph?.edges ?? [];
-  const ports = snapshot.ports ?? [];
-  const containers = snapshot.docker?.containers ?? [];
+async function buildChatContext(snapshot, findings, tabLabel = null, nodeIds = null) {
+  const allNodes = snapshot.graph?.nodes ?? [];
+  const allEdges = snapshot.graph?.edges ?? [];
+
+  // Filter to the tab-scoped nodes when nodeIds are provided
+  const scopedIds = Array.isArray(nodeIds) && nodeIds.length > 0 ? new Set(nodeIds) : null;
+  const nodes = scopedIds ? allNodes.filter((n) => scopedIds.has(n.id)) : allNodes;
+  const edges = scopedIds
+    ? allEdges.filter((e) => scopedIds.has(e.source) || scopedIds.has(e.target))
+    : allEdges;
+  // Collect PIDs and container names from scoped nodes for port/container filtering
+  const scopedPids = new Set(
+    nodes.flatMap((n) => [n.pid, ...(n.pids ?? [])]).filter((p) => p > 0),
+  );
+  const scopedContainerNames = new Set(
+    nodes.filter((n) => n.isDockerContainer).map((n) => n.name),
+  );
+
+  const allPorts = snapshot.ports ?? [];
+  const ports = scopedIds && scopedPids.size > 0
+    ? allPorts.filter((p) => scopedPids.has(p.pid))
+    : allPorts;
+
+  const allContainers = snapshot.docker?.containers ?? [];
+  const containers = scopedIds && scopedContainerNames.size > 0
+    ? allContainers.filter((c) => scopedContainerNames.has(c.name))
+    : allContainers;
 
   const serviceLines = nodes
     .filter((n) => n.type !== "external")
