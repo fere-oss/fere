@@ -43,7 +43,6 @@ const isMacOS = navigator.userAgent.toLowerCase().includes("mac");
 const SYSTEM_TAB_LABEL = isMacOS ? "macOS" : "System";
 const SYSTEM_TAB_ID = "__system__";
 const TAB_GROUPING_KEY = "fere.tabGrouping";
-const EDGE_MODE_KEY = "fere.edgeMode";
 const WELCOME_SEEN_KEY = "fere.hasSeenWelcome";
 
 const STACK_FRAMEWORK_LABELS: Record<string, string> = {
@@ -201,7 +200,6 @@ function detectProjectStack(nodes: GraphNode[]) {
 type ViewMode = "graph" | "containers" | "api-tester" | "database";
 type ContainerSubTab = "overview" | "logs";
 type TabGrouping = "repo" | "subproject";
-type EdgeMode = "live" | "expanded";
 
 function getNodeTabPath(node: GraphNode, grouping: TabGrouping): string | null {
   if (!node.projectPath) return null;
@@ -291,14 +289,6 @@ function App() {
       return "repo";
     }
   });
-  const [edgeMode, setEdgeMode] = useState<EdgeMode>(() => {
-    try {
-      const saved = window.localStorage.getItem(EDGE_MODE_KEY);
-      return saved === "expanded" ? "expanded" : "live";
-    } catch {
-      return "live";
-    }
-  });
 
   // Database node for database page
   const [databaseNode, setDatabaseNode] = useState<GraphNode | null>(null);
@@ -330,9 +320,6 @@ function App() {
     Map<string, ReturnType<typeof setTimeout>>
   >(new Map());
   const lastNodeIdByServiceRef = useRef<Map<string, string>>(new Map());
-  const inferredEdgesCacheRef = useRef<Map<string, typeof graph.edges>>(
-    new Map(),
-  );
 
   // Tab button refs for dropdown positioning
   const tabButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
@@ -795,13 +782,6 @@ function App() {
     }
   }, [tabGrouping]);
 
-  useEffect(() => {
-    try {
-      window.localStorage.setItem(EDGE_MODE_KEY, edgeMode);
-    } catch {
-      // Ignore storage write issues
-    }
-  }, [edgeMode]);
 
   // Build tabs from unique projectPaths
   const tabs = useMemo(() => {
@@ -988,64 +968,6 @@ function App() {
       });
     });
 
-    const expandedEdges = (() => {
-      if (edgeMode !== "expanded") return filteredEdges;
-
-      const inferable = primaryNodes.filter((node) => node.ports.length > 0);
-      const inferredKey = [
-        selectedTab,
-        inferable
-          .map((node) => `${node.id}:${node.ports[0]?.port || 0}`)
-          .sort()
-          .join(","),
-        filteredEdges
-          .map((edge) => `${edge.source}->${edge.target}`)
-          .sort()
-          .join(","),
-      ].join("|");
-
-      const cached = inferredEdgesCacheRef.current.get(inferredKey);
-      if (cached) {
-        return cached;
-      }
-
-      const next = [...filteredEdges];
-      const existing = new Set(
-        filteredEdges.map((edge) => `${edge.source}->${edge.target}`),
-      );
-      const MAX_INFERRED_EDGES = 180;
-      let inferredCount = 0;
-
-      for (let i = 0; i < inferable.length; i++) {
-        for (let j = i + 1; j < inferable.length; j++) {
-          if (inferredCount >= MAX_INFERRED_EDGES) break;
-          const source = inferable[i];
-          const target = inferable[j];
-          const key = `${source.id}->${target.id}`;
-          if (existing.has(key)) continue;
-          existing.add(key);
-          next.push({
-            id: `inferred-${source.id}-${target.id}`,
-            source: source.id,
-            target: target.id,
-            sourcePort: source.ports[0]?.port || 0,
-            targetPort: target.ports[0]?.port || 0,
-            protocol: "inferred",
-            confidence: 0.35,
-          });
-          inferredCount++;
-        }
-        if (inferredCount >= MAX_INFERRED_EDGES) break;
-      }
-
-      inferredEdgesCacheRef.current.set(inferredKey, next);
-      if (inferredEdgesCacheRef.current.size > 24) {
-        const oldestKey = inferredEdgesCacheRef.current.keys().next().value;
-        if (oldestKey) inferredEdgesCacheRef.current.delete(oldestKey);
-      }
-      return next;
-    })();
-
     // Filter ports to only include those from primary nodes (not external)
     const primaryPorts = new Set<number>();
     primaryNodes.forEach((node) => {
@@ -1055,10 +977,10 @@ function App() {
 
     return {
       nodes: filteredNodes,
-      edges: expandedEdges,
+      edges: filteredEdges,
       ports: filteredPorts,
     };
-  }, [graphIndex, edgeIndex, ports, selectedTab, edgeMode, getProjectStatus]);
+  }, [graphIndex, edgeIndex, ports, selectedTab, getProjectStatus]);
 
   // Filter to show only running Docker containers
   const dockerContainerData = useMemo(() => {
@@ -1557,24 +1479,6 @@ function App() {
                 onClick={() => setTabGrouping("subproject")}
               >
                 Subproject
-              </button>
-            </div>
-            <div
-              className="tab-grouping-toggle"
-              role="group"
-              aria-label="Edge density mode"
-            >
-              <button
-                className={`tab-grouping-btn ${edgeMode === "live" ? "tab-grouping-btn-active" : ""}`}
-                onClick={() => setEdgeMode("live")}
-              >
-                Live
-              </button>
-              <button
-                className={`tab-grouping-btn ${edgeMode === "expanded" ? "tab-grouping-btn-active" : ""}`}
-                onClick={() => setEdgeMode("expanded")}
-              >
-                Expanded
               </button>
             </div>
           </div>

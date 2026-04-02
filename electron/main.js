@@ -476,6 +476,12 @@ ipcMain.handle("get-connection-graph", async () => {
 // Get a full system snapshot (processes, ports, connections, graph)
 ipcMain.handle("get-system-snapshot", async () => {
   try {
+    // Prefer the scheduler's last cached snapshot — it includes source-analysis edges,
+    // CWD cache, and edge memory. Fall back to getSystemSnapshot() only on cold start
+    // before the scheduler has produced its first snapshot.
+    if (snapshotScheduler && snapshotScheduler.previousSnapshot) {
+      return snapshotScheduler.previousSnapshot;
+    }
     return await getSystemSnapshot();
   } catch (error) {
     console.error("Error getting system snapshot:", error);

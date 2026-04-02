@@ -877,6 +877,7 @@ function collectProjectPaths({ processes, ports, cwdMap = {}, dockerSnapshot = n
 function buildGraphStructure({
   processes, ports, connections,
   cwdMap = {}, dockerSnapshot = null, routesByProject = {},
+  localConnectionsByProject = {},
   healthByPid = {}, containerHealthToGraphHealth = () => 'yellow',
 }) {
   const sshPerfStart = PERF_SSH_LOGGING ? Date.now() : 0;
@@ -1235,6 +1236,49 @@ function buildGraphStructure({
     if (!node.isDockerContainer || !node.projectPath) continue;
     const routes = routesByProject[node.projectPath] || [];
     node.routes = matchRoutesToService(routes, node);
+  }
+
+  // Source-analysis edges: for each non-Docker node, check which ports its
+  // source code references. If another local node listens on that port, add a
+  // static edge (confidence 0.6, protocol 'source-analysis').
+  // Only applies to process nodes (pid > 0) with a known project path.
+  // Skips Docker-only nodes — those get topology from depends_on instead.
+  if (Object.keys(localConnectionsByProject).length > 0) {
+    // Build port → node map for quick lookup (only non-Docker process nodes)
+    const portToNode = new Map();
+    for (const node of nodes) {
+      if (node.pid <= 0) continue; // skip Docker/external nodes
+      for (const p of node.ports) {
+        if (p.port && p.port > 0) portToNode.set(p.port, node);
+      }
+    }
+
+    for (const node of nodes) {
+      if (node.pid <= 0 || !node.projectPath) continue;
+      const calledPorts = localConnectionsByProject[node.projectPath];
+      if (!calledPorts || calledPorts.length === 0) continue;
+
+      for (const targetPort of calledPorts) {
+        const targetNode = portToNode.get(targetPort);
+        if (!targetNode || targetNode.id === node.id) continue;
+        // Skip if a live TCP edge already exists for this pair
+        const liveEdgeKey = `${node.id}->${targetNode.id}:${targetPort}`;
+        if (edgeSet.has(liveEdgeKey)) continue;
+
+        const edgeKey = `source-analysis:${node.id}->${targetNode.id}:${targetPort}`;
+        if (edgeSet.has(edgeKey)) continue;
+        edgeSet.add(edgeKey);
+        edges.push({
+          id: edgeKey,
+          source: node.id,
+          target: targetNode.id,
+          sourcePort: 0,
+          targetPort,
+          protocol: 'source-analysis',
+          confidence: 0.6,
+        });
+      }
+    }
   }
 
   return { nodes, edges, dockerSnapshot: dockerSnapshot || null };

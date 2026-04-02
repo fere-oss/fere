@@ -11,7 +11,8 @@
       "Bash(node --check /Users/rahulthennarasu/Documents/GitHub/fere/electron/main.js)",
       "Bash(/Users/rahulthennarasu/Documents/GitHub/fere/src/App.css:*)",
       "Bash(grep -r \"GraphNode\\\\|incomingEdge\" /Users/rahulthennarasu/Documents/GitHub/fere/src --include=*.ts --include=*.tsx -l)",
-      "Bash(npm run:*)"
+      "Bash(npm run:*)",
+      "Bash(grep -r \"localhost:8000\\\\|127.0.0.1:8000\\\\|NEXT_PUBLIC_API\\\\|API_URL\\\\|baseURL\\\\|base_url\" /Users/rahulthennarasu/Documents/GitHub/impasse/frontend/src /Users/rahulthennarasu/Documents/GitHub/impasse/frontend/.env*)"
     ]
   }
 }

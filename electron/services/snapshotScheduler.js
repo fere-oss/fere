@@ -4,7 +4,7 @@ const { Worker } = require('worker_threads');
 const { getDevProcesses, getProcessCacheInfo, getProcessPids } = require('./processMonitor');
 const { getListeningPorts, getEstablishedConnections, getPortCacheInfo, getListeningPortNumbers } = require('./portMonitor');
 const { getDockerSnapshot, getLastDockerStatus } = require('./dockerMonitor');
-const { batchGetProcessCwds, collectHealthByPid, collectRoutes } = require('./connectionGraph');
+const { batchGetProcessCwds, collectHealthByPid, collectRoutes, collectLocalConnections } = require('./connectionGraph');
 const { hasTopologyChanged, buildGraphStructure, collectProjectPaths } = require('./graphFunctions');
 
 /**
@@ -59,6 +59,21 @@ class SnapshotScheduler extends EventEmitter {
     // Tiered refresh tracking
     this.lastStructureTime = 0;
     this.cachedResult = null;
+
+    // Edge memory: remember lsof-observed local edges across scans so short-lived
+    // HTTP connections don't cause services to appear disconnected between requests.
+    // Map<edgeId, { edge, expiresAt }>
+    this.edgeMemory = new Map();
+    this.EDGE_MEMORY_TTL_MS = 3 * 60 * 1000; // 3 minutes
+
+    // Last known good local connections scan — used when collectProjectPaths
+    // returns empty (flaky batchGetProcessCwds) so source-analysis edges survive.
+    this._lastLocalConnectionsByProject = {};
+
+    // Persistent CWD map — when batchGetProcessCwds returns incomplete results,
+    // nodes lose their projectPath and disappear from project tabs. We cache
+    // every known pid→cwd and merge it so no PID loses its project assignment.
+    this._cwdCache = {};
 
     // Prevent overlapping reconciliations
     this.reconcileInFlight = false;
@@ -355,8 +370,16 @@ class SnapshotScheduler extends EventEmitter {
         getDockerSnapshot(),
       ]);
 
-      // Convert once and reuse — avoid redundant Object.fromEntries()
-      const cwdMapObj = Object.fromEntries(cwdMap);
+      // Merge fresh CWDs into persistent cache, then evict PIDs no longer running.
+      // This prevents nodes from losing projectPath when batchGetProcessCwds
+      // returns incomplete results (the most common cause of "standalone" flicker).
+      const freshCwdObj = Object.fromEntries(cwdMap);
+      Object.assign(this._cwdCache, freshCwdObj);
+      const activePidSet = new Set(pids);
+      for (const pid of Object.keys(this._cwdCache)) {
+        if (!activePidSet.has(Number(pid))) delete this._cwdCache[pid];
+      }
+      const cwdMapObj = this._cwdCache;
 
       // Lightweight project-path discovery (no full graph build)
       const projectPaths = collectProjectPaths({
@@ -365,7 +388,16 @@ class SnapshotScheduler extends EventEmitter {
         cwdMap: cwdMapObj,
         dockerSnapshot,
       });
-      const routesByProject = await collectRoutes(projectPaths);
+      const [routesByProject, freshLocalConnections] = await Promise.all([
+        collectRoutes(projectPaths),
+        collectLocalConnections(projectPaths),
+      ]);
+      // Persist last non-empty scan so source-analysis edges survive builds
+      // where collectProjectPaths returns an empty set (flaky batchGetProcessCwds).
+      if (Object.keys(freshLocalConnections).length > 0) {
+        this._lastLocalConnectionsByProject = freshLocalConnections;
+      }
+      const localConnectionsByProject = this._lastLocalConnectionsByProject;
 
       const workerData = {
         processes: rawData.processes,
@@ -374,6 +406,7 @@ class SnapshotScheduler extends EventEmitter {
         cwdMap: cwdMapObj,
         dockerSnapshot,
         routesByProject,
+        localConnectionsByProject,
         healthByPid,
       };
 
@@ -469,10 +502,41 @@ class SnapshotScheduler extends EventEmitter {
   /**
    * Build and emit a snapshot from worker results.
    */
+  _mergeEdgeMemory(nodes, edges) {
+    const now = Date.now();
+    const nodeIds = new Set(nodes.map(n => n.id));
+
+    // Store observed local edges (lsof + source-analysis) so they survive rebuilds.
+    // Docker depends_on edges are excluded — they're rebuilt deterministically each time.
+    for (const edge of edges) {
+      const proto = edge.protocol || '';
+      if (proto.startsWith('docker-network')) continue;
+      if (!nodeIds.has(edge.source) || !nodeIds.has(edge.target)) continue;
+      this.edgeMemory.set(edge.id, { edge, expiresAt: now + this.EDGE_MEMORY_TTL_MS });
+    }
+
+    // Evict expired entries
+    for (const [id, entry] of this.edgeMemory) {
+      if (entry.expiresAt < now) this.edgeMemory.delete(id);
+    }
+
+    // Merge remembered edges that are no longer in current graph
+    const currentEdgeIds = new Set(edges.map(e => e.id));
+    const merged = [...edges];
+    for (const [id, { edge }] of this.edgeMemory) {
+      if (currentEdgeIds.has(id)) continue;
+      // Only include if both endpoints still exist as nodes
+      if (!nodeIds.has(edge.source) || !nodeIds.has(edge.target)) continue;
+      merged.push(edge);
+    }
+    return merged;
+  }
+
   _emitSnapshot(graphResult, rawData) {
     if (!rawData) return;
 
-    const { nodes, edges, dockerSnapshot } = graphResult;
+    const { nodes, dockerSnapshot } = graphResult;
+    const edges = this._mergeEdgeMemory(nodes, graphResult.edges);
     const collectedAt = Date.now();
     const processCacheInfo = getProcessCacheInfo();
     const portCacheInfo = getPortCacheInfo();
@@ -531,6 +595,7 @@ class SnapshotScheduler extends EventEmitter {
           cwdMap: Object.fromEntries(cwdMap),
           dockerSnapshot,
           routesByProject: {},
+          localConnectionsByProject: {},
           healthByPid,
           containerHealthToGraphHealth,
         });
@@ -687,7 +752,12 @@ class SnapshotScheduler extends EventEmitter {
     const addedEdges = currentSnapshot.graph.edges.filter(e => !prevEdgeIdSet.has(e.id));
     const removedEdgeIds = [];
     for (const id of prevEdgeIdSet) {
-      if (!currEdgeIdSet.has(id)) removedEdgeIds.push(id);
+      if (!currEdgeIdSet.has(id)) {
+        // Source-analysis edges represent static code topology — never remove them
+        // via delta. They disappear naturally when their endpoint nodes are removed.
+        if (id.startsWith('source-analysis:')) continue;
+        removedEdgeIds.push(id);
+      }
     }
 
     if (addedEdges.length || removedEdgeIds.length) {

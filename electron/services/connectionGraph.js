@@ -15,6 +15,7 @@ const { promisify } = require('util');
 const { getDevProcesses } = require('./processMonitor');
 const { getListeningPorts, getEstablishedConnections } = require('./portMonitor');
 const { scanRoutes, matchRoutesToService } = require('./routeScanner');
+const { scanLocalConnections } = require('./localConnectionScanner');
 const { updateHealthTracking, getHealthStatus } = require('./healthTracker');
 const {
   getDockerSnapshot,
@@ -209,6 +210,30 @@ async function collectRoutes(projectPaths) {
   return routesByProject;
 }
 
+/**
+ * Scan each project for localhost:PORT references in source code.
+ * Returns { [projectPath]: number[] } — the ports each project calls.
+ */
+async function collectLocalConnections(projectPaths) {
+  const result = {};
+  if (projectPaths.size === 0) return result;
+
+  const scanPromises = Array.from(projectPaths).map(async (projectPath) => {
+    try {
+      const ports = await scanLocalConnections(projectPath);
+      return { projectPath, ports };
+    } catch {
+      return { projectPath, ports: [] };
+    }
+  });
+
+  const results = await Promise.all(scanPromises);
+  for (const { projectPath, ports } of results) {
+    result[projectPath] = ports;
+  }
+  return result;
+}
+
 // ============================================
 // Health Collection (main thread state)
 // ============================================
@@ -399,4 +424,5 @@ module.exports = {
   batchGetProcessCwds,
   collectHealthByPid,
   collectRoutes,
+  collectLocalConnections,
 };
