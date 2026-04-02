@@ -734,8 +734,10 @@ async function buildChatContext(snapshot, findings, tabLabel = null) {
     ? externalNodes.map((n) => `  - ${n.name}`).join("\n")
     : "  (none)";
 
-  const edgeLines = edges.length
-    ? edges
+  // Exclude zero-port edges — these are Docker compose-network artifacts, not real TCP connections
+  const realEdges = edges.filter((e) => e.sourcePort !== 0 || e.targetPort !== 0);
+  const edgeLines = realEdges.length
+    ? realEdges
         .map((e) => {
           const src = nodes.find((n) => n.id === e.source)?.name ?? e.source;
           const tgt = nodes.find((n) => n.id === e.target)?.name ?? e.target;
@@ -814,7 +816,7 @@ Rules:
 - When asked why something isn't working, cross-reference health status, connections, and port ownership.
 - Format responses with Markdown: use **bold** for service names and key terms, \`code\` for ports/PIDs/commands, bullet lists for multi-item answers.
 - Keep answers focused and actionable. Lead with the direct answer, then explain.
-- You have a \`get_node_details\` tool. Use it whenever the user asks about a specific service to get full details: all routes, external API calls, Docker image/networks/mounts, health check output, CPU/memory, inbound/outbound connections, and more.
+- You have a \`get_node_details\` tool. You MUST call it before answering any question about a specific service's connections, health, routes, resource usage, or status. The summary in the system prompt above is incomplete — \`get_node_details\` is the authoritative source. Never list or describe a service's connections from the system prompt text alone; always call the tool first and report only what the tool returns. If the tool returns no inbound or outbound connections for a service, say so — do not infer connections from service names or architecture knowledge.
 - You have a \`read_file\` tool. You MUST call it before answering any question about implementation details, code logic, which function handles what, fallback/retry logic, or how two libraries interact. Never answer implementation questions from memory — always read the actual file first. Use \`list_directory\` first if unsure of the path. If a file read fails or returns nothing useful, do NOT give up — use \`run_command\` with grep to locate the right file (e.g. \`grep -rl "groq\\|gemini" --include="*.py" .\`) then read it. When asked about multiple things (e.g. "Groq AND Gemini"), you must locate ALL of them in source before answering — finding one does not mean you are done. Only after exhausting file reads and grep should you say you can't find the information.
 - You have \`run_command\` for short diagnostic commands (e.g. \`npm test\`, \`python -c\`, \`cat error.log\`). NEVER use it for long-running servers.
 - You have \`launch_in_terminal\` for starting dev servers and long-running processes (uvicorn, npm run dev, next dev, flask run, nodemon, etc.). This opens macOS Terminal and runs the command there so the user can see its output. Always use this when the user asks you to start or run a service.
@@ -878,9 +880,10 @@ function buildNodeDetails(node, allNodes, edges) {
     if (cPorts.length) lines.push(`  Mapped ports: ${cPorts.filter((p) => p.hostPort).map((p) => `${p.hostPort}→${p.containerPort}`).join(", ")}`);
   }
 
-  // Connections
-  const outbound = edges.filter((e) => e.source === node.id);
-  const inbound = edges.filter((e) => e.target === node.id);
+  // Connections — exclude zero-port edges (Docker compose-network artifacts, not real TCP)
+  const realEdges = edges.filter((e) => e.sourcePort !== 0 || e.targetPort !== 0);
+  const outbound = realEdges.filter((e) => e.source === node.id);
+  const inbound = realEdges.filter((e) => e.target === node.id);
   if (inbound.length) {
     lines.push(`\nInbound connections from: ${inbound.map((e) => allNodes.find((n) => n.id === e.source)?.name ?? e.source).join(", ")}`);
   }

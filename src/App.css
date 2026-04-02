@@ -2741,11 +2741,11 @@ body.sentinel-panel-open .main-content {
 }
 
 .node-detail-header {
-  position: relative;
   display: flex;
-  flex-direction: column;
-  gap: 14px;
-  padding: 20px 0 18px;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 20px 14px 18px 0;
   background: #f5f5f5;
   border-radius: 12px 12px 0 0;
   flex-shrink: 0;
@@ -2756,6 +2756,7 @@ body.sentinel-panel-open .main-content {
   flex-direction: column;
   gap: 14px;
   min-width: 0;
+  flex: 1;
 }
 
 .node-detail-title-row {
@@ -2763,8 +2764,7 @@ body.sentinel-panel-open .main-content {
   align-items: center;
   gap: 14px;
   min-width: 0;
-  padding: 0 20px;
-  padding-right: 58px;
+  padding: 0 0 0 20px;
 }
 
 .node-detail-dot {
@@ -2805,9 +2805,8 @@ body.sentinel-panel-open .main-content {
   display: flex;
   align-items: center;
   gap: 6px;
-  position: absolute;
-  top: 14px;
-  right: 14px;
+  flex-shrink: 0;
+  padding-top: 2px;
 }
 
 .node-detail-investigate-btn {
@@ -12177,6 +12176,127 @@ body.sentinel-panel-open .main-content {
 .agp-finding-stage-fixed .agp-finding-stage-label { color: #3b82f6; }
 .agp-finding-stage-verified .agp-finding-stage-label { color: #16a34a; }
 .agp-finding-stage-escalated .agp-finding-stage-label { color: #f59e0b; }
+
+/* Finding cards in the unified feed */
+.agp-finding-card {
+  margin: 2px 12px;
+  padding: 9px 11px;
+  border-radius: 7px;
+  border: 1px solid var(--border-hover);
+  background: var(--bg-white);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.agp-finding-stage-verified { opacity: 0.5; }
+
+.agp-finding-card-header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.agp-finding-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.agp-finding-dot-critical { background: #EF4444; }
+.agp-finding-dot-warning  { background: #EAB308; }
+.agp-finding-dot-suggestion { background: var(--text-faint); }
+
+.agp-finding-service {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  letter-spacing: -0.01em;
+}
+
+.agp-finding-dismiss {
+  all: unset;
+  color: var(--text-faint);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  flex-shrink: 0;
+  padding: 0 1px;
+}
+.agp-finding-dismiss:hover { color: var(--text-primary); }
+
+.agp-finding-summary {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  line-height: 1.4;
+  padding-left: 14px;
+}
+
+.agp-finding-actions {
+  display: flex;
+  gap: 5px;
+  padding-left: 14px;
+  padding-top: 3px;
+}
+
+.agp-finding-fix-btn {
+  all: unset;
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 9px;
+  background: var(--text-primary);
+  color: var(--bg-white);
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.agp-finding-fix-btn:hover:not(:disabled) { opacity: 0.78; }
+.agp-finding-fix-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+.agp-finding-explain-btn {
+  all: unset;
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 9px;
+  border: 1px solid var(--border-color);
+  border-radius: 5px;
+  font-size: 11px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.agp-finding-explain-btn:hover:not(:disabled) {
+  background: var(--bg-muted);
+  color: var(--text-primary);
+  border-color: var(--border-hover);
+}
+.agp-finding-explain-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+.agp-finding-status {
+  font-size: 11px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-left: 14px;
+}
+.agp-finding-status-verified { color: #22C55E; }
+.agp-finding-status-escalated { color: var(--text-secondary); }
+
+.agp-finding-escalated {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
 
 .agp-chat-error {
   font-size: 11.5px;

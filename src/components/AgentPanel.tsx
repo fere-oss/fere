@@ -9,6 +9,8 @@ import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import type {
   AgentFinding,
+  AgentFixAction,
+  AgentSeverity,
   ChatStep,
   ExternalApiProvider,
   FixProposal,
@@ -164,24 +166,23 @@ function findProviderMentionHits(
   return hits;
 }
 
-type ChatMessage = { role: "user" | "assistant"; content: string };
-type ChatThread = {
-  id: string;
-  title: string;
-  updatedAt: number;
-  messages: ChatMessage[];
-};
-
-type IncidentStage = "detected" | "fixing" | "fixed" | "verified" | "escalated";
-
-type IncidentRecord = {
+type FeedMessage = { kind: "message"; role: "user" | "assistant"; content: string };
+type FeedFinding = {
+  kind: "finding";
   id: string;
   service: string;
   summary: string;
+  severity: AgentSeverity;
+  fix: AgentFixAction | null;
   stage: IncidentStage;
-  updatedAt: number;
   error?: string;
+  insertedAt: number;
 };
+type FeedItem = FeedMessage | FeedFinding;
+type IncidentStage = "detected" | "fixing" | "fixed" | "verified" | "escalated";
+type ChatThread = { id: string; title: string; updatedAt: number; feed: FeedItem[] };
+// Keep ChatMessage as an alias for backwards compat in a few call sites
+type ChatMessage = FeedMessage;
 
 function ProviderMention({ text, logoUrl }: { text: string; logoUrl: string }) {
   const [imgFailed, setImgFailed] = useState(false);
@@ -313,26 +314,35 @@ function createThreadId(): string {
   return `chat_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function deriveThreadTitle(messages: ChatMessage[]): string {
-  const firstUser = messages.find(
-    (msg) => msg.role === "user" && msg.content.trim().length > 0,
+function deriveThreadTitle(feed: FeedItem[]): string {
+  const firstUser = feed.find(
+    (item): item is FeedMessage =>
+      item.kind === "message" && item.role === "user" && item.content.trim().length > 0,
   );
   if (!firstUser) return "New chat";
   const oneLine = firstUser.content.replace(/\s+/g, " ").trim();
-  if (!oneLine) return "New chat";
   return oneLine.length > 56 ? `${oneLine.slice(0, 56)}…` : oneLine;
 }
 
-function sanitizeMessages(input: unknown): ChatMessage[] {
+function sanitizeFeed(input: unknown): FeedItem[] {
   if (!Array.isArray(input)) return [];
-  return input.filter(
-    (m): m is ChatMessage =>
-      !!m &&
-      (m as ChatMessage).role !== undefined &&
-      ((m as ChatMessage).role === "user" ||
-        (m as ChatMessage).role === "assistant") &&
-      typeof (m as ChatMessage).content === "string",
-  );
+  const items: FeedItem[] = [];
+  for (const raw of input) {
+    if (!raw || typeof raw !== "object") continue;
+    const m = raw as Record<string, unknown>;
+    // Old format: { role, content } without kind — migrate
+    if (!m.kind && (m.role === "user" || m.role === "assistant") && typeof m.content === "string") {
+      items.push({ kind: "message", role: m.role as "user" | "assistant", content: m.content });
+      continue;
+    }
+    // New message format
+    if (m.kind === "message" && (m.role === "user" || m.role === "assistant") && typeof m.content === "string") {
+      items.push({ kind: "message", role: m.role as "user" | "assistant", content: m.content });
+      continue;
+    }
+    // Findings are transient — do NOT restore from storage
+  }
+  return items;
 }
 
 function sanitizeThreads(input: unknown): ChatThread[] {
@@ -340,35 +350,25 @@ function sanitizeThreads(input: unknown): ChatThread[] {
   const threads: ChatThread[] = [];
   for (const raw of input) {
     if (!raw || typeof raw !== "object") continue;
-    const maybe = raw as Partial<ChatThread>;
-    const messages = sanitizeMessages(maybe.messages);
+    const maybe = raw as Partial<ChatThread> & { messages?: unknown };
+    // Support both old "messages" key and new "feed" key
+    const feed = sanitizeFeed(maybe.feed ?? maybe.messages);
     const updatedAt =
       typeof maybe.updatedAt === "number" && Number.isFinite(maybe.updatedAt)
         ? maybe.updatedAt
         : Date.now();
     threads.push({
-      id:
-        typeof maybe.id === "string" && maybe.id.trim()
-          ? maybe.id
-          : createThreadId(),
-      title:
-        typeof maybe.title === "string" && maybe.title.trim()
-          ? maybe.title.trim()
-          : deriveThreadTitle(messages),
+      id: typeof maybe.id === "string" && maybe.id.trim() ? maybe.id : createThreadId(),
+      title: typeof maybe.title === "string" && maybe.title.trim() ? maybe.title.trim() : deriveThreadTitle(feed),
       updatedAt,
-      messages,
+      feed,
     });
   }
   return threads.slice(0, MAX_CHAT_THREADS);
 }
 
-function createThread(messages: ChatMessage[] = []): ChatThread {
-  return {
-    id: createThreadId(),
-    title: deriveThreadTitle(messages),
-    updatedAt: Date.now(),
-    messages,
-  };
+function createThread(feed: FeedItem[] = []): ChatThread {
+  return { id: createThreadId(), title: deriveThreadTitle(feed), updatedAt: Date.now(), feed };
 }
 
 function loadPersistedChatState(): PersistedChatState {
@@ -391,8 +391,8 @@ function loadPersistedChatState(): PersistedChatState {
 
     // Migration from old single-chat schema: { open, messages, input }
     if (threads.length === 0) {
-      const migratedMessages = sanitizeMessages(parsedAny.messages);
-      threads = [createThread(migratedMessages)];
+      const migratedFeed = sanitizeFeed(parsedAny.messages);
+      threads = [createThread(migratedFeed)];
     }
 
     const activeThreadId =
@@ -415,6 +415,92 @@ function loadPersistedChatState(): PersistedChatState {
       input: "",
     };
   }
+}
+
+function FindingCard({
+  item,
+  onFix,
+  onExplain,
+  onDismiss,
+  isStreaming,
+}: {
+  item: FeedFinding;
+  onFix: (id: string) => void;
+  onExplain: (finding: FeedFinding) => void;
+  onDismiss: (id: string) => void;
+  isStreaming: boolean;
+}) {
+  const canDismiss =
+    item.stage === "detected" ||
+    item.stage === "verified" ||
+    item.stage === "escalated";
+
+  return (
+    <div className={`agp-finding-card agp-finding-stage-${item.stage}`}>
+      <div className="agp-finding-card-header">
+        <span className={`agp-finding-dot agp-finding-dot-${item.severity}`} />
+        <span className="agp-finding-service">{item.service}</span>
+        {canDismiss && (
+          <button className="agp-finding-dismiss" onClick={() => onDismiss(item.id)} title="Dismiss">
+            ×
+          </button>
+        )}
+      </div>
+      <div className="agp-finding-summary">{item.summary}</div>
+
+      {item.stage === "detected" && (
+        <div className="agp-finding-actions">
+          {item.fix &&
+            (item.fix.type === "restart-container" || item.fix.type === "kill-port") && (
+              <button
+                className="agp-finding-fix-btn"
+                onClick={() => onFix(item.id)}
+                disabled={isStreaming}
+              >
+                {item.fix.type === "restart-container"
+                  ? "Restart container"
+                  : `Kill :${item.fix.port}`}
+              </button>
+            )}
+          <button
+            className="agp-finding-explain-btn"
+            onClick={() => onExplain(item)}
+            disabled={isStreaming}
+          >
+            Explain
+          </button>
+        </div>
+      )}
+
+      {(item.stage === "fixing" || item.stage === "fixed") && (
+        <div className="agp-finding-status">
+          <span className="agp-step-spinner" />
+          {item.stage === "fixing" ? "Applying fix…" : "Verifying…"}
+        </div>
+      )}
+
+      {item.stage === "verified" && (
+        <div className="agp-finding-status agp-finding-status-verified">
+          ✓ Fixed
+        </div>
+      )}
+
+      {item.stage === "escalated" && (
+        <div className="agp-finding-escalated">
+          <div className="agp-finding-status agp-finding-status-escalated">
+            {item.error ?? "Needs manual review"}
+          </div>
+          <button
+            className="agp-finding-explain-btn"
+            onClick={() => onExplain(item)}
+            disabled={isStreaming}
+          >
+            Explain
+          </button>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function AgentPanel({
@@ -446,12 +532,8 @@ export function AgentPanel({
     Record<string, string>
   >({});
   const [historyOpen, setHistoryOpen] = useState(false);
-  const [findingsOpen, setFindingsOpen] = useState(false);
   const [detectionEnabled, setDetectionEnabled] = useState(false);
   const [autopilotEnabled, setAutopilotEnabled] = useState(false);
-  const [incidentState, setIncidentState] = useState<
-    Record<string, IncidentRecord>
-  >({});
 
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -465,7 +547,7 @@ export function AgentPanel({
     () => threads.find((thread) => thread.id === activeThreadId) ?? null,
     [threads, activeThreadId],
   );
-  const messages = activeThread?.messages ?? [];
+  const feed = useMemo(() => activeThread?.feed ?? [], [activeThread]);
 
   const nodeIdsForScan = useMemo(
     () => nodes.filter((n) => n.type !== "external").map((n) => n.id),
@@ -482,11 +564,12 @@ export function AgentPanel({
   );
   const activeIncidentCount = useMemo(
     () =>
-      Object.values(incidentState).filter(
-        (i) =>
-          i.stage === "detected" || i.stage === "fixing" || i.stage === "fixed",
+      feed.filter(
+        (item): item is FeedFinding =>
+          item.kind === "finding" &&
+          (item.stage === "detected" || item.stage === "fixing" || item.stage === "fixed"),
       ).length,
-    [incidentState],
+    [feed],
   );
 
   const nodeMap = useMemo(() => {
@@ -652,16 +735,16 @@ export function AgentPanel({
     endRef.current?.scrollIntoView({ behavior: smooth ? "smooth" : "auto" });
   }, []);
 
-  const updateActiveThreadMessages = useCallback(
-    (nextMessages: ChatMessage[]) => {
+  const updateActiveThreadFeed = useCallback(
+    (nextFeed: FeedItem[]) => {
       setThreads((prev) => {
         const idx = prev.findIndex((thread) => thread.id === activeThreadId);
         if (idx === -1) return prev;
         const current = prev[idx];
         const updated: ChatThread = {
           ...current,
-          messages: nextMessages,
-          title: deriveThreadTitle(nextMessages),
+          feed: nextFeed,
+          title: deriveThreadTitle(nextFeed),
           updatedAt: Date.now(),
         };
         const next = [updated, ...prev.slice(0, idx), ...prev.slice(idx + 1)];
@@ -676,9 +759,9 @@ export function AgentPanel({
       const trimmed = text.trim();
       if (!trimmed || isStreaming || !activeThread) return;
 
-      const userMsg: ChatMessage = { role: "user", content: trimmed };
-      const updatedMessages = [...messages, userMsg];
-      updateActiveThreadMessages(updatedMessages);
+      const userItem: FeedMessage = { kind: "message", role: "user", content: trimmed };
+      const updatedFeed = [...feed, userItem];
+      updateActiveThreadFeed(updatedFeed);
       setInput("");
       setIsStreaming(true);
       streamingTextRef.current = "";
@@ -716,9 +799,15 @@ export function AgentPanel({
         });
       });
 
+      // Only send message items to the AI (not finding cards)
+      const chatMessages = feed
+        .filter((item): item is FeedMessage => item.kind === "message")
+        .map(({ role, content }) => ({ role, content }));
+      const aiMessages = [...chatMessages, { role: "user" as const, content: trimmed }];
+
       try {
         const result = await window.electronAPI.agentChat(
-          updatedMessages,
+          aiMessages,
           nodeIdsForScan,
           tabLabel ?? null,
           { autopilotEnabled },
@@ -726,12 +815,11 @@ export function AgentPanel({
         window.electronAPI.offChatToken();
         window.electronAPI.offChatStep();
         window.electronAPI.offFixProposal();
-        // Capture text NOW before finally clears the ref
         const completedText = streamingTextRef.current;
         if (result.success) {
-          updateActiveThreadMessages([
-            ...updatedMessages,
-            { role: "assistant", content: completedText },
+          updateActiveThreadFeed([
+            ...updatedFeed,
+            { kind: "message", role: "assistant", content: completedText },
           ]);
         } else {
           setError(result.error ?? "No response");
@@ -752,11 +840,12 @@ export function AgentPanel({
     [
       activeThread,
       autopilotEnabled,
+      feed,
       isStreaming,
-      messages,
       nodeIdsForScan,
       scrollToEnd,
-      updateActiveThreadMessages,
+      tabLabel,
+      updateActiveThreadFeed,
     ],
   );
 
@@ -806,51 +895,6 @@ export function AgentPanel({
     return () => window.removeEventListener("fere:investigate-node", handler);
   }, []);
 
-  // Feature: health degradation → surface alert + fetch logs for containers
-  useEffect(() => {
-    const handler = async (e: Event) => {
-      const { node } = (e as CustomEvent<{ node: GraphNode }>).detail ?? {};
-      if (!node) return;
-
-      const incidentId = `health-${node.id}`;
-      let logExcerpt = "";
-
-      // Fetch last 20 log lines for Docker containers
-      if (node.isDockerContainer && node.containerId) {
-        try {
-          const result = await window.electronAPI.getContainerLogTail(node.containerId, 20);
-          if (result.success && result.logs) {
-            // Extract last meaningful lines, skip empty
-            const lines = result.logs.split("\n").filter(Boolean).slice(-10);
-            logExcerpt = lines.join("\n");
-          }
-        } catch {
-          // non-critical, skip
-        }
-      }
-
-      const portStr = (node.ports ?? []).map(p => p.port).join(", ");
-      const detail = logExcerpt
-        ? `**${node.name}** went red${portStr ? ` (port ${portStr})` : ""}.\n\nLast logs:\n\`\`\`\n${logExcerpt}\n\`\`\``
-        : `**${node.name}** health dropped to red${portStr ? ` (port ${portStr})` : ""}. No container logs available.`;
-
-      setIncidentState((prev) => ({
-        ...prev,
-        [incidentId]: {
-          id: incidentId,
-          service: node.name,
-          summary: `${node.name} went red`,
-          stage: "detected",
-          updatedAt: Date.now(),
-          error: detail,
-        },
-      }));
-      setUnreadFindings((n) => n + 1);
-    };
-
-    window.addEventListener("fere:health-degraded", handler as EventListener);
-    return () => window.removeEventListener("fere:health-degraded", handler as EventListener);
-  }, []);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -894,62 +938,104 @@ export function AgentPanel({
     setAutopilotEnabled((v) => !v);
   }, []);
 
-  const appendAutoMessage = useCallback(
-    (content: string) => {
-      const autoMsg: ChatMessage = { role: "user", content };
+  const appendFindingToFeed = useCallback(
+    (finding: AgentFinding) => {
+      const item: FeedFinding = {
+        kind: "finding",
+        id: finding.id,
+        service: finding.service,
+        summary: finding.summary,
+        severity: finding.severity,
+        fix: finding.fix,
+        stage: "detected",
+        insertedAt: Date.now(),
+      };
       setThreads((prev) => {
-        const idx = prev.findIndex((thread) => thread.id === activeThreadId);
+        const idx = prev.findIndex((t) => t.id === activeThreadId);
         if (idx === -1) return prev;
         const current = prev[idx];
-        const nextMessages = [...current.messages, autoMsg];
+        // Don't duplicate
+        if (current.feed.some((f) => f.kind === "finding" && f.id === finding.id)) return prev;
         const updated: ChatThread = {
           ...current,
-          messages: nextMessages,
-          title: deriveThreadTitle(nextMessages),
+          feed: [...current.feed, item],
           updatedAt: Date.now(),
         };
-        const next = [updated, ...prev.slice(0, idx), ...prev.slice(idx + 1)];
-        return next.slice(0, MAX_CHAT_THREADS);
+        return [updated, ...prev.slice(0, idx), ...prev.slice(idx + 1)].slice(0, MAX_CHAT_THREADS);
       });
     },
     [activeThreadId],
   );
 
-  const updateIncidentStage = useCallback(
-    (finding: AgentFinding, stage: IncidentStage, error?: string) => {
-      setIncidentState((prev) => ({
-        ...prev,
-        [finding.id]: {
-          id: finding.id,
-          service: finding.service,
-          summary: finding.summary,
-          stage,
-          updatedAt: Date.now(),
-          ...(error ? { error } : {}),
-        },
-      }));
+  // Feature: health degradation → surface alert + fetch logs for containers
+  useEffect(() => {
+    const handler = async (e: Event) => {
+      const { node } = (e as CustomEvent<{ node: GraphNode }>).detail ?? {};
+      if (!node) return;
+
+      const incidentId = `health-${node.id}`;
+      let logExcerpt = "";
+
+      if (node.isDockerContainer && node.containerId) {
+        try {
+          const result = await window.electronAPI.getContainerLogTail(node.containerId, 20);
+          if (result.success && result.logs) {
+            const lines = result.logs.split("\n").filter(Boolean).slice(-10);
+            logExcerpt = lines.join("\n");
+          }
+        } catch { /* non-critical */ }
+      }
+
+      const portStr = (node.ports ?? []).map((p) => p.port).join(", ");
+      const detail = logExcerpt
+        ? `**${node.name}** went red${portStr ? ` (port ${portStr})` : ""}.\n\nLast logs:\n\`\`\`\n${logExcerpt}\n\`\`\``
+        : `**${node.name}** health dropped to red${portStr ? ` (port ${portStr})` : ""}. No container logs available.`;
+
+      appendFindingToFeed({
+        id: incidentId,
+        severity: "critical",
+        category: "health",
+        service: node.name,
+        summary: `${node.name} went red`,
+        detail,
+        impact: null,
+        affectedServices: [],
+        fix: null,
+      });
+      setUnreadFindings((n) => n + 1);
+    };
+
+    window.addEventListener("fere:health-degraded", handler as EventListener);
+    return () => window.removeEventListener("fere:health-degraded", handler as EventListener);
+  }, [appendFindingToFeed]);
+
+  const updateFindingInFeed = useCallback(
+    (id: string, stage: IncidentStage, error?: string) => {
+      setThreads((prev) => {
+        const idx = prev.findIndex((t) => t.id === activeThreadId);
+        if (idx === -1) return prev;
+        const current = prev[idx];
+        const newFeed = current.feed.map((item) => {
+          if (item.kind === "finding" && item.id === id) {
+            return { ...item, stage, ...(error !== undefined ? { error } : {}) };
+          }
+          return item;
+        });
+        if (newFeed === current.feed) return prev;
+        const updated: ChatThread = { ...current, feed: newFeed, updatedAt: Date.now() };
+        return [updated, ...prev.slice(0, idx), ...prev.slice(idx + 1)].slice(0, MAX_CHAT_THREADS);
+      });
     },
-    [],
+    [activeThreadId],
   );
 
-  const toSafeAction = useCallback((finding: AgentFinding) => {
-    const fix = finding.fix;
+  const toSafeAction = useCallback((fix: AgentFixAction | null) => {
     if (!fix) return null;
-    if (
-      fix.type === "restart-container" &&
-      typeof fix.containerId === "string"
-    ) {
-      return {
-        type: "restart-container" as const,
-        containerId: fix.containerId,
-      };
+    if (fix.type === "restart-container" && typeof fix.containerId === "string") {
+      return { type: "restart-container" as const, containerId: fix.containerId };
     }
-    if (
-      fix.type === "kill-port" &&
-      Number.isInteger(fix.port) &&
-      Number.isInteger(fix.pid)
-    ) {
-      return { type: "kill-port" as const, port: fix.port, pid: fix.pid };
+    if (fix.type === "kill-port" && Number.isInteger(fix.port) && Number.isInteger(fix.pid)) {
+      return { type: "kill-port" as const, port: fix.port!, pid: fix.pid! };
     }
     return null;
   }, []);
@@ -1002,66 +1088,40 @@ export function AgentPanel({
   const runAutopilotForFindings = useCallback(
     async (findings: AgentFinding[]) => {
       for (const finding of findings) {
-        const safeAction = toSafeAction(finding);
+        const safeAction = toSafeAction(finding.fix);
         if (!safeAction) {
-          updateIncidentStage(
-            finding,
-            "escalated",
-            "no safe autopilot action available",
-          );
-          appendAutoMessage(
-            `[auto-escalation] Detected issue for **${finding.service}** requires manual confirmation.`,
-          );
+          updateFindingInFeed(finding.id, "escalated", "no safe autopilot action available");
           continue;
         }
         if (autopilotInFlightRef.current.has(finding.id)) continue;
 
         autopilotInFlightRef.current.add(finding.id);
-        updateIncidentStage(finding, "fixing");
-        appendAutoMessage(
-          `[auto-autopilot] Autopilot applying safe fix for **${finding.service}** — ${finding.summary}.`,
-        );
+        updateFindingInFeed(finding.id, "fixing");
 
         try {
           const result = await window.electronAPI.agentApplyFix(safeAction);
           if (!result.success) {
-            updateIncidentStage(
-              finding,
-              "escalated",
-              result.error ?? "autopilot apply failed",
-            );
-            appendAutoMessage(
-              `[auto-escalation] Autopilot could not apply fix for **${finding.service}**. Manual action required.`,
-            );
+            updateFindingInFeed(finding.id, "escalated", result.error ?? "autopilot apply failed");
             continue;
           }
 
-          updateIncidentStage(finding, "fixed");
+          updateFindingInFeed(finding.id, "fixed");
           await new Promise((resolve) => setTimeout(resolve, 1600));
           const verify = await verifyAutopilotFix(finding);
           if (verify.verified) {
-            updateIncidentStage(finding, "verified");
-            appendAutoMessage(
-              `[auto-verified] Autopilot fixed and verified **${finding.service}**.`,
-            );
+            updateFindingInFeed(finding.id, "verified");
           } else {
-            updateIncidentStage(finding, "escalated", verify.reason);
-            appendAutoMessage(
-              `[auto-escalation] Autopilot applied a fix for **${finding.service}**, but verification failed (${verify.reason}). Manual follow-up needed.`,
-            );
+            updateFindingInFeed(finding.id, "escalated", verify.reason);
           }
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
-          updateIncidentStage(finding, "escalated", msg);
-          appendAutoMessage(
-            `[auto-escalation] Autopilot encountered an error for **${finding.service}**: ${msg}`,
-          );
+          updateFindingInFeed(finding.id, "escalated", msg);
         } finally {
           autopilotInFlightRef.current.delete(finding.id);
         }
       }
     },
-    [appendAutoMessage, toSafeAction, updateIncidentStage, verifyAutopilotFix],
+    [toSafeAction, updateFindingInFeed, verifyAutopilotFix],
   );
 
   const surfaceFindings = useCallback(
@@ -1072,65 +1132,44 @@ export function AgentPanel({
       const inScope = findings.filter((f) => {
         const serviceName = f.service.toLowerCase();
         if (nodeMap.has(serviceName)) return true;
-
-        // System tab: allow findings even when a service dropped out of graph
-        // (for example, just-stopped containers).
-        if (!tabLabel) return true;
-
-        // Project tabs: keep findings scoped by tab label fallback when the
-        // service is no longer present in the current node map.
-        if (normalizedTab && serviceName.includes(normalizedTab)) return true;
-
-        if (
-          Array.isArray(f.affectedServices) &&
-          f.affectedServices.some((svc) => {
-            const name = svc.toLowerCase();
-            return (
-              nodeMap.has(name) || (normalizedTab && name.includes(normalizedTab))
-            );
-          })
-        ) {
-          return true;
-        }
-
-        return false;
+        if (!normalizedTab) return true;
+        return f.affectedServices?.some((svc) => {
+          const name = svc.toLowerCase();
+          return nodeMap.has(name) || (normalizedTab && name.includes(normalizedTab));
+        });
       });
       if (inScope.length === 0) return;
 
-      const existing =
-        surfacedByTabRef.current.get(tabScopeKey) ?? new Set<string>();
+      const existing = surfacedByTabRef.current.get(tabScopeKey) ?? new Set<string>();
       const unseen = inScope.filter((f) => !existing.has(f.id));
       if (unseen.length === 0) return;
 
       unseen.forEach((f) => existing.add(f.id));
       surfacedByTabRef.current.set(tabScopeKey, existing);
-      unseen.forEach((f) => updateIncidentStage(f, "detected"));
+      unseen.forEach((f) => updateFindingInFeed(f.id, "detected"));
+
+      // Push finding cards to feed
+      unseen.forEach((f) => appendFindingToFeed(f));
 
       if (autopilotEnabled) {
         void runAutopilotForFindings(unseen);
         return;
       }
 
-      if (open && !isStreaming) {
-        const top = unseen[0];
-        void send(
-          `[auto-diagnosis] A new issue was detected: **${top.service}** — ${top.summary}. Please diagnose and propose a fix.`,
-        );
-      } else {
-        setUnreadFindings(
-          (n) => n + unseen.filter((f) => f.severity === "critical").length,
-        );
+      // Increment unread badge if panel is closed
+      if (!open) {
+        setUnreadFindings((n) => n + unseen.filter((f) => f.severity === "critical").length);
       }
     },
     [
+      appendFindingToFeed,
       autopilotEnabled,
-      isStreaming,
       nodeMap,
       open,
       runAutopilotForFindings,
-      send,
       tabScopeKey,
-      updateIncidentStage,
+      tabLabel,
+      updateFindingInFeed,
     ],
   );
 
@@ -1147,96 +1186,52 @@ export function AgentPanel({
   useEffect(() => {
     if (!detectionEnabled) return;
     window.electronAPI.onFindingResolved((ids: string[]) => {
-      setIncidentState((prev) => {
-        const next = { ...prev };
-        for (const id of ids) {
-          if (next[id] && next[id].stage !== "verified") {
-            next[id] = { ...next[id], stage: "verified", updatedAt: Date.now() };
-          }
-        }
-        return next;
-      });
-      // Allow resolved findings to resurface if they return
+      ids.forEach((id) => updateFindingInFeed(id, "verified"));
       const existing = surfacedByTabRef.current.get(tabScopeKey);
       if (existing) ids.forEach((id) => existing.delete(id));
     });
     return () => window.electronAPI.offFindingResolved();
-  }, [detectionEnabled, tabScopeKey]);
+  }, [detectionEnabled, tabScopeKey, updateFindingInFeed]);
 
-  // Subscribe to worsened findings — bump severity in incidentState
+  // Subscribe to worsened findings
   useEffect(() => {
     if (!detectionEnabled) return;
     window.electronAPI.onFindingWorsened((findings: AgentFinding[]) => {
-      setIncidentState((prev) => {
-        const next = { ...prev };
-        for (const f of findings) {
-          if (next[f.id]) {
-            next[f.id] = { ...next[f.id], stage: "detected", updatedAt: Date.now() };
-          }
-        }
-        return next;
-      });
+      findings.forEach((f) => updateFindingInFeed(f.id, "detected"));
       const criticals = findings.filter((f) => f.severity === "critical");
       if (criticals.length > 0) setUnreadFindings((n) => n + criticals.length);
     });
     return () => window.electronAPI.offFindingWorsened();
-  }, [detectionEnabled]);
+  }, [detectionEnabled, updateFindingInFeed]);
 
-  // After a verify turn completes, scan and auto-resolve incidents that are gone
-  const isStreamingRef = useRef(isStreaming);
-  isStreamingRef.current = isStreaming;
-  useEffect(() => {
-    if (isStreaming) return;
-    const last = messages[messages.length - 1];
-    const secondLast = messages[messages.length - 2];
-    if (
-      !secondLast ||
-      secondLast.role !== "user" ||
-      (!secondLast.content.startsWith("[auto-verifying]") &&
-        !secondLast.content.startsWith("[auto-verify]"))
-    ) return;
-    if (!last || last.role !== "assistant") return;
-    // Run a scan to clear incidents that are no longer present
-    let cancelled = false;
-    window.electronAPI.agentScan(nodeIdsForScan).then((result) => {
-      if (cancelled || !result.success) return;
-      const currentIds = new Set(result.findings.map((f) => f.id));
-      setIncidentState((prev) => {
-        const next = { ...prev };
-        let changed = false;
-        for (const [id, inc] of Object.entries(next)) {
-          if (
-            (inc.stage === "fixed" || inc.stage === "detected") &&
-            !currentIds.has(id)
-          ) {
-            next[id] = { ...inc, stage: "verified", updatedAt: Date.now() };
-            changed = true;
-          }
-        }
-        return changed ? next : prev;
+  const dismissFinding = useCallback(
+    (id: string) => {
+      setThreads((prev) => {
+        const idx = prev.findIndex((t) => t.id === activeThreadId);
+        if (idx === -1) return prev;
+        const current = prev[idx];
+        const updated = { ...current, feed: current.feed.filter((item) => !(item.kind === "finding" && item.id === id)) };
+        return [updated, ...prev.slice(0, idx), ...prev.slice(idx + 1)].slice(0, MAX_CHAT_THREADS);
       });
-    }).catch(() => {});
-    return () => { cancelled = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isStreaming]);
-
-  const dismissFinding = useCallback((id: string) => {
-    setIncidentState((prev) => {
-      const next = { ...prev };
-      delete next[id];
-      return next;
-    });
-    const existing = surfacedByTabRef.current.get(tabScopeKey);
-    if (existing) existing.delete(id);
-  }, [tabScopeKey]);
+      const existing = surfacedByTabRef.current.get(tabScopeKey);
+      if (existing) existing.delete(id);
+    },
+    [activeThreadId, tabScopeKey],
+  );
 
   const dismissAllFindings = useCallback(() => {
-    setIncidentState({});
+    setThreads((prev) => {
+      const idx = prev.findIndex((t) => t.id === activeThreadId);
+      if (idx === -1) return prev;
+      const current = prev[idx];
+      const updated = { ...current, feed: current.feed.filter((item) => item.kind !== "finding") };
+      return [updated, ...prev.slice(0, idx), ...prev.slice(idx + 1)].slice(0, MAX_CHAT_THREADS);
+    });
     surfacedByTabRef.current.delete(tabScopeKey);
-  }, [tabScopeKey]);
+  }, [activeThreadId, tabScopeKey]);
 
   const exportFindings = useCallback(() => {
-    const data = Object.values(incidentState);
+    const data = feed.filter((item): item is FeedFinding => item.kind === "finding");
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -1244,7 +1239,7 @@ export function AgentPanel({
     a.download = `sentinel-findings-${new Date().toISOString().slice(0, 19).replace(/:/g, "-")}.json`;
     a.click();
     URL.revokeObjectURL(url);
-  }, [incidentState]);
+  }, [feed]);
 
   // On tab switch, run a fresh scoped scan so findings surface per project tab.
   useEffect(() => {
@@ -1301,9 +1296,12 @@ export function AgentPanel({
           fix.command &&
           fix.cwd
         ) {
+          const chatMessages = feed
+            .filter((item): item is FeedMessage => item.kind === "message")
+            .map(({ role, content }) => ({ role, content }));
           await window.electronAPI.agentChat(
             [
-              ...messages,
+              ...chatMessages,
               {
                 role: "user",
                 content: `Execute this now using launch_in_terminal: ${fix.command} in ${fix.cwd}`,
@@ -1317,30 +1315,6 @@ export function AgentPanel({
         setPendingFixes((prev) =>
           prev.map((f) => (f.id === fix.id ? { ...f, status: "done" } : f)),
         );
-        if (autopilotEnabled) {
-          // Keep autopilot deterministic: verify with a scan instead of waiting
-          // on an extra LLM verification turn.
-          const verifyResult = await window.electronAPI.agentScan(nodeIdsForScan);
-          if (!verifyResult.success) {
-            appendAutoMessage(
-              `[auto-escalation] Autopilot applied a fix, but verification scan failed (${verifyResult.error ?? "scan failed"}).`,
-            );
-          } else {
-            const activeIssues = verifyResult.findings.filter(
-              (f) => f.severity === "critical" || f.severity === "warning",
-            ).length;
-            appendAutoMessage(
-              `[auto-verified] Autopilot applied and verified fix: "${fix.description}". Active issues remaining: ${activeIssues}.`,
-            );
-          }
-        } else {
-          // Trigger verification turn
-          setTimeout(() => {
-            void send(
-              `[auto-verifying] The fix was applied: "${fix.description}". Please verify using your tools that the issue is resolved and confirm the service is healthy.`,
-            );
-          }, 1500);
-        }
       } catch (err) {
         setPendingFixes((prev) =>
           prev.map((f) =>
@@ -1351,7 +1325,7 @@ export function AgentPanel({
         );
       }
     },
-    [autopilotEnabled, messages, nodeIdsForScan, tabLabel, send],
+    [autopilotEnabled, feed, nodeIdsForScan, tabLabel],
   );
 
   useEffect(() => {
@@ -1391,6 +1365,54 @@ export function AgentPanel({
       setError(null);
     },
     [activeThreadId],
+  );
+
+  const applyFindingFix = useCallback(
+    (findingId: string) => {
+      const finding = feed.find(
+        (item): item is FeedFinding => item.kind === "finding" && item.id === findingId,
+      );
+      if (!finding) return;
+      const safeAction = toSafeAction(finding.fix);
+      if (!safeAction) return;
+
+      updateFindingInFeed(findingId, "fixing");
+      void window.electronAPI.agentApplyFix(safeAction).then((result) => {
+        if (!result.success) {
+          updateFindingInFeed(findingId, "escalated", result.error ?? "apply failed");
+          return;
+        }
+        updateFindingInFeed(findingId, "fixed");
+        setTimeout(() => {
+          void window.electronAPI.agentScan(nodeIdsForScan).then((scan) => {
+            if (!scan.success) {
+              updateFindingInFeed(findingId, "escalated", "verify scan failed");
+              return;
+            }
+            const stillFailing = scan.findings.some(
+              (f) => f.id === findingId || f.service === finding.service,
+            );
+            updateFindingInFeed(
+              findingId,
+              stillFailing ? "escalated" : "verified",
+              stillFailing ? "issue persists after fix" : undefined,
+            );
+          });
+        }, 1600);
+      });
+    },
+    [feed, nodeIdsForScan, toSafeAction, updateFindingInFeed],
+  );
+
+  const explainFinding = useCallback(
+    (finding: FeedFinding) => {
+      const isUnhealthy = finding.severity === "critical" || finding.severity === "warning";
+      const msg = isUnhealthy
+        ? `Investigate **${finding.service}**: ${finding.summary}. What's causing this and how do I fix it?`
+        : `Tell me about **${finding.service}**: ${finding.summary}.`;
+      void send(msg);
+    },
+    [send],
   );
 
   return (
@@ -1459,24 +1481,10 @@ export function AgentPanel({
                   </span>
                 )}
               </button>
-              {Object.keys(incidentState).length > 0 && (
-                <button
-                  className={`agp-scan-btn agp-findings-btn${findingsOpen ? " agp-scan-btn-active" : ""}`}
-                  onClick={() => { setFindingsOpen((v) => !v); setHistoryOpen(false); }}
-                  title="Active findings"
-                  disabled={isStreaming}
-                >
-                  <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M6.5 1.5l5 9H1.5l5-9z" />
-                    <path d="M6.5 5v2.5M6.5 9.2h.01" />
-                  </svg>
-                  <span style={{ marginLeft: 3 }}>{Object.keys(incidentState).length}</span>
-                </button>
-              )}
               {threads.length > 0 && (
                 <button
                   className={`agp-scan-btn agp-history-btn agp-header-utility${historyOpen ? " agp-scan-btn-active" : ""}`}
-                  onClick={() => { setHistoryOpen((v) => !v); setFindingsOpen(false); }}
+                  onClick={() => { setHistoryOpen((v) => !v); }}
                   title="Chat history"
                   disabled={isStreaming}
                 >
@@ -1539,7 +1547,7 @@ export function AgentPanel({
                     <div className="agp-history-item-content">
                       <span className="agp-history-title">{thread.title}</span>
                       <span className="agp-history-meta">
-                        {thread.messages.length} msg ·{" "}
+                        {thread.feed.filter(item => item.kind === "message").length} msg ·{" "}
                         {formatThreadTimestamp(thread.updatedAt)}
                       </span>
                     </div>
@@ -1566,52 +1574,9 @@ export function AgentPanel({
             </div>
           )}
 
-          {findingsOpen && (
-            <div className="agp-history-panel">
-              <div className="agp-findings-toolbar">
-                <span className="agp-findings-toolbar-title">
-                  {Object.keys(incidentState).length} finding{Object.keys(incidentState).length !== 1 ? "s" : ""}
-                </span>
-                <div className="agp-findings-toolbar-actions">
-                  <button className="agp-findings-action-btn" onClick={exportFindings} title="Export as JSON">
-                    <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M6 1v7M3.5 5.5L6 8l2.5-2.5" />
-                      <path d="M2 10h8" />
-                    </svg>
-                    Export
-                  </button>
-                  <button className="agp-findings-action-btn agp-findings-dismiss-all" onClick={dismissAllFindings} title="Dismiss all">
-                    Clear all
-                  </button>
-                </div>
-              </div>
-              {Object.values(incidentState)
-                .sort((a, b) => b.updatedAt - a.updatedAt)
-                .map((inc) => (
-                  <div key={inc.id} className={`agp-history-item agp-finding-item agp-finding-stage-${inc.stage}`}>
-                    <div className="agp-history-item-content">
-                      <span className="agp-history-title">{inc.service}: {inc.summary}</span>
-                      <span className="agp-history-meta agp-finding-stage-label">
-                        {inc.stage}{inc.error ? ` — ${inc.error}` : ""}
-                      </span>
-                    </div>
-                    <button
-                      className="agp-history-delete"
-                      onClick={() => dismissFinding(inc.id)}
-                      title="Dismiss"
-                    >
-                      <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
-                        <path d="M1.5 1.5l8 8M9.5 1.5l-8 8" />
-                      </svg>
-                    </button>
-                  </div>
-                ))}
-            </div>
-          )}
-
           {/* Chat body */}
           <div className="agp-chat-body">
-            {messages.length === 0 && !showStream ? (
+            {feed.length === 0 && !showStream ? (
               /* Welcome / starter screen */
               <div className="agp-welcome">
                 <img
@@ -1639,116 +1604,34 @@ export function AgentPanel({
                 </div>
               </div>
             ) : (
-              /* Message list */
+              /* Unified feed */
               <div className="agp-messages">
-                {messages.map((msg, i) => {
-                  const isAuto =
-                    msg.role === "user" && msg.content.startsWith("[auto-");
-                  if (isAuto) {
-                    const isVerifying =
-                      msg.content.startsWith("[auto-verifying]") ||
-                      msg.content.startsWith("[auto-verify]");
-                    const isVerified = msg.content.startsWith("[auto-verified]");
-                    const isAutopilot =
-                      msg.content.startsWith("[auto-autopilot]");
-                    const isEscalation =
-                      msg.content.startsWith("[auto-escalation]");
-                    const label = isVerified
-                      ? "Fix verified"
-                      : isVerifying
-                      ? "Fix applied · verifying…"
-                      : isAutopilot
-                        ? "Autopilot applying safe fix…"
-                        : isEscalation
-                          ? "Escalation · manual follow-up needed"
-                          : "Issue detected · diagnosing…";
+                {feed.map((item, i) => {
+                  if (item.kind === "finding") {
                     return (
-                      <div key={i} className="agp-auto-trigger">
-                        <span className="agp-step-icon" aria-hidden="true">
-                          {isEscalation ? (
-                            <svg
-                              width="12"
-                              height="12"
-                              viewBox="0 0 12 12"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="1.4"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            >
-                              <path d="M6 1.5l4.5 8H1.5L6 1.5z" />
-                              <path d="M6 4.2v2.6M6 8.4h.01" />
-                            </svg>
-                          ) : isVerified ? (
-                            <svg
-                              width="12"
-                              height="12"
-                              viewBox="0 0 12 12"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="1.4"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            >
-                              <path d="M2.2 6.3l2.3 2.3 5-5" />
-                            </svg>
-                          ) : isVerifying ? (
-                            <svg
-                              width="12"
-                              height="12"
-                              viewBox="0 0 12 12"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="1.4"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            >
-                              <rect
-                                x="1"
-                                y="1.5"
-                                width="10"
-                                height="9"
-                                rx="1.5"
-                              />
-                              <path d="M3.5 4.5l2 2-2 2" />
-                              <path d="M7.5 8.5h1" />
-                            </svg>
-                          ) : (
-                            <svg
-                              width="12"
-                              height="12"
-                              viewBox="0 0 12 12"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="1.4"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            >
-                              <circle cx="5" cy="5" r="2.5" />
-                              <path d="M7 7l2.5 2.5" />
-                            </svg>
-                          )}
-                        </span>
-                        <span className="agp-step-label">{label}</span>
-                        {(isAutopilot || isVerifying || (!isEscalation && !isVerified && !isAutopilot)) && (
-                          <span className="agp-step-spinner" />
-                        )}
-                      </div>
+                      <FindingCard
+                        key={item.id}
+                        item={item}
+                        onFix={applyFindingFix}
+                        onExplain={explainFinding}
+                        onDismiss={dismissFinding}
+                        isStreaming={isStreaming}
+                      />
                     );
                   }
                   return (
-                    <div key={i} className={`agp-msg agp-msg-${msg.role}`}>
+                    <div key={i} className={`agp-msg agp-msg-${item.role}`}>
                       <div className="agp-msg-bubble">
-                        {msg.role === "assistant" ? (
+                        {item.role === "assistant" ? (
                           <ReactMarkdown
                             className="agp-markdown"
                             rehypePlugins={[rehypeHighlight]}
                             components={mdComponents}
                           >
-                            {msg.content}
+                            {item.content}
                           </ReactMarkdown>
                         ) : (
-                          msg.content
+                          item.content
                         )}
                       </div>
                     </div>

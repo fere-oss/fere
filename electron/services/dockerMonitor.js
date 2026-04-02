@@ -750,14 +750,103 @@ function parseNetworkContainers(inspectData) {
 }
 
 /**
- * Build container-to-container connections based on shared networks
- * Returns edges representing which containers can communicate
+ * Parse depends_on relationships from a docker-compose file.
+ * Returns a Map of serviceName -> Set<dependencyServiceName>.
+ * Uses line-by-line state machine to avoid fragile regex nesting.
+ */
+function parseComposeDependsOn(composePath) {
+  try {
+    const content = fs.readFileSync(composePath, 'utf8');
+    const result = new Map();
+    const lines = content.split('\n');
+
+    let inServices = false;
+    let currentService = null;
+    let inDependsOn = false;
+
+    for (const rawLine of lines) {
+      // Top-level key (no leading whitespace)
+      if (/^\S/.test(rawLine)) {
+        inServices = rawLine.trimEnd() === 'services:';
+        currentService = null;
+        inDependsOn = false;
+        continue;
+      }
+
+      if (!inServices) continue;
+
+      // 2-space-indented service name
+      const serviceMatch = rawLine.match(/^  ([A-Za-z0-9][A-Za-z0-9_.-]*):\s*$/);
+      if (serviceMatch) {
+        currentService = serviceMatch[1];
+        inDependsOn = false;
+        continue;
+      }
+
+      if (!currentService) continue;
+
+      // 4-space-indented "depends_on:" key
+      if (/^    depends_on:/.test(rawLine)) {
+        // Short inline form: depends_on: [a, b, c]
+        const inlineMatch = rawLine.match(/depends_on:\s*\[([^\]]*)\]/);
+        if (inlineMatch) {
+          const deps = result.get(currentService) || new Set();
+          for (const dep of inlineMatch[1].split(',')) {
+            const d = dep.trim().replace(/['"]/g, '');
+            if (d) deps.add(d);
+          }
+          if (deps.size > 0) result.set(currentService, deps);
+          inDependsOn = false;
+        } else {
+          inDependsOn = true;
+        }
+        continue;
+      }
+
+      // Lines deeper than 4 spaces while in depends_on block
+      if (inDependsOn) {
+        // Stop when we exit the depends_on indentation level
+        if (!/^    /.test(rawLine) || /^    \S/.test(rawLine)) {
+          // Back to a new 4-space key — end of depends_on block
+          inDependsOn = false;
+          continue;
+        }
+
+        // List form: "      - servicename"
+        const listMatch = rawLine.match(/^\s+-\s+([A-Za-z0-9][A-Za-z0-9_.-]*)\s*$/);
+        if (listMatch) {
+          const deps = result.get(currentService) || new Set();
+          deps.add(listMatch[1]);
+          result.set(currentService, deps);
+          continue;
+        }
+
+        // Condition form: "      servicename:" (6-space indented key)
+        const condMatch = rawLine.match(/^      ([A-Za-z0-9][A-Za-z0-9_.-]*):\s*$/);
+        if (condMatch) {
+          const deps = result.get(currentService) || new Set();
+          deps.add(condMatch[1]);
+          result.set(currentService, deps);
+        }
+      }
+    }
+
+    return result;
+  } catch {
+    return new Map();
+  }
+}
+
+/**
+ * Build container-to-container connections based on docker-compose depends_on.
+ * Falls back to shared custom networks when no compose file is available.
+ * Returns edges representing which containers depend on which.
  */
 function buildContainerConnections(containers, networks) {
   const connections = [];
   const connectionSet = new Set();
 
-  // First, group containers by Docker Compose project
+  // Group containers by Docker Compose project
   const containersByProject = new Map();
   for (const container of containers) {
     const project = container.labels?.['com.docker.compose.project'];
@@ -769,26 +858,55 @@ function buildContainerConnections(containers, networks) {
     }
   }
 
-  // Create edges between containers in the same Docker Compose project
+  // For each compose project, build edges from depends_on declarations
   for (const [project, projectContainers] of containersByProject) {
-    for (let i = 0; i < projectContainers.length; i++) {
-      for (let j = i + 1; j < projectContainers.length; j++) {
-        const containerA = projectContainers[i];
-        const containerB = projectContainers[j];
-
-        const edgeKey = [containerA.id, containerB.id].sort().join('-');
-
-        if (!connectionSet.has(edgeKey)) {
-          connectionSet.add(edgeKey);
-          connections.push({
-            sourceContainerId: containerA.id,
-            targetContainerId: containerB.id,
-            networkName: `compose:${project}`,
-            networkId: null,
-          });
-        }
+    // Find the compose file path from any container's labels
+    let composePath = null;
+    for (const c of projectContainers) {
+      const configFiles = c.labels?.['com.docker.compose.project.config_files'];
+      if (configFiles) {
+        composePath = configFiles.split(',')[0].trim();
+        break;
       }
     }
+
+    if (composePath) {
+      const dependsOn = parseComposeDependsOn(composePath);
+
+      if (dependsOn.size > 0) {
+        // Build a map from service name -> container id
+        const serviceToContainer = new Map();
+        for (const c of projectContainers) {
+          const svc = c.labels?.['com.docker.compose.service'];
+          if (svc) serviceToContainer.set(svc, c);
+        }
+
+        // Create a directed edge: service -> dependency (service depends on dep)
+        for (const [serviceName, deps] of dependsOn) {
+          const sourceContainer = serviceToContainer.get(serviceName);
+          if (!sourceContainer) continue;
+          for (const dep of deps) {
+            const targetContainer = serviceToContainer.get(dep);
+            if (!targetContainer) continue;
+            const edgeKey = `${sourceContainer.id}->${targetContainer.id}`;
+            if (!connectionSet.has(edgeKey)) {
+              connectionSet.add(edgeKey);
+              connections.push({
+                sourceContainerId: sourceContainer.id,
+                targetContainerId: targetContainer.id,
+                networkName: `compose:${project}`,
+                networkId: null,
+              });
+            }
+          }
+        }
+        // Done for this project — skip the all-pairs fallback
+        continue;
+      }
+    }
+
+    // Fallback: no compose file or no depends_on — no edges for this project
+    // (all-pairs was causing false connections; prefer empty over wrong)
   }
 
   // Also create edges for containers on shared custom networks (non-default)
