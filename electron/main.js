@@ -139,6 +139,7 @@ const {
   buildChatContext,
   buildNodeDetails,
 } = require("./services/fereAgent");
+const { openInClaudeCode } = require("./services/claudeCodeBrief");
 const OpenAI = require("openai").default;
 const sentry = require("./sentry");
 const { generateHTML } = require("./services/graphExporter");
@@ -558,7 +559,9 @@ ipcMain.handle("start-snapshot-stream", async (event) => {
           }
         }
 
-        const windows = BrowserWindow.getAllWindows().filter((w) => !w.isDestroyed());
+        const windows = BrowserWindow.getAllWindows().filter(
+          (w) => !w.isDestroyed(),
+        );
 
         // Broadcast resolved finding IDs
         if (resolvedIds.length > 0) {
@@ -581,7 +584,9 @@ ipcMain.handle("start-snapshot-stream", async (event) => {
           );
 
           // OS notification for critical findings when window is not focused
-          const criticals = newFindings.filter((f) => f.severity === "critical");
+          const criticals = newFindings.filter(
+            (f) => f.severity === "critical",
+          );
           const now = Date.now();
           const notifyThrottle = 60_000; // 1 notification per finding per minute
           for (const f of criticals) {
@@ -2138,6 +2143,39 @@ ipcMain.handle("agent:apply-fix", async (_, action) => {
   }
 });
 
+ipcMain.handle("agent:open-in-claude-code", async (_, finding) => {
+  try {
+    const snapshot = snapshotScheduler?.previousSnapshot ?? null;
+
+    // Fetch recent logs for the primary service if it's a Docker container
+    let containerLogs = null;
+    const containers = snapshot?.docker?.containers ?? [];
+    const match = containers.find(
+      (c) =>
+        c.labels?.["com.docker.compose.service"] === finding.service ||
+        c.name === finding.service ||
+        c.name?.endsWith(`-${finding.service}-1`),
+    );
+    if (match) {
+      try {
+        containerLogs = await agentDockerLogs(match.id, 80);
+      } catch {
+        /* skip */
+      }
+    }
+
+    return openInClaudeCode(finding, snapshot, containerLogs);
+  } catch (err) {
+    console.error("agent:open-in-claude-code error:", err);
+    return {
+      success: false,
+      briefPath: "",
+      projectPath: "",
+      error: err.message,
+    };
+  }
+});
+
 // ── Agent tools (filesystem + runtime) ───────────────────────────────────────
 
 function agentAllowedPath(normalized, allowedPaths) {
@@ -2418,8 +2456,9 @@ function resolveNodeByName(name, scopedNodes, allNodes) {
   );
   if (exactInScope) return exactInScope;
   return (
-    allNodes.find((node) => String(node?.name || "").toLowerCase() === normalized) ??
-    null
+    allNodes.find(
+      (node) => String(node?.name || "").toLowerCase() === normalized,
+    ) ?? null
   );
 }
 
@@ -2429,11 +2468,19 @@ function findMentionedScopedNode(text, scopedNodes) {
   }
   const lower = text.toLowerCase();
   const candidates = scopedNodes
-    .filter((node) => node?.type !== "external" && typeof node?.name === "string" && node.name.trim())
+    .filter(
+      (node) =>
+        node?.type !== "external" &&
+        typeof node?.name === "string" &&
+        node.name.trim(),
+    )
     .sort((a, b) => b.name.length - a.name.length);
 
   for (const node of candidates) {
-    const pattern = new RegExp(`(^|[^a-z0-9])${escapeRegExp(node.name.toLowerCase())}([^a-z0-9]|$)`, "i");
+    const pattern = new RegExp(
+      `(^|[^a-z0-9])${escapeRegExp(node.name.toLowerCase())}([^a-z0-9]|$)`,
+      "i",
+    );
     if (pattern.test(lower)) return node;
   }
   return null;
@@ -2497,7 +2544,8 @@ function formatConnectionLines(targetNode, edges, allNodes, direction) {
 
   return relevant.map((edge) => {
     const peerId = direction === "incoming" ? edge.source : edge.target;
-    const peerName = allNodes.find((node) => node.id === peerId)?.name ?? peerId;
+    const peerName =
+      allNodes.find((node) => node.id === peerId)?.name ?? peerId;
     const sourcePort = Number(edge.sourcePort) || 0;
     const targetPort = Number(edge.targetPort) || 0;
     if (sourcePort === 0 && targetPort === 0) {
@@ -2511,30 +2559,60 @@ function buildDirectNodeAnswer(questionType, targetNode, allNodes, edges) {
   if (!questionType || !targetNode) return null;
 
   if (questionType === "incoming-connections") {
-    const incoming = formatConnectionLines(targetNode, edges, allNodes, "incoming");
+    const incoming = formatConnectionLines(
+      targetNode,
+      edges,
+      allNodes,
+      "incoming",
+    );
     if (incoming.length === 0) {
       return `**${targetNode.name}** has no incoming connections in the current graph snapshot.`;
     }
-    return [`Incoming connections for **${targetNode.name}**:`, ...incoming].join("\n");
+    return [
+      `Incoming connections for **${targetNode.name}**:`,
+      ...incoming,
+    ].join("\n");
   }
 
   if (questionType === "outgoing-connections") {
-    const outgoing = formatConnectionLines(targetNode, edges, allNodes, "outgoing");
+    const outgoing = formatConnectionLines(
+      targetNode,
+      edges,
+      allNodes,
+      "outgoing",
+    );
     if (outgoing.length === 0) {
       return `**${targetNode.name}** has no outgoing connections in the current graph snapshot.`;
     }
-    return [`Outgoing connections for **${targetNode.name}**:`, ...outgoing].join("\n");
+    return [
+      `Outgoing connections for **${targetNode.name}**:`,
+      ...outgoing,
+    ].join("\n");
   }
 
   if (questionType === "all-connections") {
-    const incoming = formatConnectionLines(targetNode, edges, allNodes, "incoming");
-    const outgoing = formatConnectionLines(targetNode, edges, allNodes, "outgoing");
+    const incoming = formatConnectionLines(
+      targetNode,
+      edges,
+      allNodes,
+      "incoming",
+    );
+    const outgoing = formatConnectionLines(
+      targetNode,
+      edges,
+      allNodes,
+      "outgoing",
+    );
     const lines = [`Connections for **${targetNode.name}**:`];
     lines.push(
-      incoming.length > 0 ? `Incoming:\n${incoming.join("\n")}` : "Incoming:\n- None",
+      incoming.length > 0
+        ? `Incoming:\n${incoming.join("\n")}`
+        : "Incoming:\n- None",
     );
     lines.push(
-      outgoing.length > 0 ? `Outgoing:\n${outgoing.join("\n")}` : "Outgoing:\n- None",
+      outgoing.length > 0
+        ? `Outgoing:\n${outgoing.join("\n")}`
+        : "Outgoing:\n- None",
     );
     return lines.join("\n");
   }
@@ -2566,7 +2644,7 @@ function buildPolicyPrompt(policies, options = {}) {
     "- If a command fails, diagnose from real output, apply a fix, and retry automatically. Only ask a question after retries are exhausted or a destructive decision is required.",
     "- For run/start requests, verify with explicit evidence (for example: docker ps, docker compose ps/logs, health endpoint, lsof) before claiming success.",
     "- Never mention a filename/path unless you first verified it with tool output (list_directory/read_file). If uncertain, list the directory first.",
-    "- When asked about how a library, service, or external API is used: you MUST grep the codebase for it before answering. Always use case-insensitive grep (e.g. run_command: grep -irl \"groq\" --include=\"*.py\" .). Library names in Python source are lowercase even when the user writes them capitalized (Groq→groq, Gemini→genai or google.generativeai, OpenAI→openai). Reading one file and not finding it is NOT sufficient — grep case-insensitively, then read the files that match.",
+    '- When asked about how a library, service, or external API is used: you MUST grep the codebase for it before answering. Always use case-insensitive grep (e.g. run_command: grep -irl "groq" --include="*.py" .). Library names in Python source are lowercase even when the user writes them capitalized (Groq→groq, Gemini→genai or google.generativeai, OpenAI→openai). Reading one file and not finding it is NOT sufficient — grep case-insensitively, then read the files that match.',
     "- NEVER respond with 'it might be elsewhere' or 'let me know if you have specific files' when asked about source code. That answer is always wrong. Grep first, then read, then answer.",
     "- For any dockerize/containerization request, call `discover_docker_plan` first and follow its constraints before writing Dockerfile/compose files.",
     "- When the user asks to run/start a project or service, call `discover_runbook` first for that project root and use only commands verified from files.",
@@ -2838,7 +2916,9 @@ async function agentDiscoverDockerPlan(projectRoot, projectPaths) {
       "docker-compose.yaml",
       "compose.yml",
       "compose.yaml",
-    ].map((f) => path.join(root, f)).find(fs.existsSync),
+    ]
+      .map((f) => path.join(root, f))
+      .find(fs.existsSync),
     rootDockerfile: path.join(root, "Dockerfile"),
     backendDockerfile: path.join(root, "Dockerfile.backend"),
     frontendDockerfile: path.join(root, "Dockerfile.frontend"),
@@ -2858,7 +2938,9 @@ async function agentDiscoverDockerPlan(projectRoot, projectPaths) {
     backendReqs: fs.existsSync(files.backendReqs),
     frontendPkg: fs.existsSync(files.frontendPkg),
     frontendLock: fs.existsSync(files.frontendLock),
-    agentsDir: fs.existsSync(files.agentsDir) && fs.statSync(files.agentsDir).isDirectory(),
+    agentsDir:
+      fs.existsSync(files.agentsDir) &&
+      fs.statSync(files.agentsDir).isDirectory(),
   };
 
   const lines = [];
@@ -2867,19 +2949,35 @@ async function agentDiscoverDockerPlan(projectRoot, projectPaths) {
   lines.push("Detected files:");
   lines.push(`- compose file: ${has.compose ? files.compose : "none"}`);
   lines.push(`- root Dockerfile: ${has.rootDockerfile ? "present" : "absent"}`);
-  lines.push(`- Dockerfile.backend: ${has.backendDockerfile ? "present" : "absent"}`);
-  lines.push(`- Dockerfile.frontend: ${has.frontendDockerfile ? "present" : "absent"}`);
+  lines.push(
+    `- Dockerfile.backend: ${has.backendDockerfile ? "present" : "absent"}`,
+  );
+  lines.push(
+    `- Dockerfile.frontend: ${has.frontendDockerfile ? "present" : "absent"}`,
+  );
   lines.push(`- backend/main.py: ${has.backendMain ? "present" : "absent"}`);
-  lines.push(`- backend/requirements.txt: ${has.backendReqs ? "present" : "absent"}`);
-  lines.push(`- frontend/package.json: ${has.frontendPkg ? "present" : "absent"}`);
+  lines.push(
+    `- backend/requirements.txt: ${has.backendReqs ? "present" : "absent"}`,
+  );
+  lines.push(
+    `- frontend/package.json: ${has.frontendPkg ? "present" : "absent"}`,
+  );
   lines.push(`- agents/: ${has.agentsDir ? "present" : "absent"}`);
   lines.push("");
   lines.push("Required dockerization constraints:");
-  lines.push("- Never invent server.js or package.json in project root unless they already exist.");
-  lines.push("- For split repos (backend + frontend), do not use one generic root Dockerfile for both.");
-  lines.push("- Backend image must include backend/main.py entrypoint target and include agents/ when imports use agents.*");
+  lines.push(
+    "- Never invent server.js or package.json in project root unless they already exist.",
+  );
+  lines.push(
+    "- For split repos (backend + frontend), do not use one generic root Dockerfile for both.",
+  );
+  lines.push(
+    "- Backend image must include backend/main.py entrypoint target and include agents/ when imports use agents.*",
+  );
   lines.push("- If google-genai==1.29.0 is present, httpx must be >=0.28.1.");
-  lines.push("- Prefer docker compose up --build -d, then verify with compose ps + compose logs + health checks.");
+  lines.push(
+    "- Prefer docker compose up --build -d, then verify with compose ps + compose logs + health checks.",
+  );
 
   if (has.backendReqs) {
     try {
@@ -2889,7 +2987,9 @@ async function agentDiscoverDockerPlan(projectRoot, projectPaths) {
       if (hasGenai && hasBadHttpx) {
         lines.push("");
         lines.push("Known blocker detected:");
-        lines.push("- backend/requirements.txt has google-genai==1.29.0 with httpx<0.28 (conflict).");
+        lines.push(
+          "- backend/requirements.txt has google-genai==1.29.0 with httpx<0.28 (conflict).",
+        );
       }
     } catch {}
   }
@@ -3173,28 +3273,41 @@ ipcMain.handle("agent:chat", async (event, payload) => {
       // Offline fallback: run deterministic scan and stream findings as response
       try {
         const offlineSnap = await getSystemSnapshot();
-        const offlineFindings = await runScan(offlineSnap, Array.isArray(nodeIds) ? nodeIds : undefined);
-        const criticals = offlineFindings.filter((f) => f.severity === "critical");
-        const warnings = offlineFindings.filter((f) => f.severity === "warning");
-        const suggestions = offlineFindings.filter((f) => f.severity === "suggestion");
+        const offlineFindings = await runScan(
+          offlineSnap,
+          Array.isArray(nodeIds) ? nodeIds : undefined,
+        );
+        const criticals = offlineFindings.filter(
+          (f) => f.severity === "critical",
+        );
+        const warnings = offlineFindings.filter(
+          (f) => f.severity === "warning",
+        );
+        const suggestions = offlineFindings.filter(
+          (f) => f.severity === "suggestion",
+        );
 
-        let text = "**Sentinel — Deterministic scan results** *(no LLM — set `OPENAI_API_KEY` to enable AI chat)*\n\n";
+        let text =
+          "**Sentinel — Deterministic scan results** *(no LLM — set `OPENAI_API_KEY` to enable AI chat)*\n\n";
         if (offlineFindings.length === 0) {
           text += "No issues detected across your running services.";
         } else {
           if (criticals.length > 0) {
             text += `### Critical (${criticals.length})\n`;
-            for (const f of criticals) text += `- **${f.service}**: ${f.summary}\n  ${f.detail}\n`;
+            for (const f of criticals)
+              text += `- **${f.service}**: ${f.summary}\n  ${f.detail}\n`;
             text += "\n";
           }
           if (warnings.length > 0) {
             text += `### Warnings (${warnings.length})\n`;
-            for (const f of warnings) text += `- **${f.service}**: ${f.summary}\n`;
+            for (const f of warnings)
+              text += `- **${f.service}**: ${f.summary}\n`;
             text += "\n";
           }
           if (suggestions.length > 0) {
             text += `### Suggestions (${suggestions.length})\n`;
-            for (const f of suggestions) text += `- **${f.service}**: ${f.summary}\n`;
+            for (const f of suggestions)
+              text += `- **${f.service}**: ${f.summary}\n`;
           }
         }
 
@@ -3254,7 +3367,9 @@ ipcMain.handle("agent:chat", async (event, payload) => {
       ? allNodes.filter((node) => scopedIds.has(node.id))
       : allNodes;
     const scopedEdges = scopedIds
-      ? allEdges.filter((edge) => scopedIds.has(edge.source) || scopedIds.has(edge.target))
+      ? allEdges.filter(
+          (edge) => scopedIds.has(edge.source) || scopedIds.has(edge.target),
+        )
       : allEdges;
     const baseSystemPrompt = await buildChatContext(
       snapshot,
@@ -3272,10 +3387,9 @@ ipcMain.handle("agent:chat", async (event, payload) => {
       .find((message) => message?.role === "user");
     const latestUserText = normalizeMessageText(latestUserMessage?.content);
     const directQuestionType = classifyDirectNodeQuestion(latestUserText);
-    const prefetchedNode =
-      shouldPrefetchNodeDetails(latestUserText)
-        ? findMentionedScopedNode(latestUserText, scopedNodes)
-        : null;
+    const prefetchedNode = shouldPrefetchNodeDetails(latestUserText)
+      ? findMentionedScopedNode(latestUserText, scopedNodes)
+      : null;
     const prefetchedNodeDetails = prefetchedNode
       ? buildNodeDetails(prefetchedNode, scopedNodes, scopedEdges)
       : null;
@@ -3324,7 +3438,7 @@ ipcMain.handle("agent:chat", async (event, payload) => {
       forcedExecutionAttempted = false,
     ) {
       const stream = await openai.chat.completions.create({
-        model: "gpt-4o",
+        model: "gpt-4o-mini",
         messages: turnMessages,
         tools: AGENT_TOOLS,
         tool_choice: "auto",
@@ -3388,7 +3502,10 @@ ipcMain.handle("agent:chat", async (event, payload) => {
                 });
                 result = agentReadFile(args.path, projectPaths);
               } else if (tc.function.name === "write_file") {
-                const targetPath = typeof args.path === "string" ? path.normalize(args.path) : "";
+                const targetPath =
+                  typeof args.path === "string"
+                    ? path.normalize(args.path)
+                    : "";
                 const targetBase = path.basename(targetPath).toLowerCase();
                 const isDockerConfigWrite =
                   targetBase === "dockerfile" ||
@@ -3399,7 +3516,9 @@ ipcMain.handle("agent:chat", async (event, payload) => {
                   targetBase === "compose.yaml";
                 if (isDockerConfigWrite) {
                   const hasPreflight = Array.from(dockerPreflightRoots).some(
-                    (rootPath) => targetPath === rootPath || targetPath.startsWith(rootPath + path.sep),
+                    (rootPath) =>
+                      targetPath === rootPath ||
+                      targetPath.startsWith(rootPath + path.sep),
                   );
                   if (!hasPreflight) {
                     result = `Error: must call discover_docker_plan(project_root) for this project before writing Dockerfile/compose files.`;
@@ -3440,7 +3559,10 @@ ipcMain.handle("agent:chat", async (event, payload) => {
                   args.project_root,
                   projectPaths,
                 );
-                if (typeof result === "string" && !result.startsWith("Error:")) {
+                if (
+                  typeof result === "string" &&
+                  !result.startsWith("Error:")
+                ) {
                   dockerPreflightRoots.add(path.normalize(args.project_root));
                 }
               } else if (tc.function.name === "list_directory") {
@@ -3456,7 +3578,11 @@ ipcMain.handle("agent:chat", async (event, payload) => {
                   label: `details: ${args.name}`,
                   path: args.name,
                 });
-                const node = resolveNodeByName(args.name, scopedNodes, allNodes);
+                const node = resolveNodeByName(
+                  args.name,
+                  scopedNodes,
+                  allNodes,
+                );
                 const detailNodes = scopedIds ? scopedNodes : allNodes;
                 const detailEdges = scopedIds ? scopedEdges : allEdges;
                 result = buildNodeDetails(node, detailNodes, detailEdges);

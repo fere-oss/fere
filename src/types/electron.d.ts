@@ -688,6 +688,7 @@ export interface ElectronAPI {
   // Fere Agent
   agentScan: (nodeIds?: string[]) => Promise<{ success: boolean; findings: AgentFinding[]; error?: string }>;
   agentApplyFix: (action: AgentFixAction) => Promise<{ success: boolean; error?: string }>;
+  openInClaudeCode: (finding: { id: string; service: string; summary: string; severity: AgentSeverity; detail?: string; impact?: string | null; affectedServices?: string[] }) => Promise<{ success: boolean; briefPath: string; projectPath: string; error?: string }>;
   agentChat: (
     messages: { role: 'user' | 'assistant'; content: string }[],
     nodeIds?: string[],

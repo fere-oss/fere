@@ -422,12 +422,14 @@ function FindingCard({
   onFix,
   onExplain,
   onDismiss,
+  onOpenInClaudeCode,
   isStreaming,
 }: {
   item: FeedFinding;
   onFix: (id: string) => void;
   onExplain: (finding: FeedFinding) => void;
   onDismiss: (id: string) => void;
+  onOpenInClaudeCode: (finding: FeedFinding) => void;
   isStreaming: boolean;
 }) {
   const canDismiss =
@@ -469,6 +471,14 @@ function FindingCard({
           >
             Explain
           </button>
+          <button
+            className="agp-finding-claudecode-btn"
+            onClick={() => onOpenInClaudeCode(item)}
+            disabled={isStreaming}
+            title="Open investigation brief in Claude Code"
+          >
+            Open in Claude Code
+          </button>
         </div>
       )}
 
@@ -490,13 +500,23 @@ function FindingCard({
           <div className="agp-finding-status agp-finding-status-escalated">
             {item.error ?? "Needs manual review"}
           </div>
-          <button
-            className="agp-finding-explain-btn"
-            onClick={() => onExplain(item)}
-            disabled={isStreaming}
-          >
-            Explain
-          </button>
+          <div className="agp-finding-actions">
+            <button
+              className="agp-finding-explain-btn"
+              onClick={() => onExplain(item)}
+              disabled={isStreaming}
+            >
+              Explain
+            </button>
+            <button
+              className="agp-finding-claudecode-btn"
+              onClick={() => onOpenInClaudeCode(item)}
+              disabled={isStreaming}
+              title="Open investigation brief in Claude Code"
+            >
+              Open in Claude Code
+            </button>
+          </div>
         </div>
       )}
     </div>
@@ -1415,6 +1435,19 @@ export function AgentPanel({
     [send],
   );
 
+  const [claudeCodeToast, setClaudeCodeToast] = useState<string | null>(null);
+
+  const openFindingInClaudeCode = useCallback(async (finding: FeedFinding) => {
+    const result = await window.electronAPI.openInClaudeCode(finding);
+    if (result.success) {
+      setClaudeCodeToast(`Brief copied to clipboard. Terminal opened at ${result.projectPath} — run \`claude\` and paste.`);
+      setTimeout(() => setClaudeCodeToast(null), 6000);
+    } else {
+      setClaudeCodeToast(`Could not open Terminal: ${result.error ?? "unknown error"}`);
+      setTimeout(() => setClaudeCodeToast(null), 4000);
+    }
+  }, []);
+
   return (
     <>
       <button
@@ -1615,6 +1648,7 @@ export function AgentPanel({
                         onFix={applyFindingFix}
                         onExplain={explainFinding}
                         onDismiss={dismissFinding}
+                        onOpenInClaudeCode={openFindingInClaudeCode}
                         isStreaming={isStreaming}
                       />
                     );
@@ -1871,6 +1905,10 @@ export function AgentPanel({
             </button>
           </div>
         </div>
+      )}
+
+      {claudeCodeToast && (
+        <div className="agp-claudecode-toast">{claudeCodeToast}</div>
       )}
     </>
   );

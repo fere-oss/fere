@@ -12281,6 +12281,44 @@ body.sentinel-panel-open .main-content {
 }
 .agp-finding-explain-btn:disabled { opacity: 0.35; cursor: not-allowed; }
 
+.agp-finding-claudecode-btn {
+  all: unset;
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 9px;
+  border: 1px solid var(--border-color);
+  border-radius: 5px;
+  font-size: 11px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.agp-finding-claudecode-btn:hover:not(:disabled) {
+  background: var(--bg-muted);
+  color: var(--text-primary);
+  border-color: var(--border-hover);
+}
+.agp-finding-claudecode-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+.agp-claudecode-toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 10px 16px;
+  font-size: 12px;
+  color: var(--text-primary);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.18);
+  z-index: 9999;
+  max-width: 480px;
+  text-align: center;
+  pointer-events: none;
+}
+
 .agp-finding-status {
   font-size: 11px;
   color: var(--text-muted);
