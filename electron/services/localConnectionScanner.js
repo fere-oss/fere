@@ -130,4 +130,105 @@ function clearLocalConnectionCache(projectPath) {
   }
 }
 
-module.exports = { scanLocalConnections, clearLocalConnectionCache };
+// ============================================
+// Docker service hostname scanning (synchronous)
+// ============================================
+
+const dockerScanCache = new Map();
+const DOCKER_SCAN_CACHE_TTL_MS = 30_000;
+
+/**
+ * Build a regex that matches service hostname references in source/config files.
+ * Patterns detected (each captures the service name in group 1..4):
+ *   1. ://serviceName            — URL scheme (mongodb://mongodb, redis://redis)
+ *   2. serviceName:PORT          — host:port (catalogue:8080, mysql:3306)
+ *   3. ['"]serviceName['"]       — exact quoted string ('redis', "catalogue")
+ *   4. =serviceName\b            — bare value assignment (ENV X=redis, REDIS_HOST=redis)
+ */
+function buildServiceNameRegex(serviceNames) {
+  if (serviceNames.size === 0) return null;
+  const escaped = Array.from(serviceNames)
+    .sort((a, b) => b.length - a.length)
+    .map(n => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  const alt = escaped.join('|');
+  // G1: ://service               mongodb://mongodb, redis://redis
+  // G2: service:PORT             catalogue:8080, mysql:3306
+  // G3: @service                 amqp://guest:guest@rabbitmq/
+  // G4: _HOST/_URL/_URI=service  REDIS_HOST=redis, MONGO_URL=mongodb (only host-typed vars)
+  // G5: fallback/default         || 'redis', or 'redis', getenv('X', 'redis')
+  // G6: host=service             mysql:host=mysql (PDO DSN), spring.rabbitmq.host=rabbitmq
+  return new RegExp(
+    `(?::\\/\\/(${alt})|(${alt}):\\d{2,5}|@(${alt})(?:[/:\\s]|$)|(?:_HOST|_HOSTNAME|_URL|_URI|_ADDR)=(${alt})\\b|(?:\\|\\||\\bor\\b|,)\\s*['"]?(${alt})['"]|\\bhost=(${alt})\\b)`,
+    'g'
+  );
+}
+
+/**
+ * Synchronously scan sourceDir for references to Docker compose service hostnames.
+ * Detects patterns like ://catalogue, redis:6379, mongodb://mongodb:27017.
+ * Returns a Set<string> of service names referenced in the source code.
+ * Results are cached for DOCKER_SCAN_CACHE_TTL_MS.
+ */
+function scanDockerServiceConnections(sourceDir, serviceNames) {
+  if (!sourceDir || serviceNames.size === 0) return new Set();
+  if (!fs.existsSync(sourceDir)) return new Set();
+
+  const cacheKey = `${sourceDir}:${Array.from(serviceNames).sort().join(',')}`;
+  const cached = dockerScanCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < DOCKER_SCAN_CACHE_TTL_MS) {
+    return cached.refs;
+  }
+
+  const regex = buildServiceNameRegex(serviceNames);
+  if (!regex) return new Set();
+
+  const allRefs = new Set();
+
+  const extractRefs = (content) => {
+    regex.lastIndex = 0;
+    let m;
+    while ((m = regex.exec(content)) !== null) {
+      const name = m[1] || m[2] || m[3] || m[4] || m[5] || m[6];
+      if (name && serviceNames.has(name)) allRefs.add(name);
+    }
+  };
+
+  const files = findFiles(sourceDir);
+  for (const file of files) {
+    try {
+      const stat = fs.statSync(file);
+      if (stat.size > MAX_FILE_BYTES) continue;
+      const base = path.basename(file).toLowerCase();
+      if (
+        base.includes('.test.') || base.includes('.spec.') ||
+        base.includes('.mock.') || base.endsWith('.d.ts')
+      ) continue;
+
+      extractRefs(fs.readFileSync(file, 'utf8'));
+    } catch { /* unreadable file — skip */ }
+  }
+
+  // Also scan Dockerfile and common config files not covered by CODE_EXTENSIONS
+  const extraFiles = ['Dockerfile', 'docker-compose.yml', 'docker-compose.yaml'];
+  for (const name of extraFiles) {
+    const filePath = path.join(sourceDir, name);
+    if (!fs.existsSync(filePath)) continue;
+    try {
+      extractRefs(fs.readFileSync(filePath, 'utf8'));
+    } catch { /* skip */ }
+  }
+
+  // .env files often hold base URLs like REDIS_URL=redis://redis:6379
+  for (const envName of ENV_FILES) {
+    const envPath = path.join(sourceDir, envName);
+    if (!fs.existsSync(envPath)) continue;
+    try {
+      extractRefs(fs.readFileSync(envPath, 'utf8'));
+    } catch { /* skip */ }
+  }
+
+  dockerScanCache.set(cacheKey, { timestamp: Date.now(), refs: allRefs });
+  return allRefs;
+}
+
+module.exports = { scanLocalConnections, clearLocalConnectionCache, scanDockerServiceConnections };

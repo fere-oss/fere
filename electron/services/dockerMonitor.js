@@ -2,6 +2,7 @@ const { execFile } = require('child_process');
 const { promisify } = require('util');
 const fs = require('fs');
 const path = require('path');
+const { scanDockerServiceConnections } = require('./localConnectionScanner');
 
 const execFileAsync = promisify(execFile);
 
@@ -754,6 +755,80 @@ function parseNetworkContainers(inspectData) {
  * Returns a Map of serviceName -> Set<dependencyServiceName>.
  * Uses line-by-line state machine to avoid fragile regex nesting.
  */
+/**
+ * Parse build.context for each service in a compose file.
+ * Returns Map<serviceName, absoluteSourcePath>.
+ * Services using `image:` (no build) are omitted.
+ */
+function parseComposeBuildContexts(composePath) {
+  try {
+    const composeDir = path.dirname(composePath);
+    const content = fs.readFileSync(composePath, 'utf8');
+    const lines = content.split('\n');
+    const contexts = new Map();
+
+    let inServices = false;
+    let currentService = null;
+    let inBuild = false;
+
+    for (const rawLine of lines) {
+      if (/^\S/.test(rawLine)) {
+        inServices = rawLine.trimEnd() === 'services:';
+        currentService = null;
+        inBuild = false;
+        continue;
+      }
+      if (!inServices) continue;
+
+      const serviceMatch = rawLine.match(/^  ([A-Za-z0-9][A-Za-z0-9_.-]*):\s*$/);
+      if (serviceMatch) {
+        currentService = serviceMatch[1];
+        inBuild = false;
+        continue;
+      }
+
+      if (!currentService) continue;
+
+      // build: ./path  (string shorthand — context is the value itself)
+      const buildStringMatch = rawLine.match(/^    build:\s+(.+)\s*$/);
+      if (buildStringMatch) {
+        const val = buildStringMatch[1].trim().replace(/['"]/g, '');
+        if (!val.startsWith('{')) {
+          contexts.set(currentService, path.resolve(composeDir, val));
+          inBuild = false;
+        } else {
+          inBuild = true;
+        }
+        continue;
+      }
+
+      // build: (block form)
+      if (/^    build:\s*$/.test(rawLine)) {
+        inBuild = true;
+        continue;
+      }
+
+      if (inBuild) {
+        // Exit build block on any other 4-space key
+        if (!/^    /.test(rawLine) || /^    \S/.test(rawLine)) {
+          inBuild = false;
+          continue;
+        }
+        const ctxMatch = rawLine.match(/^      context:\s+(.+)\s*$/);
+        if (ctxMatch) {
+          const ctx = ctxMatch[1].trim().replace(/['"]/g, '');
+          contexts.set(currentService, path.resolve(composeDir, ctx));
+          inBuild = false;
+        }
+      }
+    }
+
+    return contexts;
+  } catch {
+    return new Map();
+  }
+}
+
 function parseComposeDependsOn(composePath) {
   try {
     const content = fs.readFileSync(composePath, 'utf8');
@@ -846,6 +921,17 @@ function buildContainerConnections(containers, networks) {
   const connections = [];
   const connectionSet = new Set();
 
+  // Build a global service name → container map across ALL compose projects.
+  // Robot-shop (and similar setups) start each service as a separate compose
+  // project, so per-project maps would only contain one service each.
+  // Using a global map lets source analysis find cross-project references.
+  const globalServiceToContainer = new Map();
+  for (const container of containers) {
+    const svc = container.labels?.['com.docker.compose.service'];
+    if (svc) globalServiceToContainer.set(svc, container);
+  }
+  const globalServiceNames = new Set(globalServiceToContainer.keys());
+
   // Group containers by Docker Compose project
   const containersByProject = new Map();
   for (const container of containers) {
@@ -858,7 +944,7 @@ function buildContainerConnections(containers, networks) {
     }
   }
 
-  // For each compose project, build edges from depends_on declarations
+  // For each compose project, build edges from source analysis or depends_on
   for (const [project, projectContainers] of containersByProject) {
     // Find the compose file path from any container's labels
     let composePath = null;
@@ -871,22 +957,29 @@ function buildContainerConnections(containers, networks) {
     }
 
     if (composePath) {
-      const dependsOn = parseComposeDependsOn(composePath);
+      // Per-project service map — needed for compose file parsing context
+      const serviceToContainer = new Map();
+      for (const c of projectContainers) {
+        const svc = c.labels?.['com.docker.compose.service'];
+        if (svc) serviceToContainer.set(svc, c);
+      }
 
-      if (dependsOn.size > 0) {
-        // Build a map from service name -> container id
-        const serviceToContainer = new Map();
-        for (const c of projectContainers) {
-          const svc = c.labels?.['com.docker.compose.service'];
-          if (svc) serviceToContainer.set(svc, c);
-        }
+      const buildContexts = parseComposeBuildContexts(composePath);
 
-        // Create a directed edge: service -> dependency (service depends on dep)
-        for (const [serviceName, deps] of dependsOn) {
-          const sourceContainer = serviceToContainer.get(serviceName);
+      if (buildContexts.size > 0) {
+        // Source analysis: scan each service's build context for hostname references.
+        // Search against ALL known services globally so cross-project references
+        // (e.g. robot-shop services each started as a separate compose project) are found.
+        for (const [serviceName, sourceDir] of buildContexts) {
+          const sourceContainer = serviceToContainer.get(serviceName) || globalServiceToContainer.get(serviceName);
           if (!sourceContainer) continue;
-          for (const dep of deps) {
-            const targetContainer = serviceToContainer.get(dep);
+
+          const otherServices = new Set(globalServiceNames);
+          otherServices.delete(serviceName);
+          const referencedServices = scanDockerServiceConnections(sourceDir, otherServices);
+
+          for (const dep of referencedServices) {
+            const targetContainer = globalServiceToContainer.get(dep);
             if (!targetContainer) continue;
             const edgeKey = `${sourceContainer.id}->${targetContainer.id}`;
             if (!connectionSet.has(edgeKey)) {
@@ -900,44 +993,34 @@ function buildContainerConnections(containers, networks) {
             }
           }
         }
-        // Done for this project — skip the all-pairs fallback
-        continue;
+      } else {
+        // No build contexts — fall back to depends_on
+        const dependsOn = parseComposeDependsOn(composePath);
+        for (const [serviceName, deps] of dependsOn) {
+          const sourceContainer = serviceToContainer.get(serviceName);
+          if (!sourceContainer) continue;
+          for (const dep of deps) {
+            const targetContainer = globalServiceToContainer.get(dep) || serviceToContainer.get(dep);
+            if (!targetContainer) continue;
+            const edgeKey = `${sourceContainer.id}->${targetContainer.id}`;
+            if (!connectionSet.has(edgeKey)) {
+              connectionSet.add(edgeKey);
+              connections.push({
+                sourceContainerId: sourceContainer.id,
+                targetContainerId: targetContainer.id,
+                networkName: `compose:${project}`,
+                networkId: null,
+              });
+            }
+          }
+        }
       }
-    }
 
-    // Fallback: no compose file or no depends_on — no edges for this project
-    // (all-pairs was causing false connections; prefer empty over wrong)
-  }
-
-  // Also create edges for containers on shared custom networks (non-default)
-  for (const network of networks) {
-    // Skip default networks that everything connects to
-    if (DEFAULT_NETWORKS.has(network.name)) {
       continue;
     }
 
-    const containersOnNetwork = network.containers || [];
-
-    // Create edges between each pair of containers on this network
-    for (let i = 0; i < containersOnNetwork.length; i++) {
-      for (let j = i + 1; j < containersOnNetwork.length; j++) {
-        const containerA = containersOnNetwork[i];
-        const containerB = containersOnNetwork[j];
-
-        // Create bidirectional edge key to prevent duplicates
-        const edgeKey = [containerA.id, containerB.id].sort().join('-');
-
-        if (!connectionSet.has(edgeKey)) {
-          connectionSet.add(edgeKey);
-          connections.push({
-            sourceContainerId: containerA.id,
-            targetContainerId: containerB.id,
-            networkName: network.name,
-            networkId: network.id,
-          });
-        }
-      }
-    }
+    // No compose file — no edges for this project
+    // (all-pairs was causing false connections; prefer empty over wrong)
   }
 
   return connections;
