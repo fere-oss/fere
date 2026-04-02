@@ -693,7 +693,7 @@ export interface ElectronAPI {
     nodeIds?: string[],
     tabLabel?: string | null,
     options?: { autopilotEnabled?: boolean }
-  ) => Promise<{ success: boolean; error?: string }>;
+  ) => Promise<{ success: boolean; content?: string; error?: string }>;
   onChatToken: (callback: (token: string) => void) => void;
   offChatToken: () => void;
   onChatStep: (callback: (step: ChatStep) => void) => void;

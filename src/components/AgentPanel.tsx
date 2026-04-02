@@ -815,7 +815,7 @@ export function AgentPanel({
         window.electronAPI.offChatToken();
         window.electronAPI.offChatStep();
         window.electronAPI.offFixProposal();
-        const completedText = streamingTextRef.current;
+        const completedText = streamingTextRef.current || result.content || "";
         if (result.success) {
           updateActiveThreadFeed([
             ...updatedFeed,

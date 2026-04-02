@@ -902,15 +902,24 @@ function buildNodeDetails(node, allNodes, edges) {
     if (cPorts.length) lines.push(`  Mapped ports: ${cPorts.filter((p) => p.hostPort).map((p) => `${p.hostPort}→${p.containerPort}`).join(", ")}`);
   }
 
-  // Connections — exclude zero-port edges (Docker compose-network artifacts, not real TCP)
-  const realEdges = edges.filter((e) => e.sourcePort !== 0 || e.targetPort !== 0);
-  const outbound = realEdges.filter((e) => e.source === node.id);
-  const inbound = realEdges.filter((e) => e.target === node.id);
+  const describeConnection = (edge, direction) => {
+    const peerId = direction === "inbound" ? edge.source : edge.target;
+    const peerName = allNodes.find((n) => n.id === peerId)?.name ?? peerId;
+    const sourcePort = Number(edge.sourcePort) || 0;
+    const targetPort = Number(edge.targetPort) || 0;
+    if (sourcePort === 0 && targetPort === 0) {
+      return `${peerName} (edge detected, port details unavailable)`;
+    }
+    return `${peerName} (:${sourcePort} → :${targetPort})`;
+  };
+
+  const outbound = edges.filter((e) => e.source === node.id);
+  const inbound = edges.filter((e) => e.target === node.id);
   if (inbound.length) {
-    lines.push(`\nInbound connections from: ${inbound.map((e) => allNodes.find((n) => n.id === e.source)?.name ?? e.source).join(", ")}`);
+    lines.push(`\nInbound connections from: ${inbound.map((e) => describeConnection(e, "inbound")).join(", ")}`);
   }
   if (outbound.length) {
-    lines.push(`Outbound connections to: ${outbound.map((e) => allNodes.find((n) => n.id === e.target)?.name ?? e.target).join(", ")}`);
+    lines.push(`Outbound connections to: ${outbound.map((e) => describeConnection(e, "outbound")).join(", ")}`);
   }
 
   return lines.join("\n");

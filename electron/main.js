@@ -2400,6 +2400,142 @@ function extractAgentPolicies(messages) {
   return policies;
 }
 
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function resolveNodeByName(name, scopedNodes, allNodes) {
+  if (typeof name !== "string" || !name.trim()) return null;
+  const normalized = name.trim().toLowerCase();
+  const exactInScope = scopedNodes.find(
+    (node) => String(node?.name || "").toLowerCase() === normalized,
+  );
+  if (exactInScope) return exactInScope;
+  return (
+    allNodes.find((node) => String(node?.name || "").toLowerCase() === normalized) ??
+    null
+  );
+}
+
+function findMentionedScopedNode(text, scopedNodes) {
+  if (typeof text !== "string" || !text.trim() || !Array.isArray(scopedNodes)) {
+    return null;
+  }
+  const lower = text.toLowerCase();
+  const candidates = scopedNodes
+    .filter((node) => node?.type !== "external" && typeof node?.name === "string" && node.name.trim())
+    .sort((a, b) => b.name.length - a.name.length);
+
+  for (const node of candidates) {
+    const pattern = new RegExp(`(^|[^a-z0-9])${escapeRegExp(node.name.toLowerCase())}([^a-z0-9]|$)`, "i");
+    if (pattern.test(lower)) return node;
+  }
+  return null;
+}
+
+function shouldPrefetchNodeDetails(text) {
+  if (typeof text !== "string" || !text.trim()) return false;
+  const lower = text.toLowerCase();
+  return [
+    /\bconnection(s)?\b/,
+    /\bconnected\b/,
+    /\btalking to\b/,
+    /\bcalls?\b/,
+    /\btraffic\b/,
+    /\b(?:dependency|dependencies)\b/,
+    /\bdepends on\b/,
+    /\bupstream\b/,
+    /\bdownstream\b/,
+    /\bhealth\b/,
+    /\bstatus\b/,
+    /\broutes?\b/,
+    /\bports?\b/,
+    /\bcpu\b/,
+    /\bmemory\b/,
+    /\bresource(s)?\b/,
+    /\brunning\b/,
+  ].some((pattern) => pattern.test(lower));
+}
+
+function classifyDirectNodeQuestion(text) {
+  if (typeof text !== "string" || !text.trim()) return null;
+  const lower = text.toLowerCase();
+  if (/\bincoming connections?\b|\binbound connections?\b/.test(lower)) {
+    return "incoming-connections";
+  }
+  if (/\boutgoing connections?\b|\boutbound connections?\b/.test(lower)) {
+    return "outgoing-connections";
+  }
+  if (
+    /\bwhat are the connections\b/.test(lower) ||
+    /\bshow .*connections\b/.test(lower) ||
+    /\bwhich services?.*(connected|talking to)\b/.test(lower)
+  ) {
+    return "all-connections";
+  }
+  if (
+    /\bwhat are the details\b/.test(lower) ||
+    /\bdetails of\b/.test(lower) ||
+    /\btell me about\b/.test(lower)
+  ) {
+    return "details";
+  }
+  return null;
+}
+
+function formatConnectionLines(targetNode, edges, allNodes, direction) {
+  const relevant =
+    direction === "incoming"
+      ? edges.filter((edge) => edge.target === targetNode.id)
+      : edges.filter((edge) => edge.source === targetNode.id);
+
+  return relevant.map((edge) => {
+    const peerId = direction === "incoming" ? edge.source : edge.target;
+    const peerName = allNodes.find((node) => node.id === peerId)?.name ?? peerId;
+    const sourcePort = Number(edge.sourcePort) || 0;
+    const targetPort = Number(edge.targetPort) || 0;
+    if (sourcePort === 0 && targetPort === 0) {
+      return `- **${peerName}** (edge detected, port details unavailable)`;
+    }
+    return `- **${peerName}** \`:${sourcePort} → :${targetPort}\``;
+  });
+}
+
+function buildDirectNodeAnswer(questionType, targetNode, allNodes, edges) {
+  if (!questionType || !targetNode) return null;
+
+  if (questionType === "incoming-connections") {
+    const incoming = formatConnectionLines(targetNode, edges, allNodes, "incoming");
+    if (incoming.length === 0) {
+      return `**${targetNode.name}** has no incoming connections in the current graph snapshot.`;
+    }
+    return [`Incoming connections for **${targetNode.name}**:`, ...incoming].join("\n");
+  }
+
+  if (questionType === "outgoing-connections") {
+    const outgoing = formatConnectionLines(targetNode, edges, allNodes, "outgoing");
+    if (outgoing.length === 0) {
+      return `**${targetNode.name}** has no outgoing connections in the current graph snapshot.`;
+    }
+    return [`Outgoing connections for **${targetNode.name}**:`, ...outgoing].join("\n");
+  }
+
+  if (questionType === "all-connections") {
+    const incoming = formatConnectionLines(targetNode, edges, allNodes, "incoming");
+    const outgoing = formatConnectionLines(targetNode, edges, allNodes, "outgoing");
+    const lines = [`Connections for **${targetNode.name}**:`];
+    lines.push(
+      incoming.length > 0 ? `Incoming:\n${incoming.join("\n")}` : "Incoming:\n- None",
+    );
+    lines.push(
+      outgoing.length > 0 ? `Outgoing:\n${outgoing.join("\n")}` : "Outgoing:\n- None",
+    );
+    return lines.join("\n");
+  }
+
+  return null;
+}
+
 function buildPolicyPrompt(policies, options = {}) {
   const dynamicRules = [];
   if (policies.disallowInstalls) {
@@ -3104,6 +3240,16 @@ ipcMain.handle("agent:chat", async (event, payload) => {
       Array.isArray(nodeIds) ? nodeIds : undefined,
     );
     const policies = extractAgentPolicies(safeMessages);
+    const scopedIds =
+      Array.isArray(nodeIds) && nodeIds.length > 0 ? new Set(nodeIds) : null;
+    const allNodes = snapshot.graph?.nodes ?? [];
+    const allEdges = snapshot.graph?.edges ?? [];
+    const scopedNodes = scopedIds
+      ? allNodes.filter((node) => scopedIds.has(node.id))
+      : allNodes;
+    const scopedEdges = scopedIds
+      ? allEdges.filter((edge) => scopedIds.has(edge.source) || scopedIds.has(edge.target))
+      : allEdges;
     const baseSystemPrompt = await buildChatContext(
       snapshot,
       findings,
@@ -3115,6 +3261,56 @@ ipcMain.handle("agent:chat", async (event, payload) => {
     const openai = new OpenAI({ apiKey });
 
     const dockerPreflightRoots = new Set();
+    const latestUserMessage = [...safeMessages]
+      .reverse()
+      .find((message) => message?.role === "user");
+    const latestUserText = normalizeMessageText(latestUserMessage?.content);
+    const directQuestionType = classifyDirectNodeQuestion(latestUserText);
+    const prefetchedNode =
+      shouldPrefetchNodeDetails(latestUserText)
+        ? findMentionedScopedNode(latestUserText, scopedNodes)
+        : null;
+    const prefetchedNodeDetails = prefetchedNode
+      ? buildNodeDetails(prefetchedNode, scopedNodes, scopedEdges)
+      : null;
+    const directNodeAnswer = buildDirectNodeAnswer(
+      directQuestionType,
+      prefetchedNode,
+      scopedNodes,
+      scopedEdges,
+    );
+
+    if (prefetchedNode && prefetchedNodeDetails) {
+      sendStep(event, {
+        type: "get_node_details",
+        label: `details: ${prefetchedNode.name}`,
+        path: prefetchedNode.name,
+        done: true,
+      });
+    }
+
+    if (directNodeAnswer) {
+      if (!event.sender.isDestroyed()) {
+        event.sender.send("agent:chat-token", directNodeAnswer);
+      }
+      return { success: true, content: directNodeAnswer };
+    }
+
+    const initialTurnMessages = [
+      { role: "system", content: systemPrompt },
+      ...(prefetchedNodeDetails
+        ? [
+            {
+              role: "system",
+              content:
+                `Authoritative runtime details for the current user question. ` +
+                `Treat this as the result of calling get_node_details("${prefetchedNode.name}") and ground your answer in it.\n\n` +
+                `${prefetchedNodeDetails}`,
+            },
+          ]
+        : []),
+      ...safeMessages,
+    ];
 
     async function runTurn(
       turnMessages,
@@ -3254,12 +3450,10 @@ ipcMain.handle("agent:chat", async (event, payload) => {
                   label: `details: ${args.name}`,
                   path: args.name,
                 });
-                const allNodes = snapshot.graph?.nodes ?? [];
-                const allEdges = snapshot.graph?.edges ?? [];
-                const node = allNodes.find(
-                  (n) => n.name.toLowerCase() === args.name.toLowerCase(),
-                );
-                result = buildNodeDetails(node, allNodes, allEdges);
+                const node = resolveNodeByName(args.name, scopedNodes, allNodes);
+                const detailNodes = scopedIds ? scopedNodes : allNodes;
+                const detailEdges = scopedIds ? scopedEdges : allEdges;
+                result = buildNodeDetails(node, detailNodes, detailEdges);
               } else if (tc.function.name === "propose_fix") {
                 if (options.autopilotEnabled) {
                   const autopilotAction =
@@ -3462,7 +3656,7 @@ ipcMain.handle("agent:chat", async (event, payload) => {
       }
     }
 
-    await runTurn([{ role: "system", content: systemPrompt }, ...safeMessages]);
+    await runTurn(initialTurnMessages);
     return { success: true };
   } catch (err) {
     console.error("agent:chat error:", err);
