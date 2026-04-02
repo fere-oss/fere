@@ -10774,7 +10774,7 @@ body.sentinel-panel-open .main-content {
   align-items: flex-start;
   flex-wrap: wrap;
   justify-content: space-between;
-  padding: 14px 16px 12px;
+  padding: 16px 16px 12px;
   row-gap: 8px;
   border-bottom: 1px solid var(--border-color);
   flex-shrink: 0;
@@ -10859,7 +10859,7 @@ body.sentinel-panel-open .main-content {
 }
 
 .agp-header-utility {
-  margin-top: -2px;
+  margin-top: 0;
 }
 
 .agp-history-btn.agp-header-utility {
@@ -10867,7 +10867,7 @@ body.sentinel-panel-open .main-content {
 }
 
 .agp-close-top {
-  margin-top: -2px;
+  margin-top: 0;
   align-self: center;
 }
 
