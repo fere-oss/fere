@@ -14,10 +14,10 @@ import type {
   ChatStep,
   ExternalApiProvider,
   FixProposal,
+  GraphEdge,
   GraphNode,
 } from "../types/electron";
 import { getServiceColor } from "./graph/constants";
-import fereLogo from "../assets/fere.png";
 import sentinelLogo from "../assets/sentinel.png";
 
 const PROVIDER_ALIAS_MAP: Record<string, string> = {
@@ -166,7 +166,49 @@ function findProviderMentionHits(
   return hits;
 }
 
-type FeedMessage = { kind: "message"; role: "user" | "assistant"; content: string };
+type ContextService = {
+  name: string;
+  type: string;
+  pid: number;
+  ports: number[];
+  healthStatus: string;
+  cpu?: number;
+  memory?: number;
+  isDockerContainer?: boolean;
+  containerState?: string;
+  projectPath?: string;
+  externalApis?: string[];
+  routes?: Array<{ method?: string; path: string }>;
+};
+type ContextFinding = {
+  severity: string;
+  service: string;
+  summary: string;
+  stage: string;
+};
+type ContextConnection = {
+  from: string;
+  to: string;
+  port: number;
+};
+type ContextSnapshot = {
+  scope: string;
+  timestamp: string;
+  services: ContextService[];
+  connections: ContextConnection[];
+  findings: ContextFinding[];
+};
+type FeedMessage = {
+  kind: "message";
+  role: "user" | "assistant";
+  content: string;
+  copyable?: boolean;
+};
+type FeedContext = {
+  kind: "context";
+  snapshot: ContextSnapshot;
+  copyText: string;
+};
 type FeedFinding = {
   kind: "finding";
   id: string;
@@ -178,11 +220,232 @@ type FeedFinding = {
   error?: string;
   insertedAt: number;
 };
-type FeedItem = FeedMessage | FeedFinding;
+type FeedItem = FeedMessage | FeedContext | FeedFinding;
 type IncidentStage = "detected" | "fixing" | "fixed" | "verified" | "escalated";
-type ChatThread = { id: string; title: string; updatedAt: number; feed: FeedItem[] };
-// Keep ChatMessage as an alias for backwards compat in a few call sites
-type ChatMessage = FeedMessage;
+type ChatThread = {
+  id: string;
+  title: string;
+  updatedAt: number;
+  feed: FeedItem[];
+};
+
+function renderMirrorContent(text: string, nodes: GraphNode[]): React.ReactNode {
+  const parts = text.split(/(@[\w\-.:]+)/g);
+  return parts.map((part, i) => {
+    if (part.startsWith("@")) {
+      const name = part.slice(1);
+      const node = nodes.find((n) => n.name === name);
+      if (node) {
+        const color = getServiceColor(node.type);
+        return (
+          <span key={i} style={{ background: `${color}35`, borderRadius: "3px" }}>
+            {part}
+          </span>
+        );
+      }
+    }
+    return <span key={i}>{part}</span>;
+  });
+}
+
+function renderMentions(text: string, nodes: GraphNode[]): React.ReactNode {
+  const parts = text.split(/(@[\w\-.:]+)/g);
+  if (parts.length === 1) return text;
+  return parts.map((part, i) => {
+    if (part.startsWith("@")) {
+      const name = part.slice(1);
+      const node = nodes.find((n) => n.name === name);
+      if (node) {
+        const color = getServiceColor(node.type);
+        return (
+          <span
+            key={i}
+            className="agp-mention-chip"
+            style={{
+              background: `${color}20`,
+              color,
+              border: `1px solid ${color}40`,
+            }}
+          >
+            {part}
+          </span>
+        );
+      }
+    }
+    return part;
+  });
+}
+
+function MentionDropdown({
+  query,
+  nodes,
+  onSelect,
+}: {
+  query: string;
+  nodes: GraphNode[];
+  onSelect: (node: GraphNode) => void;
+}) {
+  const filtered = nodes
+    .filter((n) => n.type !== "external")
+    .filter((n) => n.name.toLowerCase().includes(query.toLowerCase()))
+    .slice(0, 8);
+
+  if (filtered.length === 0) return null;
+
+  return (
+    <div className="agp-mention-dropdown">
+      {filtered.map((node) => {
+        const color = getServiceColor(node.type);
+        return (
+          <button
+            key={node.id}
+            className="agp-mention-item"
+            onMouseDown={(e) => {
+              e.preventDefault();
+              onSelect(node);
+            }}
+          >
+            <span className="agp-mention-dot" style={{ background: color }} />
+            <span className="agp-mention-name">{node.name}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = useCallback(async () => {
+    try {
+      if (window.electronAPI?.copyText) {
+        const result = await window.electronAPI.copyText(text);
+        if (!result.success) throw new Error(result.error || "Copy failed");
+      } else if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        throw new Error("Clipboard API unavailable");
+      }
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // No-op
+    }
+  }, [text]);
+
+  return (
+    <button className="agp-copy-btn" onClick={() => void handleCopy()}>
+      {copied ? "Copied!" : "Copy"}
+    </button>
+  );
+}
+
+function ContextBlock({
+  snapshot,
+  copyText,
+}: {
+  snapshot: ContextSnapshot;
+  copyText: string;
+}) {
+  const HEALTH_DOT: Record<string, string> = {
+    green: "#22C55E",
+    yellow: "#EAB308",
+    red: "#EF4444",
+  };
+
+  return (
+    <div className="agp-context-block">
+      <div className="agp-context-header">
+        <span className="agp-context-title">Runtime Context</span>
+        <span className="agp-context-meta">{snapshot.scope} · {snapshot.timestamp}</span>
+      </div>
+
+      <div className="agp-context-scrollable">
+        {snapshot.services.length > 0 && (
+          <div className="agp-context-section">
+            <div className="agp-context-section-label">Services ({snapshot.services.length})</div>
+            {snapshot.services.map((svc, i) => {
+              const color = getServiceColor(svc.type);
+              const healthColor = HEALTH_DOT[svc.healthStatus] ?? "#6B7280";
+              const ports = svc.ports.length ? svc.ports.join(", ") : "no port";
+              const cpu = svc.cpu != null ? `${svc.cpu.toFixed(1)}% CPU` : null;
+              const mem = svc.memory != null ? `${svc.memory.toFixed(0)} MB` : null;
+              const docker = svc.isDockerContainer
+                ? `container · ${svc.containerState ?? "?"}`
+                : null;
+              return (
+                <div key={i} className="agp-context-service">
+                  <div className="agp-context-service-row">
+                    <span
+                      className="agp-context-service-badge"
+                      style={{ background: `${color}20`, color, border: `1px solid ${color}40` }}
+                    >
+                      {svc.type}
+                    </span>
+                    <span className="agp-context-service-name">{svc.name}</span>
+                    <span className="agp-context-service-health" style={{ background: healthColor }} />
+                    <span className="agp-context-service-meta">:{ports}</span>
+                    {cpu && <span className="agp-context-service-meta">{cpu}</span>}
+                    {mem && <span className="agp-context-service-meta">{mem}</span>}
+                    {docker && <span className="agp-context-service-meta">{docker}</span>}
+                  </div>
+                  {svc.externalApis && svc.externalApis.length > 0 && (
+                    <div className="agp-context-service-detail">
+                      calls: {svc.externalApis.join(", ")}
+                    </div>
+                  )}
+                  {svc.routes && svc.routes.length > 0 && (
+                    <div className="agp-context-service-detail">
+                      routes: {svc.routes.slice(0, 4).map((r) => `${r.method ?? "?"} ${r.path}`).join(", ")}
+                      {svc.routes.length > 4 ? ` +${svc.routes.length - 4} more` : ""}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {(snapshot.connections ?? []).length > 0 && (
+          <div className="agp-context-section">
+            <div className="agp-context-section-label">Connections ({snapshot.connections.length})</div>
+            {snapshot.connections.map((c, i) => (
+              <div key={i} className="agp-context-service-detail" style={{ padding: "2px 0" }}>
+                <span style={{ fontWeight: 600, color: "var(--text-primary)" }}>{c.from}</span>
+                <span style={{ margin: "0 4px", color: "var(--text-muted)" }}>→</span>
+                <span style={{ fontWeight: 600, color: "var(--text-primary)" }}>{c.to}</span>
+                <span className="agp-context-service-meta" style={{ marginLeft: 4 }}>:{c.port}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {snapshot.findings.length > 0 && (
+          <div className="agp-context-section">
+            <div className="agp-context-section-label">Findings ({snapshot.findings.length})</div>
+            {snapshot.findings.map((f, i) => {
+              const sev = f.severity.toLowerCase();
+              const sevColor =
+                sev === "critical" ? "#EF4444" : sev === "high" ? "#F97316" : sev === "medium" ? "#EAB308" : "#6B7280";
+              return (
+                <div key={i} className="agp-context-finding">
+                  <span className="agp-context-finding-sev" style={{ color: sevColor }}>
+                    [{f.severity.toUpperCase()}]
+                  </span>
+                  <span className="agp-context-finding-service">{f.service}</span>
+                  <span className="agp-context-finding-summary">{f.summary}</span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      <CopyButton text={copyText} />
+    </div>
+  );
+}
 
 function ProviderMention({ text, logoUrl }: { text: string; logoUrl: string }) {
   const [imgFailed, setImgFailed] = useState(false);
@@ -314,14 +577,25 @@ function createThreadId(): string {
   return `chat_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
+function stripMarkdown(text: string): string {
+  return text
+    .replace(/\*\*(.+?)\*\*/g, "$1")
+    .replace(/\*(.+?)\*/g, "$1")
+    .replace(/`+([^`]+)`+/g, "$1")
+    .replace(/^#+\s+/gm, "")
+    .replace(/\[(.+?)\]\(.+?\)/g, "$1")
+    .replace(/_(.+?)_/g, "$1")
+    .replace(/^[-*]\s+/gm, "");
+}
+
 function deriveThreadTitle(feed: FeedItem[]): string {
   const firstUser = feed.find(
     (item): item is FeedMessage =>
       item.kind === "message" && item.role === "user" && item.content.trim().length > 0,
   );
   if (!firstUser) return "New chat";
-  const oneLine = firstUser.content.replace(/\s+/g, " ").trim();
-  return oneLine.length > 56 ? `${oneLine.slice(0, 56)}…` : oneLine;
+  const clean = stripMarkdown(firstUser.content).replace(/\s+/g, " ").trim();
+  return clean.length > 56 ? `${clean.slice(0, 56)}…` : clean;
 }
 
 function sanitizeFeed(input: unknown): FeedItem[] {
@@ -331,13 +605,57 @@ function sanitizeFeed(input: unknown): FeedItem[] {
     if (!raw || typeof raw !== "object") continue;
     const m = raw as Record<string, unknown>;
     // Old format: { role, content } without kind — migrate
-    if (!m.kind && (m.role === "user" || m.role === "assistant") && typeof m.content === "string") {
-      items.push({ kind: "message", role: m.role as "user" | "assistant", content: m.content });
+    if (
+      !m.kind &&
+      (m.role === "user" || m.role === "assistant") &&
+      typeof m.content === "string"
+    ) {
+      items.push({
+        kind: "message",
+        role: m.role as "user" | "assistant",
+        content: m.content,
+      });
       continue;
     }
     // New message format
-    if (m.kind === "message" && (m.role === "user" || m.role === "assistant") && typeof m.content === "string") {
-      items.push({ kind: "message", role: m.role as "user" | "assistant", content: m.content });
+    if (
+      m.kind === "message" &&
+      (m.role === "user" || m.role === "assistant") &&
+      typeof m.content === "string"
+    ) {
+      const msg: FeedMessage = {
+        kind: "message",
+        role: m.role as "user" | "assistant",
+        content: m.content,
+        copyable: m.copyable === true,
+      };
+      items.push(msg);
+      continue;
+    }
+    if (
+      m.kind === "context" &&
+      m.snapshot &&
+      typeof m.snapshot === "object" &&
+      typeof m.copyText === "string"
+    ) {
+      items.push({
+        kind: "context",
+        snapshot: m.snapshot as ContextSnapshot,
+        copyText: m.copyText,
+      });
+      continue;
+    }
+    if (
+      m.kind === "message" &&
+      m.contextSnapshot &&
+      typeof m.contextSnapshot === "object" &&
+      typeof m.content === "string"
+    ) {
+      items.push({
+        kind: "context",
+        snapshot: m.contextSnapshot as ContextSnapshot,
+        copyText: m.content,
+      });
       continue;
     }
     // Findings are transient — do NOT restore from storage
@@ -358,8 +676,14 @@ function sanitizeThreads(input: unknown): ChatThread[] {
         ? maybe.updatedAt
         : Date.now();
     threads.push({
-      id: typeof maybe.id === "string" && maybe.id.trim() ? maybe.id : createThreadId(),
-      title: typeof maybe.title === "string" && maybe.title.trim() ? maybe.title.trim() : deriveThreadTitle(feed),
+      id:
+        typeof maybe.id === "string" && maybe.id.trim()
+          ? maybe.id
+          : createThreadId(),
+      title:
+        typeof maybe.title === "string" && maybe.title.trim()
+          ? maybe.title.trim()
+          : deriveThreadTitle(feed),
       updatedAt,
       feed,
     });
@@ -368,7 +692,12 @@ function sanitizeThreads(input: unknown): ChatThread[] {
 }
 
 function createThread(feed: FeedItem[] = []): ChatThread {
-  return { id: createThreadId(), title: deriveThreadTitle(feed), updatedAt: Date.now(), feed };
+  return {
+    id: createThreadId(),
+    title: deriveThreadTitle(feed),
+    updatedAt: Date.now(),
+    feed,
+  };
 }
 
 function loadPersistedChatState(): PersistedChatState {
@@ -443,7 +772,11 @@ function FindingCard({
         <span className={`agp-finding-dot agp-finding-dot-${item.severity}`} />
         <span className="agp-finding-service">{item.service}</span>
         {canDismiss && (
-          <button className="agp-finding-dismiss" onClick={() => onDismiss(item.id)} title="Dismiss">
+          <button
+            className="agp-finding-dismiss"
+            onClick={() => onDismiss(item.id)}
+            title="Dismiss"
+          >
             ×
           </button>
         )}
@@ -453,7 +786,8 @@ function FindingCard({
       {item.stage === "detected" && (
         <div className="agp-finding-actions">
           {item.fix &&
-            (item.fix.type === "restart-container" || item.fix.type === "kill-port") && (
+            (item.fix.type === "restart-container" ||
+              item.fix.type === "kill-port") && (
               <button
                 className="agp-finding-fix-btn"
                 onClick={() => onFix(item.id)}
@@ -491,7 +825,7 @@ function FindingCard({
 
       {item.stage === "verified" && (
         <div className="agp-finding-status agp-finding-status-verified">
-          ✓ Fixed
+          Fixed
         </div>
       )}
 
@@ -525,9 +859,11 @@ function FindingCard({
 
 export function AgentPanel({
   nodes,
+  edges,
   tabLabel,
 }: {
   nodes: GraphNode[];
+  edges: GraphEdge[];
   tabLabel?: string | null;
 }) {
   const persistedState = useMemo(() => loadPersistedChatState(), []);
@@ -546,6 +882,10 @@ export function AgentPanel({
   >([]);
   const [unreadFindings, setUnreadFindings] = useState(0);
   const [input, setInput] = useState(persistedState.input);
+  const [mentionQuery, setMentionQuery] = useState<{
+    query: string;
+    startIdx: number;
+  } | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [providerDomains, setProviderDomains] = useState<
@@ -554,9 +894,11 @@ export function AgentPanel({
   const [historyOpen, setHistoryOpen] = useState(false);
   const [detectionEnabled, setDetectionEnabled] = useState(false);
   const [autopilotEnabled, setAutopilotEnabled] = useState(false);
+  const [handoffCopied, setHandoffCopied] = useState(false);
 
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const mirrorRef = useRef<HTMLDivElement>(null);
   const streamingTextRef = useRef("");
   const surfacedByTabRef = useRef<Map<string, Set<string>>>(new Map());
   const autopilotInFlightRef = useRef<Set<string>>(new Set());
@@ -568,6 +910,7 @@ export function AgentPanel({
     [threads, activeThreadId],
   );
   const feed = useMemo(() => activeThread?.feed ?? [], [activeThread]);
+  const activeFeedRef = useRef<FeedItem[]>(feed);
 
   const nodeIdsForScan = useMemo(
     () => nodes.filter((n) => n.type !== "external").map((n) => n.id),
@@ -587,7 +930,9 @@ export function AgentPanel({
       feed.filter(
         (item): item is FeedFinding =>
           item.kind === "finding" &&
-          (item.stage === "detected" || item.stage === "fixing" || item.stage === "fixed"),
+          (item.stage === "detected" ||
+            item.stage === "fixing" ||
+            item.stage === "fixed"),
       ).length,
     [feed],
   );
@@ -651,7 +996,10 @@ export function AgentPanel({
 
     const updateTopOffset = () => {
       const { top } = appBody.getBoundingClientRect();
-      root.style.setProperty("--agp-top-offset", `${Math.max(0, Math.round(top))}px`);
+      root.style.setProperty(
+        "--agp-top-offset",
+        `${Math.max(0, Math.round(top))}px`,
+      );
     };
 
     updateTopOffset();
@@ -755,8 +1103,13 @@ export function AgentPanel({
     endRef.current?.scrollIntoView({ behavior: smooth ? "smooth" : "auto" });
   }, []);
 
+  useEffect(() => {
+    activeFeedRef.current = feed;
+  }, [feed]);
+
   const updateActiveThreadFeed = useCallback(
     (nextFeed: FeedItem[]) => {
+      activeFeedRef.current = nextFeed;
       setThreads((prev) => {
         const idx = prev.findIndex((thread) => thread.id === activeThreadId);
         if (idx === -1) return prev;
@@ -774,14 +1127,26 @@ export function AgentPanel({
     [activeThreadId],
   );
 
+  const appendActiveThreadItems = useCallback(
+    (items: FeedItem[]) => {
+      const nextFeed = [...activeFeedRef.current, ...items];
+      updateActiveThreadFeed(nextFeed);
+      return nextFeed;
+    },
+    [updateActiveThreadFeed],
+  );
+
   const send = useCallback(
     async (text: string) => {
       const trimmed = text.trim();
       if (!trimmed || isStreaming || !activeThread) return;
 
-      const userItem: FeedMessage = { kind: "message", role: "user", content: trimmed };
-      const updatedFeed = [...feed, userItem];
-      updateActiveThreadFeed(updatedFeed);
+      const userItem: FeedMessage = {
+        kind: "message",
+        role: "user",
+        content: trimmed,
+      };
+      const updatedFeed = appendActiveThreadItems([userItem]);
       setInput("");
       setIsStreaming(true);
       streamingTextRef.current = "";
@@ -820,10 +1185,11 @@ export function AgentPanel({
       });
 
       // Only send message items to the AI (not finding cards)
-      const chatMessages = feed
-        .filter((item): item is FeedMessage => item.kind === "message")
-        .map(({ role, content }) => ({ role, content }));
-      const aiMessages = [...chatMessages, { role: "user" as const, content: trimmed }];
+      const aiMessages = [
+        ...updatedFeed
+          .filter((item): item is FeedMessage => item.kind === "message")
+          .map(({ role, content }) => ({ role, content })),
+      ];
 
       try {
         const result = await window.electronAPI.agentChat(
@@ -838,7 +1204,7 @@ export function AgentPanel({
         const completedText = streamingTextRef.current || result.content || "";
         if (result.success) {
           updateActiveThreadFeed([
-            ...updatedFeed,
+            ...activeFeedRef.current,
             { kind: "message", role: "assistant", content: completedText },
           ]);
         } else {
@@ -859,8 +1225,8 @@ export function AgentPanel({
     },
     [
       activeThread,
+      appendActiveThreadItems,
       autopilotEnabled,
-      feed,
       isStreaming,
       nodeIdsForScan,
       scrollToEnd,
@@ -868,6 +1234,109 @@ export function AgentPanel({
       updateActiveThreadFeed,
     ],
   );
+
+  const handleHandoff = useCallback(async () => {
+    const now = new Date().toLocaleString();
+    const scope = tabLabel ? `Project: ${tabLabel}` : "All services";
+    const internalNodes = nodes.filter((n) => n.type !== "external");
+
+    const services: ContextService[] = internalNodes.map((n) => ({
+      name: n.name,
+      type: n.type,
+      pid: n.pid,
+      ports: (n.ports ?? []).map((p) => p.port),
+      healthStatus: n.healthStatus ?? "unknown",
+      cpu: n.cpu ?? undefined,
+      memory: n.memory ?? undefined,
+      isDockerContainer: n.isDockerContainer,
+      containerState: n.containerState,
+      projectPath: n.projectPath ?? undefined,
+      externalApis: (n.externalApis ?? []).map((a) => a.name).filter(Boolean),
+      routes: (n.routes ?? []).slice(0, 6).map((r) => ({ method: r.method, path: r.path })),
+    }));
+
+    // Build topology connections from edges
+    const nodeById = new Map(nodes.map((n) => [n.id, n]));
+    const connections: ContextConnection[] = edges
+      .map((e) => {
+        const src = nodeById.get(e.source);
+        const tgt = nodeById.get(e.target);
+        if (!src || !tgt) return null;
+        return { from: src.name, to: tgt.name, port: e.targetPort };
+      })
+      .filter((c): c is ContextConnection => c !== null);
+
+    const activeFindings = feed.filter(
+      (item): item is FeedFinding => item.kind === "finding",
+    );
+    const findings: ContextFinding[] = activeFindings.map((f) => ({
+      severity: f.severity,
+      service: f.service,
+      summary: f.summary,
+      stage: f.stage,
+    }));
+
+    // Build plain-text markdown for clipboard export only.
+    const svcLines = services.map((s) => {
+      const ports = s.ports.length ? s.ports.join(", ") : "no port";
+      const cpu = s.cpu != null ? ` · CPU ${s.cpu.toFixed(1)}%` : "";
+      const mem = s.memory != null ? ` · ${s.memory.toFixed(0)} MB` : "";
+      const docker = s.isDockerContainer ? ` · container (${s.containerState ?? "?"})` : "";
+      const path = s.projectPath ? ` · path: ${s.projectPath}` : "";
+      return `- ${s.name} [${s.type}] — port ${ports}, health: ${s.healthStatus}${cpu}${mem}${docker}${path}`;
+    });
+    const connLines = connections.map((c) => `- ${c.from} → ${c.to} (port ${c.port})`);
+    const extLines = services
+      .filter((s) => s.externalApis && s.externalApis.length > 0)
+      .map((s) => `- ${s.name} calls: ${s.externalApis!.join(", ")}`);
+    const routeLines = services
+      .filter((s) => s.routes && s.routes.length > 0)
+      .map((s) => `- ${s.name}: ${s.routes!.map((r) => `${r.method ?? "?"} ${r.path}`).join(", ")}`);
+    const findLines = findings.map(
+      (f) => `- [${f.severity.toUpperCase()}] ${f.service}: ${f.summary}`,
+    );
+    const copyText = [
+      `# Fere Runtime Context`,
+      `${scope} · ${now}`,
+      ``,
+      `## Services (${services.length})`,
+      svcLines.join("\n") || "(none)",
+      connLines.length ? `\n## Service Connections\n${connLines.join("\n")}` : "",
+      extLines.length ? `\n## External APIs\n${extLines.join("\n")}` : "",
+      routeLines.length ? `\n## API Routes\n${routeLines.join("\n")}` : "",
+      ``,
+      `## Active Findings`,
+      findLines.join("\n") || "(none)",
+      ``,
+      `## Investigation Template`,
+      ``,
+      `**What I need help with:**`,
+      ``,
+      `**Steps already tried:**`,
+      `- `,
+      ``,
+      `**Expected behavior:**`,
+      ``,
+      `**Actual behavior:**`,
+    ]
+      .join("\n")
+      .trim();
+
+    try {
+      if (window.electronAPI?.copyText) {
+        const result = await window.electronAPI.copyText(copyText);
+        if (!result.success) throw new Error(result.error || "Copy failed");
+      } else if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(copyText);
+      } else {
+        throw new Error("Clipboard API unavailable");
+      }
+      setHandoffCopied(true);
+      setTimeout(() => setHandoffCopied(false), 2000);
+    } catch {
+      // No-op
+    }
+  }, [nodes, edges, feed, tabLabel]);
 
   useEffect(() => {
     if (!open) return;
@@ -897,7 +1366,9 @@ export function AgentPanel({
         (e as CustomEvent).detail ?? {};
       if (!nodeName) return;
 
-      const portStr = ports?.length ? ` on port ${(ports as number[]).join(", ")}` : "";
+      const portStr = ports?.length
+        ? ` on port ${(ports as number[]).join(", ")}`
+        : "";
       const cmdStr = command ? ` (${String(command).slice(0, 60)})` : "";
       const isUnhealthy = healthStatus === "red" || healthStatus === "yellow";
       const msg = isUnhealthy
@@ -915,15 +1386,58 @@ export function AgentPanel({
     return () => window.removeEventListener("fere:investigate-node", handler);
   }, []);
 
+  const handleTextareaScroll = useCallback(() => {
+    if (mirrorRef.current && inputRef.current) {
+      mirrorRef.current.scrollTop = inputRef.current.scrollTop;
+    }
+  }, []);
+
+  const handleInputChange = useCallback(
+    (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+      const val = e.target.value;
+      const pos = e.target.selectionStart ?? val.length;
+      const before = val.slice(0, pos);
+      const atMatch = before.match(/@([\w\-.]*)$/);
+      if (atMatch) {
+        setMentionQuery({
+          query: atMatch[1],
+          startIdx: pos - atMatch[0].length,
+        });
+      } else {
+        setMentionQuery(null);
+      }
+      setInput(val);
+    },
+    [],
+  );
+
+  const handleMentionSelect = useCallback(
+    (node: GraphNode) => {
+      if (!mentionQuery) return;
+      const before = input.slice(0, mentionQuery.startIdx);
+      const after = input.slice(
+        mentionQuery.startIdx + 1 + mentionQuery.query.length,
+      );
+      setInput(`${before}@${node.name}${after}`);
+      setMentionQuery(null);
+      setTimeout(() => inputRef.current?.focus(), 10);
+    },
+    [input, mentionQuery],
+  );
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      if (e.key === "Escape" && mentionQuery) {
+        setMentionQuery(null);
+        return;
+      }
       if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
+        setMentionQuery(null);
         void send(input);
       }
     },
-    [send, input],
+    [send, input, mentionQuery],
   );
 
   const headerSub =
@@ -950,6 +1464,20 @@ export function AgentPanel({
     }
   }, []);
 
+  // Reset detect + autopilot when the project tab changes
+  const prevTabLabelRef = useRef<string | null | undefined>(undefined);
+  useEffect(() => {
+    if (prevTabLabelRef.current === undefined) {
+      prevTabLabelRef.current = tabLabel;
+      return;
+    }
+    if (prevTabLabelRef.current !== tabLabel) {
+      prevTabLabelRef.current = tabLabel;
+      setDetectionEnabled(false);
+      setAutopilotEnabled(false);
+    }
+  }, [tabLabel]);
+
   const toggleDetection = useCallback(() => {
     setDetectionEnabled((v) => !v);
   }, []);
@@ -975,13 +1503,19 @@ export function AgentPanel({
         if (idx === -1) return prev;
         const current = prev[idx];
         // Don't duplicate
-        if (current.feed.some((f) => f.kind === "finding" && f.id === finding.id)) return prev;
+        if (
+          current.feed.some((f) => f.kind === "finding" && f.id === finding.id)
+        )
+          return prev;
         const updated: ChatThread = {
           ...current,
           feed: [...current.feed, item],
           updatedAt: Date.now(),
         };
-        return [updated, ...prev.slice(0, idx), ...prev.slice(idx + 1)].slice(0, MAX_CHAT_THREADS);
+        return [updated, ...prev.slice(0, idx), ...prev.slice(idx + 1)].slice(
+          0,
+          MAX_CHAT_THREADS,
+        );
       });
     },
     [activeThreadId],
@@ -998,12 +1532,17 @@ export function AgentPanel({
 
       if (node.isDockerContainer && node.containerId) {
         try {
-          const result = await window.electronAPI.getContainerLogTail(node.containerId, 20);
+          const result = await window.electronAPI.getContainerLogTail(
+            node.containerId,
+            20,
+          );
           if (result.success && result.logs) {
             const lines = result.logs.split("\n").filter(Boolean).slice(-10);
             logExcerpt = lines.join("\n");
           }
-        } catch { /* non-critical */ }
+        } catch {
+          /* non-critical */
+        }
       }
 
       const portStr = (node.ports ?? []).map((p) => p.port).join(", ");
@@ -1026,7 +1565,11 @@ export function AgentPanel({
     };
 
     window.addEventListener("fere:health-degraded", handler as EventListener);
-    return () => window.removeEventListener("fere:health-degraded", handler as EventListener);
+    return () =>
+      window.removeEventListener(
+        "fere:health-degraded",
+        handler as EventListener,
+      );
   }, [appendFindingToFeed]);
 
   const updateFindingInFeed = useCallback(
@@ -1037,13 +1580,24 @@ export function AgentPanel({
         const current = prev[idx];
         const newFeed = current.feed.map((item) => {
           if (item.kind === "finding" && item.id === id) {
-            return { ...item, stage, ...(error !== undefined ? { error } : {}) };
+            return {
+              ...item,
+              stage,
+              ...(error !== undefined ? { error } : {}),
+            };
           }
           return item;
         });
         if (newFeed === current.feed) return prev;
-        const updated: ChatThread = { ...current, feed: newFeed, updatedAt: Date.now() };
-        return [updated, ...prev.slice(0, idx), ...prev.slice(idx + 1)].slice(0, MAX_CHAT_THREADS);
+        const updated: ChatThread = {
+          ...current,
+          feed: newFeed,
+          updatedAt: Date.now(),
+        };
+        return [updated, ...prev.slice(0, idx), ...prev.slice(idx + 1)].slice(
+          0,
+          MAX_CHAT_THREADS,
+        );
       });
     },
     [activeThreadId],
@@ -1051,10 +1605,20 @@ export function AgentPanel({
 
   const toSafeAction = useCallback((fix: AgentFixAction | null) => {
     if (!fix) return null;
-    if (fix.type === "restart-container" && typeof fix.containerId === "string") {
-      return { type: "restart-container" as const, containerId: fix.containerId };
+    if (
+      fix.type === "restart-container" &&
+      typeof fix.containerId === "string"
+    ) {
+      return {
+        type: "restart-container" as const,
+        containerId: fix.containerId,
+      };
     }
-    if (fix.type === "kill-port" && Number.isInteger(fix.port) && Number.isInteger(fix.pid)) {
+    if (
+      fix.type === "kill-port" &&
+      Number.isInteger(fix.port) &&
+      Number.isInteger(fix.pid)
+    ) {
       return { type: "kill-port" as const, port: fix.port!, pid: fix.pid! };
     }
     return null;
@@ -1110,7 +1674,11 @@ export function AgentPanel({
       for (const finding of findings) {
         const safeAction = toSafeAction(finding.fix);
         if (!safeAction) {
-          updateFindingInFeed(finding.id, "escalated", "no safe autopilot action available");
+          updateFindingInFeed(
+            finding.id,
+            "escalated",
+            "no safe autopilot action available",
+          );
           continue;
         }
         if (autopilotInFlightRef.current.has(finding.id)) continue;
@@ -1121,7 +1689,11 @@ export function AgentPanel({
         try {
           const result = await window.electronAPI.agentApplyFix(safeAction);
           if (!result.success) {
-            updateFindingInFeed(finding.id, "escalated", result.error ?? "autopilot apply failed");
+            updateFindingInFeed(
+              finding.id,
+              "escalated",
+              result.error ?? "autopilot apply failed",
+            );
             continue;
           }
 
@@ -1155,12 +1727,15 @@ export function AgentPanel({
         if (!normalizedTab) return true;
         return f.affectedServices?.some((svc) => {
           const name = svc.toLowerCase();
-          return nodeMap.has(name) || (normalizedTab && name.includes(normalizedTab));
+          return (
+            nodeMap.has(name) || (normalizedTab && name.includes(normalizedTab))
+          );
         });
       });
       if (inScope.length === 0) return;
 
-      const existing = surfacedByTabRef.current.get(tabScopeKey) ?? new Set<string>();
+      const existing =
+        surfacedByTabRef.current.get(tabScopeKey) ?? new Set<string>();
       const unseen = inScope.filter((f) => !existing.has(f.id));
       if (unseen.length === 0) return;
 
@@ -1178,7 +1753,9 @@ export function AgentPanel({
 
       // Increment unread badge if panel is closed
       if (!open) {
-        setUnreadFindings((n) => n + unseen.filter((f) => f.severity === "critical").length);
+        setUnreadFindings(
+          (n) => n + unseen.filter((f) => f.severity === "critical").length,
+        );
       }
     },
     [
@@ -1230,36 +1807,22 @@ export function AgentPanel({
         const idx = prev.findIndex((t) => t.id === activeThreadId);
         if (idx === -1) return prev;
         const current = prev[idx];
-        const updated = { ...current, feed: current.feed.filter((item) => !(item.kind === "finding" && item.id === id)) };
-        return [updated, ...prev.slice(0, idx), ...prev.slice(idx + 1)].slice(0, MAX_CHAT_THREADS);
+        const updated = {
+          ...current,
+          feed: current.feed.filter(
+            (item) => !(item.kind === "finding" && item.id === id),
+          ),
+        };
+        return [updated, ...prev.slice(0, idx), ...prev.slice(idx + 1)].slice(
+          0,
+          MAX_CHAT_THREADS,
+        );
       });
       const existing = surfacedByTabRef.current.get(tabScopeKey);
       if (existing) existing.delete(id);
     },
     [activeThreadId, tabScopeKey],
   );
-
-  const dismissAllFindings = useCallback(() => {
-    setThreads((prev) => {
-      const idx = prev.findIndex((t) => t.id === activeThreadId);
-      if (idx === -1) return prev;
-      const current = prev[idx];
-      const updated = { ...current, feed: current.feed.filter((item) => item.kind !== "finding") };
-      return [updated, ...prev.slice(0, idx), ...prev.slice(idx + 1)].slice(0, MAX_CHAT_THREADS);
-    });
-    surfacedByTabRef.current.delete(tabScopeKey);
-  }, [activeThreadId, tabScopeKey]);
-
-  const exportFindings = useCallback(() => {
-    const data = feed.filter((item): item is FeedFinding => item.kind === "finding");
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `sentinel-findings-${new Date().toISOString().slice(0, 19).replace(/:/g, "-")}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-  }, [feed]);
 
   // On tab switch, run a fresh scoped scan so findings surface per project tab.
   useEffect(() => {
@@ -1357,6 +1920,34 @@ export function AgentPanel({
     void applyFix(next);
   }, [autopilotEnabled, applyFix, isSafeFixProposal, pendingFixes]);
 
+  // When autopilot is turned on, immediately process any already-detected findings
+  // that haven't been handled yet (fixes the case where detect runs first, user kills
+  // a process, then turns on autopilot and nothing happens until the next scan cycle)
+  useEffect(() => {
+    if (!autopilotEnabled) return;
+    const detectedFindings = feed
+      .filter(
+        (item): item is FeedFinding =>
+          item.kind === "finding" && item.stage === "detected",
+      )
+      .map((item) => ({
+        id: item.id,
+        service: item.service,
+        summary: item.summary,
+        severity: item.severity,
+        fix: item.fix,
+        affectedServices: [],
+        category: "health" as const,
+        detail: "",
+        impact: "",
+      }));
+    if (detectedFindings.length > 0) {
+      void runAutopilotForFindings(detectedFindings);
+    }
+  // Only re-run when autopilot flips to enabled — not on every feed change
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autopilotEnabled]);
+
   const startNewConversation = useCallback(() => {
     const next = createThread([]);
     setThreads((prev) => [next, ...prev].slice(0, MAX_CHAT_THREADS));
@@ -1390,7 +1981,8 @@ export function AgentPanel({
   const applyFindingFix = useCallback(
     (findingId: string) => {
       const finding = feed.find(
-        (item): item is FeedFinding => item.kind === "finding" && item.id === findingId,
+        (item): item is FeedFinding =>
+          item.kind === "finding" && item.id === findingId,
       );
       if (!finding) return;
       const safeAction = toSafeAction(finding.fix);
@@ -1399,7 +1991,11 @@ export function AgentPanel({
       updateFindingInFeed(findingId, "fixing");
       void window.electronAPI.agentApplyFix(safeAction).then((result) => {
         if (!result.success) {
-          updateFindingInFeed(findingId, "escalated", result.error ?? "apply failed");
+          updateFindingInFeed(
+            findingId,
+            "escalated",
+            result.error ?? "apply failed",
+          );
           return;
         }
         updateFindingInFeed(findingId, "fixed");
@@ -1426,7 +2022,8 @@ export function AgentPanel({
 
   const explainFinding = useCallback(
     (finding: FeedFinding) => {
-      const isUnhealthy = finding.severity === "critical" || finding.severity === "warning";
+      const isUnhealthy =
+        finding.severity === "critical" || finding.severity === "warning";
       const msg = isUnhealthy
         ? `Investigate **${finding.service}**: ${finding.summary}. What's causing this and how do I fix it?`
         : `Tell me about **${finding.service}**: ${finding.summary}.`;
@@ -1435,18 +2032,46 @@ export function AgentPanel({
     [send],
   );
 
-  const [claudeCodeToast, setClaudeCodeToast] = useState<string | null>(null);
+  const openFindingInClaudeCode = useCallback(
+    async (finding: FeedFinding) => {
+      const serviceLines = nodes
+        .filter((n) => n.type !== "external")
+        .map((n) => {
+          const port =
+            (n.ports ?? []).map((p) => p.port).join(", ") || "no port";
+          const cpu = n.cpu != null ? `, CPU ${n.cpu.toFixed(1)}%` : "";
+          const mem = n.memory != null ? `, ${n.memory.toFixed(0)} MB` : "";
+          return `- ${n.name} (port ${port}) — health: ${n.healthStatus ?? "unknown"}${cpu}${mem}`;
+        })
+        .join("\n");
 
-  const openFindingInClaudeCode = useCallback(async (finding: FeedFinding) => {
-    const result = await window.electronAPI.openInClaudeCode(finding);
-    if (result.success) {
-      setClaudeCodeToast(`Brief copied to clipboard. Terminal opened at ${result.projectPath} — run \`claude\` and paste.`);
-      setTimeout(() => setClaudeCodeToast(null), 6000);
-    } else {
-      setClaudeCodeToast(`Could not open Terminal: ${result.error ?? "unknown error"}`);
-      setTimeout(() => setClaudeCodeToast(null), 4000);
-    }
-  }, []);
+      const contextText = [
+        `**Finding: ${finding.summary}**`,
+        `Severity: ${finding.severity} | Service: ${finding.service}`,
+        finding.error ? `\nDetails: ${finding.error}` : "",
+        "",
+        "**Runtime context:**",
+        serviceLines || "  (no services detected)",
+        "",
+        "Please help me investigate and fix this.",
+      ]
+        .filter((l) => l !== undefined)
+        .join("\n")
+        .trim();
+
+      const contextItem: FeedMessage = {
+        kind: "message",
+        role: "user",
+        content: contextText,
+        copyable: true,
+      };
+      appendActiveThreadItems([contextItem]);
+      setTimeout(() => scrollToEnd(true), 50);
+      // Also open Terminal at the project dir and run `claude`
+      void window.electronAPI.openInClaudeCode(finding);
+    },
+    [nodes, appendActiveThreadItems, scrollToEnd],
+  );
 
   return (
     <>
@@ -1514,10 +2139,36 @@ export function AgentPanel({
                   </span>
                 )}
               </button>
+              <button
+                className={`agp-scan-btn agp-handoff-btn agp-header-utility${handoffCopied ? " agp-handoff-btn-copied" : ""}`}
+                onClick={handleHandoff}
+                title={handoffCopied ? "Runtime context copied" : "Copy runtime context"}
+                disabled={isStreaming}
+              >
+                {handoffCopied ? (
+                  <span>Copied</span>
+                ) : (
+                  <svg
+                    width="15"
+                    height="15"
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.7"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <rect x="5" y="5" width="9" height="9" rx="1.5" />
+                    <path d="M11 5V3.5A1.5 1.5 0 0 0 9.5 2H3.5A1.5 1.5 0 0 0 2 3.5v6A1.5 1.5 0 0 0 3.5 11H5" />
+                  </svg>
+                )}
+              </button>
               {threads.length > 0 && (
                 <button
                   className={`agp-scan-btn agp-history-btn agp-header-utility${historyOpen ? " agp-scan-btn-active" : ""}`}
-                  onClick={() => { setHistoryOpen((v) => !v); }}
+                  onClick={() => {
+                    setHistoryOpen((v) => !v);
+                  }}
                   title="Chat history"
                   disabled={isStreaming}
                 >
@@ -1557,7 +2208,10 @@ export function AgentPanel({
                   </svg>
                 </button>
               )}
-              <button className="agp-close agp-header-utility agp-close-top" onClick={() => setOpen(false)}>
+              <button
+                className="agp-close agp-header-utility agp-close-top"
+                onClick={() => setOpen(false)}
+              >
                 ×
               </button>
             </div>
@@ -1580,8 +2234,11 @@ export function AgentPanel({
                     <div className="agp-history-item-content">
                       <span className="agp-history-title">{thread.title}</span>
                       <span className="agp-history-meta">
-                        {thread.feed.filter(item => item.kind === "message").length} msg ·{" "}
-                        {formatThreadTimestamp(thread.updatedAt)}
+                        {
+                          thread.feed.filter((item) => item.kind === "message")
+                            .length
+                        }{" "}
+                        msg · {formatThreadTimestamp(thread.updatedAt)}
                       </span>
                     </div>
                     <button
@@ -1653,10 +2310,22 @@ export function AgentPanel({
                       />
                     );
                   }
+                  if (item.kind === "context") {
+                    return (
+                      <ContextBlock
+                        key={i}
+                        snapshot={item.snapshot}
+                        copyText={item.copyText}
+                      />
+                    );
+                  }
                   return (
-                    <div key={i} className={`agp-msg agp-msg-${item.role}`}>
+                    <div
+                      key={i}
+                      className={`agp-msg agp-msg-${item.role}${item.copyable ? " agp-msg-copyable" : ""}`}
+                    >
                       <div className="agp-msg-bubble">
-                        {item.role === "assistant" ? (
+                        {item.role === "assistant" || item.copyable ? (
                           <ReactMarkdown
                             className="agp-markdown"
                             rehypePlugins={[rehypeHighlight]}
@@ -1665,8 +2334,9 @@ export function AgentPanel({
                             {item.content}
                           </ReactMarkdown>
                         ) : (
-                          item.content
+                          renderMentions(item.content, nodes)
                         )}
+                        {item.copyable && <CopyButton text={item.content} />}
                       </div>
                     </div>
                   );
@@ -1873,42 +2543,58 @@ export function AgentPanel({
           )}
 
           {/* Input */}
-          <div className="agp-input-row">
-            <textarea
-              ref={inputRef}
-              className="agp-input"
-              placeholder="Ask anything about your running stack… (Enter to send)"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              disabled={isStreaming}
-            />
-            <button
-              className="agp-send-btn"
-              onClick={() => void send(input)}
-              disabled={isStreaming || !input.trim()}
-              title="Send (Enter)"
-            >
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 16 16"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
+          <div className="agp-input-wrap">
+            {mentionQuery && (
+              <MentionDropdown
+                query={mentionQuery.query}
+                nodes={nodes}
+                onSelect={handleMentionSelect}
+              />
+            )}
+            <div className="agp-input-row">
+              <div className="agp-input-container">
+                <div
+                  ref={mirrorRef}
+                  className="agp-input-mirror"
+                  aria-hidden="true"
+                >
+                  {renderMirrorContent(input, nodes)}
+                  {"\u200b"}
+                </div>
+                <textarea
+                  ref={inputRef}
+                  className="agp-input"
+                  placeholder="Ask anything about your running stack… (Enter to send)"
+                  value={input}
+                  onChange={handleInputChange}
+                  onKeyDown={handleKeyDown}
+                  onScroll={handleTextareaScroll}
+                  disabled={isStreaming}
+                />
+              </div>
+              <button
+                className="agp-send-btn"
+                onClick={() => void send(input)}
+                disabled={isStreaming || !input.trim()}
+                title="Send (Enter)"
               >
-                <path d="M13 8H3" />
-                <path d="M9 4l4 4-4 4" />
-              </svg>
-            </button>
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M13 8H3" />
+                  <path d="M9 4l4 4-4 4" />
+                </svg>
+              </button>
+            </div>
           </div>
         </div>
-      )}
-
-      {claudeCodeToast && (
-        <div className="agp-claudecode-toast">{claudeCodeToast}</div>
       )}
     </>
   );

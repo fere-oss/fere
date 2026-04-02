@@ -1156,6 +1156,7 @@ function App() {
         <div className="app-header-actions">
           <AgentPanel
             nodes={filteredData.nodes}
+            edges={filteredData.edges}
             tabLabel={selectedTab === SYSTEM_TAB_ID ? null : (tabs.find((t) => t.id === selectedTab)?.label ?? null)}
           />
           <button

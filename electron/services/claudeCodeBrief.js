@@ -112,9 +112,13 @@ function buildBrief(finding, snapshot, containerLogs) {
 // ─── Terminal launcher ────────────────────────────────────────────────────────
 
 function openTerminalAt(dirPath) {
+  const escaped = dirPath.replace(/\\/g, '\\\\').replace(/'/g, "'\\''");
+  const script = `tell application "Terminal"
+  activate
+  do script "cd '${escaped}' && claude"
+end tell`;
   return new Promise((resolve) => {
-    // `open -a Terminal /path` opens a new Terminal window with that dir as CWD
-    execFile('open', ['-a', 'Terminal', dirPath], () => resolve());
+    execFile('osascript', ['-e', script], () => resolve());
   });
 }
 

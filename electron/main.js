@@ -3438,7 +3438,7 @@ ipcMain.handle("agent:chat", async (event, payload) => {
       forcedExecutionAttempted = false,
     ) {
       const stream = await openai.chat.completions.create({
-        model: "gpt-4o",
+        model: "gpt-4o-mini",
         messages: turnMessages,
         tools: AGENT_TOOLS,
         tool_choice: "auto",
