@@ -33,6 +33,20 @@ export function NodeDetailPanel({ node, edges, allNodes, onClose }: NodeDetailPa
   }, [onClose]);
 
   const handleAssessService = useCallback(() => {
+    const nodeNameMap = new Map(allNodes.map((n) => [n.id, n.name]));
+    const isDockerNet = (e: GraphEdge) => e.sourcePort === 0 && e.targetPort === 0;
+    const inbound = edges.filter((e) => e.target === node.id && !isDockerNet(e));
+    const outbound = edges.filter((e) => e.source === node.id && !isDockerNet(e));
+    const networkPeerIds = new Set<string>();
+    const networkPeers: string[] = [];
+    [...edges.filter((e) => e.target === node.id && isDockerNet(e)),
+     ...edges.filter((e) => e.source === node.id && isDockerNet(e))].forEach((e) => {
+      const peerId = e.source === node.id ? e.target : e.source;
+      if (!networkPeerIds.has(peerId)) {
+        networkPeerIds.add(peerId);
+        networkPeers.push(nodeNameMap.get(peerId) ?? peerId);
+      }
+    });
     window.dispatchEvent(
       new CustomEvent("fere:investigate-node", {
         detail: {
@@ -41,10 +55,21 @@ export function NodeDetailPanel({ node, edges, allNodes, onClose }: NodeDetailPa
           healthStatus: node.healthStatus,
           ports: (node.ports ?? []).map((port) => port.port),
           command: node.command,
+          inboundConnections: inbound.map((e) => ({
+            name: nodeNameMap.get(e.source) ?? e.source,
+            sourcePort: e.sourcePort,
+            targetPort: e.targetPort,
+          })),
+          outboundConnections: outbound.map((e) => ({
+            name: nodeNameMap.get(e.target) ?? e.target,
+            sourcePort: e.sourcePort,
+            targetPort: e.targetPort,
+          })),
+          networkPeers,
         },
       }),
     );
-  }, [node.command, node.healthStatus, node.id, node.name, node.ports]);
+  }, [node, edges, allNodes]);
 
   return (
     <div className="node-detail-backdrop" onClick={handleBackdropClick} onWheel={handleWheel}>

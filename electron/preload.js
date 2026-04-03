@@ -131,8 +131,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   agentScan: (nodeIds) => ipcRenderer.invoke('agent:scan', nodeIds),
   agentApplyFix: (action) => ipcRenderer.invoke('agent:apply-fix', action),
   openInClaudeCode: (finding) => ipcRenderer.invoke('agent:open-in-claude-code', finding),
-  agentChat: (messages, nodeIds, tabLabel, options) =>
-    ipcRenderer.invoke('agent:chat', { messages, nodeIds, tabLabel, options }),
+  agentChat: (messages, nodeIds, tabLabel, options, graphEdges) =>
+    ipcRenderer.invoke('agent:chat', { messages, nodeIds, tabLabel, options, graphEdges }),
   onChatToken: (callback) => ipcRenderer.on('agent:chat-token', (_, token) => callback(token)),
   offChatToken: () => ipcRenderer.removeAllListeners('agent:chat-token'),
   onChatStep: (callback) => ipcRenderer.on('agent:chat-step', (_, step) => callback(step)),

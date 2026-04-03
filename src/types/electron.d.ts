@@ -699,7 +699,8 @@ export interface ElectronAPI {
     messages: { role: 'user' | 'assistant'; content: string }[],
     nodeIds?: string[],
     tabLabel?: string | null,
-    options?: { autopilotEnabled?: boolean }
+    options?: { autopilotEnabled?: boolean },
+    graphEdges?: GraphEdge[]
   ) => Promise<{ success: boolean; content?: string; error?: string }>;
   onChatToken: (callback: (token: string) => void) => void;
   offChatToken: () => void;

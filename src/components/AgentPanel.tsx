@@ -1197,6 +1197,7 @@ export function AgentPanel({
           nodeIdsForScan,
           tabLabel ?? null,
           { autopilotEnabled },
+          edges,
         );
         window.electronAPI.offChatToken();
         window.electronAPI.offChatStep();
@@ -1230,6 +1231,7 @@ export function AgentPanel({
       isStreaming,
       nodeIdsForScan,
       scrollToEnd,
+      edges,
       tabLabel,
       updateActiveThreadFeed,
     ],
@@ -1362,7 +1364,7 @@ export function AgentPanel({
   // Feature: click a node → Sentinel auto-investigates
   useEffect(() => {
     const handler = (e: Event) => {
-      const { nodeName, healthStatus, ports, command } =
+      const { nodeName, healthStatus, ports, command, inboundConnections, outboundConnections, networkPeers } =
         (e as CustomEvent).detail ?? {};
       if (!nodeName) return;
 
@@ -1370,10 +1372,25 @@ export function AgentPanel({
         ? ` on port ${(ports as number[]).join(", ")}`
         : "";
       const cmdStr = command ? ` (${String(command).slice(0, 60)})` : "";
+
+      // Build connection context from panel data so the agent uses what the UI already shows
+      const connLines: string[] = [];
+      if (Array.isArray(inboundConnections) && inboundConnections.length > 0) {
+        connLines.push(`Inbound (live TCP): ${(inboundConnections as Array<{name:string;sourcePort:number;targetPort:number}>).map((c) => `${c.name} (:${c.sourcePort}→:${c.targetPort})`).join(", ")}`);
+      }
+      if (Array.isArray(outboundConnections) && outboundConnections.length > 0) {
+        connLines.push(`Outbound (live TCP): ${(outboundConnections as Array<{name:string;sourcePort:number;targetPort:number}>).map((c) => `${c.name} (:${c.sourcePort}→:${c.targetPort})`).join(", ")}`);
+      }
+      if (Array.isArray(networkPeers) && networkPeers.length > 0) {
+        connLines.push(`Docker network peers (direction unknown): ${(networkPeers as string[]).join(", ")}`);
+      }
+      if (connLines.length === 0) connLines.push("No connections observed.");
+      const connContext = `\n\nConnections (from live UI data):\n${connLines.map((l) => `- ${l}`).join("\n")}`;
+
       const isUnhealthy = healthStatus === "red" || healthStatus === "yellow";
       const msg = isUnhealthy
-        ? `Investigate **${nodeName}**${portStr}${cmdStr} — health is ${healthStatus}. What's wrong and how do I fix it? Check ports, connections, and logs if it's a container.`
-        : `Tell me about **${nodeName}**${portStr}${cmdStr} — its current health, routes, and connections.`;
+        ? `Investigate **${nodeName}**${portStr}${cmdStr} — health is ${healthStatus}. What's wrong and how do I fix it? Check ports, connections, and logs if it's a container.${connContext}`
+        : `Tell me about **${nodeName}**${portStr}${cmdStr} — its current health, routes, and connections.${connContext}`;
 
       // Open panel and start a fresh thread — send fires once activeThread settles
       setOpen(true);

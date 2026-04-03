@@ -2145,7 +2145,7 @@ ipcMain.handle("update-shared-graph", async (_, options) => {
 
 ipcMain.handle("agent:scan", async (_, nodeIds) => {
   try {
-    const snapshot = await getSystemSnapshot();
+    const snapshot = (snapshotScheduler && snapshotScheduler.getLatestSnapshot()) || await getSystemSnapshot();
     const findings = await runScan(
       snapshot,
       Array.isArray(nodeIds) ? nodeIds : undefined,
@@ -3290,13 +3290,13 @@ function sendStep(event, step) {
 
 ipcMain.handle("agent:chat", async (event, payload) => {
   try {
-    const { messages, nodeIds, tabLabel, options = {} } = payload || {};
+    const { messages, nodeIds, tabLabel, options = {}, graphEdges } = payload || {};
     const safeMessages = Array.isArray(messages) ? messages : [];
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
       // Offline fallback: run deterministic scan and stream findings as response
       try {
-        const offlineSnap = await getSystemSnapshot();
+        const offlineSnap = (snapshotScheduler && snapshotScheduler.getLatestSnapshot()) || await getSystemSnapshot();
         const offlineFindings = await runScan(
           offlineSnap,
           Array.isArray(nodeIds) ? nodeIds : undefined,
@@ -3348,7 +3348,9 @@ ipcMain.handle("agent:chat", async (event, payload) => {
       }
     }
 
-    const snapshot = await getSystemSnapshot();
+    // Prefer the scheduler's cached snapshot so the agent sees the same graph the UI shows.
+    // Fall back to a fresh build only if the scheduler hasn't produced one yet.
+    const snapshot = (snapshotScheduler && snapshotScheduler.getLatestSnapshot()) || await getSystemSnapshot();
 
     // Enrich nodes with external APIs (not in snapshot by default — on-demand only)
     const projectPaths = [
@@ -3390,11 +3392,17 @@ ipcMain.handle("agent:chat", async (event, payload) => {
     const scopedNodes = scopedIds
       ? allNodes.filter((node) => scopedIds.has(node.id))
       : allNodes;
-    const scopedEdges = scopedIds
-      ? allEdges.filter(
-          (edge) => scopedIds.has(edge.source) || scopedIds.has(edge.target),
-        )
-      : allEdges;
+    // Prefer the UI's already-filtered edge list when provided — it is the exact
+    // same set the node detail panel renders, so get_node_details returns matching data.
+    const uiEdges = Array.isArray(graphEdges) && graphEdges.length > 0 ? graphEdges : null;
+    const scopedEdges = uiEdges ?? (scopedIds
+      ? allEdges.filter((edge) => {
+          if (edge.sourcePort === 0 && edge.targetPort === 0) {
+            return scopedIds.has(edge.source) && scopedIds.has(edge.target);
+          }
+          return scopedIds.has(edge.source) || scopedIds.has(edge.target);
+        })
+      : allEdges);
     const baseSystemPrompt = await buildChatContext(
       snapshot,
       findings,

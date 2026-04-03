@@ -337,6 +337,20 @@ export const CommandPalette = forwardRef<
             label: `Investigate ${name}`,
             action: () => {
               setIsAgentOpen(true);
+              const nodeNameMap = new Map(graph.nodes.map((n) => [n.id, n.name]));
+              const isDockerNet = (e: GraphEdge) => e.sourcePort === 0 && e.targetPort === 0;
+              const nodeEdges = graph.edges.filter((e) => e.source === node.id || e.target === node.id);
+              const inbound = nodeEdges.filter((e) => e.target === node.id && !isDockerNet(e));
+              const outbound = nodeEdges.filter((e) => e.source === node.id && !isDockerNet(e));
+              const networkPeerIds = new Set<string>();
+              const networkPeers: string[] = [];
+              nodeEdges.filter(isDockerNet).forEach((e) => {
+                const peerId = e.source === node.id ? e.target : e.source;
+                if (!networkPeerIds.has(peerId)) {
+                  networkPeerIds.add(peerId);
+                  networkPeers.push(nodeNameMap.get(peerId) ?? peerId);
+                }
+              });
               window.dispatchEvent(
                 new CustomEvent("fere:investigate-node", {
                   detail: {
@@ -345,6 +359,9 @@ export const CommandPalette = forwardRef<
                     healthStatus: node.healthStatus,
                     ports: (node.ports ?? []).map((port) => port.port),
                     command: node.command,
+                    inboundConnections: inbound.map((e) => ({ name: nodeNameMap.get(e.source) ?? e.source, sourcePort: e.sourcePort, targetPort: e.targetPort })),
+                    outboundConnections: outbound.map((e) => ({ name: nodeNameMap.get(e.target) ?? e.target, sourcePort: e.sourcePort, targetPort: e.targetPort })),
+                    networkPeers,
                   },
                 }),
               );

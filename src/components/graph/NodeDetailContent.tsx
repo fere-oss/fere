@@ -820,45 +820,63 @@ export function NodeDetailContent({
           </div>
         )}
 
-      {(incomingEdges.length > 0 || outgoingEdges.length > 0) && (
-        <div className="node-detail-section">
-          <h3 className="node-detail-section-title">Connections</h3>
-          <div className="node-detail-connections">
-            {incomingEdges.length > 0 && (
-              <div className="node-detail-connection-group">
-                <span className="node-detail-connection-label">Incoming</span>
-                {incomingEdges.map((edge, idx) => (
-                  <div key={idx} className="node-detail-connection">
-                    <span className="connection-arrow">←</span>
-                    <span className="connection-node">
-                      {getNodeName(edge.source)}
-                    </span>
-                    <span className="connection-port">
-                      :{edge.sourcePort} → :{edge.targetPort}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
-            {outgoingEdges.length > 0 && (
-              <div className="node-detail-connection-group">
-                <span className="node-detail-connection-label">Outgoing</span>
-                {outgoingEdges.map((edge, idx) => (
-                  <div key={idx} className="node-detail-connection">
-                    <span className="connection-arrow">→</span>
-                    <span className="connection-node">
-                      {getNodeName(edge.target)}
-                    </span>
-                    <span className="connection-port">
-                      :{edge.sourcePort} → :{edge.targetPort}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
+      {(incomingEdges.length > 0 || outgoingEdges.length > 0) && (() => {
+        const isDockerNet = (e: typeof incomingEdges[0]) =>
+          e.sourcePort === 0 && e.targetPort === 0;
+        const realIncoming = incomingEdges.filter(e => !isDockerNet(e));
+        const realOutgoing = outgoingEdges.filter(e => !isDockerNet(e));
+        const networkPeerIds = new Set<string>();
+        const networkPeers: string[] = [];
+        [...incomingEdges.filter(isDockerNet), ...outgoingEdges.filter(isDockerNet)].forEach(e => {
+          const peerId = e.source === node.id ? e.target : e.source;
+          if (!networkPeerIds.has(peerId)) {
+            networkPeerIds.add(peerId);
+            networkPeers.push(getNodeName(peerId));
+          }
+        });
+        return (
+          <div className="node-detail-section">
+            <h3 className="node-detail-section-title">Connections</h3>
+            <div className="node-detail-connections">
+              {realIncoming.length > 0 && (
+                <div className="node-detail-connection-group">
+                  <span className="node-detail-connection-label">Incoming</span>
+                  {realIncoming.map((edge, idx) => (
+                    <div key={idx} className="node-detail-connection">
+                      <span className="connection-arrow">←</span>
+                      <span className="connection-node">{getNodeName(edge.source)}</span>
+                      <span className="connection-port">:{edge.sourcePort} → :{edge.targetPort}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {realOutgoing.length > 0 && (
+                <div className="node-detail-connection-group">
+                  <span className="node-detail-connection-label">Outgoing</span>
+                  {realOutgoing.map((edge, idx) => (
+                    <div key={idx} className="node-detail-connection">
+                      <span className="connection-arrow">→</span>
+                      <span className="connection-node">{getNodeName(edge.target)}</span>
+                      <span className="connection-port">:{edge.sourcePort} → :{edge.targetPort}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {networkPeers.length > 0 && (
+                <div className="node-detail-connection-group">
+                  <span className="node-detail-connection-label">Network peers</span>
+                  {networkPeers.map((name, idx) => (
+                    <div key={idx} className="node-detail-connection">
+                      <span className="connection-arrow">↔</span>
+                      <span className="connection-node">{name}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }

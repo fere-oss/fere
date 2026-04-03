@@ -783,6 +783,14 @@ class SnapshotScheduler extends EventEmitter {
 
     return delta;
   }
+
+  /**
+   * Return the most recently emitted full snapshot — same graph the renderer has.
+   * Falls back to a fresh getSystemSnapshot() if no snapshot has been emitted yet.
+   */
+  getLatestSnapshot() {
+    return this.previousSnapshot || null;
+  }
 }
 
 function setsEqual(a, b) {

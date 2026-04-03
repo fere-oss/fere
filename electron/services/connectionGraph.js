@@ -14,6 +14,7 @@ const platform = require('./platform');
 const { getDevProcesses } = require('./processMonitor');
 const { getListeningPorts, getEstablishedConnections } = require('./portMonitor');
 const { scanRoutes, matchRoutesToService } = require('./routeScanner');
+const { scanLocalConnections } = require('./localConnectionScanner');
 const { updateHealthTracking, getHealthStatus } = require('./healthTracker');
 const {
   getDockerSnapshot,
@@ -302,8 +303,11 @@ async function buildConnectionGraph(snapshot = null) {
   const projectPaths = collectProjectPaths({
     processes, ports, cwdMap: cwdMapObj, dockerSnapshot,
   });
-  const routesByProject = await collectRoutes(projectPaths);
-  perfLog('Parallel operations (docker + routes)', Date.now() - startParallel);
+  const [routesByProject, localConnectionsByProject] = await Promise.all([
+    collectRoutes(projectPaths),
+    collectLocalConnections(projectPaths),
+  ]);
+  perfLog('Parallel operations (docker + routes + local connections)', Date.now() - startParallel);
 
   // Single graph build with all data
   const result = buildGraphStructure({
@@ -311,6 +315,7 @@ async function buildConnectionGraph(snapshot = null) {
     cwdMap: cwdMapObj,
     dockerSnapshot,
     routesByProject,
+    localConnectionsByProject,
     healthByPid,
     containerHealthToGraphHealth,
     projectPaths: [...projectPaths],

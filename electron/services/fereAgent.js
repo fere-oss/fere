@@ -756,8 +756,8 @@ async function buildChatContext(snapshot, findings, tabLabel = null, nodeIds = n
     ? externalNodes.map((n) => `  - ${n.name}`).join("\n")
     : "  (none)";
 
-  // Exclude zero-port edges — these are Docker compose-network artifacts, not real TCP connections
   const realEdges = edges.filter((e) => e.sourcePort !== 0 || e.targetPort !== 0);
+  const composeEdges = edges.filter((e) => e.sourcePort === 0 && e.targetPort === 0);
   const edgeLines = realEdges.length
     ? realEdges
         .map((e) => {
@@ -766,7 +766,22 @@ async function buildChatContext(snapshot, findings, tabLabel = null, nodeIds = n
           return `  - ${src} → ${tgt}`;
         })
         .join("\n")
-    : "  (no active connections)";
+    : "  (no active TCP connections)";
+  // Deduplicate docker-network peers (edges are undirected — direction unknown)
+  const networkPairsSeen = new Set();
+  const composeLinkLines = composeEdges.length
+    ? composeEdges
+        .map((e) => {
+          const a = nodes.find((n) => n.id === e.source)?.name ?? e.source;
+          const b = nodes.find((n) => n.id === e.target)?.name ?? e.target;
+          const key = [a, b].sort().join("<->");
+          if (networkPairsSeen.has(key)) return null;
+          networkPairsSeen.add(key);
+          return `  - ${a} ↔ ${b} (same docker network, call direction unknown)`;
+        })
+        .filter(Boolean)
+        .join("\n")
+    : null;
 
   const containerLines = containers.length
     ? containers
@@ -819,7 +834,7 @@ ${externalLines}
 
 ## Service Topology (active TCP connections)
 ${edgeLines}
-
+${composeLinkLines ? `\n## Docker Network Peers (direction unknown — no live TCP observed)\n${composeLinkLines}` : ""}
 ## Docker Containers
 ${containerLines}
 
@@ -839,6 +854,7 @@ Rules:
 - Format responses with Markdown: use **bold** for service names and key terms, \`code\` for ports/PIDs/commands, bullet lists for multi-item answers.
 - Keep answers focused and actionable. Lead with the direct answer, then explain.
 - You have a \`get_node_details\` tool. You MUST call it before answering any question about a specific service's connections, health, routes, resource usage, or status. The summary in the system prompt above is incomplete — \`get_node_details\` is the authoritative source. Never list or describe a service's connections from the system prompt text alone; always call the tool first and report only what the tool returns. If the tool returns no inbound or outbound connections for a service, say so — do not infer connections from service names or architecture knowledge.
+- CRITICAL — connection direction: if \`get_node_details\` returns a "Shares docker network with" line (or the topology above shows "↔"), those connections have NO observed direction. You MUST NOT label them as inbound or outbound. You MUST NOT infer direction from service names, architecture knowledge, or common patterns (e.g. do not assume "payment calls cart" just because it sounds plausible). Report them only as "shares a docker network with X" and explicitly say call direction was not observed.
 - You have a \`read_file\` tool. You MUST call it before answering any question about implementation details, code logic, which function handles what, fallback/retry logic, or how two libraries interact. Never answer implementation questions from memory — always read the actual file first. Use \`list_directory\` first if unsure of the path. If a file read fails or returns nothing useful, do NOT give up — use \`run_command\` with grep to locate the right file (e.g. \`grep -rl "groq\\|gemini" --include="*.py" .\`) then read it. When asked about multiple things (e.g. "Groq AND Gemini"), you must locate ALL of them in source before answering — finding one does not mean you are done. Only after exhausting file reads and grep should you say you can't find the information.
 - You have \`run_command\` for short diagnostic commands (e.g. \`npm test\`, \`python -c\`, \`cat error.log\`). NEVER use it for long-running servers.
 - You have \`launch_in_terminal\` for starting dev servers and long-running processes (uvicorn, npm run dev, next dev, flask run, nodemon, etc.). This opens macOS Terminal and runs the command there so the user can see its output. Always use this when the user asks you to start or run a service.
@@ -902,24 +918,32 @@ function buildNodeDetails(node, allNodes, edges) {
     if (cPorts.length) lines.push(`  Mapped ports: ${cPorts.filter((p) => p.hostPort).map((p) => `${p.hostPort}→${p.containerPort}`).join(", ")}`);
   }
 
-  const describeConnection = (edge, direction) => {
-    const peerId = direction === "inbound" ? edge.source : edge.target;
-    const peerName = allNodes.find((n) => n.id === peerId)?.name ?? peerId;
-    const sourcePort = Number(edge.sourcePort) || 0;
-    const targetPort = Number(edge.targetPort) || 0;
-    if (sourcePort === 0 && targetPort === 0) {
-      return `${peerName} (edge detected, port details unavailable)`;
-    }
-    return `${peerName} (:${sourcePort} → :${targetPort})`;
-  };
+  const isDockerNet = (e) => e.sourcePort === 0 && e.targetPort === 0;
 
-  const outbound = edges.filter((e) => e.source === node.id);
-  const inbound = edges.filter((e) => e.target === node.id);
+  const outbound = edges.filter((e) => e.source === node.id && !isDockerNet(e));
+  const inbound = edges.filter((e) => e.target === node.id && !isDockerNet(e));
   if (inbound.length) {
-    lines.push(`\nInbound connections from: ${inbound.map((e) => describeConnection(e, "inbound")).join(", ")}`);
+    lines.push(`\nInbound connections from: ${inbound.map((e) => {
+      const peerName = allNodes.find((n) => n.id === e.source)?.name ?? e.source;
+      return `${peerName} (:${e.sourcePort} → :${e.targetPort})`;
+    }).join(", ")}`);
   }
   if (outbound.length) {
-    lines.push(`Outbound connections to: ${outbound.map((e) => describeConnection(e, "outbound")).join(", ")}`);
+    lines.push(`Outbound connections to: ${outbound.map((e) => {
+      const peerName = allNodes.find((n) => n.id === e.target)?.name ?? e.target;
+      return `${peerName} (:${e.sourcePort} → :${e.targetPort})`;
+    }).join(", ")}`);
+  }
+
+  const networkPeers = new Map();
+  for (const e of edges.filter(isDockerNet).filter((e) => e.source === node.id || e.target === node.id)) {
+    const peerId = e.source === node.id ? e.target : e.source;
+    if (!networkPeers.has(peerId)) {
+      networkPeers.set(peerId, allNodes.find((n) => n.id === peerId)?.name ?? peerId);
+    }
+  }
+  if (networkPeers.size) {
+    lines.push(`Shares docker network with: ${[...networkPeers.values()].join(", ")} (direction unknown — no live TCP observed)`);
   }
 
   return lines.join("\n");
