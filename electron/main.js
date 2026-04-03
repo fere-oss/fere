@@ -266,6 +266,14 @@ function createWindow() {
     mainWindow.loadFile(path.join(__dirname, "../build/index.html"));
   }
 
+  // Guard against Chromium/Electron page zoom getting stuck across launches.
+  // React Flow handles in-canvas zoom itself; the shell should stay at 100%.
+  mainWindow.webContents.setZoomFactor(1);
+  mainWindow.webContents.setVisualZoomLevelLimits(1, 1).catch(() => {});
+  mainWindow.webContents.on("did-finish-load", () => {
+    mainWindow?.webContents.setZoomFactor(1);
+  });
+
   // Security: Set up navigation blocking
   // Allow only dev server in development, file:// protocol in production
   const allowedOrigins = isDev

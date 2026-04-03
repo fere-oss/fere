@@ -15,21 +15,14 @@ export type ArrowEdgeData = {
   targetPos: Position;
   /** When set, this edge represents a bundle of N edges to the same group */
   bundleCount?: number;
-  /** Target node type for connection labels */
-  targetType?: string;
-  /** Target node port for connection labels */
-  targetPort?: number;
-  /** Whether learning labels are visible */
-  connectionLabel?: string | null;
 };
 
-function EdgePath({ id, edgePath, bundleCount, labelX, labelY, connectionLabel }: {
+function EdgePath({ id, edgePath, bundleCount, labelX, labelY }: {
   id: string;
   edgePath: string;
   bundleCount?: number;
   labelX?: number;
   labelY?: number;
-  connectionLabel?: string | null;
 }) {
   return (
     <g>
@@ -66,31 +59,6 @@ function EdgePath({ id, edgePath, bundleCount, labelX, labelY, connectionLabel }
           </text>
         </g>
       )}
-      {connectionLabel && !bundleCount && labelX !== undefined && labelY !== undefined && (
-        <g transform={`translate(${labelX}, ${labelY})`}>
-          <rect
-            x={-connectionLabel.length * 2.7 - 6}
-            y={-8}
-            width={connectionLabel.length * 5.4 + 12}
-            height={16}
-            rx={3}
-            fill="white"
-            stroke="rgba(0,0,0,0.08)"
-            strokeWidth={0.5}
-          />
-          <text
-            x={0}
-            y={1}
-            textAnchor="middle"
-            dominantBaseline="middle"
-            fill="#1a1a1a"
-            fontSize={9}
-            fontFamily="system-ui, sans-serif"
-          >
-            {connectionLabel}
-          </text>
-        </g>
-      )}
     </g>
   );
 }
@@ -108,7 +76,7 @@ export function ArrowBezierEdge({
     targetY: data.ty,
     targetPosition: data.targetPos,
   });
-  return <EdgePath id={id} edgePath={edgePath} bundleCount={data.bundleCount} labelX={labelX} labelY={labelY} connectionLabel={data.connectionLabel} />;
+  return <EdgePath id={id} edgePath={edgePath} bundleCount={data.bundleCount} labelX={labelX} labelY={labelY} />;
 }
 
 export function ArrowStepEdge({
@@ -125,7 +93,7 @@ export function ArrowStepEdge({
     targetPosition: data.targetPos,
     borderRadius: 16,
   });
-  return <EdgePath id={id} edgePath={edgePath} bundleCount={data.bundleCount} labelX={labelX} labelY={labelY} connectionLabel={data.connectionLabel} />;
+  return <EdgePath id={id} edgePath={edgePath} bundleCount={data.bundleCount} labelX={labelX} labelY={labelY} />;
 }
 
 export const flowEdgeTypes = {
