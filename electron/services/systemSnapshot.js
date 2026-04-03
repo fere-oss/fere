@@ -1,6 +1,7 @@
 const { getDevProcesses, getProcessCacheInfo } = require('./processMonitor');
 const { getListeningPorts, getEstablishedConnections, getPortCacheInfo } = require('./portMonitor');
 const { buildConnectionGraph } = require('./connectionGraph');
+const { getLastDockerStatus } = require('./dockerMonitor');
 
 // Performance timing - only log if enabled via env var
 const PERF_LOGGING = process.env.FERE_PERF_LOG === '1';
@@ -57,6 +58,11 @@ async function getSystemSnapshot() {
       processesAgeMs,
       portsAgeMs,
       connectionsAgeMs,
+      status: {
+        ports: portCacheInfo.status,
+        processes: processCacheInfo.status,
+        docker: getLastDockerStatus(),
+      },
     },
   };
 }

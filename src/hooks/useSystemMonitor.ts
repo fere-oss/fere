@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import type { ConnectionGraph, EnvironmentSummary, Port, Process, SystemSnapshot, SnapshotDelta, GraphNode, GraphEdge } from '../types/electron';
+import type { ConnectionGraph, EnvironmentSummary, Port, Process, SystemSnapshot, SnapshotDelta, GraphNode, GraphEdge, ServiceStatuses } from '../types/electron';
 
 // Helper to create a stable key for comparing snapshots.
 // Uses count + sorted IDs for fast comparison without full string join.
@@ -212,6 +212,13 @@ export function useSystemSnapshot(pollInterval = 2000) {
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const defaultStatus: ServiceStatuses = {
+    ports: { code: 'ok' },
+    processes: { code: 'ok' },
+    docker: { code: 'ok' },
+  };
+  const [serviceStatus, setServiceStatus] = useState<ServiceStatuses>(defaultStatus);
+  const [monitoringStartedAt] = useState(() => Date.now());
   const snapshotRef = useRef<SystemSnapshot>(snapshot);
   const snapshotKeyRef = useRef<string>('');
   const lastSeqRef = useRef<number>(-1);
@@ -223,6 +230,8 @@ export function useSystemSnapshot(pollInterval = 2000) {
   const refreshQueuedRef = useRef(false);
   const unmountedRef = useRef(false);
   const streamReceivedDeltaRef = useRef(false);
+  // Track known health per node id to detect transitions
+  const nodeHealthRef = useRef<Map<string, string>>(new Map());
 
   const getAdaptivePollInterval = useCallback(() => {
     if (typeof document === 'undefined') return pollInterval;
@@ -261,6 +270,9 @@ export function useSystemSnapshot(pollInterval = 2000) {
       snapshotRef.current = data;
       snapshotKeyRef.current = createSnapshotKey(data);
       setSnapshot(data);
+      if (data.meta?.status) {
+        setServiceStatus(data.meta.status);
+      }
       setError(null);
     } catch (err) {
       if (unmountedRef.current) return;
@@ -303,6 +315,27 @@ export function useSystemSnapshot(pollInterval = 2000) {
         lastSeqRef.current = delta.seq;
 
         const patched = applyDelta(snapshotRef.current, delta);
+
+        // Detect health degradations: fire fere:health-degraded when a node transitions to 'red'
+        if (delta.graph && 'nodes' in (delta.graph as object)) {
+          const nd = (delta.graph as { nodes?: { modified?: Array<Partial<GraphNode> & { id: string }> } }).nodes;
+          if (nd?.modified?.length) {
+            for (const mod of nd.modified) {
+              if (mod.healthStatus !== 'red') continue;
+              const prevHealth = nodeHealthRef.current.get(mod.id);
+              if (prevHealth === 'red') continue; // already red — not a new transition
+              const node = patched.graph.nodes.find(n => n.id === mod.id);
+              if (node) {
+                window.dispatchEvent(new CustomEvent('fere:health-degraded', { detail: { node } }));
+              }
+            }
+          }
+          // Keep health map in sync with latest state
+          for (const node of patched.graph.nodes) {
+            if (node.healthStatus) nodeHealthRef.current.set(node.id, node.healthStatus);
+          }
+        }
+
         snapshotRef.current = patched;
 
         const newKey = createSnapshotKey(patched);
@@ -330,6 +363,9 @@ export function useSystemSnapshot(pollInterval = 2000) {
           }
         }
 
+        if (patched.meta?.status) {
+          setServiceStatus(patched.meta.status);
+        }
         setLoading(false);
         setError(null);
       });
@@ -400,7 +436,7 @@ export function useSystemSnapshot(pollInterval = 2000) {
     };
   }, [refresh, updateMetricsThrottle]);
 
-  return { snapshot, loading, error, refresh };
+  return { snapshot, loading, error, refresh, serviceStatus, monitoringStartedAt };
 }
 
 /**

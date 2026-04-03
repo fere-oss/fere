@@ -2,203 +2,164 @@
 
 ## Overview
 
-Replace the reactive Ask Fere and Cross-Service Debugger with a unified **Fere Agent** — a proactive system that watches the topology, auto-detects issues, and surfaces structured findings with one-click fixes.
+A unified **Fere Agent** that replaces the old Ask Fere and Cross-Service Debugger panels. It watches the live topology, runs deterministic checks every scan cycle, and surfaces structured findings with severity, category, impact context, and one-click fixes. The current product direction is findings-first: scan, explain, fix, and focus the relevant service in the graph.
 
 ---
 
-## What Gets Removed
+## Status: Shipped / In Progress
 
-- Ask Fere (floating chat panel)
-- Cross-Service Debugger (streaming debug panel)
-- "Ask Fere" and "Diagnose Service" action buttons in the node detail panel
+The findings engine and fix actions are implemented and live in the app. The open-ended chat path has been removed in favor of a tighter findings-first workflow. Sentinel is also moving into proactive/background monitoring: it now rescans on topology changes and marks newly detected issues for the user.
 
 ---
 
-## What Gets Added
+## Architecture
 
-### 1. Fere Agent — Finding Engine (electron/main process)
+### Runtime layers
 
-Runs alongside the existing snapshot cycle. On topology change or anomaly, the agent scopes to affected services, evaluates findings, and emits structured results over IPC.
+```
+Renderer (React + TypeScript)
+  └── AgentPanel.tsx           UI — findings-first scan panel
+  └── types/electron.d.ts      Shared type contracts
 
-**Spawn triggers:**
-
-- Service goes down (PID disappears from snapshot)
-- Port conflict detected (port occupied by unexpected PID)
-- Container stops or crashes
-- New service added with no connections (topology gap)
-- Manual trigger ("Run Scan" button)
-
-**Phase 1 scope — structural issues only** (works with current snapshot data):
-
-- Service down / process missing
-- Port conflict (stale process holding a port)
-- Container stopped / crashed
-- Disconnected service after topology change
-
-**Phase 2 scope — anomaly detection** (requires metrics history layer):
-
-- CPU spike sustained over rolling window
-- Memory growth trend
-- Repeated crash/restart loop
-- Latency increase (if latency data added)
-
-> Phase 2 requires a lightweight circular buffer (~5 min rolling window of CPU/memory per PID) added to the snapshot cycle. Not in Phase 1.
-
----
-
-### 2. Agent Sidebar Panel (renderer)
-
-Replaces both floating panels. Fixed right side, same position and card style as the node detail panel.
-
-**Structure:**
-
-- Header: "Fere Agent" title + "Run Scan" button + dismiss X
-- Finding cards (newest on top), each containing:
-  - Severity badge: `CRITICAL` / `WARNING` / `INFO` / `SUGGESTION`
-  - Affected service name (clicking highlights that node on graph)
-  - One-line summary
-  - Expandable detail: what was detected + suggested fix
-  - `[Apply Fix]` button (safe actions only) with inline confirm step
-  - `[Copy Fix]` button (always present)
-- Empty state: "No issues detected"
-
-**Apply Fix is available on all findings** — command actions get a one-liner inline confirm, file write actions get an inline diff preview. No modals, always inline. One extra click prevents misfire.
-
----
-
-### 3. Node-Level Indicator (graph layer)
-
-When a finding exists for a service, a small pulsing badge appears on the node's top-right corner.
-
-- Red badge → CRITICAL finding
-- Amber badge → WARNING finding
-- Clicking the badge opens the agent sidebar scoped to that service
-
-Disappears automatically when the finding resolves.
-
----
-
-### 4. Node Detail Panel Update
-
-Remove the "Ask Fere" and "Diagnose Service" button grid. Replace with a single **"View Agent Findings"** button. If an active finding exists for that service, the button pulses.
-
----
-
-### 5. Apply Fix — Safe Action Registry
-
-The renderer never passes raw shell strings to the main process. It passes a typed action payload. Main validates against a pre-approved safe action list before executing.
-
-**Payload shape:**
-
-```json
-{ "type": "kill-port", "port": 4000, "pid": 8823 }
-{ "type": "restart-container", "containerId": "abc123" }
-{ "type": "pull-image", "image": "postgres:15" }
+Main process (Electron/Node)
+  └── electron/main.js         IPC handlers: agent:scan, agent:apply-fix
+  └── electron/services/fereAgent.js
+        ├── runScan()           Deterministic findings engine
+        ├── executeAction()     Apply approved deterministic fixes
+        └── executeTool()       Live topology + file access tools for scan checks
 ```
 
-**Apply Fix has two confirmation flows:**
+### IPC handlers
 
-1. **Command actions** — inline one-liner confirm before executing:
-
-   ```
-   Kill PID 8823 on port 4000?   [Confirm]  [Cancel]
-   ```
-
-2. **File write actions** — inline diff preview before writing:
-   ```diff
-   + healthcheck:
-   +   test: ["CMD", "pg_isready"]
-   +   interval: 10s
-   [Confirm Write]   [Cancel]
-   ```
-   Renderer sends a typed patch payload — `{ type: "write-docker-compose", patch: {...} }` — main applies it. Never a raw string.
-
-**Safe action types (Phase 1):**
-| Action | Eligible for Apply Fix | Confirmation Flow |
+| Channel | Direction | Description |
 |---|---|---|
-| Kill stale port process | Yes | Inline confirm |
-| Restart stopped container | Yes | Inline confirm |
-| Pull missing image | Yes | Inline confirm |
-| Single-file patch (docker-compose, Dockerfile) | Yes | Diff preview + confirm |
-| Env var changes (ambiguous file scope) | No — Copy Fix only | — |
-| Multi-file changes | No — Copy Fix only | — |
-
-IPC handler: `agent:apply-fix` in `electron/main.js`
+| `agent:scan` | renderer → main | Run deterministic scan for given nodeIds, returns `AgentFinding[]` |
+| `agent:apply-fix` | renderer → main | Execute a typed `AgentFixAction` (kill-port, restart-container, write-file) |
 
 ---
 
-### 6. Advisory Suggestions
+## Findings Engine
 
-A second mode alongside diagnostics. The agent reads your project statically and surfaces recommendations — not just "something broke" but "here's what you're missing."
+File: `electron/services/fereAgent.js` → `runScan(snapshot, nodeIds)`
 
-**What it reads:**
-- `package.json` / `requirements.txt` — dependencies declared vs. services actually running
-- `docker-compose.yml` — missing health checks, restart policies, volume mounts
-- `.env` files — vars referenced but not set, or set but unused
-- Route scan results — auth routes present but no session/JWT service running
+Runs deterministic checks against the live snapshot. No AI, no API calls, no latency. Results include severity, category, human-readable detail, blast-radius impact, and an optional executable fix.
 
-**Finding type: `SUGGESTION`** (blue badge, lower priority than errors, shown below diagnostics in sidebar)
+### Detection checks (10 total)
 
-Example findings:
+| Check | Function | Severity | Category | What it finds |
+|---|---|---|---|---|
+| Port conflict | `detectPortConflicts` | critical | connectivity | A port needed by a service is held by a foreign PID |
+| Service down | `detectDownServices` | critical | health | Service was active but is no longer responding; includes downstream dependents |
+| Cascade impact | `detectCascadeImpact` | critical | connectivity | Down service has 2+ dependents — shows full blast radius |
+| Stopped container | `detectStoppedContainers` | warning | health | Docker container in exited/dead state |
+| Unhealthy container | `detectUnhealthyContainers` | critical | health | Running container with failing Docker health checks; shows streak + last output |
+| Crash-looping container | `detectRestartingContainers` | critical | health | Container stuck in restart loop |
+| Disconnected service | `detectDisconnectedServices` | warning | connectivity | Running service with no edges in the topology graph |
+| Missing dependency | `detectAdvisory` (dep check) | suggestion | dependency | `package.json` imports a service (Redis, Postgres, etc.) but nothing is on its default port |
+| Missing health checks | `detectAdvisory` (compose check) | suggestion | config | `docker-compose.yml` services without a `healthcheck:` block |
+| Env var mismatch | `detectEnvMismatches` | warning | config | `.env` / `.env.local` sets `DATABASE_URL`, `REDIS_URL`, etc. pointing to a port with nothing listening |
+
+### Finding shape
+
+```typescript
+interface AgentFinding {
+  id: string;
+  severity: 'critical' | 'warning' | 'suggestion';
+  category: 'health' | 'connectivity' | 'config' | 'security' | 'dependency';
+  service: string;               // display name of the affected service
+  summary: string;               // one-line headline shown in collapsed card
+  detail: string;                // full explanation shown when expanded
+  impact: string | null;         // blast-radius line, e.g. "Blast radius: cart, checkout"
+  affectedServices: string[];    // service names downstream of this finding
+  fix: AgentFixAction | null;    // executable or copy-only fix
+}
 ```
-● SUGGESTION   express-backend
-Redis not running
-You're importing ioredis but nothing is active on port 6379.
 
-[Apply Fix — Add Redis to docker-compose]   [Dismiss]
-```
-```
-● SUGGESTION   docker-compose.yml
-3 services missing health checks
-postgres, redis, and worker have no healthcheck defined.
+### Fix action types
 
-[Apply Fix — Add health checks]   [Copy Fix]   [Dismiss]
+```typescript
+type AgentFixAction =
+  | { type: 'kill-port'; port: number; pid: number; preview: string; label: string }
+  | { type: 'restart-container'; containerId: string; preview: string; label: string }
+  | { type: 'write-file'; filePath: string; content: string; label: string }
+  | { type: 'copy-only'; preview: string; label: string }   // user copies, no auto-execute
 ```
 
-**Apply Fix for suggestions** uses the diff preview flow — shows exact YAML/config change inline before writing. Same typed payload to main, never a raw string.
-
-**Dismiss behavior:** Per-suggestion "don't show again" persisted locally. Dismissed suggestions don't respawn unless the underlying condition changes (e.g. new dependency added).
-
-**Trigger:** Runs once on startup + after each full structure rebuild (~10s cycle). Not re-evaluated on every fast probe.
+`executeAction()` validates all payloads before execution. `write-file` is restricted to paths under `/Users/` or `/home/`. `kill-port` requires integer port + pid. `restart-container` sanitizes the ID.
 
 ---
 
-## UI Summary
+## Panel UI
 
-| Before                                   | After                                          |
-| ---------------------------------------- | ---------------------------------------------- |
-| Ask Fere panel (floating, 420px)         | Removed                                        |
-| Cross-Service Debugger panel (streaming) | Removed                                        |
-| Node detail: Ask Fere + Diagnose buttons | Replaced with "View Agent Findings"            |
-| No ambient signal on graph               | Node badge (pulsing dot) on affected services  |
-| Manual trigger only                      | Auto-spawn on topology change + manual trigger |
+File: `src/components/AgentPanel.tsx`
+
+Floating built-in panel anchored to the header trigger. Opens from the Sentinel button in the top bar. Closes on Escape.
+
+### Findings surface
+
+The panel is findings-first and intentionally minimal. It runs a deterministic runtime scan when opened, then presents:
+
+- Header status summary (`Scanning`, `All clear`, `N actionable issues`)
+- Background-watch state for issues found while the panel was closed
+- Health score bar
+- Grouped findings in `Issues` and `Suggestions`
+- One-click actions per finding
+
+**Health score bar** — computed from finding counts: 100 − (critical × 15) − (warning × 5) − (suggestion × 1). Shows percentage, grade label (Excellent/Good/Fair/Poor/Critical), animated fill bar, and count chips.
+
+**Finding cards** — each card shows:
+- Severity dot (red/amber/gray)
+- Summary headline
+- Service name in monospace + category badge (color-coded by category) + "N affected" chip
+- Expand → full detail paragraph + impact line + command preview + action buttons
+
+**Action buttons per card:**
+- `Apply Fix` — for kill-port and restart-container (inline confirm flow)
+- `Copy` — copies fix preview to clipboard
+- `Focus Service` — centers the relevant node in the graph
+- `Dismiss` — removes from list
+
+**All-clear state** — green circle checkmark icon, "All systems nominal" heading, descriptive subtext.
+
+**Background watch** — Sentinel rescans on topology changes and on an interval while the app is open. New actionable findings discovered while the panel is closed are surfaced with a trigger indicator and a "new issues detected in background" banner when the panel is reopened.
 
 ---
 
-## Build Phases
+## Key Implementation Details
 
-### Phase 1 — Structural agent + UI
+### Connections bug fix
 
-1. Build finding engine in `electron/services/` — structural issue detection only
-2. Build project reader service — reads `package.json`, `docker-compose.yml`, `.env`, route scan results
-3. Build suggestion rules library — pattern-matched rules against project + topology data
-4. Add `agent:apply-fix` IPC handler with safe action registry (command + file write flows)
-5. Build agent sidebar panel component (diagnostics + suggestions sections)
-6. Add node badge layer to graph nodes
-7. Update node detail panel (remove old buttons, add findings button)
-8. Remove Ask Fere + Debugger components and dead code
+`get_running_services` and `detectDisconnectedServices` previously used `node.incomingEdges` / `node.outgoingEdges` (fields that don't exist on `GraphNode`). Fixed to build connection arrays from `snapshot.graph.edges`:
 
-### Phase 2 — Metrics history + anomaly triggers
+```javascript
+const edges = snapshot.graph?.edges ?? [];
+const nodeById = new Map(nodes.map((n) => [n.id, n.name]));
+const incoming = edges.filter((e) => e.target === n.id).map((e) => nodeById.get(e.source));
+const outgoing = edges.filter((e) => e.source === n.id).map((e) => nodeById.get(e.target));
+```
 
-1. Add circular buffer to snapshot cycle (5 min rolling window, CPU/memory per PID)
-2. Extend finding engine with anomaly detection rules
-3. Expose trend data in finding card detail view
+### File access security
+
+- `write-file` validates absolute path within home directory before writing
+- scan-side file reads stay constrained to project paths discovered from the live snapshot
 
 ---
 
-## Constraints
+## CSS classes (agent panel)
 
-- Renderer never executes shell commands or passes raw strings to main
-- Apply Fix only available for pre-approved action types
-- Agent must not spawn on every minor blip — noise threshold required from day one
-- macOS only (relies on `lsof`, `ps` output formats)
+| Class | Purpose |
+|---|---|
+| `.agp-popup` | Floating built-in panel anchored under the header trigger |
+| `.agp-score-bar` | Health score card with track + fill bar |
+| `.agp-cat-badge` | Category pill (color + bg from `CATEGORY_META`) |
+| `.agp-impact-chip` | "N affected" purple chip in collapsed card header |
+| `.agp-row-impact` | Impact box in expanded card body |
+| `.agp-all-clear` | All-clear empty state with green circle |
+| `.agp-code-block` | Fenced code block (light gray, GitHub style, language badge) |
+| `.agp-action-filepath` | Filepath badge in write-file action row |
+
+---
+
+## Environment setup
+
+No API key is required for the shipped Sentinel panel. The current workflow is deterministic and local-first.

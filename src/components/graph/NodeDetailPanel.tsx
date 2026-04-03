@@ -1,13 +1,14 @@
-import { useCallback, useEffect } from 'react';
-import type { GraphNode, GraphEdge } from '../../types/electron';
-import { getServiceColor, getTypeBadge } from './constants';
-import { NodeDetailContent } from './NodeDetailContent';
+import { useCallback, useEffect } from "react";
+import type { GraphNode, GraphEdge } from "../../types/electron";
+import { getServiceColor, getTypeBadge } from "./constants";
+import { NodeDetailContent } from "./NodeDetailContent";
 
 interface NodeDetailPanelProps {
   node: GraphNode;
   edges: GraphEdge[];
   allNodes: GraphNode[];
   onClose: () => void;
+  onTraceRequest?: (node: GraphNode) => void;
 }
 
 export function NodeDetailPanel({ node, edges, allNodes, onClose }: NodeDetailPanelProps) {
@@ -33,14 +34,17 @@ export function NodeDetailPanel({ node, edges, allNodes, onClose }: NodeDetailPa
 
   const handleAssessService = useCallback(() => {
     window.dispatchEvent(
-      new CustomEvent('fere:assess-service', {
+      new CustomEvent("fere:investigate-node", {
         detail: {
           nodeId: node.id,
-          serviceName: node.name,
+          nodeName: node.name,
+          healthStatus: node.healthStatus,
+          ports: (node.ports ?? []).map((port) => port.port),
+          command: node.command,
         },
       }),
     );
-  }, [node.id, node.name]);
+  }, [node.command, node.healthStatus, node.id, node.name, node.ports]);
 
   return (
     <div className="node-detail-backdrop" onClick={handleBackdropClick} onWheel={handleWheel}>
@@ -91,7 +95,7 @@ export function NodeDetailPanel({ node, edges, allNodes, onClose }: NodeDetailPa
                 <path d="M5.5 7h3" />
               </svg>
             </span>
-            Assess Service
+            Investigate
           </button>
         </div>
         <NodeDetailContent

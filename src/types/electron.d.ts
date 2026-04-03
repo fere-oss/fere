@@ -330,6 +330,24 @@ export interface ExternalApi {
   hosts?: string[];
 }
 
+export interface ExternalApiProvider {
+  name: string;
+  domains: string[];
+}
+
+export type ServiceStatusCode = 'ok' | 'unavailable' | 'permission_denied' | 'timeout' | 'degraded';
+
+export interface ServiceStatus {
+  code: ServiceStatusCode;
+  message?: string;
+}
+
+export interface ServiceStatuses {
+  ports: ServiceStatus;
+  processes: ServiceStatus;
+  docker: ServiceStatus;
+}
+
 export interface SystemSnapshot {
   processes: Process[];
   ports: Port[];
@@ -341,6 +359,7 @@ export interface SystemSnapshot {
     processesAgeMs: number | null;
     portsAgeMs: number | null;
     connectionsAgeMs: number | null;
+    status?: ServiceStatuses;
   };
 }
 
@@ -484,8 +503,8 @@ export interface AlertPreferences {
 export interface AlertEvent {
   id: string;
   timestamp: number;
-  type: 'down' | 'recovery' | 'degraded' | 'container-stopped' | 'container-running';
-  category: 'down' | 'recovery' | 'degraded' | 'container';
+  type: 'down' | 'recovery' | 'degraded' | 'container-stopped' | 'container-running' | 'service-discovered' | 'service-gone';
+  category: 'down' | 'recovery' | 'degraded' | 'container' | 'discovery';
   serviceName: string;
   serviceType: string;
   nodeId: string;
@@ -535,6 +554,7 @@ export interface SnapshotDelta {
     processesAgeMs: number | null;
     portsAgeMs: number | null;
     connectionsAgeMs: number | null;
+    status?: ServiceStatuses;
   };
 }
 
@@ -558,56 +578,11 @@ export interface PublishGraphResult {
   error?: string;
 }
 
-export interface DebugHistoryTurn {
-  prompt: string;
-  response: string;
-}
-
 export interface ShareSettings {
   hasToken: boolean;
   shareUrl: string | null;
   publishedAt: number | null;
 }
-
-export type DebugProgress =
-  | { type: 'thinking'; iteration: number }
-  | { type: 'tool_call'; tool: string; input: Record<string, unknown>; iteration: number }
-  | {
-      type: 'tool_result';
-      tool: string;
-      input?: Record<string, unknown>;
-      summary: string;
-      result?: unknown;
-      iteration: number;
-    }
-  | { type: 'diagnosis_delta'; text: string }
-  | { type: 'complete'; diagnosis: string }
-  | { type: 'error'; error: string };
-
-export type QueryProgress =
-  | { type: 'thinking' }
-  | { type: 'answer_delta'; text: string }
-  | {
-      type: 'complete';
-      answer: string;
-      structuredAnswer?: {
-        kind: string;
-        directAnswer: string;
-        supportingFacts: string[];
-        uncertainty?: string[];
-      };
-      references?: {
-        services?: string[];
-        ports?: number[];
-        routes?: Array<{ serviceName: string; method: string; path: string }>;
-        projects?: string[];
-      };
-      optimizationSignals?: Array<{
-        text: string;
-        serviceName?: string;
-      }>;
-    }
-  | { type: 'error'; error: string };
 
 // Electron API interface
 export interface ElectronAPI {
@@ -622,12 +597,15 @@ export interface ElectronAPI {
   getEnvironmentSummary: () => Promise<EnvironmentSummary>;
   getSystemSnapshot: () => Promise<SystemSnapshot>;
   getExternalApis: (projectPath: string) => Promise<ExternalApi[]>;
+  getExternalApiProviders: () => Promise<ExternalApiProvider[]>;
+  rescanRoutes: (projectPath: string) => Promise<{ routes: Route[]; scannedAt: number | null }>;
 
   // Docker monitoring
   getDockerContainers: () => Promise<DockerContainer[]>;
   getDockerNetworks: () => Promise<DockerNetworkInfo[]>;
   getDockerSnapshot: () => Promise<DockerSnapshot>;
   isDockerAvailable: () => Promise<boolean>;
+  getContainerLogTail: (containerId: string, tail?: number) => Promise<{ success: boolean; logs: string }>;
 
   // Database queries
   getDatabaseTables: (containerId: string, containerImage: string) => Promise<DatabaseTablesResult>;
@@ -670,6 +648,10 @@ export interface ElectronAPI {
   getNetworkPolicy: () => Promise<NetworkPolicyResult>;
   setNetworkPolicy: (policy: NetworkPolicy) => Promise<{ success: boolean; error?: string }>;
 
+  // Auto-Launch
+  getAutoLaunch: () => Promise<boolean>;
+  setAutoLaunch: (enabled: boolean) => Promise<{ success: boolean; error?: string }>;
+
   // Alert Preferences
   getAlertPreferences: () => Promise<AlertPreferences>;
   setAlertPreferences: (prefs: Partial<AlertPreferences>) => Promise<{ success: boolean; error?: string }>;
@@ -695,46 +677,96 @@ export interface ElectronAPI {
   // Analytics
   getAnalyticsId: () => Promise<string>;
 
-  // Share (GitHub Gist)
+  // Share / Export
   getShareSettings: () => Promise<ShareSettings>;
   saveGithubToken: (token: string) => Promise<{ success: boolean; error?: string }>;
+  exportGraphFile: (options: PublishGraphOptions) => Promise<{ success: boolean; filePath?: string; error?: string }>;
   publishGraph: (options: PublishGraphOptions) => Promise<PublishGraphResult>;
   updateSharedGraph: (options: PublishGraphOptions) => Promise<PublishGraphResult>;
 
   // Open file in editor
   openInEditor: (filePath: string, line?: number) => Promise<{ success: boolean; editor?: string; error?: string }>;
 
-  // Debug Agent
-  debugSetApiKey: (key: string) => Promise<{ success: boolean; error?: string }>;
-  debugGetApiKeyStatus: () => Promise<{ hasKey: boolean }>;
-  debugStart: (options: { problem: string; historyTurns?: DebugHistoryTurn[] }) => Promise<{ success: boolean; error?: string }>;
-  debugStop: () => Promise<{ success: boolean }>;
-  debugFollowUp: (options: { message: string; historyTurns?: DebugHistoryTurn[] }) => Promise<{ success: boolean; error?: string }>;
-  onDebugProgress: (callback: (progress: DebugProgress) => void) => () => void;
-
-  // Stack Query Agent
-  queryStart: (options: {
-    query: string;
-    graphSnapshot?: {
-      nodes: GraphNode[];
-      edges: GraphEdge[];
-    };
-  }) => Promise<{ success: boolean; error?: string }>;
-  queryStop: () => Promise<{ success: boolean }>;
-  onQueryProgress: (callback: (progress: QueryProgress) => void) => () => void;
-  explainService: (options: {
-    serviceId: string;
-    serviceName: string;
-  }) => Promise<{
-    success: boolean;
-    serviceId?: string;
-    serviceName?: string;
-    explanation?: string;
-    error?: string;
-  }>;
-
   // Platform info
   platform: string;
+  logoDevToken: string | null;
+
+  // Fere Agent
+  agentScan: (nodeIds?: string[]) => Promise<{ success: boolean; findings: AgentFinding[]; error?: string }>;
+  agentApplyFix: (action: AgentFixAction) => Promise<{ success: boolean; error?: string }>;
+  openInClaudeCode: (finding: { id: string; service: string; summary: string; severity: AgentSeverity; detail?: string; impact?: string | null; affectedServices?: string[] }) => Promise<{ success: boolean; briefPath: string; projectPath: string; error?: string }>;
+  agentChat: (
+    messages: { role: 'user' | 'assistant'; content: string }[],
+    nodeIds?: string[],
+    tabLabel?: string | null,
+    options?: { autopilotEnabled?: boolean }
+  ) => Promise<{ success: boolean; content?: string; error?: string }>;
+  onChatToken: (callback: (token: string) => void) => void;
+  offChatToken: () => void;
+  onChatStep: (callback: (step: ChatStep) => void) => void;
+  offChatStep: () => void;
+  onFixProposal: (callback: (proposal: FixProposal) => void) => void;
+  offFixProposal: () => void;
+  onProactiveFinding: (callback: (findings: AgentFinding[]) => void) => void;
+  offProactiveFinding: () => void;
+  onFindingResolved: (callback: (ids: string[]) => void) => void;
+  offFindingResolved: () => void;
+  onFindingWorsened: (callback: (findings: AgentFinding[]) => void) => void;
+  offFindingWorsened: () => void;
+}
+
+export interface ChatStep {
+  type: 'read_file' | 'list_directory' | 'run_command' | 'docker_logs' | 'docker_exec' | 'docker_control' | 'get_node_details' | 'propose_fix';
+  label: string;
+  path: string;
+  done?: boolean;
+}
+
+export interface FixProposal {
+  id: string;
+  label: string;
+  description: string;
+  fix_type: 'restart-container' | 'kill-port' | 'launch-in-terminal';
+  container_id?: string;
+  port?: number;
+  pid?: number;
+  command?: string;
+  cwd?: string;
+}
+
+export interface ProactiveFinding {
+  id: string;
+  severity: AgentSeverity;
+  service: string;
+  summary: string;
+  detail: string;
+}
+
+export type AgentSeverity = 'critical' | 'warning' | 'suggestion';
+
+export interface AgentFixAction {
+  type: 'kill-port' | 'restart-container' | 'copy-only' | 'write-file';
+  port?: number;
+  pid?: number;
+  containerId?: string;
+  preview?: string;
+  label?: string;
+  filePath?: string;
+  content?: string;
+}
+
+export type AgentCategory = 'health' | 'connectivity' | 'config' | 'security' | 'dependency';
+
+export interface AgentFinding {
+  id: string;
+  severity: AgentSeverity;
+  category: AgentCategory;
+  service: string;
+  summary: string;
+  detail: string;
+  impact: string | null;
+  affectedServices: string[];
+  fix: AgentFixAction | null;
 }
 
 declare global {

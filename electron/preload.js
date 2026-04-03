@@ -1,4 +1,6 @@
 const { contextBridge, ipcRenderer } = require('electron');
+const rawLogoDevToken = (process.env.REACT_APP_LOGO_DEV_TOKEN || process.env.LOGO_DEV_TOKEN || "").trim();
+const logoDevToken = rawLogoDevToken.startsWith("pk_") ? rawLogoDevToken : null;
 
 // Expose protected methods to the renderer process
 contextBridge.exposeInMainWorld('electronAPI', {
@@ -13,12 +15,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getEnvironmentSummary: () => ipcRenderer.invoke('get-environment-summary'),
   getSystemSnapshot: () => ipcRenderer.invoke('get-system-snapshot'),
   getExternalApis: (projectPath) => ipcRenderer.invoke('get-external-apis', projectPath),
+  getExternalApiProviders: () => ipcRenderer.invoke('get-external-api-providers'),
+  rescanRoutes: (projectPath) => ipcRenderer.invoke('rescan-routes', projectPath),
 
   // Docker monitoring
   isDockerAvailable: () => ipcRenderer.invoke('is-docker-available'),
   getDockerContainers: () => ipcRenderer.invoke('get-docker-containers'),
   getDockerNetworks: () => ipcRenderer.invoke('get-docker-networks'),
   getDockerSnapshot: () => ipcRenderer.invoke('get-docker-snapshot'),
+  getContainerLogTail: (containerId, tail) => ipcRenderer.invoke('get-container-log-tail', containerId, tail),
 
   // Database queries
   getDatabaseTables: (containerId, containerImage) => ipcRenderer.invoke('get-database-tables', containerId, containerImage),
@@ -60,6 +65,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Network Policy
   getNetworkPolicy: () => ipcRenderer.invoke('get-network-policy'),
   setNetworkPolicy: (policy) => ipcRenderer.invoke('set-network-policy', policy),
+
+  // Auto-Launch
+  getAutoLaunch: () => ipcRenderer.invoke('get-auto-launch'),
+  setAutoLaunch: (enabled) => ipcRenderer.invoke('set-auto-launch', enabled),
 
   // Alert Preferences
   getAlertPreferences: () => ipcRenderer.invoke('get-alert-preferences'),
@@ -107,35 +116,33 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Share (GitHub Gist)
   getShareSettings: () => ipcRenderer.invoke('get-share-settings'),
   saveGithubToken: (token) => ipcRenderer.invoke('save-github-token', token),
+  exportGraphFile: (options) => ipcRenderer.invoke('export-graph-file', options),
   publishGraph: (options) => ipcRenderer.invoke('publish-graph', options),
   updateSharedGraph: (options) => ipcRenderer.invoke('update-shared-graph', options),
 
   // Open file in editor
   openInEditor: (filePath, line) => ipcRenderer.invoke('open-in-editor', filePath, line),
 
-  // Debug Agent
-  debugSetApiKey: (key) => ipcRenderer.invoke('debug-set-api-key', key),
-  debugGetApiKeyStatus: () => ipcRenderer.invoke('debug-get-api-key-status'),
-  debugStart: (options) => ipcRenderer.invoke('debug-start', options),
-  debugStop: () => ipcRenderer.invoke('debug-stop'),
-  debugFollowUp: (options) => ipcRenderer.invoke('debug-follow-up', options),
-  onDebugProgress: (callback) => {
-    const listener = (event, data) => callback(data);
-    ipcRenderer.on('debug-progress', listener);
-    return () => ipcRenderer.removeListener('debug-progress', listener);
-  },
-
-  // Stack Query Agent
-  queryStart: (options) => ipcRenderer.invoke('query-start', options),
-  queryStop: () => ipcRenderer.invoke('query-stop'),
-  onQueryProgress: (callback) => {
-    const listener = (event, data) => callback(data);
-    ipcRenderer.on('query-progress', listener);
-    return () => ipcRenderer.removeListener('query-progress', listener);
-  },
-
-  explainService: (options) => ipcRenderer.invoke('explain-service', options),
-
   // Platform info
   platform: process.platform,
+  logoDevToken,
+
+  // Fere Agent
+  agentScan: (nodeIds) => ipcRenderer.invoke('agent:scan', nodeIds),
+  agentApplyFix: (action) => ipcRenderer.invoke('agent:apply-fix', action),
+  openInClaudeCode: (finding) => ipcRenderer.invoke('agent:open-in-claude-code', finding),
+  agentChat: (messages, nodeIds, tabLabel, options) =>
+    ipcRenderer.invoke('agent:chat', { messages, nodeIds, tabLabel, options }),
+  onChatToken: (callback) => ipcRenderer.on('agent:chat-token', (_, token) => callback(token)),
+  offChatToken: () => ipcRenderer.removeAllListeners('agent:chat-token'),
+  onChatStep: (callback) => ipcRenderer.on('agent:chat-step', (_, step) => callback(step)),
+  offChatStep: () => ipcRenderer.removeAllListeners('agent:chat-step'),
+  onFixProposal: (callback) => ipcRenderer.on('agent:fix-proposal', (_, proposal) => callback(proposal)),
+  offFixProposal: () => ipcRenderer.removeAllListeners('agent:fix-proposal'),
+  onProactiveFinding: (callback) => ipcRenderer.on('agent:proactive-finding', (_, findings) => callback(findings)),
+  offProactiveFinding: () => ipcRenderer.removeAllListeners('agent:proactive-finding'),
+  onFindingResolved: (callback) => ipcRenderer.on('agent:finding-resolved', (_, ids) => callback(ids)),
+  offFindingResolved: () => ipcRenderer.removeAllListeners('agent:finding-resolved'),
+  onFindingWorsened: (callback) => ipcRenderer.on('agent:finding-worsened', (_, findings) => callback(findings)),
+  offFindingWorsened: () => ipcRenderer.removeAllListeners('agent:finding-worsened'),
 });

@@ -7,6 +7,8 @@ const ROUTE_PATTERNS = {
   fastapi: [
     /@(?:[A-Za-z_][A-Za-z0-9_]*)\.(get|post|put|delete|patch|head|options)\s*\(\s*["']([^"']+)["']/gi,
     /@(?:[A-Za-z_][A-Za-z0-9_]*)\.(api_route)\s*\(\s*["']([^"']+)["'](?:\s*,\s*methods\s*=\s*\[([^\]]+)\])?/gi,
+    // FastAPI WebSocket: @app.websocket("/ws/path")
+    /@(?:[A-Za-z_][A-Za-z0-9_]*)\.(websocket)\s*\(\s*["']([^"']+)["']/gi,
   ],
   // Flask: @app.route("/path", methods=["GET"]) or @users_bp.get("/path")
   // Captures: 1=decorator type, 2=path, 3=optional methods list
@@ -16,6 +18,8 @@ const ROUTE_PATTERNS = {
   // Express: app.get("/path"), router.post("/path")
   express: [
     /(?:app|router)\.(get|post|put|delete|patch|all)\s*\(\s*["'`]([^"'`]+)["'`]/gi,
+    // Express WebSocket: app.ws("/path") via express-ws
+    /(?:app|router)\.(ws)\s*\(\s*["'`]([^"'`]+)["'`]/gi,
   ],
   // Next.js API routes (file-based)
   nextjs: null, // Handled separately via file paths
@@ -195,6 +199,13 @@ function detectFramework(filePath, content) {
     }
   }
 
+  // Starlette/FastAPI WebSocket in Python (catches files that don't import fastapi at top level)
+  if (ext === '.py') {
+    if (content.includes('WebSocket') && (content.includes('from starlette') || content.includes('from fastapi'))) {
+      return 'fastapi';
+    }
+  }
+
   return null;
 }
 
@@ -242,6 +253,10 @@ function extractRoutes(filePath, content, framework) {
       // Default handler for pages/api style
       if (methods.length === 0 && /export\s+default/.test(content)) {
         methods.push('ALL');
+      }
+      // Next.js WebSocket upgrade handler
+      if (/socket\s*\.\s*on\s*\(\s*['"]connection['"]|new\s+WebSocketServer|wss\.on\s*\(\s*['"]connection['"]/.test(content)) {
+        methods.push('WS');
       }
 
       for (const method of methods) {
@@ -298,6 +313,8 @@ function extractRoutes(filePath, content, framework) {
         } else {
           routes.push({ method: 'GET', path: routePath, file: filePath, framework });
         }
+      } else if (decoratorType === 'WEBSOCKET' || decoratorType === 'WS') {
+        routes.push({ method: 'WS', path: routePath, file: filePath, framework });
       } else {
         // For @app.get(), @app.post(), etc. or other frameworks
         const method = decoratorType === 'ROUTE' || decoratorType === 'ALL' ? 'ALL' : decoratorType;
@@ -551,9 +568,24 @@ function matchRoutesToService(routes, service) {
   return serviceRoutes;
 }
 
+function getRouteCacheTimestamp(projectPath) {
+  const cached = routeCache.get(projectPath);
+  return cached ? cached.timestamp : null;
+}
+
+function clearRouteCache(projectPath) {
+  if (projectPath) {
+    routeCache.delete(projectPath);
+  } else {
+    routeCache.clear();
+  }
+}
+
 module.exports = {
   scanRoutes,
   matchRoutesToService,
   findFiles,
   detectFramework,
+  getRouteCacheTimestamp,
+  clearRouteCache,
 };

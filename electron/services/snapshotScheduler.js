@@ -3,8 +3,8 @@ const EventEmitter = require('events');
 const { Worker } = require('worker_threads');
 const { getDevProcesses, getProcessCacheInfo, getProcessPids } = require('./processMonitor');
 const { getListeningPorts, getEstablishedConnections, getPortCacheInfo, getListeningPortNumbers } = require('./portMonitor');
-const { getDockerSnapshot } = require('./dockerMonitor');
-const { batchGetProcessCwds, collectHealthByPid, collectRoutes } = require('./connectionGraph');
+const { getDockerSnapshot, getLastDockerStatus } = require('./dockerMonitor');
+const { batchGetProcessCwds, collectHealthByPid, collectRoutes, collectLocalConnections } = require('./connectionGraph');
 const { hasTopologyChanged, buildGraphStructure, collectProjectPaths } = require('./graphFunctions');
 
 /**
@@ -28,6 +28,19 @@ class SnapshotScheduler extends EventEmitter {
     this.fastProbeInterval = options.fastProbeInterval || 1500;
     this.structureInterval = options.structureInterval || 10000; // 10s forced structure rebuild
 
+    // Background throttling multiplier
+    this.throttled = false;
+    this.THROTTLE_MULTIPLIER = 6; // 1.5s→9s fast probe, 5s→30s reconciliation
+
+    // Battery-aware slowdown
+    this.onBattery = false;
+    this.BATTERY_MULTIPLIER = 2; // 2× slower on battery
+
+    // Idle backoff: stretch fast probe when nothing changes
+    this._stableProbeCount = 0;
+    this._currentFastProbeInterval = this.fastProbeInterval;
+    this._MAX_FAST_PROBE_INTERVAL = 10000; // cap at 10s
+
     this.reconcileTimer = null;
     this.fastProbeTimer = null;
     this.running = false;
@@ -46,6 +59,21 @@ class SnapshotScheduler extends EventEmitter {
     // Tiered refresh tracking
     this.lastStructureTime = 0;
     this.cachedResult = null;
+
+    // Edge memory: remember lsof-observed local edges across scans so short-lived
+    // HTTP connections don't cause services to appear disconnected between requests.
+    // Map<edgeId, { edge, expiresAt }>
+    this.edgeMemory = new Map();
+    this.EDGE_MEMORY_TTL_MS = 3 * 60 * 1000; // 3 minutes
+
+    // Last known good local connections scan — used when collectProjectPaths
+    // returns empty (flaky batchGetProcessCwds) so source-analysis edges survive.
+    this._lastLocalConnectionsByProject = {};
+
+    // Persistent CWD map — when batchGetProcessCwds returns incomplete results,
+    // nodes lose their projectPath and disappear from project tabs. We cache
+    // every known pid→cwd and merge it so no PID loses its project assignment.
+    this._cwdCache = {};
 
     // Prevent overlapping reconciliations
     this.reconcileInFlight = false;
@@ -111,6 +139,55 @@ class SnapshotScheduler extends EventEmitter {
     }
   }
 
+  /**
+   * Slow down collection when the app is in the background.
+   */
+  throttle() {
+    if (this.throttled || !this.running) return;
+    this.throttled = true;
+    this._resetTimers();
+  }
+
+  /**
+   * Resume normal collection speed and immediately reconcile.
+   */
+  unthrottle() {
+    if (!this.throttled || !this.running) return;
+    this.throttled = false;
+    // Reset idle backoff — user is back, probe aggressively
+    this._stableProbeCount = 0;
+    this._currentFastProbeInterval = this.fastProbeInterval;
+    this._resetTimers();
+    this.reconcile();
+  }
+
+  _getMultiplier() {
+    let m = 1;
+    if (this.onBattery) m *= this.BATTERY_MULTIPLIER;
+    if (this.throttled) m *= this.THROTTLE_MULTIPLIER;
+    return m;
+  }
+
+  _resetTimers() {
+    const multiplier = this._getMultiplier();
+    if (this.reconcileTimer) clearInterval(this.reconcileTimer);
+    if (this.fastProbeTimer) clearInterval(this.fastProbeTimer);
+    this.reconcileTimer = setInterval(
+      () => this.reconcile(),
+      this.reconciliationInterval * multiplier,
+    );
+    this.fastProbeTimer = setInterval(
+      () => this.fastProbe(),
+      this._currentFastProbeInterval * multiplier,
+    );
+  }
+
+  setBattery(onBattery) {
+    if (this.onBattery === onBattery) return;
+    this.onBattery = onBattery;
+    if (this.running) this._resetTimers();
+  }
+
   _restartWorker() {
     if (!this.running) return;
 
@@ -159,6 +236,7 @@ class SnapshotScheduler extends EventEmitter {
   /**
    * Fast probe — lightweight PID and port enumeration.
    * If the set changed since last check, triggers an early reconciliation.
+   * Backs off when topology is stable, resets on any change.
    */
   async fastProbe() {
     if (this.workerBusy || this.reconcileInFlight) return;
@@ -176,11 +254,42 @@ class SnapshotScheduler extends EventEmitter {
       this.previousPortNumbers = currentPorts;
 
       if (pidsChanged || portsChanged) {
+        this._stableProbeCount = 0;
+        this._applyFastProbeBackoff();
         this.reconcile();
+      } else {
+        this._stableProbeCount++;
+        this._applyFastProbeBackoff();
       }
     } catch (error) {
       console.error('[SnapshotScheduler] Fast probe error:', error);
     }
+  }
+
+  /**
+   * Adjust fast probe interval based on how long topology has been stable.
+   * Ramps from base (1.5s) toward max (10s) over ~40 stable probes (~60s).
+   * Any topology change resets to base immediately.
+   */
+  _applyFastProbeBackoff() {
+    const base = this.fastProbeInterval;
+    // Step up by 25% of base interval every 5 stable probes, capped at max
+    const steps = Math.floor(this._stableProbeCount / 5);
+    const newInterval = Math.min(
+      base + steps * Math.round(base * 0.25),
+      this._MAX_FAST_PROBE_INTERVAL,
+    );
+
+    if (newInterval === this._currentFastProbeInterval) return;
+    this._currentFastProbeInterval = newInterval;
+
+    // Reschedule fast probe timer only (reconcile timer stays the same)
+    if (this.fastProbeTimer) clearInterval(this.fastProbeTimer);
+    const multiplier = this._getMultiplier();
+    this.fastProbeTimer = setInterval(
+      () => this.fastProbe(),
+      this._currentFastProbeInterval * multiplier,
+    );
   }
 
   /**
@@ -204,6 +313,31 @@ class SnapshotScheduler extends EventEmitter {
       await this.processSnapshot(rawData);
     } catch (error) {
       console.error('[SnapshotScheduler] Reconciliation error:', error);
+      // Emit a status-only update so the renderer knows collection is broken
+      const collectedAt = Date.now();
+      const processCacheInfo = getProcessCacheInfo();
+      const portCacheInfo = getPortCacheInfo();
+      this.emit('snapshot', {
+        type: 'full',
+        seq: this.seq++,
+        timestamp: collectedAt,
+        processes: [],
+        ports: [],
+        connections: [],
+        graph: { nodes: [], edges: [] },
+        docker: null,
+        meta: {
+          collectedAt,
+          processesAgeMs: processCacheInfo.timestamp ? collectedAt - processCacheInfo.timestamp : null,
+          portsAgeMs: portCacheInfo.listeningTimestamp ? collectedAt - portCacheInfo.listeningTimestamp : null,
+          connectionsAgeMs: portCacheInfo.connectionsTimestamp ? collectedAt - portCacheInfo.connectionsTimestamp : null,
+          status: {
+            ports: portCacheInfo.status,
+            processes: processCacheInfo.status,
+            docker: getLastDockerStatus(),
+          },
+        },
+      });
     } finally {
       this.reconcileInFlight = false;
     }
@@ -236,8 +370,16 @@ class SnapshotScheduler extends EventEmitter {
         getDockerSnapshot(),
       ]);
 
-      // Convert once and reuse — avoid redundant Object.fromEntries()
-      const cwdMapObj = Object.fromEntries(cwdMap);
+      // Merge fresh CWDs into persistent cache, then evict PIDs no longer running.
+      // This prevents nodes from losing projectPath when batchGetProcessCwds
+      // returns incomplete results (the most common cause of "standalone" flicker).
+      const freshCwdObj = Object.fromEntries(cwdMap);
+      Object.assign(this._cwdCache, freshCwdObj);
+      const activePidSet = new Set(pids);
+      for (const pid of Object.keys(this._cwdCache)) {
+        if (!activePidSet.has(Number(pid))) delete this._cwdCache[pid];
+      }
+      const cwdMapObj = this._cwdCache;
 
       // Lightweight project-path discovery (no full graph build)
       const projectPaths = collectProjectPaths({
@@ -246,7 +388,16 @@ class SnapshotScheduler extends EventEmitter {
         cwdMap: cwdMapObj,
         dockerSnapshot,
       });
-      const routesByProject = await collectRoutes(projectPaths);
+      const [routesByProject, freshLocalConnections] = await Promise.all([
+        collectRoutes(projectPaths),
+        collectLocalConnections(projectPaths),
+      ]);
+      // Persist last non-empty scan so source-analysis edges survive builds
+      // where collectProjectPaths returns an empty set (flaky batchGetProcessCwds).
+      if (Object.keys(freshLocalConnections).length > 0) {
+        this._lastLocalConnectionsByProject = freshLocalConnections;
+      }
+      const localConnectionsByProject = this._lastLocalConnectionsByProject;
 
       const workerData = {
         processes: rawData.processes,
@@ -255,6 +406,7 @@ class SnapshotScheduler extends EventEmitter {
         cwdMap: cwdMapObj,
         dockerSnapshot,
         routesByProject,
+        localConnectionsByProject,
         healthByPid,
         projectPaths: [...projectPaths],
       };
@@ -351,10 +503,41 @@ class SnapshotScheduler extends EventEmitter {
   /**
    * Build and emit a snapshot from worker results.
    */
+  _mergeEdgeMemory(nodes, edges) {
+    const now = Date.now();
+    const nodeIds = new Set(nodes.map(n => n.id));
+
+    // Store observed local edges (lsof + source-analysis) so they survive rebuilds.
+    // Docker depends_on edges are excluded — they're rebuilt deterministically each time.
+    for (const edge of edges) {
+      const proto = edge.protocol || '';
+      if (proto.startsWith('docker-network')) continue;
+      if (!nodeIds.has(edge.source) || !nodeIds.has(edge.target)) continue;
+      this.edgeMemory.set(edge.id, { edge, expiresAt: now + this.EDGE_MEMORY_TTL_MS });
+    }
+
+    // Evict expired entries
+    for (const [id, entry] of this.edgeMemory) {
+      if (entry.expiresAt < now) this.edgeMemory.delete(id);
+    }
+
+    // Merge remembered edges that are no longer in current graph
+    const currentEdgeIds = new Set(edges.map(e => e.id));
+    const merged = [...edges];
+    for (const [id, { edge }] of this.edgeMemory) {
+      if (currentEdgeIds.has(id)) continue;
+      // Only include if both endpoints still exist as nodes
+      if (!nodeIds.has(edge.source) || !nodeIds.has(edge.target)) continue;
+      merged.push(edge);
+    }
+    return merged;
+  }
+
   _emitSnapshot(graphResult, rawData) {
     if (!rawData) return;
 
-    const { nodes, edges, dockerSnapshot } = graphResult;
+    const { nodes, dockerSnapshot } = graphResult;
+    const edges = this._mergeEdgeMemory(nodes, graphResult.edges);
     const collectedAt = Date.now();
     const processCacheInfo = getProcessCacheInfo();
     const portCacheInfo = getPortCacheInfo();
@@ -370,6 +553,11 @@ class SnapshotScheduler extends EventEmitter {
         processesAgeMs: processCacheInfo.timestamp ? collectedAt - processCacheInfo.timestamp : null,
         portsAgeMs: portCacheInfo.listeningTimestamp ? collectedAt - portCacheInfo.listeningTimestamp : null,
         connectionsAgeMs: portCacheInfo.connectionsTimestamp ? collectedAt - portCacheInfo.connectionsTimestamp : null,
+        status: {
+          ports: portCacheInfo.status,
+          processes: processCacheInfo.status,
+          docker: getLastDockerStatus(),
+        },
       },
     };
 
@@ -408,6 +596,7 @@ class SnapshotScheduler extends EventEmitter {
           cwdMap: Object.fromEntries(cwdMap),
           dockerSnapshot,
           routesByProject: {},
+          localConnectionsByProject: {},
           healthByPid,
           containerHealthToGraphHealth,
         });
@@ -564,7 +753,12 @@ class SnapshotScheduler extends EventEmitter {
     const addedEdges = currentSnapshot.graph.edges.filter(e => !prevEdgeIdSet.has(e.id));
     const removedEdgeIds = [];
     for (const id of prevEdgeIdSet) {
-      if (!currEdgeIdSet.has(id)) removedEdgeIds.push(id);
+      if (!currEdgeIdSet.has(id)) {
+        // Source-analysis edges represent static code topology — never remove them
+        // via delta. They disappear naturally when their endpoint nodes are removed.
+        if (id.startsWith('source-analysis:')) continue;
+        removedEdgeIds.push(id);
+      }
     }
 
     if (addedEdges.length || removedEdgeIds.length) {

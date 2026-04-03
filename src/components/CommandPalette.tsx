@@ -337,9 +337,17 @@ export const CommandPalette = forwardRef<
             label: `Investigate ${name}`,
             action: () => {
               setIsAgentOpen(true);
-              window.electronAPI.debugStart({
-                problem: `Investigate the ${name} service — check its health, dependencies, configuration, and any issues.`,
-              });
+              window.dispatchEvent(
+                new CustomEvent("fere:investigate-node", {
+                  detail: {
+                    nodeId: node.id,
+                    nodeName: node.name,
+                    healthStatus: node.healthStatus,
+                    ports: (node.ports ?? []).map((port) => port.port),
+                    command: node.command,
+                  },
+                }),
+              );
             },
           });
           categoryCounts["Service Actions"]++;
@@ -350,6 +358,7 @@ export const CommandPalette = forwardRef<
     return items;
   }, [
     debouncedQuery,
+    focusServiceNode,
     graph.nodes,
     tabs,
     setViewMode,

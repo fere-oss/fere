@@ -172,10 +172,6 @@ export function NodeDetailContent({
     for (const n of allNodes) map.set(n.id, n.name);
     return map;
   }, [allNodes]);
-  const getNodeName = useCallback(
-    (id: string) => nodeNameMap.get(id) || id,
-    [nodeNameMap],
-  );
   const dedupedIncomingNames = useMemo(() => {
     const seen = new Set<string>();
     return incomingEdges

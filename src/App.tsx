@@ -9,14 +9,13 @@ import {
 } from "react";
 import { useSystemSnapshot } from "./hooks/useSystemMonitor";
 import { GraphView } from "./components/GraphView";
+import { AgentPanel } from "./components/AgentPanel";
 import { CurlBuilder } from "./components/CurlBuilder";
 import { DatabaseListView } from "./components/DatabaseListView";
 import { ContainerLogsTab } from "./components/ContainerLogsTab";
 import { WelcomeModal } from "./components/WelcomeModal";
 import { ShareModal } from "./components/ShareModal";
 import { ErrorBoundary } from "./components/ErrorBoundary";
-import { TopologyBar } from "./components/graph/TopologyBar";
-import { DebugPanel } from "./components/DebugPanel";
 import {
   CommandPalette,
   CommandPaletteHandle,
@@ -35,7 +34,12 @@ import {
   TraceDispatchContext,
   traceReducer,
 } from "./components/graph/traceContext";
-import type { AlertEvent, GraphEdge, GraphNode } from "./types/electron";
+import type {
+  AlertEvent,
+  GraphEdge,
+  GraphNode,
+  ServiceStatus,
+} from "./types/electron";
 import "./App.css";
 
 // Detect platform for default tab label
@@ -43,7 +47,6 @@ const isMacOS = navigator.userAgent.toLowerCase().includes("mac");
 const SYSTEM_TAB_LABEL = isMacOS ? "macOS" : "System";
 const SYSTEM_TAB_ID = "__system__";
 const TAB_GROUPING_KEY = "fere.tabGrouping";
-const EDGE_MODE_KEY = "fere.edgeMode";
 const WELCOME_SEEN_KEY = "fere.hasSeenWelcome";
 
 const STACK_FRAMEWORK_LABELS: Record<string, string> = {
@@ -90,6 +93,8 @@ const ALERT_EVENT_LABELS: Record<string, string> = {
   degraded: "degraded",
   "container-stopped": "stopped",
   "container-running": "started running",
+  "service-discovered": "appeared",
+  "service-gone": "disappeared",
 };
 
 function normalizeProjectTabPath(projectPath: string): string {
@@ -199,7 +204,6 @@ function detectProjectStack(nodes: GraphNode[]) {
 type ViewMode = "graph" | "containers" | "api-tester" | "database";
 type ContainerSubTab = "overview" | "logs";
 type TabGrouping = "repo" | "subproject";
-type EdgeMode = "live" | "expanded";
 
 function getNodeTabPath(node: GraphNode, grouping: TabGrouping): string | null {
   if (!node.projectPath) return null;
@@ -209,42 +213,63 @@ function getNodeTabPath(node: GraphNode, grouping: TabGrouping): string | null {
   return normalizeProjectTabPath(node.projectPath);
 }
 
-function buildStackAssessmentPrompt(nodes: GraphNode[]): string {
-  const visibleNodes = nodes.filter((node) => node.type !== "external");
-  const unhealthy = visibleNodes
-    .filter((node) => node.healthStatus === "red" || node.healthStatus === "yellow")
-    .slice(0, 5)
-    .map((node) => node.name);
-  const services = visibleNodes.slice(0, 8).map((node) => node.name);
-  const contextBits = [
-    unhealthy.length > 0 ? `Prioritize these services first: ${unhealthy.join(", ")}.` : "",
-    services.length > 0 ? `Visible services include: ${services.join(", ")}.` : "",
-  ]
-    .filter(Boolean)
-    .join(" ");
+const DOCKER_EMPTY_SVG = (
+  <svg
+    width="48"
+    height="48"
+    viewBox="0 0 24 24"
+    fill="currentColor"
+    opacity="0.3"
+  >
+    <path d="M13.983 11.078h2.119a.186.186 0 00.186-.185V9.006a.186.186 0 00-.186-.186h-2.119a.185.185 0 00-.185.185v1.888c0 .102.083.185.185.185m-2.954-5.43h2.118a.186.186 0 00.186-.186V3.574a.186.186 0 00-.186-.185h-2.118a.185.185 0 00-.185.185v1.888c0 .102.082.185.185.186m0 2.716h2.118a.187.187 0 00.186-.186V6.29a.186.186 0 00-.186-.185h-2.118a.185.185 0 00-.185.185v1.887c0 .102.082.185.185.186m-2.93 0h2.12a.186.186 0 00.184-.186V6.29a.185.185 0 00-.185-.185H8.1a.185.185 0 00-.185.185v1.887c0 .102.083.185.185.186m-2.964 0h2.119a.186.186 0 00.185-.186V6.29a.185.185 0 00-.185-.185H5.136a.186.186 0 00-.186.185v1.887c0 .102.084.185.186.186m5.893 2.715h2.118a.186.186 0 00.186-.185V9.006a.186.186 0 00-.186-.186h-2.118a.185.185 0 00-.185.185v1.888c0 .102.082.185.185.185m-2.93 0h2.12a.185.185 0 00.184-.185V9.006a.185.185 0 00-.184-.186h-2.12a.185.185 0 00-.184.185v1.888c0 .102.083.185.185.185m-2.964 0h2.119a.185.185 0 00.185-.185V9.006a.185.185 0 00-.185-.186h-2.119a.185.185 0 00-.186.185v1.888c0 .102.084.185.186.185m-2.92 0h2.12a.185.185 0 00.184-.185V9.006a.185.185 0 00-.184-.186h-2.12a.186.186 0 00-.186.186v1.887c0 .102.084.185.186.185m-2.929 0h2.119a.185.185 0 00.185-.185V9.006a.186.186 0 00-.185-.186h-2.12a.185.185 0 00-.184.185v1.888c0 .102.083.185.185.185M23.763 9.89c-.065-.051-.672-.51-1.954-.51-.338.001-.676.03-1.01.087-.248-1.7-1.653-2.53-1.716-2.566l-.344-.199-.226.327c-.284.438-.49.922-.612 1.43-.23.97-.09 1.882.403 2.661-.595.332-1.55.413-1.744.42H.751a.751.751 0 00-.75.748 11.376 11.376 0 00.692 4.062c.545 1.428 1.355 2.48 2.41 3.124 1.18.723 3.1 1.137 5.275 1.137.983.003 1.963-.086 2.93-.266a12.248 12.248 0 003.823-1.389c.98-.567 1.86-1.288 2.61-2.136 1.252-1.418 1.998-2.997 2.553-4.4h.221c1.372 0 2.215-.549 2.68-1.009.309-.293.55-.65.707-1.046l.098-.288Z" />
+  </svg>
+);
 
-  return [
-    "Assess my local stack proactively.",
-    "Identify the top issues, risky dependencies, unhealthy or idle services, and likely runtime or config mismatches.",
-    "Do the investigation work yourself: inspect the live topology, follow dependencies, check the highest-signal services, and gather concrete evidence before concluding.",
-    "Finish with concise sections: Current State, Top Findings, Evidence, and Recommended Next Action.",
-    contextBits,
-  ]
-    .filter(Boolean)
-    .join(" ");
-}
+function DockerEmptyState({ dockerStatus }: { dockerStatus: ServiceStatus }) {
+  let message: string;
+  let hint: string;
 
-function buildServiceInvestigationPrompt(serviceName: string): string {
-  return [
-    `Assess \`${serviceName}\` in the context of the local stack.`,
-    "Determine its role, current health, incoming and outgoing dependencies, ports, routes, likely risks, and any runtime or configuration mismatches affecting it right now.",
-    "Do the investigation work yourself and end with clear evidence plus the best next action.",
-  ].join(" ");
+  if (dockerStatus.code === "unavailable") {
+    const isNotRunning = dockerStatus.message?.includes("not running");
+    if (isNotRunning) {
+      message = "Docker Desktop isn't running";
+      hint = "Start it to see your containers";
+    } else {
+      message = "Docker Desktop is not installed";
+      hint = "Install Docker Desktop to monitor containers and databases";
+    }
+  } else if (dockerStatus.code === "permission_denied") {
+    message = "Fere can't access Docker";
+    hint = "Check your user permissions";
+  } else {
+    message = "No Docker containers running";
+    hint = "Start some containers to see them here";
+  }
+
+  return (
+    <div className="graph-empty">
+      <div className="docker-empty-icon">{DOCKER_EMPTY_SVG}</div>
+      <p>{message}</p>
+      <span>{hint}</span>
+    </div>
+  );
 }
 
 function App() {
-  const { snapshot, loading, error } = useSystemSnapshot(2000);
+  const { snapshot, loading, error, serviceStatus, monitoringStartedAt } =
+    useSystemSnapshot(2000);
   const { graph, ports } = snapshot;
+
+  // Welcome modal state — initialize synchronously to avoid showing toast before modal
+  const [showWelcome, setShowWelcome] = useState(() => {
+    try {
+      return !window.localStorage.getItem(WELCOME_SEEN_KEY);
+    } catch {
+      return false;
+    }
+  });
+
+  // First detection toast
   // View mode state - graph or api-tester
   const [viewMode, setViewMode] = useState<ViewMode>("graph");
 
@@ -268,50 +293,9 @@ function App() {
       return "repo";
     }
   });
-  const [edgeMode, setEdgeMode] = useState<EdgeMode>(() => {
-    try {
-      const saved = window.localStorage.getItem(EDGE_MODE_KEY);
-      return saved === "expanded" ? "expanded" : "live";
-    } catch {
-      return "live";
-    }
-  });
 
   // Database node for database page
   const [databaseNode, setDatabaseNode] = useState<GraphNode | null>(null);
-
-  // Fere Agent
-  // hasEverOpened: mounts once and preserves conversation state across open/close
-  const [hasEverOpened, setHasEverOpened] = useState(false);
-  const [isAgentOpen, setIsAgentOpen] = useState(false);
-  const [debugInitialProblem, setDebugInitialProblem] = useState("");
-  const [debugInitialProblemKey, setDebugInitialProblemKey] = useState(0);
-  const [debugInitialAutoRun, setDebugInitialAutoRun] = useState(false);
-  const [debugInitialDisplayPrompt, setDebugInitialDisplayPrompt] = useState("");
-  const [debugHighlightNodeIds, setDebugHighlightNodeIds] = useState<
-    Set<string>
-  >(new Set());
-
-  const handleOpenDebugPanel = useCallback(() => {
-    if (isAgentOpen) {
-      setIsAgentOpen(false);
-      setDebugHighlightNodeIds(new Set());
-    } else {
-      setDebugInitialProblem(buildStackAssessmentPrompt(graph.nodes));
-      setDebugInitialDisplayPrompt("Assess my stack");
-      setDebugInitialProblemKey((current) => current + 1);
-      setDebugInitialAutoRun(true);
-      setHasEverOpened(true);
-      setIsAgentOpen(true);
-    }
-  }, [graph.nodes, isAgentOpen]);
-
-  const handleCloseDebugPanel = useCallback(() => {
-    setIsAgentOpen(false);
-    setDebugInitialAutoRun(false);
-    setDebugInitialDisplayPrompt("");
-    setDebugHighlightNodeIds(new Set());
-  }, []);
 
   // Sub-tab for containers view
   const [containerSubTab, setContainerSubTab] =
@@ -340,9 +324,6 @@ function App() {
     Map<string, ReturnType<typeof setTimeout>>
   >(new Map());
   const lastNodeIdByServiceRef = useRef<Map<string, string>>(new Map());
-  const inferredEdgesCacheRef = useRef<Map<string, typeof graph.edges>>(
-    new Map(),
-  );
 
   // Tab button refs for dropdown positioning
   const tabButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
@@ -369,11 +350,14 @@ function App() {
     });
   }, [viewMode]);
 
-  // Welcome modal state
-  const [showWelcome, setShowWelcome] = useState(false);
-
   // Share modal state
   const [showShare, setShowShare] = useState(false);
+
+  const setIsAgentOpen = useCallback((open: boolean) => {
+    window.dispatchEvent(
+      new CustomEvent("fere:set-agent-open", { detail: { open } }),
+    );
+  }, []);
 
   useEffect(() => {
     if (window.electronAPI?.getAlertPreferences) {
@@ -402,18 +386,6 @@ function App() {
           if (id) identifyWithMainProcess(id);
         })
         .catch((err) => console.error("Failed to get analytics ID:", err));
-    }
-  }, []);
-
-  // Check if user has seen welcome modal
-  useEffect(() => {
-    try {
-      const hasSeenWelcome = window.localStorage.getItem(WELCOME_SEEN_KEY);
-      if (!hasSeenWelcome) {
-        setShowWelcome(true);
-      }
-    } catch {
-      // Ignore localStorage read errors
     }
   }, []);
 
@@ -487,48 +459,12 @@ function App() {
       window.removeEventListener("fere:view-container-logs", handleViewLogs);
   }, []);
 
-  // Debug agent: highlight services on graph and focus camera
+  // Navigate to service map when Fere chat focuses a node
   useEffect(() => {
-    const handleDebugHighlight = (e: Event) => {
-      const { nodeIds } = (e as CustomEvent).detail;
-      setDebugHighlightNodeIds(new Set(nodeIds));
-    };
-    const handleDebugFocus = (e: Event) => {
-      const { nodeId } = (e as CustomEvent).detail;
-      if (nodeId && viewMode !== "graph") {
-        setViewMode("graph");
-      }
-    };
-    const handleAssessService = (e: Event) => {
-      const { nodeId, serviceName } = (e as CustomEvent).detail;
-      setDebugInitialProblem(buildServiceInvestigationPrompt(serviceName));
-      setDebugInitialDisplayPrompt(`Assess ${serviceName}`);
-      setDebugInitialProblemKey((current) => current + 1);
-      setDebugInitialAutoRun(true);
-      setHasEverOpened(true);
-      setIsAgentOpen(true);
-      if (nodeId) {
-        setDebugHighlightNodeIds(new Set([nodeId]));
-      }
-      if (viewMode !== "graph") {
-        setViewMode("graph");
-      }
-    };
-    window.addEventListener(
-      "fere:debug-highlight-services",
-      handleDebugHighlight,
-    );
-    window.addEventListener("fere:debug-focus-node", handleDebugFocus);
-    window.addEventListener("fere:assess-service", handleAssessService);
-    return () => {
-      window.removeEventListener(
-        "fere:debug-highlight-services",
-        handleDebugHighlight,
-      );
-      window.removeEventListener("fere:debug-focus-node", handleDebugFocus);
-      window.removeEventListener("fere:assess-service", handleAssessService);
-    };
-  }, [viewMode]);
+    const handler = () => setViewMode("graph");
+    window.addEventListener("fere:show-graph", handler);
+    return () => window.removeEventListener("fere:show-graph", handler);
+  }, []);
 
   // Cmd+K / Ctrl+K to focus command palette
   useEffect(() => {
@@ -869,13 +805,6 @@ function App() {
     }
   }, [tabGrouping]);
 
-  useEffect(() => {
-    try {
-      window.localStorage.setItem(EDGE_MODE_KEY, edgeMode);
-    } catch {
-      // Ignore storage write issues
-    }
-  }, [edgeMode]);
 
   // Build tabs from unique projectPaths
   const tabs = useMemo(() => {
@@ -1062,64 +991,6 @@ function App() {
       });
     });
 
-    const expandedEdges = (() => {
-      if (edgeMode !== "expanded") return filteredEdges;
-
-      const inferable = primaryNodes.filter((node) => node.ports.length > 0);
-      const inferredKey = [
-        selectedTab,
-        inferable
-          .map((node) => `${node.id}:${node.ports[0]?.port || 0}`)
-          .sort()
-          .join(","),
-        filteredEdges
-          .map((edge) => `${edge.source}->${edge.target}`)
-          .sort()
-          .join(","),
-      ].join("|");
-
-      const cached = inferredEdgesCacheRef.current.get(inferredKey);
-      if (cached) {
-        return cached;
-      }
-
-      const next = [...filteredEdges];
-      const existing = new Set(
-        filteredEdges.map((edge) => `${edge.source}->${edge.target}`),
-      );
-      const MAX_INFERRED_EDGES = 180;
-      let inferredCount = 0;
-
-      for (let i = 0; i < inferable.length; i++) {
-        for (let j = i + 1; j < inferable.length; j++) {
-          if (inferredCount >= MAX_INFERRED_EDGES) break;
-          const source = inferable[i];
-          const target = inferable[j];
-          const key = `${source.id}->${target.id}`;
-          if (existing.has(key)) continue;
-          existing.add(key);
-          next.push({
-            id: `inferred-${source.id}-${target.id}`,
-            source: source.id,
-            target: target.id,
-            sourcePort: source.ports[0]?.port || 0,
-            targetPort: target.ports[0]?.port || 0,
-            protocol: "inferred",
-            confidence: 0.35,
-          });
-          inferredCount++;
-        }
-        if (inferredCount >= MAX_INFERRED_EDGES) break;
-      }
-
-      inferredEdgesCacheRef.current.set(inferredKey, next);
-      if (inferredEdgesCacheRef.current.size > 24) {
-        const oldestKey = inferredEdgesCacheRef.current.keys().next().value;
-        if (oldestKey) inferredEdgesCacheRef.current.delete(oldestKey);
-      }
-      return next;
-    })();
-
     // Filter ports to only include those from primary nodes (not external)
     const primaryPorts = new Set<number>();
     primaryNodes.forEach((node) => {
@@ -1129,10 +1000,10 @@ function App() {
 
     return {
       nodes: filteredNodes,
-      edges: expandedEdges,
+      edges: filteredEdges,
       ports: filteredPorts,
     };
-  }, [graphIndex, edgeIndex, ports, selectedTab, edgeMode, getProjectStatus]);
+  }, [graphIndex, edgeIndex, ports, selectedTab, getProjectStatus]);
 
   // Filter to show only running Docker containers
   const dockerContainerData = useMemo(() => {
@@ -1317,33 +1188,36 @@ function App() {
 
         {/* Header Actions */}
         <div className="app-header-actions">
+          <AgentPanel
+            nodes={filteredData.nodes}
+            edges={filteredData.edges}
+            tabLabel={selectedTab === SYSTEM_TAB_ID ? null : (tabs.find((t) => t.id === selectedTab)?.label ?? null)}
+          />
           <button
-            className={`app-header-action${isAgentOpen ? " app-header-action-active" : ""}`}
-            onClick={handleOpenDebugPanel}
-            title="Fere AI"
+            className="feedback-btn"
+            onClick={() =>
+              window.electronAPI?.openUrl?.(
+                "https://docs.google.com/forms/d/e/1FAIpQLSdssI3HquKKE7Cskm797E24jKmfjdihUXKxEttJDQCw7HL4Mw/viewform",
+              )
+            }
           >
             <svg
-              width="15"
-              height="15"
+              width="14"
+              height="14"
               viewBox="0 0 16 16"
               fill="none"
               stroke="currentColor"
-              strokeWidth="1.2"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
             >
-              <circle cx="8" cy="6" r="4" />
-              <path d="M3 2L5.5 4.5" />
-              <path d="M13 2L10.5 4.5" />
-              <path d="M1.5 6H4" />
-              <path d="M12 6h2.5" />
-              <path d="M3 10l1.5-1.5" />
-              <path d="M13 10l-1.5-1.5" />
-              <path d="M6.5 10v4" />
-              <path d="M9.5 10v4" />
+              <path d="M11.5 2.5a1.5 1.5 0 0 1 2.1 2.1L5 13.2l-3 .8.8-3Z" />
             </svg>
-            <span>Fere AI</span>
+            Feedback
           </button>
           <button
-            className="app-header-action"
+            className="alert-toggle"
             onClick={() => setShowShare(true)}
             title="Share service map"
           >
@@ -1449,12 +1323,13 @@ function App() {
                         <div className="alert-panel-event-content">
                           <span className="alert-panel-event-title">
                             {event.serviceName}
-                            {!event.notified && (
-                              <span className="alert-panel-event-muted">
-                                {" "}
-                                (muted)
-                              </span>
-                            )}
+                            {!event.notified &&
+                              event.category !== "discovery" && (
+                                <span className="alert-panel-event-muted">
+                                  {" "}
+                                  (muted)
+                                </span>
+                              )}
                           </span>
                           <span className="alert-panel-event-desc">
                             {event.type === "container-stopped" && event.details
@@ -1641,24 +1516,6 @@ function App() {
                 Subproject
               </button>
             </div>
-            <div
-              className="tab-grouping-toggle"
-              role="group"
-              aria-label="Edge density mode"
-            >
-              <button
-                className={`tab-grouping-btn ${edgeMode === "live" ? "tab-grouping-btn-active" : ""}`}
-                onClick={() => setEdgeMode("live")}
-              >
-                Live
-              </button>
-              <button
-                className={`tab-grouping-btn ${edgeMode === "expanded" ? "tab-grouping-btn-active" : ""}`}
-                onClick={() => setEdgeMode("expanded")}
-              >
-                Expanded
-              </button>
-            </div>
           </div>
         </div>
       )}
@@ -1679,7 +1536,8 @@ function App() {
                       <GraphView
                         nodes={filteredData.nodes}
                         edges={filteredData.edges}
-                        debugHighlightNodeIds={debugHighlightNodeIds}
+                        serviceStatus={serviceStatus}
+                        monitoringStartedAt={monitoringStartedAt}
                       />
                     )}
                   </div>
@@ -1741,21 +1599,9 @@ function App() {
                             Scanning Docker containers...
                           </div>
                         ) : dockerContainerData.nodes.length === 0 ? (
-                          <div className="graph-empty">
-                            <div className="docker-empty-icon">
-                              <svg
-                                width="48"
-                                height="48"
-                                viewBox="0 0 24 24"
-                                fill="currentColor"
-                                opacity="0.3"
-                              >
-                                <path d="M13.983 11.078h2.119a.186.186 0 00.186-.185V9.006a.186.186 0 00-.186-.186h-2.119a.185.185 0 00-.185.185v1.888c0 .102.083.185.185.185m-2.954-5.43h2.118a.186.186 0 00.186-.186V3.574a.186.186 0 00-.186-.185h-2.118a.185.185 0 00-.185.185v1.888c0 .102.082.185.185.186m0 2.716h2.118a.187.187 0 00.186-.186V6.29a.186.186 0 00-.186-.185h-2.118a.185.185 0 00-.185.185v1.887c0 .102.082.185.185.186m-2.93 0h2.12a.186.186 0 00.184-.186V6.29a.185.185 0 00-.185-.185H8.1a.185.185 0 00-.185.185v1.887c0 .102.083.185.185.186m-2.964 0h2.119a.186.186 0 00.185-.186V6.29a.185.185 0 00-.185-.185H5.136a.186.186 0 00-.186.185v1.887c0 .102.084.185.186.186m5.893 2.715h2.118a.186.186 0 00.186-.185V9.006a.186.186 0 00-.186-.186h-2.118a.185.185 0 00-.185.185v1.888c0 .102.082.185.185.185m-2.93 0h2.12a.185.185 0 00.184-.185V9.006a.185.185 0 00-.184-.186h-2.12a.185.185 0 00-.184.185v1.888c0 .102.083.185.185.185m-2.964 0h2.119a.185.185 0 00.185-.185V9.006a.185.185 0 00-.185-.186h-2.119a.185.185 0 00-.186.185v1.888c0 .102.084.185.186.185m-2.92 0h2.12a.185.185 0 00.184-.185V9.006a.185.185 0 00-.184-.186h-2.12a.186.186 0 00-.186.186v1.887c0 .102.084.185.186.185m-2.929 0h2.119a.185.185 0 00.185-.185V9.006a.186.186 0 00-.185-.186h-2.12a.185.185 0 00-.184.185v1.888c0 .102.083.185.185.185M23.763 9.89c-.065-.051-.672-.51-1.954-.51-.338.001-.676.03-1.01.087-.248-1.7-1.653-2.53-1.716-2.566l-.344-.199-.226.327c-.284.438-.49.922-.612 1.43-.23.97-.09 1.882.403 2.661-.595.332-1.55.413-1.744.42H.751a.751.751 0 00-.75.748 11.376 11.376 0 00.692 4.062c.545 1.428 1.355 2.48 2.41 3.124 1.18.723 3.1 1.137 5.275 1.137.983.003 1.963-.086 2.93-.266a12.248 12.248 0 003.823-1.389c.98-.567 1.86-1.288 2.61-2.136 1.252-1.418 1.998-2.997 2.553-4.4h.221c1.372 0 2.215-.549 2.68-1.009.309-.293.55-.65.707-1.046l.098-.288Z" />
-                              </svg>
-                            </div>
-                            <p>No Docker containers running</p>
-                            <span>Start some containers to see them here</span>
-                          </div>
+                          <DockerEmptyState
+                            dockerStatus={serviceStatus.docker}
+                          />
                         ) : (
                           <GraphView
                             nodes={dockerContainerData.nodes}
@@ -1807,17 +1653,6 @@ function App() {
             </TraceDispatchContext.Provider>
           </TraceContext.Provider>
         </main>
-        {hasEverOpened && (
-          <DebugPanel
-            isOpen={isAgentOpen}
-            onClose={handleCloseDebugPanel}
-            graphNodes={filteredData.nodes}
-            initialProblem={debugInitialProblem}
-            initialProblemKey={debugInitialProblemKey}
-            initialAutoRun={debugInitialAutoRun}
-            initialDisplayPrompt={debugInitialDisplayPrompt}
-          />
-        )}
       </div>
 
       {/* Welcome Modal */}

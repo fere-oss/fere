@@ -264,15 +264,10 @@ function SharePreview() {
 const ONBOARDING_STEPS: OnboardingStep[] = [
   {
     title: "Welcome to Fere",
-    description:
-      "Visualize and manage your local development stack in real-time",
+    description: "Your local dev environment, finally visible.",
     icon: <WelcomeIntroPreview />,
     iconClassName: "welcome-icon-service-map welcome-icon-intro",
-    details: [
-      "Automatically discovers running services, ports, and connections",
-      "Monitors Docker containers with live health tracking",
-      "Built-in API tester, database explorer, and route discovery",
-    ],
+    details: [],
   },
   {
     title: "Localhost Map",
@@ -280,42 +275,9 @@ const ONBOARDING_STEPS: OnboardingStep[] = [
     icon: <ServiceMapPreview />,
     iconClassName: "welcome-icon-service-map",
     details: [
-      "Interactive graph with real-time health status and CPU/memory metrics",
-      "Auto-discovers API routes and external API usage from your source code",
-      "Organized into project tabs with stack detection (Next, Express, FastAPI, etc.)",
-    ],
-  },
-  {
-    title: "Docker & Containers",
-    description: "Full container lifecycle management in one place",
-    icon: <ContainerLogsPreview />,
-    iconClassName: "welcome-icon-service-map",
-    details: [
-      "Live container log streaming with unified multi-container view",
-      "Health checks, port mappings, volumes, and network details at a glance",
-      "Start, stop, and restart containers directly from the graph",
-    ],
-  },
-  {
-    title: "Requests & Database",
-    description: "Test APIs and explore databases without leaving the app",
-    icon: <RequestsPreview />,
-    iconClassName: "welcome-icon-service-map",
-    details: [
-      "Build and send HTTP requests with a visual cURL builder",
-      "Browse and query PostgreSQL, MongoDB, and Elasticsearch databases",
-      "Request history lets you save and replay past API calls",
-    ],
-  },
-  {
-    title: "Share Your Stack",
-    description: "Publish an interactive service map anyone can explore",
-    icon: <SharePreview />,
-    iconClassName: "welcome-icon-service-map",
-    details: [
-      "One-click publish creates a shareable link via GitHub Gist",
-      "Add a GitHub Personal Access Token with gist scope to get started",
-      "Recipients can zoom, pan, and explore your architecture in their browser",
+      "Auto-discovers services, ports, and connections",
+      "Tracks health and alerts you when something goes down",
+      "No config files — just run your stack",
     ],
   },
   {
@@ -324,9 +286,9 @@ const ONBOARDING_STEPS: OnboardingStep[] = [
     icon: <WelcomeIntroPreview />,
     iconClassName: "welcome-icon-service-map welcome-icon-intro",
     details: [
-      "Start any local server or run docker-compose up — Fere detects it automatically",
-      "Right-click services for quick actions: open in browser, terminal, kill, or restart",
-      "Set up notifications to get alerted when services crash or recover",
+      "Start any local server or run docker-compose up",
+      "Click a node to see routes, connections, and health",
+      "Fere runs in the background — it'll notify you if something breaks",
     ],
   },
 ];
@@ -422,14 +384,16 @@ export function WelcomeModal({ onClose }: WelcomeModalProps) {
           </h2>
           <p className="welcome-description">{step.description}</p>
 
-          <ul className="welcome-details">
-            {step.details.map((detail, index) => (
-              <li key={index}>
-                <span className="welcome-detail-bullet" aria-hidden="true" />
-                <span>{detail}</span>
-              </li>
-            ))}
-          </ul>
+          {step.details.length > 0 && (
+            <ul className="welcome-details">
+              {step.details.map((detail, index) => (
+                <li key={index}>
+                  <span className="welcome-detail-bullet" aria-hidden="true" />
+                  <span>{detail}</span>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
 
         <div className="modal-actions">
@@ -460,7 +424,7 @@ export function WelcomeModal({ onClose }: WelcomeModalProps) {
               onClick={handleNext}
               autoFocus
             >
-              {isLastStep ? "Get Started" : "Next"}
+              {isLastStep ? "Let's go" : "Next"}
               {!isLastStep && (
                 <svg
                   width="16"

@@ -277,6 +277,13 @@ function loadProviders() {
   return providers;
 }
 
+function getExternalApiProviders() {
+  return loadProviders().map((provider) => ({
+    name: provider.name,
+    domains: Array.isArray(provider.domains) ? provider.domains : [],
+  }));
+}
+
 function recordProviderMatch(map, provider, matchType, host) {
   if (!map.has(provider.name)) {
     map.set(provider.name, {
@@ -422,5 +429,6 @@ async function scanExternalApis(projectPath) {
 
 module.exports = {
   scanExternalApis,
+  getExternalApiProviders,
   shouldSkipExternalApiProjectPath,
 };

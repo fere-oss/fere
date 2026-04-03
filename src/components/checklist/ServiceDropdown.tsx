@@ -353,6 +353,28 @@ export function ServiceDropdown({
           </>
         )}
 
+        {/* Start all stopped services */}
+        {services.filter(s => !s.running).length > 1 && (
+          <button
+            className="service-dropdown-start-all"
+            onClick={() => {
+              for (const s of services) {
+                if (!s.running) onStart(s.service);
+              }
+            }}
+          >
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 16 16"
+              fill="currentColor"
+            >
+              <path d="M4 2l10 6-10 6V2z" />
+            </svg>
+            Start all ({services.filter(s => !s.running).length})
+          </button>
+        )}
+
         {/* Add service button */}
         <button
           className="service-dropdown-add"

@@ -5,7 +5,7 @@
  * from the main thread and returns the computed graph structure or metrics overlay.
  *
  * Messages:
- *   IN:  { type: 'build-structure', seq, data: { processes, ports, connections, cwdMap, dockerSnapshot, routesByProject, healthByPid } }
+ *   IN:  { type: 'build-structure', seq, data: { processes, ports, connections, cwdMap, dockerSnapshot, routesByProject, localConnectionsByProject, healthByPid } }
  *   OUT: { type: 'structure-result', seq, data: { nodes, edges, dockerSnapshot } }
  *
  *   IN:  { type: 'overlay-metrics', seq, data: { processes, healthByPid } }
@@ -37,7 +37,7 @@ parentPort.on('message', (msg) => {
   try {
     switch (msg.type) {
       case 'build-structure': {
-        const { processes, ports, connections, cwdMap, dockerSnapshot, routesByProject, healthByPid } = msg.data;
+        const { processes, ports, connections, cwdMap, dockerSnapshot, routesByProject, localConnectionsByProject, healthByPid } = msg.data;
 
         cachedStructure = buildGraphStructure({
           processes,
@@ -46,6 +46,7 @@ parentPort.on('message', (msg) => {
           cwdMap: cwdMap || {},
           dockerSnapshot: dockerSnapshot || null,
           routesByProject: routesByProject || {},
+          localConnectionsByProject: localConnectionsByProject || {},
           healthByPid: healthByPid || {},
           containerHealthToGraphHealth,
         });

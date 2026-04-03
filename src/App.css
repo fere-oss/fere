@@ -125,6 +125,30 @@ textarea {
 }
 
 /* Alert Toggle Button */
+.feedback-btn {
+  -webkit-app-region: no-drag;
+  background: none;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 6px 10px;
+  min-height: 32px;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+
+.feedback-btn:hover {
+  color: var(--text-primary);
+  border-color: var(--border-hover);
+  background: var(--bg-white);
+}
+
 .alert-toggle {
   -webkit-app-region: no-drag;
   background: none;
@@ -594,6 +618,11 @@ textarea {
   min-width: 0;
   -webkit-app-region: no-drag;
   position: relative;
+  transition: margin-right 0.18s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+body.sentinel-panel-open .main-content {
+  margin-right: calc(420px + 12px);
 }
 
 .main-view {

@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find /Users/rahulthennarasu/Documents/GitHub/fere/electron/services -name *agent* -o -name *debug* -o -name *query*)",
+      "Bash(ls -lah /Users/rahulthennarasu/Documents/GitHub/fere/electron/services/debug* /Users/rahulthennarasu/Documents/GitHub/fere/electron/services/query* /Users/rahulthennarasu/Documents/GitHub/fere/electron/services/explain*)",
+      "Bash(grep -n \"debugHighlightNodeIds\" /Users/rahulthennarasu/Documents/GitHub/fere/src/components/graph/*.tsx)",
+      "Bash(awk 'NR==10191{print NR; exit}' /Users/rahulthennarasu/Documents/GitHub/fere/src/App.css)",
+      "Bash(npx tsc:*)",
+      "Bash(npm install:*)",
+      "Bash(node -e \"require\\(''./electron/services/fereAgent.js''\\)\")",
+      "Bash(node --check /Users/rahulthennarasu/Documents/GitHub/fere/electron/main.js)",
+      "Bash(/Users/rahulthennarasu/Documents/GitHub/fere/src/App.css:*)",
+      "Bash(grep -r \"GraphNode\\\\|incomingEdge\" /Users/rahulthennarasu/Documents/GitHub/fere/src --include=*.ts --include=*.tsx -l)",
+      "Bash(npm run:*)",
+      "Bash(grep -r \"localhost:8000\\\\|127.0.0.1:8000\\\\|NEXT_PUBLIC_API\\\\|API_URL\\\\|baseURL\\\\|base_url\" /Users/rahulthennarasu/Documents/GitHub/impasse/frontend/src /Users/rahulthennarasu/Documents/GitHub/impasse/frontend/.env*)",
+      "Bash(node)"
+    ]
+  }
+}
