@@ -7,6 +7,7 @@ const containersCache = { timestamp: 0, data: [], promise: null };
 const networksCache = { timestamp: 0, data: [], promise: null };
 const RUNNING_STATES = new Set(['running', 'paused', 'restarting']);
 const DEFAULT_NETWORKS = new Set(['bridge', 'host', 'none']);
+let lastDockerStatus = { code: 'ok' };
 
 /**
  * Check if Docker is available and running
@@ -14,10 +15,42 @@ const DEFAULT_NETWORKS = new Set(['bridge', 'host', 'none']);
 async function isDockerAvailable() {
   try {
     await runDocker(['info'], { allowFailure: true });
+    lastDockerStatus = { code: 'ok' };
     return true;
   } catch (error) {
+    const msg = String(error?.message || error?.stderr || '');
+    if (/cannot connect|connection refused|daemon.*not running|is the docker daemon running/i.test(msg)) {
+      lastDockerStatus = {
+        code: 'unavailable',
+        message: 'Docker Desktop is not running',
+      };
+    } else if (/permission denied|access denied/i.test(msg)) {
+      lastDockerStatus = {
+        code: 'permission_denied',
+        message: 'Cannot access Docker',
+      };
+    } else if (/not found|enoent/i.test(msg)) {
+      lastDockerStatus = {
+        code: 'unavailable',
+        message: 'Docker Desktop is not installed',
+      };
+    } else {
+      lastDockerStatus = {
+        code: 'degraded',
+        message: 'Docker check failed',
+      };
+    }
     return false;
   }
+}
+
+async function getDockerStatus() {
+  await isDockerAvailable();
+  return lastDockerStatus;
+}
+
+function getLastDockerStatus() {
+  return lastDockerStatus;
 }
 
 // Cache compose service name lookups keyed by compose file path.
@@ -997,6 +1030,8 @@ async function startComposeProject(composeFilePath, services = []) {
 
 module.exports = {
   isDockerAvailable,
+  getDockerStatus,
+  getLastDockerStatus,
   getDockerContainers,
   getDockerNetworks,
   getDockerSnapshot,

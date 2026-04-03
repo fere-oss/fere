@@ -139,6 +139,28 @@ async function collectRoutes(projectPaths) {
   return routesByProject;
 }
 
+/**
+ * Collect source-derived localhost port references for each project path.
+ * Returns an object keyed by projectPath with arrays of referenced ports.
+ */
+async function collectLocalConnections(projectPaths) {
+  const localConnectionsByProject = {};
+  if (!projectPaths || projectPaths.size === 0) return localConnectionsByProject;
+
+  await Promise.all(
+    Array.from(projectPaths).map(async (projectPath) => {
+      try {
+        localConnectionsByProject[projectPath] =
+          await scanLocalConnections(projectPath);
+      } catch {
+        localConnectionsByProject[projectPath] = [];
+      }
+    }),
+  );
+
+  return localConnectionsByProject;
+}
+
 // ============================================
 // Health Collection (main thread state)
 // ============================================
@@ -330,4 +352,5 @@ module.exports = {
   batchGetProcessCwds,
   collectHealthByPid,
   collectRoutes,
+  collectLocalConnections,
 };
