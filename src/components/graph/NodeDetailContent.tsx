@@ -184,6 +184,10 @@ export function NodeDetailContent({
       .map((e) => nodeNameMap.get(e.target) || e.target)
       .filter((name) => { if (seen.has(name)) return false; seen.add(name); return true; });
   }, [outgoingEdges, nodeNameMap]);
+  const getNodeName = useCallback(
+    (id: string) => nodeNameMap.get(id) || id,
+    [nodeNameMap],
+  );
   const shouldShowExternalApis = supportsExternalApiScan(node);
   const remoteAccess = node.remoteAccess;
 
@@ -816,7 +820,45 @@ export function NodeDetailContent({
           </div>
         )}
 
-      {/* Connections are now shown in the About section via DescriptionWithConnections */}
+      {(incomingEdges.length > 0 || outgoingEdges.length > 0) && (
+        <div className="node-detail-section">
+          <h3 className="node-detail-section-title">Connections</h3>
+          <div className="node-detail-connections">
+            {incomingEdges.length > 0 && (
+              <div className="node-detail-connection-group">
+                <span className="node-detail-connection-label">Incoming</span>
+                {incomingEdges.map((edge, idx) => (
+                  <div key={idx} className="node-detail-connection">
+                    <span className="connection-arrow">←</span>
+                    <span className="connection-node">
+                      {getNodeName(edge.source)}
+                    </span>
+                    <span className="connection-port">
+                      :{edge.sourcePort} → :{edge.targetPort}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {outgoingEdges.length > 0 && (
+              <div className="node-detail-connection-group">
+                <span className="node-detail-connection-label">Outgoing</span>
+                {outgoingEdges.map((edge, idx) => (
+                  <div key={idx} className="node-detail-connection">
+                    <span className="connection-arrow">→</span>
+                    <span className="connection-node">
+                      {getNodeName(edge.target)}
+                    </span>
+                    <span className="connection-port">
+                      :{edge.sourcePort} → :{edge.targetPort}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

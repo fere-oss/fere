@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { runDocker, clearDockerBinCache } = require('./platform/docker');
+const { scanDockerServiceConnections } = require('./localConnectionScanner');
 
 const CACHE_TTL_MS = 2000; // 2 second cache for Docker data (Docker commands are slower)
 const containersCache = { timestamp: 0, data: [], promise: null };
@@ -644,14 +645,169 @@ function parseNetworkContainers(inspectData) {
 }
 
 /**
- * Build container-to-container connections based on shared networks
- * Returns edges representing which containers can communicate
+ * Parse build.context for each service in a compose file.
+ * Returns Map<serviceName, absoluteSourcePath>.
+ * Services using `image:` (no build) are omitted.
+ */
+function parseComposeBuildContexts(composePath) {
+  try {
+    const composeDir = path.dirname(composePath);
+    const content = fs.readFileSync(composePath, 'utf8');
+    const lines = content.split('\n');
+    const contexts = new Map();
+
+    let inServices = false;
+    let currentService = null;
+    let inBuild = false;
+
+    for (const rawLine of lines) {
+      if (/^\S/.test(rawLine)) {
+        inServices = rawLine.trimEnd() === 'services:';
+        currentService = null;
+        inBuild = false;
+        continue;
+      }
+      if (!inServices) continue;
+
+      const serviceMatch = rawLine.match(/^  ([A-Za-z0-9][A-Za-z0-9_.-]*):\s*$/);
+      if (serviceMatch) {
+        currentService = serviceMatch[1];
+        inBuild = false;
+        continue;
+      }
+
+      if (!currentService) continue;
+
+      const buildStringMatch = rawLine.match(/^    build:\s+(.+)\s*$/);
+      if (buildStringMatch) {
+        const val = buildStringMatch[1].trim().replace(/['"]/g, '');
+        if (!val.startsWith('{')) {
+          contexts.set(currentService, path.resolve(composeDir, val));
+          inBuild = false;
+        } else {
+          inBuild = true;
+        }
+        continue;
+      }
+
+      if (/^    build:\s*$/.test(rawLine)) {
+        inBuild = true;
+        continue;
+      }
+
+      if (inBuild) {
+        if (!/^    /.test(rawLine) || /^    \S/.test(rawLine)) {
+          inBuild = false;
+          continue;
+        }
+        const ctxMatch = rawLine.match(/^      context:\s+(.+)\s*$/);
+        if (ctxMatch) {
+          const ctx = ctxMatch[1].trim().replace(/['"]/g, '');
+          contexts.set(currentService, path.resolve(composeDir, ctx));
+          inBuild = false;
+        }
+      }
+    }
+
+    return contexts;
+  } catch {
+    return new Map();
+  }
+}
+
+function parseComposeDependsOn(composePath) {
+  try {
+    const content = fs.readFileSync(composePath, 'utf8');
+    const result = new Map();
+    const lines = content.split('\n');
+
+    let inServices = false;
+    let currentService = null;
+    let inDependsOn = false;
+
+    for (const rawLine of lines) {
+      if (/^\S/.test(rawLine)) {
+        inServices = rawLine.trimEnd() === 'services:';
+        currentService = null;
+        inDependsOn = false;
+        continue;
+      }
+
+      if (!inServices) continue;
+
+      const serviceMatch = rawLine.match(/^  ([A-Za-z0-9][A-Za-z0-9_.-]*):\s*$/);
+      if (serviceMatch) {
+        currentService = serviceMatch[1];
+        inDependsOn = false;
+        continue;
+      }
+
+      if (!currentService) continue;
+
+      if (/^    depends_on:/.test(rawLine)) {
+        const inlineMatch = rawLine.match(/depends_on:\s*\[([^\]]*)\]/);
+        if (inlineMatch) {
+          const deps = result.get(currentService) || new Set();
+          for (const dep of inlineMatch[1].split(',')) {
+            const d = dep.trim().replace(/['"]/g, '');
+            if (d) deps.add(d);
+          }
+          if (deps.size > 0) result.set(currentService, deps);
+          inDependsOn = false;
+        } else {
+          inDependsOn = true;
+        }
+        continue;
+      }
+
+      if (inDependsOn) {
+        if (!/^    /.test(rawLine) || /^    \S/.test(rawLine)) {
+          inDependsOn = false;
+          continue;
+        }
+
+        const listMatch = rawLine.match(/^\s+-\s+([A-Za-z0-9][A-Za-z0-9_.-]*)\s*$/);
+        if (listMatch) {
+          const deps = result.get(currentService) || new Set();
+          deps.add(listMatch[1]);
+          result.set(currentService, deps);
+          continue;
+        }
+
+        const condMatch = rawLine.match(/^      ([A-Za-z0-9][A-Za-z0-9_.-]*):\s*$/);
+        if (condMatch) {
+          const deps = result.get(currentService) || new Set();
+          deps.add(condMatch[1]);
+          result.set(currentService, deps);
+        }
+      }
+    }
+
+    return result;
+  } catch {
+    return new Map();
+  }
+}
+
+/**
+ * Build container-to-container connections based on docker-compose source
+ * analysis or depends_on metadata.
+ * Returns edges representing which containers depend on which.
  */
 function buildContainerConnections(containers, networks) {
   const connections = [];
   const connectionSet = new Set();
 
-  // First, group containers by Docker Compose project
+  // Build a global service name -> container map so cross-project references
+  // still resolve when services are started from separate compose projects.
+  const globalServiceToContainer = new Map();
+  for (const container of containers) {
+    const svc = container.labels?.['com.docker.compose.service'];
+    if (svc) globalServiceToContainer.set(svc, container);
+  }
+  const globalServiceNames = new Set(globalServiceToContainer.keys());
+
+  // Group containers by Docker Compose project
   const containersByProject = new Map();
   for (const container of containers) {
     const project = container.labels?.['com.docker.compose.project'];
@@ -663,53 +819,74 @@ function buildContainerConnections(containers, networks) {
     }
   }
 
-  // Create edges between containers in the same Docker Compose project
+  // For each compose project, infer only meaningful edges.
   for (const [project, projectContainers] of containersByProject) {
-    for (let i = 0; i < projectContainers.length; i++) {
-      for (let j = i + 1; j < projectContainers.length; j++) {
-        const containerA = projectContainers[i];
-        const containerB = projectContainers[j];
+    let composePath = null;
+    for (const c of projectContainers) {
+      const configFiles = c.labels?.['com.docker.compose.project.config_files'];
+      if (configFiles) {
+        composePath = configFiles.split(',')[0].trim();
+        break;
+      }
+    }
 
-        const edgeKey = [containerA.id, containerB.id].sort().join('-');
+    if (!composePath) {
+      continue;
+    }
 
-        if (!connectionSet.has(edgeKey)) {
+    const serviceToContainer = new Map();
+    for (const c of projectContainers) {
+      const svc = c.labels?.['com.docker.compose.service'];
+      if (svc) serviceToContainer.set(svc, c);
+    }
+
+    const buildContexts = parseComposeBuildContexts(composePath);
+
+    if (buildContexts.size > 0) {
+      for (const [serviceName, sourceDir] of buildContexts) {
+        const sourceContainer =
+          serviceToContainer.get(serviceName) ||
+          globalServiceToContainer.get(serviceName);
+        if (!sourceContainer) continue;
+
+        const otherServices = new Set(globalServiceNames);
+        otherServices.delete(serviceName);
+        const referencedServices = scanDockerServiceConnections(
+          sourceDir,
+          otherServices,
+        );
+
+        for (const dep of referencedServices) {
+          const targetContainer = globalServiceToContainer.get(dep);
+          if (!targetContainer) continue;
+          const edgeKey = `${sourceContainer.id}->${targetContainer.id}`;
+          if (connectionSet.has(edgeKey)) continue;
           connectionSet.add(edgeKey);
           connections.push({
-            sourceContainerId: containerA.id,
-            targetContainerId: containerB.id,
+            sourceContainerId: sourceContainer.id,
+            targetContainerId: targetContainer.id,
             networkName: `compose:${project}`,
             networkId: null,
           });
         }
       }
-    }
-  }
-
-  // Also create edges for containers on shared custom networks (non-default)
-  for (const network of networks) {
-    // Skip default networks that everything connects to
-    if (DEFAULT_NETWORKS.has(network.name)) {
-      continue;
-    }
-
-    const containersOnNetwork = network.containers || [];
-
-    // Create edges between each pair of containers on this network
-    for (let i = 0; i < containersOnNetwork.length; i++) {
-      for (let j = i + 1; j < containersOnNetwork.length; j++) {
-        const containerA = containersOnNetwork[i];
-        const containerB = containersOnNetwork[j];
-
-        // Create bidirectional edge key to prevent duplicates
-        const edgeKey = [containerA.id, containerB.id].sort().join('-');
-
-        if (!connectionSet.has(edgeKey)) {
+    } else {
+      const dependsOn = parseComposeDependsOn(composePath);
+      for (const [serviceName, deps] of dependsOn) {
+        const sourceContainer = serviceToContainer.get(serviceName);
+        if (!sourceContainer) continue;
+        for (const dep of deps) {
+          const targetContainer =
+            globalServiceToContainer.get(dep) || serviceToContainer.get(dep);
+          if (!targetContainer) continue;
+          const edgeKey = `${sourceContainer.id}->${targetContainer.id}`;
+          if (connectionSet.has(edgeKey)) continue;
           connectionSet.add(edgeKey);
           connections.push({
-            sourceContainerId: containerA.id,
-            targetContainerId: containerB.id,
-            networkName: network.name,
-            networkId: network.id,
+            sourceContainerId: sourceContainer.id,
+            targetContainerId: targetContainer.id,
+            networkName: `compose:${project}`,
+            networkId: null,
           });
         }
       }
