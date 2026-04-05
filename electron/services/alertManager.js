@@ -8,6 +8,7 @@ const { Notification } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const { logEvent: logActivityEvent } = require('./activityLog');
 
 // --- Configuration ---
 const DEBOUNCE_MS = 5000;           // Must be red for 5s before alerting
@@ -25,6 +26,57 @@ const nodeStates = new Map();
 const intentionalStopByPid = new Map();
 const intentionalStopByContainerId = new Map();
 const INTENTIONAL_STOP_TTL_MS = 30000;
+
+const DISCOVERY_BATCH_WINDOW_MS = 10000;
+let discoveryBuffer = [];
+let discoveryFlushTimer = null;
+
+function bufferDiscovery(node) {
+  discoveryBuffer.push({ node, timestamp: Date.now() });
+  if (discoveryFlushTimer) clearTimeout(discoveryFlushTimer);
+  discoveryFlushTimer = setTimeout(flushDiscoveryBuffer, DISCOVERY_BATCH_WINDOW_MS);
+}
+
+function flushDiscoveryBuffer() {
+  discoveryFlushTimer = null;
+  if (discoveryBuffer.length === 0) return;
+
+  const pending = discoveryBuffer;
+  discoveryBuffer = [];
+  const groups = new Map();
+
+  for (const { node } of pending) {
+    const project = node.project || node.projectPath || null;
+    const key = project || `__individual_${node.id}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(node);
+  }
+
+  groups.forEach((nodes, key) => {
+    if (key.startsWith('__individual_') || nodes.length < 3) {
+      for (const node of nodes) {
+        recordAlertEvent('service-discovered', node, '', false);
+      }
+      return;
+    }
+
+    const serviceNames = nodes.map((node) => node.name || 'Service');
+    const projectName = nodes[0].project || key.split('/').pop() || key;
+    logActivityEvent({
+      category: 'discovery',
+      severity: 'info',
+      title: `${nodes.length} services started in ${projectName}`,
+      detail: serviceNames.join(', '),
+      serviceName: null,
+      serviceId: null,
+      projectName,
+    });
+
+    for (const node of nodes) {
+      recordAlertEventHistoryOnly('service-discovered', node);
+    }
+  });
+}
 
 // --- Preferences ---
 let cachedPreferences = null;
@@ -161,6 +213,34 @@ function writeAlertHistory(history) {
   fs.renameSync(tmp, ALERT_HISTORY_FILE_PATH);
 }
 
+function recordAlertEventHistoryOnly(type, node) {
+  alertHistoryWriteQueue = alertHistoryWriteQueue.then(() => {
+    let history = readAlertHistory();
+    const cutoff = Date.now() - MAX_ALERT_AGE_MS;
+    history = history.filter(e => e.timestamp >= cutoff);
+
+    history.unshift({
+      id: `${Date.now()}-${++eventCounter}`,
+      timestamp: Date.now(),
+      type,
+      category: typeToCategory(type),
+      serviceName: node.name || 'Service',
+      serviceType: node.type || 'service',
+      nodeId: node.id,
+      details: '',
+      notified: false,
+    });
+
+    if (history.length > MAX_ALERT_HISTORY) {
+      history = history.slice(0, MAX_ALERT_HISTORY);
+    }
+
+    writeAlertHistory(history);
+  }).catch(err => {
+    console.error('[AlertManager] Error recording alert event (history only):', err);
+  });
+}
+
 function recordAlertEvent(type, node, details, notified) {
   alertHistoryWriteQueue = alertHistoryWriteQueue.then(() => {
     let history = readAlertHistory();
@@ -187,6 +267,38 @@ function recordAlertEvent(type, node, details, notified) {
   }).catch(err => {
     console.error('[AlertManager] Error recording alert event:', err);
   });
+
+  const activityMap = {
+    down: { category: 'crash', severity: 'critical' },
+    recovery: { category: 'recovery', severity: 'info' },
+    degraded: { category: 'anomaly', severity: 'warning' },
+    'container-stopped': { category: 'crash', severity: 'critical' },
+    'container-running': { category: 'recovery', severity: 'info' },
+    'service-discovered': { category: 'discovery', severity: 'info' },
+    'service-gone': { category: 'removal', severity: 'warning' },
+  };
+  const mapped = activityMap[type];
+  if (mapped) {
+    const serviceName = node.name || 'Service';
+    const titleMap = {
+      down: `${serviceName} went down`,
+      recovery: `${serviceName} recovered`,
+      degraded: `${serviceName} is degraded`,
+      'container-stopped': `Container ${serviceName} stopped${details ? ' (' + details + ')' : ''}`,
+      'container-running': `Container ${serviceName} is running`,
+      'service-discovered': `${serviceName} appeared`,
+      'service-gone': `${serviceName} disappeared`,
+    };
+    logActivityEvent({
+      category: mapped.category,
+      severity: mapped.severity,
+      title: titleMap[type] || `${serviceName}: ${type}`,
+      detail: details || '',
+      serviceName,
+      serviceId: node.id || null,
+      projectName: node.project || null,
+    });
+  }
 }
 
 function getAlertHistory() {
@@ -323,7 +435,7 @@ function evaluateAlerts(nodes) {
         lastNotifiedAt: 0,
         name: node.name,
       });
-      recordAlertEvent('service-discovered', node, '', false);
+      bufferDiscovery(node);
       continue;
     }
 

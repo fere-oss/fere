@@ -134,6 +134,18 @@ const {
   markIntentionalStopForPid,
   markIntentionalStopForContainer,
 } = require("./services/alertManager");
+const {
+  initActivityLog,
+  shutdownActivityLog,
+  logEvent: logActivityEvent,
+  getActivityLog,
+  activityEmitter,
+} = require("./services/activityLog");
+const {
+  feedFromSnapshot,
+  getMetricHistory,
+  checkAnomalies,
+} = require("./services/metricHistory");
 const analytics = require("./analytics");
 const {
   runScan,
@@ -160,6 +172,7 @@ process.title = "Fere";
 let mainWindow;
 let snapshotScheduler = null;
 let snapshotHandler = null;
+let activityEventHandler = null;
 let alertNodeMap = new Map();
 const _surfacedFindingIds = new Set();
 // id → severity of last surfaced finding, for worsened detection
@@ -167,6 +180,18 @@ const _surfacedFindingSeverity = new Map();
 // Suppress repeated critical notifications within 60s per finding id
 const _notifiedCriticalAt = new Map();
 const logStreamsBySender = new Map();
+
+function logSentinelActivity(title, detail = "", projectName = null) {
+  logActivityEvent({
+    category: "sentinel",
+    severity: "info",
+    title,
+    detail,
+    serviceName: null,
+    serviceId: null,
+    projectName,
+  });
+}
 
 function registerSenderLogStream(sender, streamId) {
   if (!sender || sender.isDestroyed() || !streamId) return;
@@ -343,6 +368,7 @@ app.whenReady().then(() => {
 
   // Initialize alert manager (loads preferences from disk)
   initAlertManager();
+  initActivityLog();
 
   // Initialize error reporting
   sentry.init(isDev);
@@ -384,6 +410,7 @@ app.on("before-quit", () => {
 app.on("will-quit", async () => {
   await sentry.flush();
   try {
+    shutdownActivityLog();
     await analytics.shutdown();
   } catch (err) {
     console.error("Error shutting down analytics:", err);
@@ -528,6 +555,16 @@ ipcMain.handle("start-snapshot-stream", async (event) => {
       } catch (err) {
         console.error("[AlertManager] Error evaluating alerts:", err);
       }
+      try {
+        const nodes =
+          delta.type === "full" && delta.graph && Array.isArray(delta.graph.nodes)
+            ? delta.graph.nodes
+            : Array.from(alertNodeMap.values());
+        feedFromSnapshot(nodes);
+        checkAnomalies();
+      } catch (err) {
+        console.error("[MetricHistory] Error feeding metrics:", err);
+      }
     });
 
     // Proactive scan: diff findings and surface new/worsened/resolved issues
@@ -627,6 +664,15 @@ ipcMain.handle("start-snapshot-stream", async (event) => {
     };
 
     snapshotScheduler.on("snapshot", snapshotHandler);
+
+    activityEventHandler = (activityEvent) => {
+      if (event.sender.isDestroyed()) {
+        activityEmitter.removeListener("event", activityEventHandler);
+        return;
+      }
+      event.sender.send("activity-event", activityEvent);
+    };
+    activityEmitter.on("event", activityEventHandler);
     snapshotScheduler.start();
 
     return { success: true };
@@ -638,6 +684,10 @@ ipcMain.handle("start-snapshot-stream", async (event) => {
 
 // Stop push-based snapshot stream
 ipcMain.handle("stop-snapshot-stream", async () => {
+  if (activityEventHandler) {
+    activityEmitter.removeListener("event", activityEventHandler);
+    activityEventHandler = null;
+  }
   if (snapshotScheduler) {
     if (snapshotHandler) {
       snapshotScheduler.removeListener("snapshot", snapshotHandler);
@@ -751,6 +801,14 @@ ipcMain.handle("kill-process", async (event, pid) => {
     const result = await killProcess(pid);
     analytics.capture("process_killed", { success: result.success });
     if (result.success) {
+      logActivityEvent({
+        category: "user-action",
+        severity: "info",
+        title: `Killed process ${proc.name || pid} (PID ${pid})`,
+        serviceName: proc.name || null,
+        serviceId: null,
+        projectName: proc.project || null,
+      });
       markIntentionalStopForPid(pid);
       // Force next snapshot to bypass stale 5s caches.
       clearProcessCache();
@@ -774,6 +832,15 @@ ipcMain.handle("stop-container", async (event, containerId) => {
     }
     const result = await stopContainer(containerId);
     if (result.success) {
+      const node = alertNodeMap.get(containerId);
+      logActivityEvent({
+        category: "user-action",
+        severity: "info",
+        title: `Stopped container ${node?.name || containerId.slice(0, 12)}`,
+        serviceName: node?.name || null,
+        serviceId: null,
+        projectName: node?.project || null,
+      });
       markIntentionalStopForContainer(containerId);
       clearProcessCache();
       clearPortCache();
@@ -795,6 +862,15 @@ ipcMain.handle("start-container", async (event, containerId) => {
     }
     const result = await startContainer(containerId);
     if (result.success) {
+      const node = alertNodeMap.get(containerId);
+      logActivityEvent({
+        category: "user-action",
+        severity: "info",
+        title: `Started container ${node?.name || containerId.slice(0, 12)}`,
+        serviceName: node?.name || null,
+        serviceId: null,
+        projectName: node?.project || null,
+      });
       clearProcessCache();
       clearPortCache();
       if (snapshotScheduler) {
@@ -1095,6 +1171,15 @@ ipcMain.handle("start-process", async (event, command, cwd) => {
 
     child.unref();
     const pid = child.pid;
+    logActivityEvent({
+      category: "user-action",
+      severity: "info",
+      title: `Started process: ${command}`,
+      detail: `PID ${pid}, cwd: ${cwd}`,
+      serviceName: null,
+      serviceId: null,
+      projectName: cwd || null,
+    });
     clearProcessCache();
     clearPortCache();
     if (snapshotScheduler) {
@@ -2010,6 +2095,24 @@ ipcMain.handle("get-analytics-id", () => {
   return analytics.getDistinctId();
 });
 
+ipcMain.handle("get-activity-log", async (event, options) => {
+  try {
+    return getActivityLog(options || {});
+  } catch (error) {
+    console.error("Error getting activity log:", error);
+    return [];
+  }
+});
+
+ipcMain.handle("get-metric-history", async () => {
+  try {
+    return getMetricHistory();
+  } catch (error) {
+    console.error("Error getting metric history:", error);
+    return {};
+  }
+});
+
 // ============================================
 // IPC Handlers - Share (GitHub Gist)
 // ============================================
@@ -2150,6 +2253,20 @@ ipcMain.handle("agent:scan", async (_, nodeIds) => {
       snapshot,
       Array.isArray(nodeIds) ? nodeIds : undefined,
     );
+    const scopedNodes = Array.isArray(nodeIds)
+      ? (snapshot.graph?.nodes ?? []).filter((node) => nodeIds.includes(node.id))
+      : [];
+    const projectName =
+      scopedNodes.find((node) => node.project)?.project ||
+      scopedNodes.find((node) => node.projectPath)?.projectPath ||
+      null;
+    logSentinelActivity(
+      findings.length > 0
+        ? `Sentinel detect found ${findings.length} issue${findings.length === 1 ? "" : "s"}`
+        : "Sentinel detect found no issues",
+      findings.slice(0, 5).map((finding) => finding.summary).join(", "),
+      projectName,
+    );
     return { success: true, findings };
   } catch (err) {
     console.error("agent:scan error:", err);
@@ -2160,6 +2277,12 @@ ipcMain.handle("agent:scan", async (_, nodeIds) => {
 ipcMain.handle("agent:apply-fix", async (_, action) => {
   try {
     const result = await executeAction(action);
+    if (result?.success) {
+      logSentinelActivity(
+        "Sentinel autopilot applied a fix",
+        action?.label || action?.type || "Applied safe action",
+      );
+    }
     return { success: true, ...result };
   } catch (err) {
     console.error("agent:apply-fix error:", err);
@@ -3650,6 +3773,12 @@ ipcMain.handle("agent:chat", async (event, payload) => {
                           : String(args.port ?? ""),
                     });
                     const applyResult = await executeAction(autopilotAction);
+                    if (applyResult?.success) {
+                      logSentinelActivity(
+                        "Sentinel autopilot applied a fix",
+                        args.label ?? args.fix_type,
+                      );
+                    }
                     result = applyResult?.success
                       ? `Autopilot applied safe fix immediately: ${args.label ?? args.fix_type}.`
                       : `Autopilot failed to apply safe fix: ${args.label ?? args.fix_type}.`;

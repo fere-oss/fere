@@ -13,6 +13,7 @@ import { AgentPanel } from "./components/AgentPanel";
 import { CurlBuilder } from "./components/CurlBuilder";
 import { DatabaseListView } from "./components/DatabaseListView";
 import { ContainerLogsTab } from "./components/ContainerLogsTab";
+import { AnalyticsView } from "./components/AnalyticsView";
 import { WelcomeModal } from "./components/WelcomeModal";
 import { ShareModal } from "./components/ShareModal";
 import { ErrorBoundary } from "./components/ErrorBoundary";
@@ -201,7 +202,7 @@ function detectProjectStack(nodes: GraphNode[]) {
 }
 
 // View modes
-type ViewMode = "graph" | "containers" | "api-tester" | "database";
+type ViewMode = "graph" | "containers" | "api-tester" | "database" | "analytics";
 type ContainerSubTab = "overview" | "logs";
 type TabGrouping = "repo" | "subproject";
 
@@ -272,6 +273,26 @@ function App() {
   // First detection toast
   // View mode state - graph or api-tester
   const [viewMode, setViewMode] = useState<ViewMode>("graph");
+
+  const [analyticsBadge, setAnalyticsBadge] = useState(false);
+
+  useEffect(() => {
+    if (viewMode === "analytics") {
+      setAnalyticsBadge(false);
+    }
+  }, [viewMode]);
+
+  useEffect(() => {
+    const unsub = window.electronAPI?.onActivityEvent?.((event) => {
+      if (
+        viewMode !== "analytics" &&
+        (event.severity === "critical" || event.severity === "warning")
+      ) {
+        setAnalyticsBadge(true);
+      }
+    });
+    return () => unsub?.();
+  }, [viewMode]);
 
   // Trace state (shared between CurlBuilder and GraphView)
   const [traceState, traceDispatch] = useReducer(traceReducer, {
@@ -1173,6 +1194,31 @@ function App() {
             </span>
             Database
           </button>
+          <button
+            className={`view-mode-tab ${viewMode === "analytics" ? "view-mode-tab-active" : ""}`}
+            onClick={() => {
+              setViewMode("analytics");
+              capture("tab_switched", { to: "analytics" });
+            }}
+          >
+            <span className="view-mode-icon">
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <circle cx="12" cy="12" r="10" />
+                <polyline points="12 6 12 12 16 14" />
+              </svg>
+            </span>
+            Analytics
+            {analyticsBadge && <span className="analytics-tab-badge" />}
+          </button>
         </div>
 
         {/* Command Palette */}
@@ -1648,6 +1694,12 @@ function App() {
                       />
                     )}
                   </div>
+                </div>
+
+                <div
+                  className={`main-view main-view-single ${viewMode === "analytics" ? "main-view-active" : ""}`}
+                >
+                  <AnalyticsView tabs={tabs} graphNodes={visibleGraphNodes} />
                 </div>
               </ErrorBoundary>
             </TraceDispatchContext.Provider>

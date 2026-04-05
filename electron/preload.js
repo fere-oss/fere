@@ -109,6 +109,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('snapshot-delta', listener);
     return () => ipcRenderer.removeListener('snapshot-delta', listener);
   },
+  getActivityLog: (options) => ipcRenderer.invoke('get-activity-log', options),
+  getMetricHistory: () => ipcRenderer.invoke('get-metric-history'),
+  onActivityEvent: (callback) => {
+    const listener = (event, data) => callback(data);
+    ipcRenderer.on('activity-event', listener);
+    return () => ipcRenderer.removeListener('activity-event', listener);
+  },
 
   // Analytics
   getAnalyticsId: () => ipcRenderer.invoke('get-analytics-id'),
