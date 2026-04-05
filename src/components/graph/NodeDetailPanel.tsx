@@ -109,7 +109,7 @@ export function NodeDetailPanel({ node, edges, allNodes, onClose }: NodeDetailPa
         <div className="node-detail-actions-card node-detail-actions-card-header">
           <button
             type="button"
-            className="node-detail-ai-button node-detail-ai-button-wide"
+            className="node-detail-ai-button node-detail-ai-button-wide node-detail-ai-button-primary"
             onClick={handleAssessService}
           >
             <span className="node-detail-ai-button-icon" aria-hidden="true">

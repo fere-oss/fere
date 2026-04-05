@@ -3,7 +3,7 @@ import type { HealthStatus } from '../../types/electron';
 // Color scheme for different service types
 export const SERVICE_COLORS: Record<string, { color: string; label: string }> = {
   frontend: { color: '#0078D4', label: 'Frontend' },      // Microsoft Blue
-  backend: { color: '#0078D4', label: 'Backend' },        // Microsoft Blue
+  backend: { color: '#1EA7E1', label: 'Backend' },        // Bright cyan-blue
   webserver: { color: '#0078D4', label: 'Web Server' },   // Microsoft Blue
   database: { color: '#76B900', label: 'Database' },      // NVIDIA Green
   cache: { color: '#FFB707', label: 'Cache' },            // Amber

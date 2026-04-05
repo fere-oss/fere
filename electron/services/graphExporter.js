@@ -762,7 +762,7 @@ async function generateHTML({ graphData, metadata, logoDevToken = '' }) {
 
     // ── Constants (from constants.ts) ────────────────────────────────────
     const SC = {
-      frontend:'#0078D4', backend:'#0078D4', webserver:'#0078D4',
+      frontend:'#0078D4', backend:'#1EA7E1', webserver:'#0078D4',
       database:'#76B900', cache:'#FFB707', nodejs:'#5E9B00', python:'#9AD100',
       container:'#EC679B', broker:'#D96C00', realtime:'#1AA6A6',
       worker:'#6B7280', client:'#5C7AEA', service:'#F03603', external:'#EC679B',

@@ -202,7 +202,12 @@ function detectProjectStack(nodes: GraphNode[]) {
 }
 
 // View modes
-type ViewMode = "graph" | "containers" | "api-tester" | "database" | "analytics";
+type ViewMode =
+  | "graph"
+  | "containers"
+  | "api-tester"
+  | "database"
+  | "analytics";
 type ContainerSubTab = "overview" | "logs";
 type TabGrouping = "repo" | "subproject";
 
@@ -826,7 +831,6 @@ function App() {
     }
   }, [tabGrouping]);
 
-
   // Build tabs from unique projectPaths
   const tabs = useMemo(() => {
     const projectPaths = new Map<string, string>(); // path -> label
@@ -1237,7 +1241,11 @@ function App() {
           <AgentPanel
             nodes={filteredData.nodes}
             edges={filteredData.edges}
-            tabLabel={selectedTab === SYSTEM_TAB_ID ? null : (tabs.find((t) => t.id === selectedTab)?.label ?? null)}
+            tabLabel={
+              selectedTab === SYSTEM_TAB_ID
+                ? null
+                : (tabs.find((t) => t.id === selectedTab)?.label ?? null)
+            }
           />
           <button
             className="feedback-btn"
@@ -1283,7 +1291,6 @@ function App() {
               <line x1="4.4" y1="7.1" x2="10.6" y2="4.4" />
               <line x1="4.4" y1="8.9" x2="10.6" y2="11.6" />
             </svg>
-            <span>Share</span>
           </button>
           <div style={{ position: "relative" } as React.CSSProperties}>
             <button

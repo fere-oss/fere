@@ -28,6 +28,7 @@ export function ShareModal({ onClose, graphNodes, graphEdges, activeTabLabel }: 
   const [tokenInput, setTokenInput] = useState("");
   const [showToken, setShowToken] = useState(false);
   const [hasToken, setHasToken] = useState(false);
+  const [showTokenEditor, setShowTokenEditor] = useState(false);
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [publishedAt, setPublishedAt] = useState<number | null>(null);
   const [errorMsg, setErrorMsg] = useState("");
@@ -49,10 +50,17 @@ export function ShareModal({ onClose, graphNodes, graphEdges, activeTabLabel }: 
   useEffect(() => {
     window.electronAPI?.getShareSettings?.().then((settings) => {
       setHasToken(settings.hasToken);
+      setShowTokenEditor(!settings.hasToken);
       if (settings.shareUrl) setShareUrl(settings.shareUrl);
       if (settings.publishedAt) setPublishedAt(settings.publishedAt);
     });
   }, []);
+
+  useEffect(() => {
+    if (showGist && showTokenEditor) {
+      tokenRef.current?.focus();
+    }
+  }, [showGist, showTokenEditor]);
 
   async function handleExportFile() {
     setExporting(true);
@@ -75,6 +83,7 @@ export function ShareModal({ onClose, graphNodes, graphEdges, activeTabLabel }: 
       await window.electronAPI.saveGithubToken(trimmed);
       setHasToken(true);
       setTokenInput("");
+      setShowTokenEditor(false);
       setGistState("idle");
     } catch (e: any) {
       setErrorMsg(e?.message || "Failed to save token");
@@ -97,6 +106,7 @@ export function ShareModal({ onClose, graphNodes, graphEdges, activeTabLabel }: 
       setGistState("done");
     } catch (e: any) {
       setErrorMsg(e?.message || "Failed to publish graph");
+      setShowTokenEditor(true);
       setGistState("error");
     }
   }
@@ -159,41 +169,64 @@ export function ShareModal({ onClose, graphNodes, graphEdges, activeTabLabel }: 
             <span className="share-stat">{graphEdges.length} connections</span>
           </div>
 
-          {/* Primary action: Save to file */}
-          <button
-            className="share-export-btn"
-            onClick={handleExportFile}
-            disabled={exporting}
-          >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M2 10v3a1 1 0 001 1h10a1 1 0 001-1v-3" />
-              <path d="M8 2v8M5 7l3 3 3-3" />
-            </svg>
-            {exportDone ? "Saved!" : exporting ? "Saving…" : "Save as HTML file"}
-          </button>
-
-          {/* Secondary: Publish to web */}
-          {!showGist && (
+          <div className="share-action-row">
             <button
-              className="share-gist-toggle"
-              onClick={() => setShowGist(true)}
+              className="share-export-btn"
+              onClick={handleExportFile}
+              disabled={exporting}
             >
-              Or publish to the web via GitHub Gist →
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M2 10v3a1 1 0 001 1h10a1 1 0 001-1v-3" />
+                <path d="M8 2v8M5 7l3 3 3-3" />
+              </svg>
+              {exportDone ? "Saved!" : exporting ? "Saving…" : "Save as HTML file"}
             </button>
-          )}
+
+            {!showGist && (
+              <button
+                className="share-gist-toggle"
+                onClick={() => {
+                  setShowGist(true);
+                  setShowTokenEditor(!hasToken);
+                }}
+              >
+                Publish via GitHub Gist
+              </button>
+            )}
+          </div>
 
           {showGist && (
             <div className="share-gist-section">
               <div className="share-gist-divider" />
+              <div className="share-gist-header">
+                <div>
+                  <div className="share-gist-title">GitHub Gist publishing</div>
+                  <p className="share-desc share-desc-small">
+                    {showTokenEditor || !hasToken
+                      ? "Paste a GitHub token with gist scope below, then publish your map."
+                      : "Your GitHub token is saved. Publish a shareable URL or replace the token if needed."}
+                  </p>
+                </div>
+                {hasToken && !showTokenEditor && (
+                  <button
+                    className="share-token-manage"
+                    type="button"
+                    onClick={() => {
+                      setShowTokenEditor(true);
+                      setGistState("idle");
+                      setErrorMsg("");
+                    }}
+                  >
+                    Replace token
+                  </button>
+                )}
+              </div>
 
               {/* Token setup */}
-              {!hasToken && (
+              {(showTokenEditor || !hasToken) && (
                 <div className="share-setup">
-                  <p className="share-desc share-desc-small">
-                    Enter a GitHub token with <strong>gist</strong> scope to publish.
-                  </p>
                   <button
-                    className="share-link"
+                    className="share-token-link-btn"
                     type="button"
                     onClick={() => {
                       window.electronAPI?.openUrl("https://github.com/settings/tokens/new?scopes=gist&description=Fere+Share");
@@ -207,11 +240,10 @@ export function ShareModal({ onClose, graphNodes, graphEdges, activeTabLabel }: 
                         ref={tokenRef}
                         type={showToken ? "text" : "password"}
                         className="share-token-input"
-                        placeholder="ghp_..."
+                        placeholder="Paste GitHub token here"
                         value={tokenInput}
                         onChange={(e) => setTokenInput(e.target.value)}
                         onKeyDown={(e) => e.key === "Enter" && handleSaveToken()}
-                        autoFocus
                       />
                       <button
                         className="share-token-eye"
@@ -238,14 +270,14 @@ export function ShareModal({ onClose, graphNodes, graphEdges, activeTabLabel }: 
                       onClick={handleSaveToken}
                       disabled={!tokenInput.trim()}
                     >
-                      Save
+                      Save token
                     </button>
                   </div>
                 </div>
               )}
 
               {/* Ready to publish / already published */}
-              {hasToken && gistState !== "busy" && gistState !== "error" && (
+              {hasToken && gistState !== "busy" && gistState !== "error" && !showTokenEditor && (
                 <div className="share-gist-ready">
                   {gistState === "done" && shareUrl && (
                     <div className="share-done">
@@ -312,9 +344,28 @@ export function ShareModal({ onClose, graphNodes, graphEdges, activeTabLabel }: 
                     <circle cx="10" cy="14" r="0.5" fill="#ef4444" />
                   </svg>
                   <p className="share-error-text">{errorMsg}</p>
-                  <button className="share-link" onClick={() => setGistState(hasToken ? "idle" : "setup")}>
-                    Try again
-                  </button>
+                  <div className="share-error-actions">
+                    <button
+                      className="share-link-button"
+                      onClick={() => {
+                        setGistState("idle");
+                        if (hasToken) {
+                          setShowTokenEditor(false);
+                        }
+                      }}
+                    >
+                      Try again
+                    </button>
+                    <button
+                      className="share-link-button share-link-button-secondary"
+                      onClick={() => {
+                        setShowTokenEditor(true);
+                        setGistState("idle");
+                      }}
+                    >
+                      Paste new token
+                    </button>
+                  </div>
                 </div>
               )}
             </div>

@@ -7,7 +7,7 @@ import type {
   GraphNode,
   MetricHistory,
 } from "../types/electron";
-import { getServiceColor } from "./graph/constants";
+import { getServiceColor, getTypeBadge } from "./graph/constants";
 import { BrandIcon, inferServiceBrand } from "./graph/brandIcons";
 
 // --- Constants ---
@@ -50,17 +50,16 @@ const CATEGORY_LABELS: Record<ActivityCategory, string> = {
   "user-action": "User Action",
 };
 
-const CATEGORY_COLORS: Record<string, string> = {
-  crash: "#dc2626",        // red
-  recovery: "#22c55e",     // green
-  anomaly: "#d97706",      // amber
-  sentinel: "#6b7280",     // gray
-  discovery: "#0078d4",    // blue
-  removal: "#f97316",      // orange
-  topology: "#8b5cf6",     // purple
-  "user-action": "#14b8a6", // teal
+const CATEGORY_COLORS: Record<ActivityCategory, string> = {
+  crash: "#d14a87",
+  recovery: "#8bd226",
+  anomaly: "#f4b400",
+  sentinel: "#9b9b9b",
+  discovery: "#1ea7e1",
+  removal: "#bf5a00",
+  topology: "#3420df",
+  "user-action": "#118c87",
 };
-
 
 // --- Tab type from App.tsx ---
 interface TabInfo {
@@ -78,6 +77,58 @@ function relativeTime(ts: number): string {
   if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
   if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
   return `${Math.floor(diff / 86400000)}d ago`;
+}
+
+function hexToRgba(hex: string, alpha: number): string {
+  const normalized = hex.replace("#", "");
+  const value = normalized.length === 3
+    ? normalized.split("").map((part) => part + part).join("")
+    : normalized;
+  const r = parseInt(value.slice(0, 2), 16);
+  const g = parseInt(value.slice(2, 4), 16);
+  const b = parseInt(value.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+function getCategoryAccentStyles(color: string): React.CSSProperties {
+  return {
+    "--activity-category-color": color,
+    "--activity-category-soft": hexToRgba(color, 0.06),
+    "--activity-category-soft-strong": hexToRgba(color, 0.1),
+  } as React.CSSProperties;
+}
+
+function getServiceCompositionType(node: GraphNode): string {
+  switch (node.type) {
+    case "frontend":
+    case "client":
+      return "frontend";
+    case "backend":
+    case "webserver":
+    case "nodejs":
+    case "python":
+    case "service":
+      return "backend";
+    case "database":
+      return "database";
+    case "cache":
+      return "cache";
+    case "broker":
+      return "broker";
+    case "worker":
+      return "worker";
+    case "realtime":
+      return "realtime";
+    case "container":
+      return "container";
+    default:
+      return "other";
+  }
+}
+
+function getServiceCompositionLabel(type: string): string {
+  if (type === "other") return "Other";
+  return getTypeBadge(type);
 }
 
 
@@ -177,12 +228,147 @@ interface StackOverviewProps {
   metricHistory: MetricHistory;
 }
 
+type DonutSegment = {
+  key: string;
+  label: string;
+  value: number;
+  color: string;
+};
+
+function polarToCartesian(
+  centerX: number,
+  centerY: number,
+  radius: number,
+  angleInDegrees: number,
+) {
+  const angleInRadians = ((angleInDegrees - 90) * Math.PI) / 180.0;
+  return {
+    x: centerX + radius * Math.cos(angleInRadians),
+    y: centerY + radius * Math.sin(angleInRadians),
+  };
+}
+
+function describeArc(
+  centerX: number,
+  centerY: number,
+  radius: number,
+  startAngle: number,
+  endAngle: number,
+) {
+  const start = polarToCartesian(centerX, centerY, radius, endAngle);
+  const end = polarToCartesian(centerX, centerY, radius, startAngle);
+  const largeArcFlag = endAngle - startAngle <= 180 ? "0" : "1";
+  return [
+    "M",
+    start.x,
+    start.y,
+    "A",
+    radius,
+    radius,
+    0,
+    largeArcFlag,
+    0,
+    end.x,
+    end.y,
+  ].join(" ");
+}
+
+function StackHealthDonut({
+  total,
+  segments,
+}: {
+  total: number;
+  segments: DonutSegment[];
+}) {
+  const size = 176;
+  const strokeWidth = 28;
+  const radius = (size - strokeWidth) / 2;
+  const center = size / 2;
+  let currentAngle = 0;
+
+  return (
+    <div className="activity-donut-wrap">
+      <svg
+        className="activity-donut-chart"
+        width={size}
+        height={size}
+        viewBox={`0 0 ${size} ${size}`}
+        aria-hidden="true"
+      >
+        <circle
+          cx={center}
+          cy={center}
+          r={radius}
+          fill="none"
+          stroke="rgba(10, 10, 10, 0.07)"
+          strokeWidth={strokeWidth}
+        />
+        {segments.map((segment) => {
+          const sweep = total > 0 ? (segment.value / total) * 360 : 0;
+          const startAngle = currentAngle;
+          const endAngle = currentAngle + sweep;
+          currentAngle = endAngle;
+
+          if (sweep <= 0) return null;
+
+          if (sweep >= 359.999) {
+            return (
+              <circle
+                key={segment.key}
+                cx={center}
+                cy={center}
+                r={radius}
+                fill="none"
+                stroke={segment.color}
+                strokeWidth={strokeWidth}
+              />
+            );
+          }
+
+          return (
+            <path
+              key={segment.key}
+              d={describeArc(center, center, radius, startAngle, endAngle)}
+              fill="none"
+              stroke={segment.color}
+              strokeWidth={strokeWidth}
+              strokeLinecap="butt"
+              strokeLinejoin="round"
+            />
+          );
+        })}
+      </svg>
+      <div className="activity-donut-center">
+        <span className="activity-donut-total">{total}</span>
+        <span className="activity-donut-label">
+          {total === 1 ? "service" : "services"}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 function StackOverview({ graphNodes, events, metricHistory }: StackOverviewProps) {
   const serviceStats = useMemo(() => {
     const nonExternal = graphNodes.filter((n) => n.type !== "external" && !n.isGhost);
-    const healthy = nonExternal.filter((n) => n.healthStatus === "green" || n.healthStatus === "yellow").length;
-    const down = graphNodes.filter((n) => n.type !== "external" && (n.healthStatus === "red" || n.isGhost)).length;
-    return { running: healthy, healthy, down };
+    const counts = new Map<string, number>();
+    nonExternal.forEach((node) => {
+      const type = getServiceCompositionType(node);
+      counts.set(type, (counts.get(type) || 0) + 1);
+    });
+    const segments = Array.from(counts.entries())
+      .map(([type, value]) => ({
+        key: type,
+        label: getServiceCompositionLabel(type),
+        value,
+        color: type === "other" ? "#9b9b9b" : getServiceColor(type),
+      }))
+      .sort((a, b) => b.value - a.value);
+
+    return {
+      total: nonExternal.length,
+      segments,
+    };
   }, [graphNodes]);
 
   const issueStats = useMemo(() => {
@@ -229,73 +415,74 @@ function StackOverview({ graphNodes, events, metricHistory }: StackOverviewProps
 
   return (
     <div className="activity-stack-overview">
-      {/* Services */}
-      <div className="activity-stack-card">
-        <div className="activity-stack-card-number">{serviceStats.running}</div>
-        <div className="activity-stack-card-secondary">
-          <span className="activity-dot activity-dot-green" />
-          <span>{serviceStats.healthy} healthy</span>
-          {serviceStats.down > 0 && (
-            <>
-              <span className="activity-stack-card-sep">{" \u00B7 "}</span>
-              <span className="activity-dot activity-dot-red" />
-              <span>{serviceStats.down} down</span>
-            </>
-          )}
+      <div className="activity-stack-health-card">
+        <div className="activity-stack-health-header">
+          <div>
+            <div className="activity-stack-section-title">Service Mix</div>
+            <div className="activity-stack-section-subtitle">
+              Live breakdown by service type
+            </div>
+          </div>
         </div>
-        <div className="activity-stack-card-label">Services</div>
+        <div className="activity-stack-health-body">
+          <StackHealthDonut
+            total={serviceStats.total}
+            segments={serviceStats.segments}
+          />
+          <div className="activity-stack-health-legend">
+            {serviceStats.segments.map((segment) => (
+              <div key={segment.key} className="activity-stack-health-legend-item">
+                <span
+                  className="activity-stack-health-legend-swatch"
+                  style={{ backgroundColor: segment.color }}
+                />
+                <div className="activity-stack-health-legend-copy">
+                  <span className="activity-stack-health-legend-label">
+                    {segment.label}
+                  </span>
+                  <span className="activity-stack-health-legend-value">
+                    {segment.value}
+                    {serviceStats.total > 0
+                      ? ` · ${Math.round((segment.value / serviceStats.total) * 100)}%`
+                      : ""}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
 
-      {/* Issues */}
-      <div className="activity-stack-card">
-        <div className="activity-stack-card-number">{issueStats.total}</div>
-        <div className="activity-stack-card-secondary">
-          {issueStats.total === 0 ? (
-            <>
-              <span className="activity-dot activity-dot-green" />
-              <span style={{ color: "var(--green)" }}>All clear</span>
-            </>
-          ) : (
-            <>
-              {issueStats.critical > 0 && (
-                <>
-                  <span className="activity-dot activity-dot-red" />
-                  <span>{issueStats.critical} critical</span>
-                </>
-              )}
-              {issueStats.critical > 0 && issueStats.warning > 0 && (
-                <span className="activity-stack-card-sep">{" \u00B7 "}</span>
-              )}
-              {issueStats.warning > 0 && (
-                <>
-                  <span className="activity-dot activity-dot-yellow" />
-                  <span>{issueStats.warning} warning</span>
-                </>
-              )}
-            </>
-          )}
+      <div className="activity-stack-summary-grid">
+        <div className="activity-stack-summary-card">
+          <div className="activity-stack-summary-label">Issues</div>
+          <div className="activity-stack-summary-value">{issueStats.total}</div>
+          <div className="activity-stack-summary-detail">
+            {issueStats.total === 0
+              ? "All clear"
+              : `${issueStats.critical} critical · ${issueStats.warning} warning`}
+          </div>
         </div>
-        <div className="activity-stack-card-label">Issues</div>
-      </div>
-
-      {/* Resources */}
-      <div className="activity-stack-card">
-        <div className="activity-stack-card-number">{resourceStats.totalGb.toFixed(1)} GB</div>
-        <div className="activity-stack-card-secondary">
-          {resourceStats.totalGb > 8 && <span className="activity-dot activity-dot-red" />}
-          {resourceStats.totalGb > 4 && resourceStats.totalGb <= 8 && <span className="activity-dot activity-dot-yellow" />}
-          <span>across {resourceStats.processCount} processes</span>
+        <div className="activity-stack-summary-card">
+          <div className="activity-stack-summary-label">Resources</div>
+          <div className="activity-stack-summary-value">
+            {resourceStats.totalGb.toFixed(1)} GB
+          </div>
+          <div className="activity-stack-summary-detail">
+            Across {resourceStats.processCount} processes
+          </div>
         </div>
-        <div className="activity-stack-card-label">Resources</div>
-      </div>
-
-      {/* Sentinel */}
-      <div className="activity-stack-card">
-        <div className="activity-stack-card-number">{sentinelStats.count}</div>
-        <div className="activity-stack-card-secondary">
-          <span>{sentinelStats.count === 0 ? "No actions" : sentinelStats.count === 1 ? "fix today" : "fixes today"}</span>
+        <div className="activity-stack-summary-card">
+          <div className="activity-stack-summary-label">Sentinel</div>
+          <div className="activity-stack-summary-value">{sentinelStats.count}</div>
+          <div className="activity-stack-summary-detail">
+            {sentinelStats.count === 0
+              ? "No actions today"
+              : sentinelStats.count === 1
+                ? "1 fix today"
+                : `${sentinelStats.count} fixes today`}
+          </div>
         </div>
-        <div className="activity-stack-card-label">Sentinel</div>
       </div>
     </div>
   );
@@ -655,10 +842,15 @@ const EventRow = memo(function EventRow({
           <div className="analytics-event-header">
             <span className="analytics-event-category-chip">
               <span
+                className="analytics-event-category-chip-surface"
+                style={getCategoryAccentStyles(catColor)}
+              >
+              <span
                 className="analytics-event-category-dot"
                 style={{ backgroundColor: catColor }}
               />
               {CATEGORY_LABELS[event.category]}
+              </span>
             </span>
             <span className="analytics-event-title">
               {titleParts ? (
@@ -703,13 +895,23 @@ const EventRow = memo(function EventRow({
       <div style={style} className="analytics-event-row analytics-event-row-batch" onClick={() => onToggleBatch(batch.id)}>
         <div className="analytics-event-content">
           <div className="analytics-event-header">
-            <span className={`activity-batch-arrow ${isExpanded ? "activity-batch-arrow-expanded" : ""}`}>{"\u25B8"}</span>
+            <span
+              className={`activity-batch-arrow ${isExpanded ? "activity-batch-arrow-expanded" : ""}`}
+              style={{ color: batchColor }}
+            >
+              {"\u25B8"}
+            </span>
             <span className="analytics-event-category-chip">
+              <span
+                className="analytics-event-category-chip-surface"
+                style={getCategoryAccentStyles(batchColor)}
+              >
               <span
                 className="analytics-event-category-dot"
                 style={{ backgroundColor: batchColor }}
               />
               {CATEGORY_LABELS[batch.category]}
+              </span>
             </span>
             <span className="analytics-event-title">{batch.title}</span>
             <span className="analytics-event-time" title={new Date(batch.timestamp).toLocaleString()}>
@@ -732,12 +934,15 @@ const EventRow = memo(function EventRow({
           <div className="analytics-event-header">
             <span
               className="analytics-event-category-chip"
-              style={{
-                color: CATEGORY_COLORS[event.category] || SEVERITY_COLORS.info,
-                borderColor: CATEGORY_COLORS[event.category] || SEVERITY_COLORS.info,
-              }}
             >
+              <span
+                className="analytics-event-category-chip-surface"
+                style={getCategoryAccentStyles(
+                  CATEGORY_COLORS[event.category] || SEVERITY_COLORS.info,
+                )}
+              >
               {CATEGORY_LABELS[event.category]}
+              </span>
             </span>
             <span className="analytics-event-title">{event.title}</span>
             <span className="analytics-event-time" title={new Date(event.timestamp).toLocaleString()}>
@@ -967,6 +1172,8 @@ export function AnalyticsView({ tabs, graphNodes }: AnalyticsViewProps) {
                 key={cat}
                 className={`activity-filter-chip ${enabledCategories.has(cat) ? "activity-filter-chip-active" : ""}`}
                 onClick={() => toggleCategory(cat)}
+                aria-pressed={enabledCategories.has(cat)}
+                style={getCategoryAccentStyles(CATEGORY_COLORS[cat])}
               >
                 <span
                   className="activity-filter-chip-dot"
