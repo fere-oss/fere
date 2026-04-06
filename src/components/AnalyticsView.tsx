@@ -284,14 +284,21 @@ function StackHealthDonut({
   const strokeWidth = 28;
   const radius = (size - strokeWidth) / 2;
   const center = size / 2;
+  const totalDigits = String(total).length;
+  const totalClassName =
+    totalDigits >= 4
+      ? "activity-donut-total activity-donut-total-xl"
+      : totalDigits === 3
+        ? "activity-donut-total activity-donut-total-lg"
+        : "activity-donut-total";
   let currentAngle = 0;
 
   return (
     <div className="activity-donut-wrap">
       <svg
         className="activity-donut-chart"
-        width={size}
-        height={size}
+        width="100%"
+        height="100%"
         viewBox={`0 0 ${size} ${size}`}
         aria-hidden="true"
       >
@@ -339,7 +346,7 @@ function StackHealthDonut({
         })}
       </svg>
       <div className="activity-donut-center">
-        <span className="activity-donut-total">{total}</span>
+        <span className={totalClassName}>{total}</span>
         <span className="activity-donut-label">
           {total === 1 ? "service" : "services"}
         </span>
