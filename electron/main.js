@@ -2246,6 +2246,24 @@ ipcMain.handle("update-shared-graph", async (_, options) => {
 
 // ── Fere Agent ────────────────────────────────────────────────────────────────
 
+// Daily rate limit for Sentinel AI chat calls
+const SENTINEL_DAILY_LIMIT = 5;
+const sentinelUsage = { date: "", count: 0 };
+
+function getSentinelUsageToday() {
+  const today = new Date().toISOString().slice(0, 10);
+  if (sentinelUsage.date !== today) {
+    sentinelUsage.date = today;
+    sentinelUsage.count = 0;
+  }
+  return sentinelUsage;
+}
+
+ipcMain.handle("agent:usage", () => {
+  const usage = getSentinelUsageToday();
+  return { used: usage.count, limit: SENTINEL_DAILY_LIMIT, remaining: SENTINEL_DAILY_LIMIT - usage.count };
+});
+
 ipcMain.handle("agent:scan", async (_, nodeIds) => {
   try {
     const snapshot = (snapshotScheduler && snapshotScheduler.getLatestSnapshot()) || await getSystemSnapshot();
@@ -3416,6 +3434,21 @@ ipcMain.handle("agent:chat", async (event, payload) => {
     const { messages, nodeIds, tabLabel, options = {}, graphEdges } = payload || {};
     const safeMessages = Array.isArray(messages) ? messages : [];
     const apiKey = process.env.OPENAI_API_KEY;
+
+    // Enforce daily rate limit for AI calls
+    if (apiKey) {
+      const usage = getSentinelUsageToday();
+      if (usage.count >= SENTINEL_DAILY_LIMIT) {
+        return {
+          success: false,
+          error: `Daily Sentinel AI limit reached (${SENTINEL_DAILY_LIMIT}/${SENTINEL_DAILY_LIMIT}). Resets at midnight. Deterministic scans are still available.`,
+          rateLimited: true,
+          remaining: 0,
+        };
+      }
+      usage.count++;
+    }
+
     if (!apiKey) {
       // Offline fallback: run deterministic scan and stream findings as response
       try {

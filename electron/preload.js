@@ -135,6 +135,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   logoDevToken,
 
   // Fere Agent
+  agentUsage: () => ipcRenderer.invoke('agent:usage'),
   agentScan: (nodeIds) => ipcRenderer.invoke('agent:scan', nodeIds),
   agentApplyFix: (action) => ipcRenderer.invoke('agent:apply-fix', action),
   openInClaudeCode: (finding) => ipcRenderer.invoke('agent:open-in-claude-code', finding),

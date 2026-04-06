@@ -15937,6 +15937,14 @@ body.sentinel-panel-open .main-content {
   cursor: default;
 }
 
+.agp-usage-indicator {
+  text-align: right;
+  font-size: 11px;
+  color: #888;
+  padding: 4px 4px 6px;
+  letter-spacing: 0.01em;
+}
+
 @media (max-width: 720px) {
   .agp-trigger-label {
     display: none;

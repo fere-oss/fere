@@ -1027,6 +1027,7 @@ export function AgentPanel({
   } | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [aiUsage, setAiUsage] = useState<{ used: number; limit: number; remaining: number } | null>(null);
   const [providerDomains, setProviderDomains] = useState<
     Record<string, string>
   >({});
@@ -1101,6 +1102,11 @@ export function AgentPanel({
     return () => {
       mounted = false;
     };
+  }, []);
+
+  // Fetch Sentinel AI usage on mount
+  useEffect(() => {
+    window.electronAPI.agentUsage().then(setAiUsage).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -1361,6 +1367,8 @@ export function AgentPanel({
         setSteps([]);
         setIsStreaming(false);
         setTimeout(() => scrollToEnd(true), 100);
+        // Refresh usage counter after each chat call
+        window.electronAPI.agentUsage().then(setAiUsage).catch(() => {});
       }
     },
     [
@@ -2669,6 +2677,11 @@ export function AgentPanel({
                 </svg>
               </button>
             </div>
+            {aiUsage && (
+              <div className="agp-usage-indicator">
+                {aiUsage.remaining}/{aiUsage.limit} AI calls remaining today
+              </div>
+            )}
           </div>
         </div>
       )}
