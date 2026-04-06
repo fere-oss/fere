@@ -291,6 +291,25 @@ async function buildConnectionGraph(snapshot = null) {
   // Collect health on main thread
   const healthByPid = collectHealthByPid(processes, ports, connections);
 
+  // When an explicit snapshot is provided, skip I/O-bound discovery (Docker,
+  // CWD lookups, route scanning) so the graph is built purely from the
+  // supplied data.  This keeps tests deterministic and avoids mixing real
+  // system state into a caller-controlled snapshot.
+  if (snapshot) {
+    const result = buildGraphStructure({
+      processes, ports, connections,
+      cwdMap: {},
+      dockerSnapshot: null,
+      routesByProject: {},
+      localConnectionsByProject: {},
+      healthByPid,
+      containerHealthToGraphHealth,
+      projectPaths: [],
+    });
+    perfLog('Total buildConnectionGraph (snapshot-only)', Date.now() - startTotal);
+    return result;
+  }
+
   // Batch CWD lookups
   const pids = processes.filter(p => p.pid > 0).map(p => p.pid);
   const cwdMap = await batchGetProcessCwds(pids);
