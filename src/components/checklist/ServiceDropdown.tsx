@@ -363,15 +363,20 @@ export function ServiceDropdown({
               }
             }}
           >
-            <svg
-              width="12"
-              height="12"
-              viewBox="0 0 16 16"
-              fill="currentColor"
-            >
-              <path d="M4 2l10 6-10 6V2z" />
-            </svg>
-            Start all ({services.filter(s => !s.running).length})
+            <span className="service-dropdown-start-all-main">
+              <svg
+                width="12"
+                height="12"
+                viewBox="0 0 16 16"
+                fill="currentColor"
+              >
+                <path d="M4 2l10 6-10 6V2z" />
+              </svg>
+              <span>Start all</span>
+            </span>
+            <span className="service-dropdown-start-all-count">
+              {services.filter(s => !s.running).length}
+            </span>
           </button>
         )}
 

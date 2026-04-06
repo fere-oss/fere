@@ -518,6 +518,43 @@ export interface AlertHistoryResult {
   error?: string;
 }
 
+export type ActivityCategory = 'crash' | 'recovery' | 'anomaly' | 'sentinel' | 'discovery' | 'removal' | 'topology' | 'user-action';
+
+export interface ActivityEvent {
+  id: string;
+  timestamp: number;
+  category: ActivityCategory;
+  severity: 'critical' | 'warning' | 'info';
+  title: string;
+  detail: string;
+  serviceName: string | null;
+  serviceId: string | null;
+  projectName: string | null;
+  relatedEvents: string[];
+}
+
+export interface ActivityLogOptions {
+  since?: number;
+  categories?: ActivityCategory[];
+  projectName?: string;
+  limit?: number;
+}
+
+export interface MetricSample {
+  t: number;
+  cpu: number;
+  mem: number;
+}
+
+export interface MetricHistoryEntry {
+  samples: MetricSample[];
+  projectName: string | null;
+}
+
+export interface MetricHistory {
+  [serviceName: string]: MetricHistoryEntry;
+}
+
 // Snapshot delta types (event-driven pipeline)
 export interface SnapshotDelta {
   type: 'full' | 'delta' | 'metrics';
@@ -673,6 +710,9 @@ export interface ElectronAPI {
   startSnapshotStream: () => Promise<{ success: boolean; error?: string }>;
   stopSnapshotStream: () => Promise<{ success: boolean }>;
   onSnapshotDelta: (callback: (delta: SnapshotDelta) => void) => () => void;
+  getActivityLog: (options?: ActivityLogOptions) => Promise<ActivityEvent[]>;
+  getMetricHistory: () => Promise<MetricHistory>;
+  onActivityEvent: (callback: (event: ActivityEvent) => void) => () => void;
 
   // Analytics
   getAnalyticsId: () => Promise<string>;
