@@ -8,6 +8,7 @@ const {
   clipboard,
   powerMonitor,
   dialog,
+  safeStorage,
 } = require("electron");
 const { autoUpdater } = require("electron-updater");
 const path = require("path");
@@ -2246,6 +2247,56 @@ ipcMain.handle("update-shared-graph", async (_, options) => {
 
 // ── Fere Agent ────────────────────────────────────────────────────────────────
 
+// ── API Key Management (BYOK via safeStorage / macOS Keychain) ───────────────
+
+function getApiKey() {
+  // 1. Try safeStorage-encrypted key from ~/.fere/settings.json
+  const settings = readShareSettings();
+  if (settings.encryptedApiKey && safeStorage.isEncryptionAvailable()) {
+    try {
+      return safeStorage.decryptString(Buffer.from(settings.encryptedApiKey, "base64"));
+    } catch {}
+  }
+  // 2. Fall back to environment variable
+  return process.env.OPENAI_API_KEY || null;
+}
+
+ipcMain.handle("agent:set-api-key", async (_, key) => {
+  try {
+    if (!key || typeof key !== "string" || !key.trim()) {
+      return { success: false, error: "API key cannot be empty" };
+    }
+    if (!safeStorage.isEncryptionAvailable()) {
+      return { success: false, error: "Encryption is not available on this system" };
+    }
+    const encrypted = safeStorage.encryptString(key.trim());
+    writeShareSettings({ encryptedApiKey: encrypted.toString("base64") });
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle("agent:get-api-key-status", () => {
+  const hasKey = !!getApiKey();
+  return { hasKey };
+});
+
+ipcMain.handle("agent:clear-api-key", () => {
+  try {
+    const settings = readShareSettings();
+    delete settings.encryptedApiKey;
+    const dir = path.join(os.homedir(), ".fere");
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    const tmp = SHARE_SETTINGS_FILE + ".tmp";
+    fs.writeFileSync(tmp, JSON.stringify(settings, null, 2), "utf-8");
+    fs.renameSync(tmp, SHARE_SETTINGS_FILE);
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
 // Daily rate limit for Sentinel AI chat calls
 const SENTINEL_DAILY_LIMIT = 5;
 const sentinelUsage = { date: "", count: 0 };
@@ -3433,7 +3484,7 @@ ipcMain.handle("agent:chat", async (event, payload) => {
   try {
     const { messages, nodeIds, tabLabel, options = {}, graphEdges } = payload || {};
     const safeMessages = Array.isArray(messages) ? messages : [];
-    const apiKey = process.env.OPENAI_API_KEY;
+    const apiKey = getApiKey();
 
     // Enforce daily rate limit for AI calls
     if (apiKey) {
@@ -3468,7 +3519,7 @@ ipcMain.handle("agent:chat", async (event, payload) => {
         );
 
         let text =
-          "**Sentinel — Deterministic scan results** *(no LLM — set `OPENAI_API_KEY` to enable AI chat)*\n\n";
+          "**Sentinel — Deterministic scan results** *(add your API key in Sentinel settings to enable AI features)*\n\n";
         if (offlineFindings.length === 0) {
           text += "No issues detected across your running services.";
         } else {

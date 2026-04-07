@@ -14,7 +14,8 @@
       "Bash(npm run:*)",
       "Bash(grep -r \"localhost:8000\\\\|127.0.0.1:8000\\\\|NEXT_PUBLIC_API\\\\|API_URL\\\\|baseURL\\\\|base_url\" /Users/rahulthennarasu/Documents/GitHub/impasse/frontend/src /Users/rahulthennarasu/Documents/GitHub/impasse/frontend/.env*)",
       "Bash(node)",
-      "Bash(find /Users/siddharthbalaji/Documents/fere/src/components -type f -name *nalytics* -o -name *nalytic*)"
+      "Bash(find /Users/siddharthbalaji/Documents/fere/src/components -type f -name *nalytics* -o -name *nalytic*)",
+      "Bash(ls -la /Users/siddharthbalaji/Documents/fere/.env*)"
     ]
   }
 }

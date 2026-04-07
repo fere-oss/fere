@@ -134,6 +134,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   platform: process.platform,
   logoDevToken,
 
+  // Fere Agent — API Key Management
+  setApiKey: (key) => ipcRenderer.invoke('agent:set-api-key', key),
+  getApiKeyStatus: () => ipcRenderer.invoke('agent:get-api-key-status'),
+  clearApiKey: () => ipcRenderer.invoke('agent:clear-api-key'),
+
   // Fere Agent
   agentUsage: () => ipcRenderer.invoke('agent:usage'),
   agentScan: (nodeIds) => ipcRenderer.invoke('agent:scan', nodeIds),

@@ -18,6 +18,7 @@ import type {
   GraphNode,
 } from "../types/electron";
 import { getServiceColor } from "./graph/constants";
+import { ApiKeySetup } from "./ApiKeySetup";
 import sentinelLogo from "../assets/sentinel.png";
 
 const PROVIDER_ALIAS_MAP: Record<string, string> = {
@@ -1028,6 +1029,7 @@ export function AgentPanel({
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [aiUsage, setAiUsage] = useState<{ used: number; limit: number; remaining: number } | null>(null);
+  const [hasApiKey, setHasApiKey] = useState<boolean | null>(null);
   const [providerDomains, setProviderDomains] = useState<
     Record<string, string>
   >({});
@@ -1104,9 +1106,10 @@ export function AgentPanel({
     };
   }, []);
 
-  // Fetch Sentinel AI usage on mount
+  // Fetch Sentinel AI usage and key status on mount
   useEffect(() => {
     window.electronAPI.agentUsage().then(setAiUsage).catch(() => {});
+    window.electronAPI.getApiKeyStatus().then((s) => setHasApiKey(s.hasKey)).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -2441,6 +2444,14 @@ export function AgentPanel({
 
           {/* Chat body */}
           <div className="agp-chat-body">
+            {hasApiKey !== null && (
+              <ApiKeySetup
+                onKeyChanged={() => {
+                  window.electronAPI.getApiKeyStatus().then((s) => setHasApiKey(s.hasKey)).catch(() => {});
+                  window.electronAPI.agentUsage().then(setAiUsage).catch(() => {});
+                }}
+              />
+            )}
             {feed.length === 0 && !showStream ? (
               /* Welcome / starter screen */
               <div className="agp-welcome">

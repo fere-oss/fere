@@ -731,6 +731,11 @@ export interface ElectronAPI {
   platform: string;
   logoDevToken: string | null;
 
+  // Fere Agent — API Key Management
+  setApiKey: (key: string) => Promise<{ success: boolean; error?: string }>;
+  getApiKeyStatus: () => Promise<{ hasKey: boolean }>;
+  clearApiKey: () => Promise<{ success: boolean; error?: string }>;
+
   // Fere Agent
   agentUsage: () => Promise<{ used: number; limit: number; remaining: number }>;
   agentScan: (nodeIds?: string[]) => Promise<{ success: boolean; findings: AgentFinding[]; error?: string }>;
