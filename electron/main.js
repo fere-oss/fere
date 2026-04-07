@@ -2629,30 +2629,69 @@ ipcMain.handle("auth:sign-out", () => {
 
 // Daily rate limit for Sentinel AI chat calls
 const SENTINEL_DAILY_LIMIT = 5;
-const sentinelUsage = { date: "", count: 0 };
 
-function getSentinelUsageToday() {
+// Get Supabase user UUID from access token JWT
+function getSupabaseUserId(accessToken) {
+  try {
+    const payload = JSON.parse(Buffer.from(accessToken.split(".")[1], "base64").toString());
+    return payload.sub;
+  } catch { return null; }
+}
+
+async function getUsageCount(accessToken) {
+  const userId = getSupabaseUserId(accessToken);
+  if (!userId || !SUPABASE_URL) return 0;
   const today = new Date().toISOString().slice(0, 10);
-  if (sentinelUsage.date !== today) {
-    sentinelUsage.date = today;
-    sentinelUsage.count = 0;
+  try {
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/usage?user_id=eq.${encodeURIComponent(userId)}&date=eq.${today}&select=count`,
+      { headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${accessToken}` } },
+    );
+    if (!res.ok) return 0;
+    const rows = await res.json();
+    return rows?.[0]?.count ?? 0;
+  } catch { return 0; }
+}
+
+async function incrementUsageCount(accessToken) {
+  const userId = getSupabaseUserId(accessToken);
+  if (!userId || !SUPABASE_URL) return;
+  const today = new Date().toISOString().slice(0, 10);
+  try {
+    const current = await getUsageCount(accessToken);
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/usage`, {
+      method: "POST",
+      headers: {
+        apikey: SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+        Prefer: "resolution=merge-duplicates",
+      },
+      body: JSON.stringify({ user_id: userId, date: today, count: current + 1 }),
+    });
+    if (!res.ok) {
+      console.error("[auth] Usage increment failed:", res.status, await res.text().catch(() => ""));
+    } else {
+      console.log("[auth] Usage incremented to", current + 1);
+    }
+  } catch (err) {
+    console.error("[auth] Usage increment error:", err);
   }
-  return sentinelUsage;
 }
 
 ipcMain.handle("agent:usage", async () => {
   const ownKey = getUserApiKey();
+  const accessToken = await getValidAccessToken();
+
   if (ownKey) {
-    // BYOK user — local rate limit
-    const usage = getSentinelUsageToday();
-    return { used: usage.count, limit: SENTINEL_DAILY_LIMIT, remaining: SENTINEL_DAILY_LIMIT - usage.count, mode: "byok" };
+    // BYOK user — no limit enforced on UI (they own the key)
+    return { used: 0, limit: SENTINEL_DAILY_LIMIT, remaining: SENTINEL_DAILY_LIMIT, mode: "byok" };
   }
 
-  const accessToken = await getValidAccessToken();
   if (accessToken && SUPABASE_URL) {
-    // Signed-in free-tier user — use local usage counter
-    const usage = getSentinelUsageToday();
-    return { used: usage.count, limit: SENTINEL_DAILY_LIMIT, remaining: SENTINEL_DAILY_LIMIT - usage.count, mode: "free" };
+    // Signed-in free-tier user — check Supabase
+    const count = await getUsageCount(accessToken);
+    return { used: count, limit: SENTINEL_DAILY_LIMIT, remaining: SENTINEL_DAILY_LIMIT - count, mode: "free" };
   }
 
   // Not signed in, no key
@@ -3831,13 +3870,13 @@ ipcMain.handle("agent:chat", async (event, payload) => {
     const apiKey = getUserApiKey();
     const accessToken = !apiKey ? await getValidAccessToken() : null;
 
-    // Enforce daily rate limit for all AI calls (BYOK and free-tier)
-    if (apiKey || accessToken) {
-      const usage = getSentinelUsageToday();
-      if (usage.count >= SENTINEL_DAILY_LIMIT) {
+    // Enforce daily rate limit for free-tier proxy users
+    if (!apiKey && accessToken && SUPABASE_URL) {
+      const usedCount = await getUsageCount(accessToken);
+      if (usedCount >= SENTINEL_DAILY_LIMIT) {
         return {
           success: false,
-          error: `Daily AI limit reached (${SENTINEL_DAILY_LIMIT}/${SENTINEL_DAILY_LIMIT}). Resets at midnight.${!apiKey ? " Enter your own API key for unlimited calls." : ""} Deterministic scans are still available.`,
+          error: `Daily AI limit reached (${SENTINEL_DAILY_LIMIT}/${SENTINEL_DAILY_LIMIT}). Resets at midnight. Enter your own API key for unlimited calls. Deterministic scans are still available.`,
           rateLimited: true,
           remaining: 0,
         };
@@ -4093,7 +4132,7 @@ ipcMain.handle("agent:chat", async (event, payload) => {
         max_tokens: 4096,
         temperature: 0.3,
         stream: true,
-      }, continuationDepth === 0);
+      }, false);
 
       const pendingCalls = {};
       const assistantMsg = {
@@ -4444,11 +4483,9 @@ ipcMain.handle("agent:chat", async (event, payload) => {
 
     await runTurn(initialTurnMessages);
 
-    // Increment local usage counter after successful AI call
-    if (apiKey || accessToken) {
-      const usage = getSentinelUsageToday();
-      usage.count++;
-      console.log("[auth] Usage incremented to", usage.count, "/", SENTINEL_DAILY_LIMIT);
+    // Increment usage in Supabase after successful AI call (free-tier only)
+    if (!apiKey && accessToken && SUPABASE_URL) {
+      await incrementUsageCount(accessToken);
     }
 
     return { success: true };
