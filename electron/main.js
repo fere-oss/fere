@@ -2658,21 +2658,20 @@ async function incrementUsageCount(accessToken) {
   if (!userId || !SUPABASE_URL) return;
   const today = new Date().toISOString().slice(0, 10);
   try {
-    const current = await getUsageCount(accessToken);
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/usage`, {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/increment_usage`, {
       method: "POST",
       headers: {
         apikey: SUPABASE_ANON_KEY,
         Authorization: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
-        Prefer: "resolution=merge-duplicates",
       },
-      body: JSON.stringify({ user_id: userId, date: today, count: current + 1 }),
+      body: JSON.stringify({ p_user_id: userId, p_date: today }),
     });
     if (!res.ok) {
       console.error("[auth] Usage increment failed:", res.status, await res.text().catch(() => ""));
     } else {
-      console.log("[auth] Usage incremented to", current + 1);
+      const newCount = await res.json();
+      console.log("[auth] Usage incremented to", newCount);
     }
   } catch (err) {
     console.error("[auth] Usage increment error:", err);
@@ -4481,13 +4480,12 @@ ipcMain.handle("agent:chat", async (event, payload) => {
       }
     }
 
-    await runTurn(initialTurnMessages);
-
-    // Increment usage in Supabase after successful AI call (free-tier only)
+    // Increment usage upfront — every AI attempt costs a call
     if (!apiKey && accessToken && SUPABASE_URL) {
       await incrementUsageCount(accessToken);
     }
 
+    await runTurn(initialTurnMessages);
     return { success: true };
   } catch (err) {
     console.error("agent:chat error:", err);

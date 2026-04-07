@@ -1029,7 +1029,7 @@ export function AgentPanel({
   } | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [aiUsage, setAiUsage] = useState<{ used: number; limit: number; remaining: number } | null>(null);
+  const [aiUsage, setAiUsage] = useState<{ used: number; limit: number; remaining: number; mode?: string } | null>(null);
   const [hasApiKey, setHasApiKey] = useState<boolean | null>(null);
   const [authSession, setAuthSession] = useState<AuthSession | null>(null);
   const [providerDomains, setProviderDomains] = useState<
@@ -1346,6 +1346,11 @@ export function AgentPanel({
           .filter((item): item is FeedMessage => item.kind === "message")
           .map(({ role, content }) => ({ role, content })),
       ];
+
+      // Optimistically decrement usage counter immediately
+      if (aiUsage && aiUsage.mode === "free" && aiUsage.remaining > 0) {
+        setAiUsage({ ...aiUsage, used: aiUsage.used + 1, remaining: aiUsage.remaining - 1 });
+      }
 
       try {
         const result = await window.electronAPI.agentChat(
