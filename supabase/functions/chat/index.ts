@@ -72,10 +72,15 @@ Deno.serve(async (req) => {
 
     const nextCount = countUsage ? currentCount + 1 : currentCount;
     if (countUsage) {
-      await supabase.from("usage").upsert(
+      const { error: upsertError } = await supabase.from("usage").upsert(
         { user_id: userId, date: today, count: nextCount },
         { onConflict: "user_id,date" },
       );
+      if (upsertError) {
+        console.error("[chat] Usage upsert failed:", upsertError);
+      } else {
+        console.log("[chat] Usage incremented to", nextCount, "for", userId);
+      }
     }
 
     // 5. Call OpenAI with streaming using the exact request shape from Electron.

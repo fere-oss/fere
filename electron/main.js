@@ -2650,17 +2650,7 @@ ipcMain.handle("agent:usage", async () => {
 
   const accessToken = await getValidAccessToken();
   if (accessToken && SUPABASE_URL) {
-    // Signed-in free-tier user — check backend
-    try {
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/usage`, {
-        headers: { Authorization: `Bearer ${accessToken}`, apikey: SUPABASE_ANON_KEY },
-      });
-      if (res.ok) {
-        const data = await res.json();
-        return { used: data.count, limit: SENTINEL_DAILY_LIMIT, remaining: SENTINEL_DAILY_LIMIT - data.count, mode: "free" };
-      }
-    } catch {}
-    // Fallback to local if backend unreachable
+    // Signed-in free-tier user — use local usage counter
     const usage = getSentinelUsageToday();
     return { used: usage.count, limit: SENTINEL_DAILY_LIMIT, remaining: SENTINEL_DAILY_LIMIT - usage.count, mode: "free" };
   }
@@ -3841,18 +3831,17 @@ ipcMain.handle("agent:chat", async (event, payload) => {
     const apiKey = getUserApiKey();
     const accessToken = !apiKey ? await getValidAccessToken() : null;
 
-    // Enforce daily rate limit for BYOK AI calls
-    if (apiKey) {
+    // Enforce daily rate limit for all AI calls (BYOK and free-tier)
+    if (apiKey || accessToken) {
       const usage = getSentinelUsageToday();
       if (usage.count >= SENTINEL_DAILY_LIMIT) {
         return {
           success: false,
-          error: `Daily Sentinel AI limit reached (${SENTINEL_DAILY_LIMIT}/${SENTINEL_DAILY_LIMIT}). Resets at midnight. Deterministic scans are still available.`,
+          error: `Daily AI limit reached (${SENTINEL_DAILY_LIMIT}/${SENTINEL_DAILY_LIMIT}). Resets at midnight.${!apiKey ? " Enter your own API key for unlimited calls." : ""} Deterministic scans are still available.`,
           rateLimited: true,
           remaining: 0,
         };
       }
-      usage.count++;
     }
 
     if (!apiKey) {
@@ -4007,6 +3996,7 @@ ipcMain.handle("agent:chat", async (event, payload) => {
     }
 
     if (directNodeAnswer) {
+      console.log("[auth] Direct node answer (no AI call, no usage counted)");
       if (!event.sender.isDestroyed()) {
         event.sender.send("agent:chat-token", directNodeAnswer);
       }
@@ -4030,6 +4020,7 @@ ipcMain.handle("agent:chat", async (event, payload) => {
     ];
 
     async function* streamProxyChatCompletion(requestPayload, countUsage) {
+      console.log("[auth] Proxy chat call, countUsage:", countUsage);
       const res = await fetch(`${SUPABASE_URL}/functions/v1/chat`, {
         method: "POST",
         headers: {
@@ -4452,6 +4443,14 @@ ipcMain.handle("agent:chat", async (event, payload) => {
     }
 
     await runTurn(initialTurnMessages);
+
+    // Increment local usage counter after successful AI call
+    if (apiKey || accessToken) {
+      const usage = getSentinelUsageToday();
+      usage.count++;
+      console.log("[auth] Usage incremented to", usage.count, "/", SENTINEL_DAILY_LIMIT);
+    }
+
     return { success: true };
   } catch (err) {
     console.error("agent:chat error:", err);
