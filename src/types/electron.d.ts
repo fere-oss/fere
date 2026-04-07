@@ -621,6 +621,15 @@ export interface ShareSettings {
   publishedAt: number | null;
 }
 
+// Auth types
+export interface AuthSession {
+  signedIn: boolean;
+  provider: 'github' | 'google' | null;
+  displayName: string | null;
+  avatarUrl: string | null;
+  email: string | null;
+}
+
 // Electron API interface
 export interface ElectronAPI {
   // Process monitoring
@@ -731,13 +740,20 @@ export interface ElectronAPI {
   platform: string;
   logoDevToken: string | null;
 
+  // OAuth
+  authSignInGithub: () => Promise<{ success: boolean; error?: string }>;
+  authSignInGoogle: () => Promise<{ success: boolean; error?: string }>;
+  authGetSession: () => Promise<AuthSession>;
+  authSignOut: () => Promise<{ success: boolean; error?: string }>;
+  onAuthSessionChanged: (callback: (session: AuthSession) => void) => () => void;
+
   // Fere Agent — API Key Management
   setApiKey: (key: string) => Promise<{ success: boolean; error?: string }>;
   getApiKeyStatus: () => Promise<{ hasKey: boolean }>;
   clearApiKey: () => Promise<{ success: boolean; error?: string }>;
 
   // Fere Agent
-  agentUsage: () => Promise<{ used: number; limit: number; remaining: number }>;
+  agentUsage: () => Promise<{ used: number; limit: number; remaining: number; mode?: string }>;
   agentScan: (nodeIds?: string[]) => Promise<{ success: boolean; findings: AgentFinding[]; error?: string }>;
   agentApplyFix: (action: AgentFixAction) => Promise<{ success: boolean; error?: string }>;
   openInClaudeCode: (finding: { id: string; service: string; summary: string; severity: AgentSeverity; detail?: string; impact?: string | null; affectedServices?: string[] }) => Promise<{ success: boolean; briefPath: string; projectPath: string; error?: string }>;

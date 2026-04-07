@@ -86,7 +86,7 @@ export function ApiKeySetup({ onKeyChanged }: Props) {
       ) : (
         <>
           <div className="agp-key-prompt">
-            <span className="agp-key-prompt-label">Add your OpenAI API key to enable AI-powered scans</span>
+            <span className="agp-key-prompt-label">Add your OpenAI API key for unlimited calls</span>
           </div>
           <div className="agp-key-input-row">
             <div className="agp-key-input-wrap">

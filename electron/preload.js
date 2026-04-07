@@ -134,6 +134,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
   platform: process.platform,
   logoDevToken,
 
+  // OAuth
+  authSignInGithub: () => ipcRenderer.invoke('auth:sign-in-github'),
+  authSignInGoogle: () => ipcRenderer.invoke('auth:sign-in-google'),
+  authGetSession: () => ipcRenderer.invoke('auth:get-session'),
+  authSignOut: () => ipcRenderer.invoke('auth:sign-out'),
+  onAuthSessionChanged: (callback) => {
+    const listener = (event, session) => callback(session);
+    ipcRenderer.on('auth:session-changed', listener);
+    return () => ipcRenderer.removeListener('auth:session-changed', listener);
+  },
+
   // Fere Agent — API Key Management
   setApiKey: (key) => ipcRenderer.invoke('agent:set-api-key', key),
   getApiKeyStatus: () => ipcRenderer.invoke('agent:get-api-key-status'),

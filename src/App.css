@@ -16179,6 +16179,130 @@ body.sentinel-panel-open .activity-donut-total {
   border-radius: 3px;
 }
 
+/* ── Auth gate (sign-in / BYOK choice) ────────────────────────────────────── */
+
+.agp-auth-gate {
+  padding: 16px 12px;
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.agp-auth-providers {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.agp-auth-provider-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 20px;
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.agp-auth-provider-btn:hover {
+  background: var(--bg-muted);
+  border-color: var(--text-muted);
+}
+
+.agp-auth-gate-sub {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.agp-auth-divider {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 4px 0;
+}
+
+.agp-auth-divider::before,
+.agp-auth-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border-color);
+}
+
+.agp-auth-divider span {
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+/* ── Auth status (signed-in user) ─────────────────────────────────────────── */
+
+.agp-auth-status {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.agp-auth-user {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.agp-auth-avatar {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+}
+
+.agp-auth-username {
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.agp-auth-signout {
+  margin-left: auto;
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 11px;
+  color: var(--text-muted);
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-underline-offset: 2px;
+}
+
+.agp-auth-signout:hover {
+  color: var(--text-primary);
+}
+
+.agp-auth-remaining {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.agp-auth-exhausted {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.agp-auth-exhausted .agp-key-setup {
+  border-bottom: none;
+  padding: 8px 0 0;
+}
+
 @media (max-width: 720px) {
   .agp-trigger-label {
     display: none;

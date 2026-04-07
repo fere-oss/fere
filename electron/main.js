@@ -14,6 +14,7 @@ const { autoUpdater } = require("electron-updater");
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
+const crypto = require("crypto");
 require("dotenv").config({ path: path.join(__dirname, "../.env") });
 
 // Import security utilities
@@ -360,6 +361,15 @@ function createWindow() {
 app.commandLine.appendSwitch("enable-smooth-scrolling");
 app.commandLine.appendSwitch("enable-gpu-rasterization");
 
+app.setAsDefaultProtocolClient("fere");
+
+app.on("open-url", (event, url) => {
+  event.preventDefault();
+  if (url.startsWith("fere://auth/callback")) {
+    handleAuthCallback(url);
+  }
+});
+
 app.whenReady().then(() => {
   // Security: Set up default-deny permission handlers
   setupPermissionHandlers();
@@ -391,6 +401,10 @@ app.whenReady().then(() => {
   });
 
   createWindow();
+
+  // Refresh auth token on launch and every 30 minutes
+  refreshAuthToken().catch(() => {});
+  setInterval(() => refreshAuthToken().catch(() => {}), 30 * 60 * 1000);
 
   if (!isDev) {
     autoUpdater.checkForUpdatesAndNotify();
@@ -2249,16 +2263,17 @@ ipcMain.handle("update-shared-graph", async (_, options) => {
 
 // ── API Key Management (BYOK via safeStorage / macOS Keychain) ───────────────
 
-function getApiKey() {
-  // 1. Try safeStorage-encrypted key from ~/.fere/settings.json
+// BYOK check: only returns true if the user explicitly saved a key via the UI.
+// Does NOT check the env var — that may be the bundled dev key, which now lives
+// on the Supabase backend in production.
+function getUserApiKey() {
   const settings = readShareSettings();
   if (settings.encryptedApiKey && safeStorage.isEncryptionAvailable()) {
     try {
       return safeStorage.decryptString(Buffer.from(settings.encryptedApiKey, "base64"));
     } catch {}
   }
-  // 2. Fall back to environment variable
-  return process.env.OPENAI_API_KEY || null;
+  return null;
 }
 
 ipcMain.handle("agent:set-api-key", async (_, key) => {
@@ -2278,7 +2293,7 @@ ipcMain.handle("agent:set-api-key", async (_, key) => {
 });
 
 ipcMain.handle("agent:get-api-key-status", () => {
-  const hasKey = !!getApiKey();
+  const hasKey = !!getUserApiKey();
   return { hasKey };
 });
 
@@ -2291,6 +2306,321 @@ ipcMain.handle("agent:clear-api-key", () => {
     const tmp = SHARE_SETTINGS_FILE + ".tmp";
     fs.writeFileSync(tmp, JSON.stringify(settings, null, 2), "utf-8");
     fs.renameSync(tmp, SHARE_SETTINGS_FILE);
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+// ── GitHub OAuth (Supabase Auth with PKCE) ─────────────────────────────────
+
+const SUPABASE_URL = process.env.SUPABASE_URL || "";
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || "";
+
+let pendingPkceVerifier = null;
+
+function getAuthSession() {
+  const settings = readShareSettings();
+  // One-time migration from GitHub-specific fields to provider-agnostic
+  if (settings.authGithubId && !settings.authProviderId) {
+    settings.authProviderId = settings.authGithubId;
+    settings.authDisplayName = settings.authGithubUsername;
+    settings.authAvatarUrl = settings.authGithubAvatarUrl;
+    settings.authProvider = "github";
+    delete settings.authGithubId;
+    delete settings.authGithubUsername;
+    delete settings.authGithubAvatarUrl;
+    const dir = path.join(os.homedir(), ".fere");
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    const tmp = SHARE_SETTINGS_FILE + ".tmp";
+    fs.writeFileSync(tmp, JSON.stringify(settings, null, 2), "utf-8");
+    fs.renameSync(tmp, SHARE_SETTINGS_FILE);
+  }
+  if (!settings.encryptedAuthAccessToken || !safeStorage.isEncryptionAvailable()) {
+    return null;
+  }
+  try {
+    const accessToken = safeStorage.decryptString(Buffer.from(settings.encryptedAuthAccessToken, "base64"));
+    const refreshToken = settings.encryptedAuthRefreshToken
+      ? safeStorage.decryptString(Buffer.from(settings.encryptedAuthRefreshToken, "base64"))
+      : null;
+    return {
+      accessToken,
+      refreshToken,
+      provider: settings.authProvider || null,
+      providerId: settings.authProviderId || null,
+      displayName: settings.authDisplayName || null,
+      avatarUrl: settings.authAvatarUrl || null,
+      email: settings.authEmail || null,
+      expiresAt: settings.authExpiresAt || 0,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function extractDisplayName(userMeta, provider) {
+  if (provider === "github") {
+    return userMeta.user_name || userMeta.preferred_username || null;
+  }
+  if (provider === "google") {
+    return userMeta.full_name || userMeta.name || null;
+  }
+  return userMeta.full_name || userMeta.name || userMeta.user_name || null;
+}
+
+function saveAuthSession({ accessToken, refreshToken, provider, providerId, displayName, avatarUrl, email, expiresAt }) {
+  if (!safeStorage.isEncryptionAvailable()) return;
+  const patch = {
+    encryptedAuthAccessToken: safeStorage.encryptString(accessToken).toString("base64"),
+    authProvider: provider,
+    authProviderId: providerId,
+    authDisplayName: displayName,
+    authAvatarUrl: avatarUrl,
+    authEmail: email || null,
+    authExpiresAt: expiresAt,
+  };
+  if (refreshToken) {
+    patch.encryptedAuthRefreshToken = safeStorage.encryptString(refreshToken).toString("base64");
+  }
+  writeShareSettings(patch);
+}
+
+function clearAuthSession() {
+  const settings = readShareSettings();
+  delete settings.encryptedAuthAccessToken;
+  delete settings.encryptedAuthRefreshToken;
+  delete settings.authProvider;
+  delete settings.authProviderId;
+  delete settings.authDisplayName;
+  delete settings.authAvatarUrl;
+  delete settings.authEmail;
+  delete settings.authExpiresAt;
+  // Clean up legacy fields if present
+  delete settings.authGithubId;
+  delete settings.authGithubUsername;
+  delete settings.authGithubAvatarUrl;
+  const dir = path.join(os.homedir(), ".fere");
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  const tmp = SHARE_SETTINGS_FILE + ".tmp";
+  fs.writeFileSync(tmp, JSON.stringify(settings, null, 2), "utf-8");
+  fs.renameSync(tmp, SHARE_SETTINGS_FILE);
+}
+
+async function refreshAuthToken() {
+  const session = getAuthSession();
+  if (!session?.refreshToken) return null;
+  try {
+    const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: SUPABASE_ANON_KEY,
+      },
+      body: JSON.stringify({ refresh_token: session.refreshToken }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const userMeta = data.user?.user_metadata || {};
+    const provider = data.user?.app_metadata?.provider || session.provider;
+    saveAuthSession({
+      accessToken: data.access_token,
+      refreshToken: data.refresh_token || session.refreshToken,
+      provider,
+      providerId: userMeta.provider_id || session.providerId,
+      displayName: extractDisplayName(userMeta, provider) || session.displayName,
+      avatarUrl: userMeta.avatar_url || userMeta.picture || session.avatarUrl,
+      email: data.user?.email || userMeta.email || session.email,
+      expiresAt: Math.floor(Date.now() / 1000) + (data.expires_in || 3600),
+    });
+    return getAuthSession();
+  } catch {
+    return null;
+  }
+}
+
+async function getValidAccessToken() {
+  let session = getAuthSession();
+  if (!session) return null;
+  // Refresh if token expires within 5 minutes
+  if (session.expiresAt && session.expiresAt < Math.floor(Date.now() / 1000) + 300) {
+    session = await refreshAuthToken();
+  }
+  return session?.accessToken || null;
+}
+
+// Exchange OAuth code for session
+async function exchangeCodeForSession(code) {
+  if (!pendingPkceVerifier) {
+    console.error("[auth] No pending PKCE verifier for code exchange");
+    return null;
+  }
+  try {
+    const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=pkce`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: SUPABASE_ANON_KEY,
+      },
+      body: JSON.stringify({
+        auth_code: code,
+        code_verifier: pendingPkceVerifier,
+      }),
+    });
+    pendingPkceVerifier = null;
+    if (!res.ok) {
+      const errText = await res.text().catch(() => "");
+      console.error("[auth] Token exchange failed:", res.status, errText);
+      return null;
+    }
+    const data = await res.json();
+    const userMeta = data.user?.user_metadata || {};
+    const provider = data.user?.app_metadata?.provider || "github";
+    saveAuthSession({
+      accessToken: data.access_token,
+      refreshToken: data.refresh_token,
+      provider,
+      providerId: userMeta.provider_id || data.user?.id,
+      displayName: extractDisplayName(userMeta, provider),
+      avatarUrl: userMeta.avatar_url || userMeta.picture || null,
+      email: data.user?.email || userMeta.email || null,
+      expiresAt: Math.floor(Date.now() / 1000) + (data.expires_in || 3600),
+    });
+    return getAuthSession();
+  } catch (err) {
+    console.error("[auth] Code exchange error:", err);
+    pendingPkceVerifier = null;
+    return null;
+  }
+}
+
+function buildAuthSessionResponse(session) {
+  return {
+    signedIn: !!session,
+    provider: session?.provider || null,
+    displayName: session?.displayName || null,
+    avatarUrl: session?.avatarUrl || null,
+    email: session?.email || null,
+  };
+}
+
+// Handle fere:// protocol callback
+function handleAuthCallback(url) {
+  try {
+    const parsed = new URL(url);
+    const code = parsed.searchParams.get("code");
+    if (!code) {
+      console.error("[auth] Callback URL missing code param:", url);
+      return;
+    }
+    console.log("[auth] Received callback, exchanging code...");
+    exchangeCodeForSession(code).then((session) => {
+      if (session) {
+        console.log("[auth] Sign-in successful:", session.provider, session.displayName);
+      } else {
+        console.error("[auth] Code exchange returned no session");
+      }
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send("auth:session-changed", buildAuthSessionResponse(session));
+        // Bring the app window to front so user doesn't stay on the browser tab
+        mainWindow.show();
+        mainWindow.focus();
+      }
+    }).catch((err) => {
+      console.error("[auth] Callback exchange error:", err);
+    });
+  } catch (err) {
+    console.error("[auth] handleAuthCallback error:", err);
+  }
+}
+
+const http = require("http");
+
+let authServer = null;
+
+function startPkceSignIn(provider) {
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+    return { success: false, error: "Supabase not configured" };
+  }
+
+  const verifier = crypto.randomBytes(32).toString("base64url");
+  const challenge = crypto.createHash("sha256").update(verifier).digest("base64url");
+  pendingPkceVerifier = verifier;
+
+  // Spin up a one-shot local HTTP server to catch the OAuth callback.
+  // This lets us serve a self-closing page so the browser tab goes away.
+  return new Promise((resolve) => {
+    // Shut down any previous server
+    if (authServer) { try { authServer.close(); } catch {} }
+
+    authServer = http.createServer((req, res) => {
+      const reqUrl = new URL(req.url, `http://localhost`);
+      if (!reqUrl.pathname.startsWith("/auth/callback")) {
+        res.writeHead(404);
+        res.end();
+        return;
+      }
+      const code = reqUrl.searchParams.get("code");
+
+      // Serve a self-closing page
+      res.writeHead(200, { "Content-Type": "text/html" });
+      res.end(`<!DOCTYPE html><html><body style="background:#1a1a1a;color:#aaa;font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0"><p>Signed in — you can close this tab.</p></body><script>window.close()</script></html>`);
+
+      // Exchange the code
+      if (code) {
+        handleAuthCallback(`fere://auth/callback?code=${encodeURIComponent(code)}`);
+      }
+
+      // Shut down the server after a short delay
+      setTimeout(() => {
+        try { authServer.close(); } catch {}
+        authServer = null;
+      }, 1000);
+    });
+
+    authServer.listen(0, "127.0.0.1", () => {
+      const port = authServer.address().port;
+      const redirectUri = `http://127.0.0.1:${port}/auth/callback`;
+      const authUrl = `${SUPABASE_URL}/auth/v1/authorize?provider=${provider}&code_challenge=${challenge}&code_challenge_method=S256&redirect_to=${encodeURIComponent(redirectUri)}`;
+      shell.openExternal(authUrl);
+      resolve({ success: true });
+    });
+
+    authServer.on("error", (err) => {
+      console.error("[auth] Local server error:", err);
+      authServer = null;
+      resolve({ success: false, error: err.message });
+    });
+  });
+}
+
+ipcMain.handle("auth:sign-in-github", async () => {
+  try {
+    return startPkceSignIn("github");
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle("auth:sign-in-google", async () => {
+  try {
+    return startPkceSignIn("google");
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle("auth:get-session", () => {
+  const session = getAuthSession();
+  return buildAuthSessionResponse(session);
+});
+
+ipcMain.handle("auth:sign-out", () => {
+  try {
+    clearAuthSession();
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("auth:session-changed", buildAuthSessionResponse(null));
+    }
     return { success: true };
   } catch (err) {
     return { success: false, error: err.message };
@@ -2310,9 +2640,33 @@ function getSentinelUsageToday() {
   return sentinelUsage;
 }
 
-ipcMain.handle("agent:usage", () => {
-  const usage = getSentinelUsageToday();
-  return { used: usage.count, limit: SENTINEL_DAILY_LIMIT, remaining: SENTINEL_DAILY_LIMIT - usage.count };
+ipcMain.handle("agent:usage", async () => {
+  const ownKey = getUserApiKey();
+  if (ownKey) {
+    // BYOK user — local rate limit
+    const usage = getSentinelUsageToday();
+    return { used: usage.count, limit: SENTINEL_DAILY_LIMIT, remaining: SENTINEL_DAILY_LIMIT - usage.count, mode: "byok" };
+  }
+
+  const accessToken = await getValidAccessToken();
+  if (accessToken && SUPABASE_URL) {
+    // Signed-in free-tier user — check backend
+    try {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/usage`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        return { used: data.count, limit: SENTINEL_DAILY_LIMIT, remaining: SENTINEL_DAILY_LIMIT - data.count, mode: "free" };
+      }
+    } catch {}
+    // Fallback to local if backend unreachable
+    const usage = getSentinelUsageToday();
+    return { used: usage.count, limit: SENTINEL_DAILY_LIMIT, remaining: SENTINEL_DAILY_LIMIT - usage.count, mode: "free" };
+  }
+
+  // Not signed in, no key
+  return { used: 0, limit: 0, remaining: 0, mode: "none" };
 });
 
 ipcMain.handle("agent:scan", async (_, nodeIds) => {
@@ -3484,9 +3838,9 @@ ipcMain.handle("agent:chat", async (event, payload) => {
   try {
     const { messages, nodeIds, tabLabel, options = {}, graphEdges } = payload || {};
     const safeMessages = Array.isArray(messages) ? messages : [];
-    const apiKey = getApiKey();
+    const apiKey = getUserApiKey();
 
-    // Enforce daily rate limit for AI calls
+    // Enforce daily rate limit for BYOK AI calls
     if (apiKey) {
       const usage = getSentinelUsageToday();
       if (usage.count >= SENTINEL_DAILY_LIMIT) {
@@ -3501,7 +3855,83 @@ ipcMain.handle("agent:chat", async (event, payload) => {
     }
 
     if (!apiKey) {
-      // Offline fallback: run deterministic scan and stream findings as response
+      // Check if user is signed in for free-tier proxy
+      const accessToken = await getValidAccessToken();
+
+      if (accessToken && SUPABASE_URL) {
+        // ── Free-tier proxy: route through Supabase Edge Function ──────────
+        try {
+          // Build context same as direct path
+          const proxySnap = (snapshotScheduler && snapshotScheduler.getLatestSnapshot()) || await getSystemSnapshot();
+          const proxyFindings = await runScan(proxySnap, Array.isArray(nodeIds) ? nodeIds : undefined);
+          const proxyContext = await buildChatContext(
+            proxySnap,
+            proxyFindings,
+            typeof tabLabel === "string" ? tabLabel : null,
+            Array.isArray(nodeIds) ? nodeIds : null,
+          );
+
+          const res = await fetch(`${SUPABASE_URL}/functions/v1/chat`, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              messages: safeMessages,
+              context: proxyContext,
+            }),
+          });
+
+          if (res.status === 429) {
+            const errData = await res.json().catch(() => ({}));
+            return {
+              success: false,
+              error: `Daily free AI limit reached (${errData.used || SENTINEL_DAILY_LIMIT}/${errData.limit || SENTINEL_DAILY_LIMIT}). Enter your own API key for unlimited calls.`,
+              rateLimited: true,
+              remaining: 0,
+            };
+          }
+
+          if (!res.ok) {
+            const errText = await res.text().catch(() => "Backend error");
+            return { success: false, error: `Proxy error: ${errText}` };
+          }
+
+          // Stream SSE response back to renderer
+          const reader = res.body.getReader();
+          const decoder = new TextDecoder();
+          let sseBuffer = "";
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            sseBuffer += decoder.decode(value, { stream: true });
+            const lines = sseBuffer.split("\n");
+            sseBuffer = lines.pop() || "";
+
+            for (const line of lines) {
+              if (!line.startsWith("data: ")) continue;
+              const data = line.slice(6);
+              if (data === "[DONE]") continue;
+              try {
+                const parsed = JSON.parse(data);
+                const token = parsed.choices?.[0]?.delta?.content;
+                if (token && !event.sender.isDestroyed()) {
+                  event.sender.send("agent:chat-token", token);
+                }
+              } catch {}
+            }
+          }
+
+          return { success: true };
+        } catch (err) {
+          return { success: false, error: err.message };
+        }
+      }
+
+      // Offline fallback: no API key and not signed in
+      // Run deterministic scan and stream findings as response
       try {
         const offlineSnap = (snapshotScheduler && snapshotScheduler.getLatestSnapshot()) || await getSystemSnapshot();
         const offlineFindings = await runScan(
@@ -3519,7 +3949,7 @@ ipcMain.handle("agent:chat", async (event, payload) => {
         );
 
         let text =
-          "**Sentinel — Deterministic scan results** *(add your API key in Sentinel settings to enable AI features)*\n\n";
+          "**Sentinel — Deterministic scan results** *(sign in with GitHub for 5 free AI calls/day, or add your API key for unlimited)*\n\n";
         if (offlineFindings.length === 0) {
           text += "No issues detected across your running services.";
         } else {

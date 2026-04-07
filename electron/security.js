@@ -267,7 +267,7 @@ function setupCSP(isDev) {
     "script-src 'self' 'unsafe-eval' 'unsafe-inline'", // unsafe-eval + unsafe-inline needed for React dev server
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "font-src 'self' https://fonts.gstatic.com data:",
-    "img-src 'self' data: https://img.logo.dev https://*.logo.dev",
+    "img-src 'self' data: https://img.logo.dev https://*.logo.dev https://*.googleusercontent.com https://avatars.githubusercontent.com",
     "connect-src 'self' http://localhost:* https://localhost:* http://127.0.0.1:* https://127.0.0.1:* ws://localhost:* wss://localhost:*",
     "object-src 'none'",
     "base-uri 'self'",
@@ -281,7 +281,7 @@ function setupCSP(isDev) {
     "script-src 'self'",
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "font-src 'self' https://fonts.gstatic.com data:",
-    "img-src 'self' data: https://img.logo.dev https://*.logo.dev",
+    "img-src 'self' data: https://img.logo.dev https://*.logo.dev https://*.googleusercontent.com https://avatars.githubusercontent.com",
     "connect-src 'self' http://localhost:* https://localhost:* http://127.0.0.1:* https://127.0.0.1:*",
     "object-src 'none'",
     "base-uri 'self'",
@@ -291,14 +291,18 @@ function setupCSP(isDev) {
 
   const csp = isDev ? devCSP : prodCSP;
 
-  // Set CSP header on all responses
+  // Set CSP header on document responses only (not subresources like images)
   ses.webRequest.onHeadersReceived((details, callback) => {
-    callback({
-      responseHeaders: {
-        ...details.responseHeaders,
-        "Content-Security-Policy": [csp],
-      },
-    });
+    if (details.resourceType === "mainFrame" || details.resourceType === "subFrame") {
+      callback({
+        responseHeaders: {
+          ...details.responseHeaders,
+          "Content-Security-Policy": [csp],
+        },
+      });
+    } else {
+      callback({ responseHeaders: details.responseHeaders });
+    }
   });
 }
 
