@@ -529,9 +529,10 @@ function formatMemory(mb: number): string {
 interface ResourceBreakdownProps {
   graphNodes: GraphNode[];
   metricHistory: MetricHistory;
+  singleProject?: boolean;
 }
 
-function ResourceBreakdown({ graphNodes, metricHistory }: ResourceBreakdownProps) {
+function ResourceBreakdown({ graphNodes, metricHistory, singleProject }: ResourceBreakdownProps) {
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const [confirmStop, setConfirmStop] = useState<string | null>(null);
 
@@ -544,7 +545,9 @@ function ResourceBreakdown({ graphNodes, metricHistory }: ResourceBreakdownProps
       if (node.type === "external") continue;
       if (node.isGhost) continue;
 
-      const projectName = node.project || (node.projectPath ? node.projectPath.split("/").pop()! : null);
+      const projectName = singleProject
+        ? (node.name || "__ungrouped__")
+        : (node.project || (node.projectPath ? node.projectPath.split("/").pop()! : null));
       const key = projectName || "__ungrouped__";
       if (!groupMap.has(key)) groupMap.set(key, []);
       groupMap.get(key)!.push(node);
@@ -1161,6 +1164,7 @@ export function AnalyticsView({ tabs, graphNodes }: AnalyticsViewProps) {
           <ResourceBreakdown
             graphNodes={filteredNodes}
             metricHistory={metricHistory}
+            singleProject={selectedRepo !== ALL_REPOS}
           />
         </div>
 

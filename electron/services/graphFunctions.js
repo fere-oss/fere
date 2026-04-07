@@ -869,6 +869,17 @@ function enhanceNodeWithDockerInfo(node, container) {
       node.project = path.basename(containerProjectPath);
     }
   }
+
+  // Use Docker Compose project label to group containers under one project,
+  // and compose working_dir as the shared repoPath for tab grouping.
+  const composeProjectLabel = container.labels?.['com.docker.compose.project'];
+  if (composeProjectLabel) {
+    node.project = composeProjectLabel;
+  }
+  const composeWorkingDir = container.labels?.['com.docker.compose.project.working_dir'];
+  if (composeWorkingDir) {
+    node.repoPath = composeWorkingDir;
+  }
 }
 
 // ============================================
@@ -1565,12 +1576,18 @@ function addDockerContainerNodes(nodes, edges, dockerSnapshot, nodesByPid, portT
       }));
 
     const containerProjectPath = inferProjectPathFromContainer(container);
-    const containerRepoPath = containerProjectPath
-      ? (findProjectRoot(containerProjectPath) || containerProjectPath)
-      : null;
-    const containerProject = containerProjectPath
-      ? path.basename(containerProjectPath)
-      : extractProjectFromContainerName(container.name);
+    // Use compose working_dir as the shared repo path so all containers in the
+    // same compose project land on the same Analytics tab.
+    const composeWorkingDir = container.labels?.['com.docker.compose.project.working_dir'] || null;
+    const containerRepoPath = composeWorkingDir
+      || (containerProjectPath ? (findProjectRoot(containerProjectPath) || containerProjectPath) : null);
+    // Prefer the Docker Compose project label (e.g. "robot-shop") so that all
+    // containers in the same compose stack are grouped under one project in
+    // the Analytics "All" tab, instead of appearing as separate projects.
+    const composeProjectLabel = container.labels?.['com.docker.compose.project'];
+    const containerProject = composeProjectLabel
+      || (containerProjectPath ? path.basename(containerProjectPath) : null)
+      || extractProjectFromContainerName(container.name);
 
     const containerType = resolveContainerType(container);
     const node = {
