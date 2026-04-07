@@ -17,6 +17,17 @@ const os = require("os");
 const crypto = require("crypto");
 require("dotenv").config({ path: path.join(__dirname, "../.env") });
 
+function loadRuntimeConfig() {
+  const configPath = path.join(__dirname, "runtime-config.json");
+  try {
+    return JSON.parse(fs.readFileSync(configPath, "utf8"));
+  } catch {
+    return {};
+  }
+}
+
+const runtimeConfig = loadRuntimeConfig();
+
 // Import security utilities
 const {
   validateExternalUrl,
@@ -2314,8 +2325,8 @@ ipcMain.handle("agent:clear-api-key", () => {
 
 // ── GitHub OAuth (Supabase Auth with PKCE) ─────────────────────────────────
 
-const SUPABASE_URL = process.env.SUPABASE_URL || "";
-const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || "";
+const SUPABASE_URL = process.env.SUPABASE_URL || runtimeConfig.supabaseUrl || "";
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || runtimeConfig.supabaseAnonKey || "";
 
 let pendingPkceVerifier = null;
 

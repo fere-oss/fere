@@ -2555,7 +2555,15 @@ export function AgentPanel({
                 <div className="agp-auth-gate">
                   <button
                     className="agp-auth-provider-btn"
-                    onClick={() => window.electronAPI.authSignInGoogle()}
+                    onClick={() => {
+                      window.electronAPI.authSignInGoogle().then((result) => {
+                        if (!result?.success) {
+                          window.alert(result?.error || "Google sign-in failed.");
+                        }
+                      }).catch((err) => {
+                        window.alert(err?.message || "Google sign-in failed.");
+                      });
+                    }}
                   >
                     <svg width="16" height="16" viewBox="0 0 48 48">
                       <path fill="#4285F4" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
