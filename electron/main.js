@@ -3887,62 +3887,11 @@ ipcMain.handle("agent:chat", async (event, payload) => {
       }
     }
 
-    if (!apiKey) {
-      // Offline fallback: no API key and not signed in
-      if (!accessToken || !SUPABASE_URL) {
-      // Run deterministic scan and stream findings as response
-        try {
-          const offlineSnap = (snapshotScheduler && snapshotScheduler.getLatestSnapshot()) || await getSystemSnapshot();
-          const offlineFindings = await runScan(
-            offlineSnap,
-            Array.isArray(nodeIds) ? nodeIds : undefined,
-          );
-          const criticals = offlineFindings.filter(
-            (f) => f.severity === "critical",
-          );
-          const warnings = offlineFindings.filter(
-            (f) => f.severity === "warning",
-          );
-          const suggestions = offlineFindings.filter(
-            (f) => f.severity === "suggestion",
-          );
-
-          let text =
-            "**Sentinel — Deterministic scan results** *(sign in with Google for 5 free AI calls/day, or add your API key for unlimited)*\n\n";
-          if (offlineFindings.length === 0) {
-            text += "No issues detected across your running services.";
-          } else {
-            if (criticals.length > 0) {
-              text += `### Critical (${criticals.length})\n`;
-              for (const f of criticals)
-                text += `- **${f.service}**: ${f.summary}\n  ${f.detail}\n`;
-              text += "\n";
-            }
-            if (warnings.length > 0) {
-              text += `### Warnings (${warnings.length})\n`;
-              for (const f of warnings)
-                text += `- **${f.service}**: ${f.summary}\n`;
-              text += "\n";
-            }
-            if (suggestions.length > 0) {
-              text += `### Suggestions (${suggestions.length})\n`;
-              for (const f of suggestions)
-                text += `- **${f.service}**: ${f.summary}\n`;
-            }
-          }
-
-          // Stream the text token-by-token so UI renders it normally
-          const chunkSize = 8;
-          for (let i = 0; i < text.length; i += chunkSize) {
-            if (!event.sender.isDestroyed())
-              event.sender.send("agent:chat-token", text.slice(i, i + chunkSize));
-            await new Promise((r) => setTimeout(r, 4));
-          }
-          return { success: true };
-        } catch (err) {
-          return { success: false, error: err.message };
-        }
-      }
+    if (!apiKey && (!accessToken || !SUPABASE_URL)) {
+      return {
+        success: false,
+        error: "Sign in with Google for 5 free AI calls per day, or add your own API key for unlimited access.",
+      };
     }
 
     // Prefer the scheduler's cached snapshot so the agent sees the same graph the UI shows.
