@@ -2630,6 +2630,11 @@ ipcMain.handle("auth:sign-out", () => {
 // Daily rate limit for Sentinel AI chat calls
 const SENTINEL_DAILY_LIMIT = 5;
 
+function getLocalDateString() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 // Get Supabase user UUID from access token JWT
 function getSupabaseUserId(accessToken) {
   try {
@@ -2641,7 +2646,7 @@ function getSupabaseUserId(accessToken) {
 async function getUsageCount(accessToken) {
   const userId = getSupabaseUserId(accessToken);
   if (!userId || !SUPABASE_URL) return 0;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = getLocalDateString();
   try {
     const res = await fetch(
       `${SUPABASE_URL}/rest/v1/usage?user_id=eq.${encodeURIComponent(userId)}&date=eq.${today}&select=count`,
@@ -2656,7 +2661,7 @@ async function getUsageCount(accessToken) {
 async function incrementUsageCount(accessToken) {
   const userId = getSupabaseUserId(accessToken);
   if (!userId || !SUPABASE_URL) return;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = getLocalDateString();
   try {
     const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/increment_usage`, {
       method: "POST",

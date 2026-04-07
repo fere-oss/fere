@@ -1108,16 +1108,22 @@ export function AgentPanel({
     };
   }, []);
 
-  // Fetch Sentinel AI usage, key status, and auth session on mount
+  // Fetch Sentinel AI usage, key status, and auth session on mount + window focus
   useEffect(() => {
-    window.electronAPI.agentUsage().then(setAiUsage).catch(() => {});
+    const refreshUsage = () => window.electronAPI.agentUsage().then(setAiUsage).catch(() => {});
+    refreshUsage();
     window.electronAPI.getApiKeyStatus().then((s) => setHasApiKey(s.hasKey)).catch(() => {});
     window.electronAPI.authGetSession().then(setAuthSession).catch(() => {});
     const cleanup = window.electronAPI.onAuthSessionChanged((session) => {
       setAuthSession(session);
-      window.electronAPI.agentUsage().then(setAiUsage).catch(() => {});
+      refreshUsage();
     });
-    return cleanup;
+    // Refresh usage when window regains focus (handles day rollover)
+    window.addEventListener("focus", refreshUsage);
+    return () => {
+      cleanup();
+      window.removeEventListener("focus", refreshUsage);
+    };
   }, []);
 
   useEffect(() => {
