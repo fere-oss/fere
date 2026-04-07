@@ -284,14 +284,21 @@ function StackHealthDonut({
   const strokeWidth = 28;
   const radius = (size - strokeWidth) / 2;
   const center = size / 2;
+  const totalDigits = String(total).length;
+  const totalClassName =
+    totalDigits >= 4
+      ? "activity-donut-total activity-donut-total-xl"
+      : totalDigits === 3
+        ? "activity-donut-total activity-donut-total-lg"
+        : "activity-donut-total";
   let currentAngle = 0;
 
   return (
     <div className="activity-donut-wrap">
       <svg
         className="activity-donut-chart"
-        width={size}
-        height={size}
+        width="100%"
+        height="100%"
         viewBox={`0 0 ${size} ${size}`}
         aria-hidden="true"
       >
@@ -339,7 +346,7 @@ function StackHealthDonut({
         })}
       </svg>
       <div className="activity-donut-center">
-        <span className="activity-donut-total">{total}</span>
+        <span className={totalClassName}>{total}</span>
         <span className="activity-donut-label">
           {total === 1 ? "service" : "services"}
         </span>
@@ -423,6 +430,37 @@ function StackOverview({ graphNodes, events, metricHistory }: StackOverviewProps
               Live breakdown by service type
             </div>
           </div>
+          <div className="activity-stack-summary-grid activity-stack-summary-grid-compact">
+            <div className="activity-stack-summary-card activity-stack-summary-card-compact">
+              <div className="activity-stack-summary-label">Issues</div>
+              <div className="activity-stack-summary-value">{issueStats.total}</div>
+              <div className="activity-stack-summary-detail">
+                {issueStats.total === 0
+                  ? "All clear"
+                  : `${issueStats.critical} critical · ${issueStats.warning} warning`}
+              </div>
+            </div>
+            <div className="activity-stack-summary-card activity-stack-summary-card-compact">
+              <div className="activity-stack-summary-label">Resources</div>
+              <div className="activity-stack-summary-value">
+                {resourceStats.totalGb.toFixed(1)} GB
+              </div>
+              <div className="activity-stack-summary-detail">
+                {resourceStats.processCount} processes
+              </div>
+            </div>
+            <div className="activity-stack-summary-card activity-stack-summary-card-compact">
+              <div className="activity-stack-summary-label">Sentinel</div>
+              <div className="activity-stack-summary-value">{sentinelStats.count}</div>
+              <div className="activity-stack-summary-detail">
+                {sentinelStats.count === 0
+                  ? "No actions today"
+                  : sentinelStats.count === 1
+                    ? "1 fix today"
+                    : `${sentinelStats.count} fixes today`}
+              </div>
+            </div>
+          </div>
         </div>
         <div className="activity-stack-health-body">
           <StackHealthDonut
@@ -449,38 +487,6 @@ function StackOverview({ graphNodes, events, metricHistory }: StackOverviewProps
                 </div>
               </div>
             ))}
-          </div>
-        </div>
-      </div>
-
-      <div className="activity-stack-summary-grid">
-        <div className="activity-stack-summary-card">
-          <div className="activity-stack-summary-label">Issues</div>
-          <div className="activity-stack-summary-value">{issueStats.total}</div>
-          <div className="activity-stack-summary-detail">
-            {issueStats.total === 0
-              ? "All clear"
-              : `${issueStats.critical} critical · ${issueStats.warning} warning`}
-          </div>
-        </div>
-        <div className="activity-stack-summary-card">
-          <div className="activity-stack-summary-label">Resources</div>
-          <div className="activity-stack-summary-value">
-            {resourceStats.totalGb.toFixed(1)} GB
-          </div>
-          <div className="activity-stack-summary-detail">
-            Across {resourceStats.processCount} processes
-          </div>
-        </div>
-        <div className="activity-stack-summary-card">
-          <div className="activity-stack-summary-label">Sentinel</div>
-          <div className="activity-stack-summary-value">{sentinelStats.count}</div>
-          <div className="activity-stack-summary-detail">
-            {sentinelStats.count === 0
-              ? "No actions today"
-              : sentinelStats.count === 1
-                ? "1 fix today"
-                : `${sentinelStats.count} fixes today`}
           </div>
         </div>
       </div>

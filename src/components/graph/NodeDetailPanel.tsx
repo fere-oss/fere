@@ -106,21 +106,13 @@ export function NodeDetailPanel({ node, edges, allNodes, onClose }: NodeDetailPa
           </div>
           <button className="node-detail-close" onClick={onClose}>×</button>
         </div>
-        <div className="node-detail-actions-card node-detail-actions-card-header">
+        <div className="node-detail-header-actions">
           <button
             type="button"
             className="node-detail-ai-button node-detail-ai-button-wide node-detail-ai-button-primary"
             onClick={handleAssessService}
           >
-            <span className="node-detail-ai-button-icon" aria-hidden="true">
-              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="7" cy="7" r="3.75" />
-                <path d="M9.75 9.75L13 13" />
-                <path d="M7 5.5v3" />
-                <path d="M5.5 7h3" />
-              </svg>
-            </span>
-            Investigate
+            Investigate with Sentinel
           </button>
         </div>
         <NodeDetailContent
