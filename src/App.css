@@ -16163,7 +16163,6 @@ body.sentinel-panel-open .activity-donut-total {
 
 .agp-key-setup {
   padding: 12px;
-  border-bottom: 1px solid var(--border-color);
 }
 
 .agp-key-status {
@@ -16243,6 +16242,11 @@ body.sentinel-panel-open .activity-donut-total {
   color: var(--text-muted);
   line-height: 1.6;
   list-style: disc;
+}
+
+.agp-key-details-inline {
+  margin: 8px 0 10px;
+  font-size: 11px;
 }
 
 .agp-key-details code {

@@ -43,6 +43,14 @@ export function ApiKeySetup({ onKeyChanged }: Props) {
 
   if (hasKey === null) return null;
 
+  const keyStorageDetails = (
+    <ul className="agp-key-details agp-key-details-inline">
+      <li>Encrypted at rest using macOS Keychain</li>
+      <li>Never leaves your machine</li>
+      <li>Used only for direct API calls to <code>api.openai.com</code></li>
+    </ul>
+  );
+
   return (
     <div className="agp-key-setup">
       {hasKey ? (
@@ -88,6 +96,7 @@ export function ApiKeySetup({ onKeyChanged }: Props) {
           <div className="agp-key-prompt">
             <span className="agp-key-prompt-label">Add your OpenAI API key for unlimited calls</span>
           </div>
+          {keyStorageDetails}
           <div className="agp-key-input-row">
             <div className="agp-key-input-wrap">
               <input
