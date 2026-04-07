@@ -3839,6 +3839,7 @@ ipcMain.handle("agent:chat", async (event, payload) => {
     const { messages, nodeIds, tabLabel, options = {}, graphEdges } = payload || {};
     const safeMessages = Array.isArray(messages) ? messages : [];
     const apiKey = getUserApiKey();
+    const accessToken = !apiKey ? await getValidAccessToken() : null;
 
     // Enforce daily rate limit for BYOK AI calls
     if (apiKey) {
@@ -3855,134 +3856,60 @@ ipcMain.handle("agent:chat", async (event, payload) => {
     }
 
     if (!apiKey) {
-      // Check if user is signed in for free-tier proxy
-      const accessToken = await getValidAccessToken();
-
-      if (accessToken && SUPABASE_URL) {
-        // ── Free-tier proxy: route through Supabase Edge Function ──────────
+      // Offline fallback: no API key and not signed in
+      if (!accessToken || !SUPABASE_URL) {
+      // Run deterministic scan and stream findings as response
         try {
-          // Build context same as direct path
-          const proxySnap = (snapshotScheduler && snapshotScheduler.getLatestSnapshot()) || await getSystemSnapshot();
-          const proxyFindings = await runScan(proxySnap, Array.isArray(nodeIds) ? nodeIds : undefined);
-          const proxyContext = await buildChatContext(
-            proxySnap,
-            proxyFindings,
-            typeof tabLabel === "string" ? tabLabel : null,
-            Array.isArray(nodeIds) ? nodeIds : null,
+          const offlineSnap = (snapshotScheduler && snapshotScheduler.getLatestSnapshot()) || await getSystemSnapshot();
+          const offlineFindings = await runScan(
+            offlineSnap,
+            Array.isArray(nodeIds) ? nodeIds : undefined,
+          );
+          const criticals = offlineFindings.filter(
+            (f) => f.severity === "critical",
+          );
+          const warnings = offlineFindings.filter(
+            (f) => f.severity === "warning",
+          );
+          const suggestions = offlineFindings.filter(
+            (f) => f.severity === "suggestion",
           );
 
-          const res = await fetch(`${SUPABASE_URL}/functions/v1/chat`, {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${accessToken}`,
-              apikey: SUPABASE_ANON_KEY,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              messages: safeMessages,
-              context: proxyContext,
-            }),
-          });
-
-          if (res.status === 429) {
-            const errData = await res.json().catch(() => ({}));
-            return {
-              success: false,
-              error: `Daily free AI limit reached (${errData.used || SENTINEL_DAILY_LIMIT}/${errData.limit || SENTINEL_DAILY_LIMIT}). Enter your own API key for unlimited calls.`,
-              rateLimited: true,
-              remaining: 0,
-            };
-          }
-
-          if (!res.ok) {
-            const errText = await res.text().catch(() => "Backend error");
-            return { success: false, error: `Proxy error: ${errText}` };
-          }
-
-          // Stream SSE response back to renderer
-          const reader = res.body.getReader();
-          const decoder = new TextDecoder();
-          let sseBuffer = "";
-
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            sseBuffer += decoder.decode(value, { stream: true });
-            const lines = sseBuffer.split("\n");
-            sseBuffer = lines.pop() || "";
-
-            for (const line of lines) {
-              if (!line.startsWith("data: ")) continue;
-              const data = line.slice(6);
-              if (data === "[DONE]") continue;
-              try {
-                const parsed = JSON.parse(data);
-                const token = parsed.choices?.[0]?.delta?.content;
-                if (token && !event.sender.isDestroyed()) {
-                  event.sender.send("agent:chat-token", token);
-                }
-              } catch {}
+          let text =
+            "**Sentinel — Deterministic scan results** *(sign in with Google for 5 free AI calls/day, or add your API key for unlimited)*\n\n";
+          if (offlineFindings.length === 0) {
+            text += "No issues detected across your running services.";
+          } else {
+            if (criticals.length > 0) {
+              text += `### Critical (${criticals.length})\n`;
+              for (const f of criticals)
+                text += `- **${f.service}**: ${f.summary}\n  ${f.detail}\n`;
+              text += "\n";
+            }
+            if (warnings.length > 0) {
+              text += `### Warnings (${warnings.length})\n`;
+              for (const f of warnings)
+                text += `- **${f.service}**: ${f.summary}\n`;
+              text += "\n";
+            }
+            if (suggestions.length > 0) {
+              text += `### Suggestions (${suggestions.length})\n`;
+              for (const f of suggestions)
+                text += `- **${f.service}**: ${f.summary}\n`;
             }
           }
 
+          // Stream the text token-by-token so UI renders it normally
+          const chunkSize = 8;
+          for (let i = 0; i < text.length; i += chunkSize) {
+            if (!event.sender.isDestroyed())
+              event.sender.send("agent:chat-token", text.slice(i, i + chunkSize));
+            await new Promise((r) => setTimeout(r, 4));
+          }
           return { success: true };
         } catch (err) {
           return { success: false, error: err.message };
         }
-      }
-
-      // Offline fallback: no API key and not signed in
-      // Run deterministic scan and stream findings as response
-      try {
-        const offlineSnap = (snapshotScheduler && snapshotScheduler.getLatestSnapshot()) || await getSystemSnapshot();
-        const offlineFindings = await runScan(
-          offlineSnap,
-          Array.isArray(nodeIds) ? nodeIds : undefined,
-        );
-        const criticals = offlineFindings.filter(
-          (f) => f.severity === "critical",
-        );
-        const warnings = offlineFindings.filter(
-          (f) => f.severity === "warning",
-        );
-        const suggestions = offlineFindings.filter(
-          (f) => f.severity === "suggestion",
-        );
-
-        let text =
-          "**Sentinel — Deterministic scan results** *(sign in with GitHub for 5 free AI calls/day, or add your API key for unlimited)*\n\n";
-        if (offlineFindings.length === 0) {
-          text += "No issues detected across your running services.";
-        } else {
-          if (criticals.length > 0) {
-            text += `### Critical (${criticals.length})\n`;
-            for (const f of criticals)
-              text += `- **${f.service}**: ${f.summary}\n  ${f.detail}\n`;
-            text += "\n";
-          }
-          if (warnings.length > 0) {
-            text += `### Warnings (${warnings.length})\n`;
-            for (const f of warnings)
-              text += `- **${f.service}**: ${f.summary}\n`;
-            text += "\n";
-          }
-          if (suggestions.length > 0) {
-            text += `### Suggestions (${suggestions.length})\n`;
-            for (const f of suggestions)
-              text += `- **${f.service}**: ${f.summary}\n`;
-          }
-        }
-
-        // Stream the text token-by-token so UI renders it normally
-        const chunkSize = 8;
-        for (let i = 0; i < text.length; i += chunkSize) {
-          if (!event.sender.isDestroyed())
-            event.sender.send("agent:chat-token", text.slice(i, i + chunkSize));
-          await new Promise((r) => setTimeout(r, 4));
-        }
-        return { success: true };
-      } catch (err) {
-        return { success: false, error: err.message };
       }
     }
 
@@ -4049,7 +3976,7 @@ ipcMain.handle("agent:chat", async (event, payload) => {
     );
     const systemPrompt = `${baseSystemPrompt}\n\n${buildPolicyPrompt(policies, options)}`;
 
-    const openai = new OpenAI({ apiKey });
+    const openai = apiKey ? new OpenAI({ apiKey }) : null;
 
     const dockerPreflightRoots = new Set();
     const latestUserMessage = [...safeMessages]
@@ -4102,12 +4029,72 @@ ipcMain.handle("agent:chat", async (event, payload) => {
       ...safeMessages,
     ];
 
+    async function* streamProxyChatCompletion(requestPayload, countUsage) {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/chat`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          apikey: SUPABASE_ANON_KEY,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          request: requestPayload,
+          count_usage: countUsage,
+        }),
+      });
+
+      if (res.status === 429) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(
+          `Daily free AI limit reached (${errData.used || SENTINEL_DAILY_LIMIT}/${errData.limit || SENTINEL_DAILY_LIMIT}). Enter your own API key for unlimited calls.`,
+        );
+      }
+
+      if (!res.ok || !res.body) {
+        const errText = await res.text().catch(() => "Backend error");
+        throw new Error(`Proxy error: ${errText}`);
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let sseBuffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        sseBuffer += decoder.decode(value, { stream: true });
+
+        const events = sseBuffer.split("\n\n");
+        sseBuffer = events.pop() || "";
+
+        for (const eventBlock of events) {
+          const dataLines = eventBlock
+            .split("\n")
+            .filter((line) => line.startsWith("data: "))
+            .map((line) => line.slice(6));
+          if (dataLines.length === 0) continue;
+          const data = dataLines.join("\n").trim();
+          if (!data || data === "[DONE]") continue;
+          try {
+            yield JSON.parse(data);
+          } catch {}
+        }
+      }
+    }
+
+    function createChatCompletionStream(requestPayload, countUsage) {
+      if (openai) {
+        return openai.chat.completions.create(requestPayload);
+      }
+      return streamProxyChatCompletion(requestPayload, countUsage);
+    }
+
     async function runTurn(
       turnMessages,
       continuationDepth = 0,
       forcedExecutionAttempted = false,
     ) {
-      const stream = await openai.chat.completions.create({
+      const stream = await createChatCompletionStream({
         model: "gpt-4o",
         messages: turnMessages,
         tools: AGENT_TOOLS,
@@ -4115,7 +4102,7 @@ ipcMain.handle("agent:chat", async (event, payload) => {
         max_tokens: 4096,
         temperature: 0.3,
         stream: true,
-      });
+      }, continuationDepth === 0);
 
       const pendingCalls = {};
       const assistantMsg = {

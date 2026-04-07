@@ -41,7 +41,16 @@ Deno.serve(async (req) => {
     const userId = user.id;
     const today = new Date().toISOString().slice(0, 10);
 
-    // 3. Check usage
+    // 3. Parse request body
+    const { request, count_usage: countUsage = true } = await req.json();
+    if (!request || typeof request !== "object" || !Array.isArray(request.messages)) {
+      return new Response(JSON.stringify({ error: "invalid_payload" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // 4. Check usage only on the first model call for a user turn.
     const { data: usageRow } = await supabase
       .from("usage")
       .select("count")
@@ -51,7 +60,7 @@ Deno.serve(async (req) => {
 
     const currentCount = usageRow?.count ?? 0;
 
-    if (currentCount >= DAILY_LIMIT) {
+    if (countUsage && currentCount >= DAILY_LIMIT) {
       return new Response(
         JSON.stringify({ error: "limit_reached", used: DAILY_LIMIT, limit: DAILY_LIMIT }),
         {
@@ -61,28 +70,15 @@ Deno.serve(async (req) => {
       );
     }
 
-    // 4. Increment usage
-    await supabase.from("usage").upsert(
-      { user_id: userId, date: today, count: currentCount + 1 },
-      { onConflict: "user_id,date" },
-    );
-
-    // 5. Parse request body
-    const { messages, context } = await req.json();
-    if (!Array.isArray(messages)) {
-      return new Response(JSON.stringify({ error: "invalid_payload" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    const nextCount = countUsage ? currentCount + 1 : currentCount;
+    if (countUsage) {
+      await supabase.from("usage").upsert(
+        { user_id: userId, date: today, count: nextCount },
+        { onConflict: "user_id,date" },
+      );
     }
 
-    // 6. Build OpenAI messages — prepend system context
-    const openaiMessages = [
-      ...(context ? [{ role: "system" as const, content: context }] : []),
-      ...messages,
-    ];
-
-    // 7. Call OpenAI with streaming
+    // 5. Call OpenAI with streaming using the exact request shape from Electron.
     const openaiRes = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -90,10 +86,14 @@ Deno.serve(async (req) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "gpt-4o",
-        messages: openaiMessages,
-        max_tokens: 4096,
-        temperature: 0.3,
+        model: typeof request.model === "string" ? request.model : "gpt-4o",
+        messages: request.messages,
+        tools: Array.isArray(request.tools) ? request.tools : undefined,
+        tool_choice: request.tool_choice ?? undefined,
+        max_tokens:
+          typeof request.max_tokens === "number" ? request.max_tokens : 4096,
+        temperature:
+          typeof request.temperature === "number" ? request.temperature : 0.3,
         stream: true,
       }),
     });
@@ -109,8 +109,8 @@ Deno.serve(async (req) => {
       );
     }
 
-    // 8. Stream SSE response back to client
-    const remaining = DAILY_LIMIT - (currentCount + 1);
+    // 6. Stream OpenAI SSE response back to Electron.
+    const remaining = DAILY_LIMIT - nextCount;
     return new Response(openaiRes.body, {
       headers: {
         ...corsHeaders,
