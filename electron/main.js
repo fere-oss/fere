@@ -2537,6 +2537,7 @@ function handleAuthCallback(url) {
 const http = require("http");
 
 let authServer = null;
+const AUTH_CALLBACK_PORT = 38383;
 
 function startPkceSignIn(provider) {
   if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
@@ -2563,7 +2564,7 @@ function startPkceSignIn(provider) {
       const code = reqUrl.searchParams.get("code");
 
       // Serve a self-closing page
-      res.writeHead(200, { "Content-Type": "text/html" });
+      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
       res.end(`<!DOCTYPE html><html><body style="background:#1a1a1a;color:#aaa;font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0"><p>Signed in — you can close this tab.</p></body><script>window.close()</script></html>`);
 
       // Exchange the code
@@ -2578,9 +2579,8 @@ function startPkceSignIn(provider) {
       }, 1000);
     });
 
-    authServer.listen(0, "127.0.0.1", () => {
-      const port = authServer.address().port;
-      const redirectUri = `http://127.0.0.1:${port}/auth/callback`;
+    authServer.listen(AUTH_CALLBACK_PORT, "127.0.0.1", () => {
+      const redirectUri = `http://127.0.0.1:${AUTH_CALLBACK_PORT}/auth/callback`;
       const authUrl = `${SUPABASE_URL}/auth/v1/authorize?provider=${provider}&code_challenge=${challenge}&code_challenge_method=S256&redirect_to=${encodeURIComponent(redirectUri)}`;
       shell.openExternal(authUrl);
       resolve({ success: true });
