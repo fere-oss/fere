@@ -37,6 +37,7 @@ import {
 } from "./components/graph/traceContext";
 import type {
   AlertEvent,
+  AuthSession,
   GraphEdge,
   GraphNode,
   ServiceStatus,
@@ -79,6 +80,23 @@ function formatRelativeTime(ts: number): string {
   if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
   if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
   return `${Math.floor(diff / 86_400_000)}d ago`;
+}
+
+function getAuthAvatarFallback(label: string | null | undefined): string {
+  const source = (label || "").trim();
+  if (!source) return "?";
+
+  const parts = source
+    .split(/\s+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  if (parts.length >= 2) {
+    return `${parts[0][0] || ""}${parts[1][0] || ""}`.toUpperCase();
+  }
+
+  const condensed = source.replace(/[^a-zA-Z0-9]/g, "");
+  return (condensed.slice(0, 2) || source.slice(0, 2)).toUpperCase();
 }
 
 const ALERT_CATEGORIES = [
@@ -378,6 +396,7 @@ function App() {
 
   // Share modal state
   const [showShare, setShowShare] = useState(false);
+  const [authSession, setAuthSession] = useState<AuthSession | null>(null);
 
   const setIsAgentOpen = useCallback((open: boolean) => {
     window.dispatchEvent(
@@ -399,6 +418,14 @@ function App() {
           console.error("Failed to load alert preferences:", err),
         );
     }
+  }, []);
+
+  useEffect(() => {
+    window.electronAPI.authGetSession().then(setAuthSession).catch(() => {});
+    const cleanup = window.electronAPI.onAuthSessionChanged((session) => {
+      setAuthSession(session);
+    });
+    return cleanup;
   }, []);
 
   // Initialize analytics and link to main process ID
@@ -1082,6 +1109,39 @@ function App() {
 
   return (
     <div className="app">
+      <div className="app-profile-slot">
+        {authSession?.signedIn && (
+          <div className="app-profile-chip app-profile-chip-slot">
+            {authSession.avatarUrl ? (
+              <img
+                src={authSession.avatarUrl}
+                alt=""
+                className="app-profile-avatar"
+                referrerPolicy="no-referrer"
+              />
+            ) : (
+              <div className="app-profile-avatar app-profile-avatar-fallback" aria-hidden="true">
+                {getAuthAvatarFallback(authSession.displayName || authSession.email)}
+              </div>
+            )}
+            <div className="app-profile-copy">
+              <span className="app-profile-name">
+                {authSession.displayName || authSession.email}
+              </span>
+              <span className="app-profile-meta">
+                Signed in with {authSession.provider === "google" ? "Google" : authSession.provider || "account"}
+              </span>
+            </div>
+            <button
+              className="app-profile-signout"
+              onClick={() => window.electronAPI.authSignOut()}
+            >
+              Sign out
+            </button>
+          </div>
+        )}
+      </div>
+
       {/* Unified App Header */}
       <div className="app-header">
         <h1 className="app-title">fere</h1>

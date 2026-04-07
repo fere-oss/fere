@@ -51,9 +51,95 @@ textarea {
   position: relative;
 }
 
+.app-profile-chip {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 42px;
+  padding: 8px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  background: var(--bg-white);
+}
+
+.app-profile-slot {
+  min-height: 58px;
+  padding: 18px 16px 0 32px;
+  display: flex;
+  justify-content: flex-end;
+  align-items: flex-start;
+  flex-shrink: 0;
+}
+
+.app-profile-chip-slot {
+  flex-shrink: 0;
+  max-width: 320px;
+}
+
+.app-profile-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  object-fit: cover;
+}
+
+.app-profile-avatar-fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #e7e7ea;
+  color: #4d4d55;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.app-profile-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.app-profile-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.app-profile-meta {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.app-profile-signout {
+  margin-left: 8px;
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-underline-offset: 2px;
+}
+
+.app-profile-signout:hover {
+  color: var(--text-primary);
+}
+
 /* App Header */
 .app-header {
-  padding: 58px 16px 20px 32px;
+  padding: 18px 16px 20px 32px;
   -webkit-app-region: drag;
   -webkit-user-select: none;
   user-select: none;
@@ -140,7 +226,10 @@ textarea {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  transition: color 0.15s, border-color 0.15s, background 0.15s;
+  transition:
+    color 0.15s,
+    border-color 0.15s,
+    background 0.15s;
 }
 
 .feedback-btn:hover {
@@ -594,7 +683,7 @@ textarea {
 .topology-bar {
   padding: 6px 16px;
   font-size: 12px;
-  color: #9CA3AF;
+  color: #9ca3af;
   background: transparent;
   white-space: nowrap;
   overflow: hidden;
@@ -1998,7 +2087,11 @@ body.sentinel-panel-open .activity-donut-total {
   height: auto;
   box-sizing: border-box;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-  transition: box-shadow 0.25s ease, opacity 0.4s ease, filter 0.4s ease, border-style 0.4s ease;
+  transition:
+    box-shadow 0.25s ease,
+    opacity 0.4s ease,
+    filter 0.4s ease,
+    border-style 0.4s ease;
   -webkit-app-region: no-drag;
   cursor: pointer;
   animation: nodeAppear 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
@@ -2827,7 +2920,8 @@ body.sentinel-panel-open .activity-donut-total {
 }
 
 .node-detail-ai-button-primary .node-detail-ai-button-icon,
-.node-detail-ai-button-primary:hover:not(:disabled) .node-detail-ai-button-icon {
+.node-detail-ai-button-primary:hover:not(:disabled)
+  .node-detail-ai-button-icon {
   color: currentColor;
 }
 
@@ -3029,7 +3123,9 @@ body.sentinel-panel-open .activity-donut-total {
 }
 
 @keyframes node-detail-spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .node-detail-start-spinner {
@@ -3050,7 +3146,9 @@ body.sentinel-panel-open .activity-donut-total {
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  transition: opacity 0.15s, background 0.15s;
+  transition:
+    opacity 0.15s,
+    background 0.15s;
 }
 
 .node-detail-stop-btn:hover {
@@ -10025,7 +10123,11 @@ body.sentinel-panel-open .activity-donut-total {
   padding: 10px 12px;
   border: 1px solid rgba(46, 125, 50, 0.22);
   border-radius: 10px;
-  background: linear-gradient(180deg, rgba(46, 125, 50, 0.08), rgba(46, 125, 50, 0.04));
+  background: linear-gradient(
+    180deg,
+    rgba(46, 125, 50, 0.08),
+    rgba(46, 125, 50, 0.04)
+  );
   font-family: var(--font-ui);
   font-size: 12px;
   font-weight: 600;
@@ -10038,7 +10140,11 @@ body.sentinel-panel-open .activity-donut-total {
 }
 
 .service-dropdown-start-all:hover {
-  background: linear-gradient(180deg, rgba(46, 125, 50, 0.12), rgba(46, 125, 50, 0.07));
+  background: linear-gradient(
+    180deg,
+    rgba(46, 125, 50, 0.12),
+    rgba(46, 125, 50, 0.07)
+  );
   border-color: rgba(46, 125, 50, 0.3);
   color: #1f5b26;
 }
@@ -11172,7 +11278,9 @@ body.sentinel-panel-open .activity-donut-total {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background 0.12s, color 0.12s;
+  transition:
+    background 0.12s,
+    color 0.12s;
 }
 
 .debug-dock-btn:hover {
@@ -11206,7 +11314,7 @@ body.sentinel-panel-open .activity-donut-total {
   background: var(--bg-white);
   border: 1px solid var(--border-color);
   border-radius: 12px;
-  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.10);
+  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.1);
   max-height: 280px;
   overflow-y: auto;
   display: flex;
@@ -11217,8 +11325,14 @@ body.sentinel-panel-open .activity-donut-total {
 }
 
 @keyframes debug-dropdown-in {
-  from { opacity: 0; transform: translateY(6px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .debug-history-dropdown-header {
@@ -11300,7 +11414,9 @@ body.sentinel-panel-open .activity-donut-total {
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  transition: opacity 0.1s, color 0.1s;
+  transition:
+    opacity 0.1s,
+    color 0.1s;
 }
 
 .debug-history-item:hover .debug-history-item-delete {
@@ -11522,8 +11638,16 @@ body.sentinel-panel-open .activity-donut-total {
 .debug-ai-launcher {
   pointer-events: auto;
   background:
-    radial-gradient(circle at top left, rgba(0, 120, 212, 0.08), transparent 28%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(247, 247, 247, 0.98));
+    radial-gradient(
+      circle at top left,
+      rgba(0, 120, 212, 0.08),
+      transparent 28%
+    ),
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.98),
+      rgba(247, 247, 247, 0.98)
+    );
   border: 1px solid rgba(15, 23, 42, 0.08);
   border-radius: 24px;
   box-shadow: 0 18px 56px rgba(15, 23, 42, 0.12);
@@ -11611,18 +11735,27 @@ body.sentinel-panel-open .activity-donut-total {
 }
 
 .debug-ai-quick-action-card-neutral {
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(244, 247, 250, 0.94));
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.94),
+    rgba(244, 247, 250, 0.94)
+  );
 }
 
 .debug-ai-quick-action-card-warn {
-  background:
-    linear-gradient(180deg, rgba(255, 250, 245, 0.96), rgba(255, 244, 238, 0.96));
+  background: linear-gradient(
+    180deg,
+    rgba(255, 250, 245, 0.96),
+    rgba(255, 244, 238, 0.96)
+  );
 }
 
 .debug-ai-quick-action-card-good {
-  background:
-    linear-gradient(180deg, rgba(246, 252, 248, 0.96), rgba(238, 248, 242, 0.96));
+  background: linear-gradient(
+    180deg,
+    rgba(246, 252, 248, 0.96),
+    rgba(238, 248, 242, 0.96)
+  );
 }
 
 .debug-ai-quick-action-title {
@@ -11645,8 +11778,11 @@ body.sentinel-panel-open .activity-donut-total {
 }
 
 .debug-ai-results-shell {
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 248, 248, 0.98));
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.96),
+    rgba(248, 248, 248, 0.98)
+  );
 }
 
 .debug-ai-results-body {
@@ -11670,8 +11806,11 @@ body.sentinel-panel-open .activity-donut-total {
 }
 
 .debug-ai-summary-card-primary {
-  background:
-    linear-gradient(180deg, rgba(242, 247, 252, 0.96), rgba(248, 250, 252, 0.96));
+  background: linear-gradient(
+    180deg,
+    rgba(242, 247, 252, 0.96),
+    rgba(248, 250, 252, 0.96)
+  );
 }
 
 .debug-ai-summary-label {
@@ -11837,13 +11976,19 @@ body.sentinel-panel-open .activity-donut-total {
 }
 
 .debug-ai-section-card-warn {
-  background:
-    linear-gradient(180deg, rgba(255, 250, 246, 0.98), rgba(255, 245, 241, 0.98));
+  background: linear-gradient(
+    180deg,
+    rgba(255, 250, 246, 0.98),
+    rgba(255, 245, 241, 0.98)
+  );
 }
 
 .debug-ai-section-card-good {
-  background:
-    linear-gradient(180deg, rgba(246, 251, 247, 0.98), rgba(239, 247, 241, 0.98));
+  background: linear-gradient(
+    180deg,
+    rgba(246, 251, 247, 0.98),
+    rgba(239, 247, 241, 0.98)
+  );
 }
 
 .debug-ai-section-title {
@@ -12245,7 +12390,11 @@ body.sentinel-panel-open .activity-donut-total {
 .debug-chat-turn {
   border: 1px solid var(--border-color);
   border-radius: 14px;
-  background: linear-gradient(180deg, #fff 0%, color-mix(in srgb, var(--bg-primary) 72%, white 28%) 100%);
+  background: linear-gradient(
+    180deg,
+    #fff 0%,
+    color-mix(in srgb, var(--bg-primary) 72%, white 28%) 100%
+  );
   padding: 12px 14px;
   display: flex;
   flex-direction: column;
@@ -14013,7 +14162,10 @@ body.sentinel-panel-open .activity-donut-total {
   border: 1px solid var(--border-color);
   color: var(--text-muted);
   cursor: pointer;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  transition:
+    background 0.15s,
+    color 0.15s,
+    border-color 0.15s;
 }
 
 .agp-findings-btn {
@@ -14095,7 +14247,10 @@ body.sentinel-panel-open .activity-donut-total {
   letter-spacing: 0.01em;
   white-space: nowrap;
   cursor: pointer;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  transition:
+    background 0.15s,
+    color 0.15s,
+    border-color 0.15s;
 }
 
 .agp-detect-btn:hover:not(:disabled) {
@@ -14142,7 +14297,10 @@ body.sentinel-panel-open .activity-donut-total {
   letter-spacing: 0.01em;
   white-space: nowrap;
   cursor: pointer;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  transition:
+    background 0.15s,
+    color 0.15s,
+    border-color 0.15s;
 }
 
 .agp-autopilot-btn:hover:not(:disabled) {
@@ -14211,7 +14369,9 @@ body.sentinel-panel-open .activity-donut-total {
   cursor: pointer;
   padding: 2px 4px;
   border-radius: 4px;
-  transition: color 0.15s, background 0.15s;
+  transition:
+    color 0.15s,
+    background 0.15s;
 }
 
 .agp-close:hover {
@@ -14280,7 +14440,10 @@ body.sentinel-panel-open .activity-donut-total {
   color: var(--text-faint);
   opacity: 0;
   cursor: pointer;
-  transition: opacity 0.15s, background 0.15s, color 0.15s;
+  transition:
+    opacity 0.15s,
+    background 0.15s,
+    color 0.15s;
 }
 
 .agp-history-delete:hover {
@@ -14506,7 +14669,10 @@ body.sentinel-panel-open .activity-donut-total {
   border-radius: 5px;
   border: 1px solid transparent;
   cursor: pointer;
-  transition: background 0.12s, color 0.12s, border-color 0.12s;
+  transition:
+    background 0.12s,
+    color 0.12s,
+    border-color 0.12s;
   line-height: 1.4;
 }
 
@@ -14814,7 +14980,9 @@ body.sentinel-panel-open .activity-donut-total {
   color: var(--node-color, var(--text-primary));
   cursor: pointer;
   line-height: 1.5;
-  transition: opacity 0.12s, background 0.12s;
+  transition:
+    opacity 0.12s,
+    background 0.12s;
   white-space: nowrap;
   vertical-align: baseline;
 }
@@ -14958,7 +15126,10 @@ body.sentinel-panel-open .activity-donut-total {
   font-size: 12px;
   color: var(--text-secondary);
   cursor: pointer;
-  transition: background 0.12s, border-color 0.12s, color 0.12s;
+  transition:
+    background 0.12s,
+    border-color 0.12s,
+    color 0.12s;
   line-height: 1.45;
 }
 
@@ -15397,7 +15568,9 @@ body.sentinel-panel-open .activity-donut-total {
   color: var(--text-muted);
   font-size: 11px;
   cursor: pointer;
-  transition: border-color 0.12s, color 0.12s;
+  transition:
+    border-color 0.12s,
+    color 0.12s;
 }
 
 .agp-findings-action-btn:hover {
@@ -15562,7 +15735,10 @@ body.sentinel-panel-open .activity-donut-total {
   font-size: 11px;
   color: var(--text-muted);
   cursor: pointer;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  transition:
+    background 0.15s,
+    color 0.15s,
+    border-color 0.15s;
 }
 
 .agp-finding-explain-btn:hover:not(:disabled) {
@@ -15587,7 +15763,10 @@ body.sentinel-panel-open .activity-donut-total {
   font-size: 11px;
   color: var(--text-muted);
   cursor: pointer;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  transition:
+    background 0.15s,
+    color 0.15s,
+    border-color 0.15s;
 }
 
 .agp-finding-claudecode-btn:hover:not(:disabled) {
@@ -15885,7 +16064,9 @@ body.sentinel-panel-open .activity-donut-total {
   background: var(--bg-muted);
   border: 1px solid var(--border-color);
   border-radius: 8px;
-  transition: border-color 0.12s, background 0.12s;
+  transition:
+    border-color 0.12s,
+    background 0.12s;
   min-height: 36px;
   max-height: 120px;
   display: flex;
@@ -15959,7 +16140,9 @@ body.sentinel-panel-open .activity-donut-total {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background 0.12s, transform 0.1s;
+  transition:
+    background 0.12s,
+    transform 0.1s;
   margin-bottom: 2px;
 }
 
@@ -15974,14 +16157,6 @@ body.sentinel-panel-open .activity-donut-total {
 .agp-send-btn:disabled {
   opacity: 0.3;
   cursor: default;
-}
-
-.agp-usage-indicator {
-  text-align: right;
-  font-size: 11px;
-  color: #888;
-  padding: 4px 4px 6px;
-  letter-spacing: 0.01em;
 }
 
 /* ── API Key Setup ──────────────────────────────────────────────────────────── */
@@ -16210,7 +16385,9 @@ body.sentinel-panel-open .activity-donut-total {
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
 }
 
 .agp-auth-provider-btn:hover {
@@ -16247,8 +16424,13 @@ body.sentinel-panel-open .activity-donut-total {
 /* ── Auth status (signed-in user) ─────────────────────────────────────────── */
 
 .agp-auth-status {
-  padding: 8px 12px;
+  padding: 10px 12px 8px;
   border-bottom: 1px solid var(--border-color);
+  background: var(--bg-primary);
+}
+
+.agp-auth-status-top {
+  flex-shrink: 0;
 }
 
 .agp-auth-user {
@@ -16278,6 +16460,11 @@ body.sentinel-panel-open .activity-donut-total {
 }
 
 .agp-auth-username {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-weight: 500;
   color: var(--text-primary);
 }
@@ -16300,13 +16487,15 @@ body.sentinel-panel-open .activity-donut-total {
 }
 
 .agp-auth-remaining {
-  margin-top: 4px;
+  margin-top: 6px;
+  padding-left: 28px;
   font-size: 11px;
   color: var(--text-muted);
 }
 
 .agp-auth-exhausted {
   margin-top: 8px;
+  padding-left: 28px;
   font-size: 12px;
   color: var(--text-muted);
 }

@@ -2521,21 +2521,8 @@ export function AgentPanel({
                   }}
                 />
               ) : authSession?.signedIn ? (
-                <div className="agp-auth-status">
-                  <div className="agp-auth-user">
-                    <AuthAvatar
-                      avatarUrl={authSession.avatarUrl}
-                      label={authSession.displayName || authSession.email}
-                    />
-                    <span className="agp-auth-username">{authSession.displayName || authSession.email}</span>
-                    <button
-                      className="agp-auth-signout"
-                      onClick={() => window.electronAPI.authSignOut()}
-                    >
-                      Sign out
-                    </button>
-                  </div>
-                  {aiUsage && aiUsage.remaining <= 0 ? (
+                aiUsage && aiUsage.remaining <= 0 ? (
+                  <div className="agp-auth-status">
                     <div className="agp-auth-exhausted">
                       <span>You've used your {aiUsage.limit} free calls today.</span>
                       <ApiKeySetup
@@ -2545,12 +2532,14 @@ export function AgentPanel({
                         }}
                       />
                     </div>
-                  ) : aiUsage ? (
+                  </div>
+                ) : aiUsage ? (
+                  <div className="agp-auth-status">
                     <div className="agp-auth-remaining">
                       {aiUsage.remaining}/{aiUsage.limit} free calls remaining today
                     </div>
-                  ) : null}
-                </div>
+                  </div>
+                ) : null
               ) : (
                 <div className="agp-auth-gate">
                   <button
@@ -2822,11 +2811,6 @@ export function AgentPanel({
                 </svg>
               </button>
             </div>
-            {aiUsage && aiUsage.limit > 0 && (
-              <div className="agp-usage-indicator">
-                {aiUsage.remaining}/{aiUsage.limit} AI calls remaining today
-              </div>
-            )}
           </div>
         </div>
       )}
