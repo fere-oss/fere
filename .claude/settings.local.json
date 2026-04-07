@@ -16,7 +16,9 @@
       "Bash(node)",
       "Bash(find /Users/siddharthbalaji/Documents/fere/src/components -type f -name *nalytics* -o -name *nalytic*)",
       "Bash(ls -la /Users/siddharthbalaji/Documents/fere/.env*)",
-      "Bash(npx supabase:*)"
+      "Bash(npx supabase:*)",
+      "Read(//Users/siddharthbalaji/.fere/**)",
+      "Bash(python3 -c ':*)"
     ]
   }
 }

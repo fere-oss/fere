@@ -2653,7 +2653,7 @@ ipcMain.handle("agent:usage", async () => {
     // Signed-in free-tier user — check backend
     try {
       const res = await fetch(`${SUPABASE_URL}/functions/v1/usage`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
+        headers: { Authorization: `Bearer ${accessToken}`, apikey: SUPABASE_ANON_KEY },
       });
       if (res.ok) {
         const data = await res.json();
@@ -3875,6 +3875,7 @@ ipcMain.handle("agent:chat", async (event, payload) => {
             method: "POST",
             headers: {
               Authorization: `Bearer ${accessToken}`,
+              apikey: SUPABASE_ANON_KEY,
               "Content-Type": "application/json",
             },
             body: JSON.stringify({
