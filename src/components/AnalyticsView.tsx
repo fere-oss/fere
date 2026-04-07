@@ -654,6 +654,36 @@ function ResourceBreakdown({ graphNodes, metricHistory, singleProject }: Resourc
           group.nodes.flatMap((n) => (n.ports || []).map((p) => p.port)).filter(Boolean)
         ));
 
+        // Single-project view: render each service as a flat row (no collapsible group)
+        if (singleProject && group.serviceCount === 1) {
+          const node = group.nodes[0];
+          const mem = getServiceMemMb(node, metricHistory);
+          const cpu = getServiceCpu(node);
+          const port = node.ports?.[0]?.port;
+          const stateClass =
+            node.healthStatus === "green" ? "activity-breakdown-state-running" :
+            node.healthStatus === "yellow" ? "activity-breakdown-state-idle" :
+            "activity-breakdown-state-down";
+          const stateLabel =
+            node.healthStatus === "green" ? "running" :
+            node.healthStatus === "yellow" ? "idle" :
+            "down";
+          return (
+            <div key={node.id} className="activity-breakdown-group">
+              <div className="activity-breakdown-row activity-breakdown-row-service activity-breakdown-row-flat">
+                <BrandIcon value={inferServiceBrand(node)} size={16} />
+                <span className="activity-breakdown-service-name">{node.name}</span>
+                <span className="activity-breakdown-meta activity-breakdown-mono">{Math.round(mem)} MB</span>
+                <span className="activity-breakdown-meta activity-breakdown-mono">{cpu.toFixed(1)}% CPU</span>
+                <span className="activity-breakdown-meta activity-breakdown-mono">
+                  {port ? `:${port}` : ""}
+                </span>
+                <span className={`activity-breakdown-state ${stateClass}`}>{stateLabel}</span>
+              </div>
+            </div>
+          );
+        }
+
         return (
           <div key={group.name} className="activity-breakdown-group">
             <div

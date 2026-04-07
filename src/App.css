@@ -16355,6 +16355,11 @@ body.sentinel-panel-open .main-content {
   font-size: 12px;
 }
 
+.activity-breakdown-row-flat {
+  padding-left: 16px;
+  font-size: 13px;
+}
+
 .activity-breakdown-row-service:hover {
   background: rgba(255, 255, 255, 0.02);
 }
