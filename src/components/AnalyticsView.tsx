@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, useMemo, memo } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { List } from "react-window";
 import type { RowComponentProps } from "react-window";
 import type {
@@ -443,7 +443,7 @@ function StackOverview({ graphNodes, events, metricHistory }: StackOverviewProps
                   <span className="activity-stack-health-legend-value">
                     {segment.value}
                     {serviceStats.total > 0
-                      ? ` · ${Math.round((segment.value / serviceStats.total) * 100)}%`
+                      ? `.${Math.round((segment.value / serviceStats.total) * 100)}%`
                       : ""}
                   </span>
                 </div>
@@ -548,7 +548,10 @@ function ResourceBreakdown({ graphNodes, metricHistory, singleProject }: Resourc
       const projectName = singleProject
         ? (node.name || "__ungrouped__")
         : (node.project || (node.projectPath ? node.projectPath.split("/").pop()! : null));
-      const key = projectName || "__ungrouped__";
+      // Separate macOS system/app processes from truly ungrouped dev services
+      const key = projectName
+        ? projectName
+        : (!node.isDockerContainer ? "__macos__" : "__ungrouped__");
       if (!groupMap.has(key)) groupMap.set(key, []);
       groupMap.get(key)!.push(node);
     }
@@ -595,8 +598,11 @@ function ResourceBreakdown({ graphNodes, metricHistory, singleProject }: Resourc
       // Sort nodes within group by memory desc
       nodes.sort((a: GraphNode, b: GraphNode) => getServiceMemMb(b, metricHistory) - getServiceMemMb(a, metricHistory));
 
+      const displayName = key === "__macos__" ? "macOS Apps"
+        : key === "__ungrouped__" ? "Ungrouped"
+        : key;
       groups.push({
-        name: key === "__ungrouped__" ? "Ungrouped" : key,
+        name: displayName,
         nodes,
         totalMemMb,
         serviceCount: nodes.length,
@@ -606,10 +612,13 @@ function ResourceBreakdown({ graphNodes, metricHistory, singleProject }: Resourc
       });
     });
 
-    // Sort groups: memory desc, Ungrouped always last
+    // Sort groups: memory desc, macOS Apps and Ungrouped always last
+    const bottomGroups = new Set(["macOS Apps", "Ungrouped"]);
     groups.sort((a, b) => {
-      if (a.name === "Ungrouped") return 1;
-      if (b.name === "Ungrouped") return -1;
+      const aBottom = bottomGroups.has(a.name);
+      const bBottom = bottomGroups.has(b.name);
+      if (aBottom && !bBottom) return 1;
+      if (!aBottom && bBottom) return -1;
       return b.totalMemMb - a.totalMemMb;
     });
 
@@ -842,7 +851,8 @@ interface EventRowProps {
   nodeByName: Map<string, GraphNode>;
 }
 
-const EventRow = memo(function EventRow({
+function EventRow({
+  ariaAttributes,
   index,
   style,
   items,
@@ -870,7 +880,7 @@ const EventRow = memo(function EventRow({
       : null;
 
     return (
-      <div style={style} className="analytics-event-row">
+      <div {...ariaAttributes} style={style} className="analytics-event-row">
         <div className="analytics-event-content">
           <div className="analytics-event-header">
             <span className="analytics-event-category-chip">
@@ -925,7 +935,12 @@ const EventRow = memo(function EventRow({
     const batchColor = CATEGORY_COLORS[batch.category] || SEVERITY_COLORS.info;
 
     return (
-      <div style={style} className="analytics-event-row analytics-event-row-batch" onClick={() => onToggleBatch(batch.id)}>
+      <div
+        {...ariaAttributes}
+        style={style}
+        className="analytics-event-row analytics-event-row-batch"
+        onClick={() => onToggleBatch(batch.id)}
+      >
         <div className="analytics-event-content">
           <div className="analytics-event-header">
             <span
@@ -962,7 +977,7 @@ const EventRow = memo(function EventRow({
   if (item.type === "sub-event") {
     const event = item.event;
     return (
-      <div style={style} className="analytics-event-row analytics-event-row-sub">
+      <div {...ariaAttributes} style={style} className="analytics-event-row analytics-event-row-sub">
         <div className="analytics-event-content">
           <div className="analytics-event-header">
             <span
@@ -988,7 +1003,7 @@ const EventRow = memo(function EventRow({
   }
 
   return null;
-});
+}
 
 // --- Main Component ---
 
