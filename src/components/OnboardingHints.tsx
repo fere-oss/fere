@@ -26,16 +26,21 @@ export function DiscoveryHint({ onDismiss }: { onDismiss?: () => void }) {
   return (
     <div className={`discovery-hint${visible ? " visible" : ""}`}>
       <div className="discovery-hint-icon">
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-          <circle cx="12" cy="12" r="3" />
-          <circle cx="4" cy="6" r="2" />
-          <circle cx="20" cy="6" r="2" />
-          <circle cx="4" cy="18" r="2" />
-          <circle cx="20" cy="18" r="2" />
-          <line x1="9.5" y1="10.5" x2="5.5" y2="7.5" />
-          <line x1="14.5" y1="10.5" x2="18.5" y2="7.5" />
-          <line x1="9.5" y1="13.5" x2="5.5" y2="16.5" />
-          <line x1="14.5" y1="13.5" x2="18.5" y2="16.5" />
+        <svg
+          width="28"
+          height="28"
+          viewBox="0 0 16 16"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <circle cx="3" cy="8" r="2" fill="currentColor" />
+          <circle cx="13" cy="4" r="2" fill="currentColor" />
+          <circle cx="13" cy="12" r="2" fill="currentColor" />
+          <path
+            d="M5 8L11 5M5 8L11 11"
+            stroke="currentColor"
+            strokeWidth="1.5"
+          />
         </svg>
       </div>
       <div className="discovery-hint-content">
@@ -46,7 +51,11 @@ export function DiscoveryHint({ onDismiss }: { onDismiss?: () => void }) {
           to see its routes, health, and connections.
         </span>
       </div>
-      <button className="discovery-hint-dismiss" onClick={handleDismiss}>
+      <button
+        type="button"
+        className="discovery-hint-dismiss"
+        onClick={handleDismiss}
+      >
         Got it
       </button>
     </div>
@@ -71,7 +80,11 @@ export function NodeClickHint() {
       <span className="node-click-hint-text">
         This is everything Fere knows about this service. It updates in real time.
       </span>
-      <button className="node-click-hint-dismiss" onClick={handleDismiss}>
+      <button
+        type="button"
+        className="node-click-hint-dismiss"
+        onClick={handleDismiss}
+      >
         Got it
       </button>
     </div>

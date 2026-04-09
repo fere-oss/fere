@@ -7,6 +7,7 @@ import {
   useRef,
   useReducer,
 } from "react";
+import type { MouseEvent as ReactMouseEvent } from "react";
 import { useSystemSnapshot } from "./hooks/useSystemMonitor";
 import { GraphView } from "./components/GraphView";
 import { AgentPanel } from "./components/AgentPanel";
@@ -403,6 +404,21 @@ function App() {
       new CustomEvent("fere:set-agent-open", { detail: { open } }),
     );
   }, []);
+
+  const handleHeaderDoubleClick = useCallback(
+    (event: ReactMouseEvent<HTMLDivElement>) => {
+      const target = event.target as HTMLElement | null;
+      if (
+        target?.closest(
+          'button, a, input, textarea, select, [role="button"], [data-no-window-drag-zoom="true"]',
+        )
+      ) {
+        return;
+      }
+      window.electronAPI?.toggleWindowMaximize?.();
+    },
+    [],
+  );
 
   useEffect(() => {
     if (window.electronAPI?.getAlertPreferences) {
@@ -1109,6 +1125,10 @@ function App() {
 
   return (
     <div className="app">
+      <div
+        className="app-window-top-hitbox"
+        onDoubleClick={handleHeaderDoubleClick}
+      />
       <div className="app-profile-slot">
         {authSession?.signedIn && (
           <div className="app-profile-chip app-profile-chip-slot">
@@ -1143,7 +1163,7 @@ function App() {
       </div>
 
       {/* Unified App Header */}
-      <div className="app-header">
+      <div className="app-header" onDoubleClick={handleHeaderDoubleClick}>
         <h1 className="app-title">fere</h1>
 
         {/* View Mode Tabs — inline in header */}

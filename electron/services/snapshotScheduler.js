@@ -1,8 +1,19 @@
 const path = require('path');
 const EventEmitter = require('events');
 const { Worker } = require('worker_threads');
-const { getDevProcesses, getProcessCacheInfo, getProcessPids } = require('./processMonitor');
-const { getListeningPorts, getEstablishedConnections, getPortCacheInfo, getListeningPortNumbers } = require('./portMonitor');
+const {
+  getDevProcesses,
+  getProcessCacheInfo,
+  getProcessPids,
+  clearProcessCache,
+} = require('./processMonitor');
+const {
+  getListeningPorts,
+  getEstablishedConnections,
+  getPortCacheInfo,
+  getListeningPortNumbers,
+  clearPortCache,
+} = require('./portMonitor');
 const { getDockerSnapshot, getLastDockerStatus } = require('./dockerMonitor');
 const { batchGetProcessCwds, collectHealthByPid, collectRoutes, collectLocalConnections } = require('./connectionGraph');
 const { hasTopologyChanged, buildGraphStructure, collectProjectPaths } = require('./graphFunctions');
@@ -254,6 +265,12 @@ class SnapshotScheduler extends EventEmitter {
       this.previousPortNumbers = currentPorts;
 
       if (pidsChanged || portsChanged) {
+        // Fast probe uses uncached PID/port enumerations. If they changed, the
+        // cached ps/lsof snapshots are now stale and can hide a crash/exit for
+        // up to one cache TTL. Drop those caches before reconciling so the
+        // next full snapshot reflects the latest runtime state immediately.
+        clearProcessCache();
+        clearPortCache();
         this._stableProbeCount = 0;
         this._applyFastProbeBackoff();
         this.reconcile();

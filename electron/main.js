@@ -328,9 +328,6 @@ function createWindow() {
   setupWindowOpenHandler(mainWindow.webContents);
 
   // Throttle snapshot collection when app is not visible
-  mainWindow.on("blur", () => {
-    if (snapshotScheduler) snapshotScheduler.throttle();
-  });
   mainWindow.on("minimize", () => {
     if (snapshotScheduler) snapshotScheduler.throttle();
   });
@@ -1251,6 +1248,24 @@ ipcMain.handle("copy-text", async (_, text) => {
     return { success: true };
   } catch (error) {
     console.error("Error copying text:", error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle("window:toggle-maximize", async (event) => {
+  try {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (!win) return { success: false, error: "Window not found" };
+
+    if (win.isMaximized()) {
+      win.unmaximize();
+    } else {
+      win.maximize();
+    }
+
+    return { success: true };
+  } catch (error) {
+    console.error("Error toggling maximize:", error);
     return { success: false, error: error.message };
   }
 });

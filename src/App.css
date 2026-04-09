@@ -51,6 +51,16 @@ textarea {
   position: relative;
 }
 
+.app-window-top-hitbox {
+  position: absolute;
+  top: 0;
+  left: 84px;
+  right: 0;
+  height: 20px;
+  z-index: 5;
+  -webkit-app-region: no-drag;
+}
+
 .app-profile-chip {
   display: flex;
   align-items: center;
@@ -799,6 +809,142 @@ body.sentinel-panel-open .activity-donut-total {
   --graph-edge: #52525b;
 }
 
+.discovery-hint {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  z-index: 40;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 14px;
+  width: min(900px, calc(100% - 88px));
+  padding: 16px 18px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 20px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.98)),
+    radial-gradient(circle at top left, rgba(14, 165, 233, 0.08), transparent 32%);
+  box-shadow:
+    0 16px 44px rgba(15, 23, 42, 0.12),
+    0 2px 10px rgba(15, 23, 42, 0.05);
+  backdrop-filter: blur(10px);
+  pointer-events: auto;
+  opacity: 0;
+  transform: translateY(-8px);
+  transition:
+    opacity 0.22s ease,
+    transform 0.22s ease;
+}
+
+.discovery-hint.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.discovery-hint-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  color: #111827;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75);
+}
+
+.discovery-hint-content {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 2px;
+}
+
+.discovery-hint-title {
+  display: block;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: #111827;
+}
+
+.discovery-hint-body {
+  display: block;
+  font-size: 14px;
+  line-height: 1.55;
+  color: #4b5563;
+  max-width: 72ch;
+}
+
+.discovery-hint-dismiss {
+  align-self: center;
+  justify-self: end;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 999px;
+  background: #111827;
+  color: #ffffff;
+  padding: 10px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 8px 20px rgba(17, 24, 39, 0.16);
+  transition:
+    transform 0.14s ease,
+    box-shadow 0.14s ease,
+    background 0.14s ease;
+}
+
+.discovery-hint-dismiss:hover {
+  background: #0f172a;
+  transform: translateY(-1px);
+  box-shadow: 0 10px 22px rgba(17, 24, 39, 0.22);
+}
+
+.discovery-hint-dismiss:focus-visible {
+  outline: 2px solid rgba(14, 165, 233, 0.55);
+  outline-offset: 2px;
+}
+
+.node-click-hint {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 14px;
+  background: linear-gradient(180deg, #ffffff, #f8fafc);
+}
+
+.node-click-hint-text {
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #4b5563;
+}
+
+.node-click-hint-dismiss {
+  flex-shrink: 0;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 999px;
+  background: #ffffff;
+  color: #111827;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.node-click-hint-dismiss:hover {
+  background: #f8fafc;
+}
+
 .graph-flow {
   position: absolute;
   inset: 0;
@@ -1081,6 +1227,51 @@ body.sentinel-panel-open .activity-donut-total {
 .graph-flow .react-flow__controls-button svg {
   max-width: 13px;
   max-height: 13px;
+}
+
+@media (max-width: 900px) {
+  .discovery-hint {
+    width: min(720px, calc(100% - 32px));
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .discovery-hint-dismiss {
+    grid-column: 2;
+    justify-self: start;
+    margin-top: 2px;
+  }
+}
+
+@media (max-width: 640px) {
+  .discovery-hint {
+    top: 12px;
+    left: 12px;
+    width: calc(100% - 24px);
+    padding: 14px;
+    gap: 12px;
+    border-radius: 18px;
+    grid-template-columns: 1fr;
+  }
+
+  .discovery-hint-icon {
+    width: 40px;
+    height: 40px;
+  }
+
+  .discovery-hint-dismiss {
+    grid-column: auto;
+    justify-self: stretch;
+    width: 100%;
+  }
+
+  .node-click-hint {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .node-click-hint-dismiss {
+    width: 100%;
+  }
 }
 
 .graph-freshness {

@@ -680,6 +680,7 @@ export interface ElectronAPI {
   openUrl: (url: string) => Promise<{ success: boolean; error?: string }>;
   openTerminal: (path: string) => Promise<{ success: boolean; error?: string }>;
   copyText: (text: string) => Promise<{ success: boolean; error?: string }>;
+  toggleWindowMaximize: () => Promise<{ success: boolean; error?: string }>;
 
   // API testing
   executeHttpRequest: (options: HttpRequestOptions) => Promise<HttpRequestResult>;
