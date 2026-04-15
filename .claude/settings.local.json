@@ -18,7 +18,9 @@
       "Bash(ls -la /Users/siddharthbalaji/Documents/fere/.env*)",
       "Bash(npx supabase:*)",
       "Read(//Users/siddharthbalaji/.fere/**)",
-      "Bash(python3 -c ':*)"
+      "Bash(python3 -c ':*)",
+      "Bash(node -e ':*)",
+      "Bash(rm /Users/siddharthbalaji/Documents/fere/electron/assets/trayIcon*Template*.png)"
     ]
   }
 }

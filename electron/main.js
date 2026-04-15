@@ -4,7 +4,7 @@ const {
   ipcMain,
   shell,
   nativeImage,
-  Notification,
+  Tray,
   clipboard,
   powerMonitor,
   dialog,
@@ -138,16 +138,6 @@ const {
   getActiveStreams,
 } = require("./services/containerLogs");
 const {
-  initAlertManager,
-  evaluateAlerts,
-  getAlertPreferences,
-  setAlertPreferences,
-  getAlertHistory,
-  clearAlertHistory,
-  markIntentionalStopForPid,
-  markIntentionalStopForContainer,
-} = require("./services/alertManager");
-const {
   initActivityLog,
   shutdownActivityLog,
   logEvent: logActivityEvent,
@@ -181,17 +171,17 @@ app.setName("Fere");
 app.name = "Fere";
 process.title = "Fere";
 
+const { Menu } = require("electron");
+
 // Keep a global reference of the window object
 let mainWindow;
+let tray = null;
 let snapshotScheduler = null;
 let snapshotHandler = null;
 let activityEventHandler = null;
-let alertNodeMap = new Map();
 const _surfacedFindingIds = new Set();
 // id → severity of last surfaced finding, for worsened detection
 const _surfacedFindingSeverity = new Map();
-// Suppress repeated critical notifications within 60s per finding id
-const _notifiedCriticalAt = new Map();
 const logStreamsBySender = new Map();
 
 function logSentinelActivity(title, detail = "", projectName = null) {
@@ -204,6 +194,94 @@ function logSentinelActivity(title, detail = "", projectName = null) {
     serviceId: null,
     projectName,
   });
+}
+
+// ============================================
+// Menubar Tray
+// ============================================
+
+const trayIcons = {};
+
+function getTrayIcon(color) {
+  if (trayIcons[color]) return trayIcons[color];
+  const iconPath = path.join(__dirname, "assets", `trayIcon${color}.png`);
+  const img = nativeImage.createFromPath(iconPath);
+  trayIcons[color] = img;
+  return img;
+}
+
+function createTray() {
+  if (tray) return;
+  tray = new Tray(getTrayIcon("Green"));
+  tray.setToolTip("Fere — All services healthy");
+
+  const contextMenu = Menu.buildFromTemplate([
+    {
+      label: "Show Fere",
+      click: () => {
+        if (mainWindow) {
+          mainWindow.show();
+          mainWindow.focus();
+        }
+      },
+    },
+    { type: "separator" },
+    {
+      label: "Quit",
+      click: () => {
+        app.isQuitting = true;
+        app.quit();
+      },
+    },
+  ]);
+  tray.setContextMenu(contextMenu);
+
+  tray.on("click", () => {
+    if (mainWindow) {
+      if (mainWindow.isVisible()) {
+        mainWindow.focus();
+      } else {
+        mainWindow.show();
+        mainWindow.focus();
+      }
+    }
+  });
+}
+
+function updateTrayIcon(delta) {
+  if (!tray) return;
+
+  let nodes = [];
+  if (delta.type === "full" && delta.graph && Array.isArray(delta.graph.nodes)) {
+    nodes = delta.graph.nodes;
+  } else if (snapshotScheduler && snapshotScheduler.previousSnapshot) {
+    const prev = snapshotScheduler.previousSnapshot;
+    nodes = prev.graph ? prev.graph.nodes || [] : [];
+  }
+
+  if (nodes.length === 0) return;
+
+  let redCount = 0;
+  let yellowCount = 0;
+  for (const node of nodes) {
+    if (node.healthStatus === "red") redCount++;
+    else if (node.healthStatus === "yellow") yellowCount++;
+  }
+
+  let icon, tooltip;
+  if (redCount > 0) {
+    icon = "Red";
+    tooltip = `Fere — ${redCount} service${redCount > 1 ? "s" : ""} down`;
+  } else if (yellowCount > 0) {
+    icon = "Yellow";
+    tooltip = `Fere — ${yellowCount} service${yellowCount > 1 ? "s" : ""} degraded`;
+  } else {
+    icon = "Green";
+    tooltip = "Fere — All services healthy";
+  }
+
+  tray.setImage(getTrayIcon(icon));
+  tray.setToolTip(tooltip);
 }
 
 function registerSenderLogStream(sender, streamId) {
@@ -347,7 +425,7 @@ function createWindow() {
     if (snapshotScheduler) snapshotScheduler.unthrottle();
   });
 
-  // Hide instead of close — keeps process alive for background notifications
+  // Hide instead of close — keeps process alive for menubar presence
   mainWindow.on("close", (e) => {
     if (!app.isQuitting) {
       e.preventDefault();
@@ -362,7 +440,6 @@ function createWindow() {
       snapshotScheduler.removeAllListeners();
       snapshotScheduler = null;
       snapshotHandler = null;
-      alertNodeMap = new Map();
     }
     mainWindow = null;
   });
@@ -388,8 +465,6 @@ app.whenReady().then(() => {
   // Security: Set up CSP (different for dev vs production)
   setupCSP(isDev);
 
-  // Initialize alert manager (loads preferences from disk)
-  initAlertManager();
   initActivityLog();
 
   // Initialize error reporting
@@ -412,6 +487,7 @@ app.whenReady().then(() => {
   });
 
   createWindow();
+  createTray();
 
   // Refresh auth token on launch and every 30 minutes
   refreshAuthToken().catch(() => {});
@@ -434,6 +510,10 @@ app.on("before-quit", () => {
 });
 
 app.on("will-quit", async () => {
+  if (tray) {
+    tray.destroy();
+    tray = null;
+  }
   await sentry.flush();
   try {
     shutdownActivityLog();
@@ -451,36 +531,6 @@ app.on("activate", () => {
     if (snapshotScheduler) snapshotScheduler.unthrottle();
   }
 });
-
-/**
- * Maintain a shadow copy of all graph nodes from snapshot deltas
- * for alert evaluation purposes.
- */
-function updateAlertNodeMap(delta) {
-  if (
-    delta.type === "full" &&
-    delta.graph &&
-    Array.isArray(delta.graph.nodes)
-  ) {
-    alertNodeMap = new Map(delta.graph.nodes.map((n) => [n.id, n]));
-    return;
-  }
-  if (delta.graph && delta.graph.nodes) {
-    const nd = delta.graph.nodes;
-    if (nd.removed) {
-      for (const id of nd.removed) alertNodeMap.delete(id);
-    }
-    if (nd.added) {
-      for (const node of nd.added) alertNodeMap.set(node.id, node);
-    }
-    if (nd.modified) {
-      for (const patch of nd.modified) {
-        const existing = alertNodeMap.get(patch.id);
-        if (existing) Object.assign(existing, patch);
-      }
-    }
-  }
-}
 
 // ============================================
 // IPC Handlers - System Monitoring API
@@ -573,23 +623,24 @@ ipcMain.handle("start-snapshot-stream", async (event) => {
       snapshotScheduler.setBattery(powerMonitor.isOnBatteryPower());
     }
 
-    // Persistent listener: evaluate alerts even when window is hidden
+    // Persistent listener: feed metric history even when window is hidden
     snapshotScheduler.on("snapshot", (delta) => {
-      try {
-        updateAlertNodeMap(delta);
-        evaluateAlerts(Array.from(alertNodeMap.values()));
-      } catch (err) {
-        console.error("[AlertManager] Error evaluating alerts:", err);
-      }
       try {
         const nodes =
           delta.type === "full" && delta.graph && Array.isArray(delta.graph.nodes)
             ? delta.graph.nodes
-            : Array.from(alertNodeMap.values());
-        feedFromSnapshot(nodes);
-        checkAnomalies();
+            : [];
+        if (nodes.length > 0) {
+          feedFromSnapshot(nodes);
+          checkAnomalies();
+        }
       } catch (err) {
         console.error("[MetricHistory] Error feeding metrics:", err);
+      }
+      try {
+        updateTrayIcon(delta);
+      } catch (err) {
+        console.error("[Tray] Error updating tray icon:", err);
       }
     });
 
@@ -654,28 +705,6 @@ ipcMain.handle("start-snapshot-stream", async (event) => {
           windows.forEach((win) =>
             win.webContents.send("agent:proactive-finding", newFindings),
           );
-
-          // OS notification for critical findings when window is not focused
-          const criticals = newFindings.filter(
-            (f) => f.severity === "critical",
-          );
-          const now = Date.now();
-          const notifyThrottle = 60_000; // 1 notification per finding per minute
-          for (const f of criticals) {
-            const lastNotified = _notifiedCriticalAt.get(f.id) ?? 0;
-            if (now - lastNotified < notifyThrottle) continue;
-            const focused = windows.some((w) => w.isFocused());
-            if (!focused) {
-              try {
-                new Notification({
-                  title: `Sentinel — ${f.severity === "critical" ? "Critical" : "Warning"}`,
-                  body: `${f.service}: ${f.summary}`,
-                  silent: false,
-                }).show();
-              } catch (_) {}
-            }
-            _notifiedCriticalAt.set(f.id, now);
-          }
         }
       } catch (_) {}
     });
@@ -835,7 +864,6 @@ ipcMain.handle("kill-process", async (event, pid) => {
         serviceId: null,
         projectName: proc.project || null,
       });
-      markIntentionalStopForPid(pid);
       // Force next snapshot to bypass stale 5s caches.
       clearProcessCache();
       clearPortCache();
@@ -858,16 +886,14 @@ ipcMain.handle("stop-container", async (event, containerId) => {
     }
     const result = await stopContainer(containerId);
     if (result.success) {
-      const node = alertNodeMap.get(containerId);
       logActivityEvent({
         category: "user-action",
         severity: "info",
-        title: `Stopped container ${node?.name || containerId.slice(0, 12)}`,
-        serviceName: node?.name || null,
+        title: `Stopped container ${containerId.slice(0, 12)}`,
+        serviceName: null,
         serviceId: null,
-        projectName: node?.project || null,
+        projectName: null,
       });
-      markIntentionalStopForContainer(containerId);
       clearProcessCache();
       clearPortCache();
       if (snapshotScheduler) {
@@ -888,14 +914,13 @@ ipcMain.handle("start-container", async (event, containerId) => {
     }
     const result = await startContainer(containerId);
     if (result.success) {
-      const node = alertNodeMap.get(containerId);
       logActivityEvent({
         category: "user-action",
         severity: "info",
-        title: `Started container ${node?.name || containerId.slice(0, 12)}`,
-        serviceName: node?.name || null,
+        title: `Started container ${containerId.slice(0, 12)}`,
+        serviceName: null,
         serviceId: null,
-        projectName: node?.project || null,
+        projectName: null,
       });
       clearProcessCache();
       clearPortCache();
@@ -1573,53 +1598,6 @@ ipcMain.handle("set-auto-launch", async (_event, enabled) => {
     app.setLoginItemSettings({ openAtLogin: !!enabled });
     return { success: true };
   } catch (error) {
-    return { success: false, error: error.message };
-  }
-});
-
-// ============================================
-// IPC Handlers - Alert Preferences
-// ============================================
-
-ipcMain.handle("get-alert-preferences", async () => {
-  try {
-    return getAlertPreferences();
-  } catch (error) {
-    console.error("Error getting alert preferences:", error);
-    return { alertsEnabled: true };
-  }
-});
-
-ipcMain.handle("set-alert-preferences", async (event, prefs) => {
-  try {
-    if (typeof prefs !== "object" || prefs === null) {
-      return { success: false, error: "Invalid preferences" };
-    }
-    return setAlertPreferences(prefs);
-  } catch (error) {
-    console.error("Error setting alert preferences:", error);
-    return { success: false, error: error.message };
-  }
-});
-
-// ============================================
-// IPC Handlers - Alert History
-// ============================================
-
-ipcMain.handle("get-alert-history", async () => {
-  try {
-    return { success: true, events: getAlertHistory() };
-  } catch (error) {
-    console.error("Error getting alert history:", error);
-    return { success: false, events: [], error: error.message };
-  }
-});
-
-ipcMain.handle("clear-alert-history", async () => {
-  try {
-    return await clearAlertHistory();
-  } catch (error) {
-    console.error("Error clearing alert history:", error);
     return { success: false, error: error.message };
   }
 });

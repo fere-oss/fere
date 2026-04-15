@@ -36,7 +36,6 @@ import {
   traceReducer,
 } from "./components/graph/traceContext";
 import type {
-  AlertEvent,
   AuthSession,
   GraphEdge,
   GraphNode,
@@ -99,22 +98,6 @@ function getAuthAvatarFallback(label: string | null | undefined): string {
   return (condensed.slice(0, 2) || source.slice(0, 2)).toUpperCase();
 }
 
-const ALERT_CATEGORIES = [
-  { key: "down" as const, label: "Down", desc: "Service crashes" },
-  { key: "recovery" as const, label: "Recovery", desc: "Service comes back" },
-  { key: "degraded" as const, label: "Degraded", desc: "Slow / idle" },
-  { key: "container" as const, label: "Container", desc: "State changes" },
-] as const;
-
-const ALERT_EVENT_LABELS: Record<string, string> = {
-  down: "went down",
-  recovery: "recovered",
-  degraded: "degraded",
-  "container-stopped": "stopped",
-  "container-running": "started running",
-  "service-discovered": "appeared",
-  "service-gone": "disappeared",
-};
 
 function normalizeProjectTabPath(projectPath: string): string {
   if (!projectPath) return projectPath;
@@ -350,17 +333,6 @@ function App() {
     string | undefined
   >();
 
-  // Alert preferences state
-  const [alertsEnabled, setAlertsEnabled] = useState(true);
-  const [categoryToggles, setCategoryToggles] = useState({
-    down: true,
-    recovery: true,
-    degraded: true,
-    container: true,
-  });
-  const [alertPanelOpen, setAlertPanelOpen] = useState(false);
-  const [alertHistory, setAlertHistory] = useState<AlertEvent[]>([]);
-  const alertPanelRef = useRef<HTMLDivElement>(null);
   const [optimisticDownNodes, setOptimisticDownNodes] = useState<
     Map<string, GraphNode>
   >(() => new Map());
@@ -402,22 +374,6 @@ function App() {
     window.dispatchEvent(
       new CustomEvent("fere:set-agent-open", { detail: { open } }),
     );
-  }, []);
-
-  useEffect(() => {
-    if (window.electronAPI?.getAlertPreferences) {
-      window.electronAPI
-        .getAlertPreferences()
-        .then((prefs) => {
-          setAlertsEnabled(prefs.alertsEnabled);
-          if (prefs.categoryToggles) {
-            setCategoryToggles(prefs.categoryToggles);
-          }
-        })
-        .catch((err) =>
-          console.error("Failed to load alert preferences:", err),
-        );
-    }
   }, []);
 
   useEffect(() => {
@@ -670,67 +626,6 @@ function App() {
     });
     lastNodeIdByServiceRef.current = next;
   }, [visibleGraphNodes]);
-
-  const handleToggleAlerts = useCallback(async () => {
-    setAlertsEnabled((prev) => {
-      const newValue = !prev;
-      window.electronAPI?.setAlertPreferences?.({ alertsEnabled: newValue });
-      return newValue;
-    });
-  }, []);
-
-  const handleToggleCategory = useCallback(
-    async (category: keyof typeof categoryToggles) => {
-      setCategoryToggles((prev) => {
-        const newToggles = { ...prev, [category]: !prev[category] };
-        window.electronAPI?.setAlertPreferences?.({
-          categoryToggles: newToggles,
-        });
-        return newToggles;
-      });
-    },
-    [],
-  );
-
-  const loadAlertHistory = useCallback(async () => {
-    if (window.electronAPI?.getAlertHistory) {
-      const result = await window.electronAPI.getAlertHistory();
-      if (result.success) {
-        setAlertHistory(result.events);
-      }
-    }
-  }, []);
-
-  const handleClearHistory = useCallback(async () => {
-    if (window.electronAPI?.clearAlertHistory) {
-      await window.electronAPI.clearAlertHistory();
-      setAlertHistory([]);
-    }
-  }, []);
-
-  // Load history when alert panel opens
-  useEffect(() => {
-    if (alertPanelOpen) {
-      loadAlertHistory();
-    }
-  }, [alertPanelOpen, loadAlertHistory]);
-
-  // Click-outside to close alert panel
-  useEffect(() => {
-    if (!alertPanelOpen) return;
-    function handleClick(e: MouseEvent) {
-      if (
-        alertPanelRef.current &&
-        !alertPanelRef.current.contains(e.target as Node)
-      ) {
-        const target = e.target as HTMLElement;
-        if (target.closest(".alert-toggle")) return;
-        setAlertPanelOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClick, true);
-    return () => document.removeEventListener("mousedown", handleClick, true);
-  }, [alertPanelOpen]);
 
   const handleCloseWelcome = useCallback(() => {
     setShowWelcome(false);
@@ -1352,114 +1247,6 @@ function App() {
               <line x1="4.4" y1="8.9" x2="10.6" y2="11.6" />
             </svg>
           </button>
-          <div style={{ position: "relative" } as React.CSSProperties}>
-            <button
-              className={`alert-toggle${alertsEnabled ? "" : " alert-toggle-off"}`}
-              onClick={() => setAlertPanelOpen((v) => !v)}
-              title={alertsEnabled ? "Notifications on" : "Notifications off"}
-            >
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 16 16"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.2"
-              >
-                <path d="M8 1.5C5.5 1.5 4 3.5 4 5.5V8L2.5 10.5V11.5H13.5V10.5L12 8V5.5C12 3.5 10.5 1.5 8 1.5Z" />
-                <path d="M6 12.5C6 13.6 6.9 14.5 8 14.5C9.1 14.5 10 13.6 10 12.5" />
-                {!alertsEnabled && <line x1="2" y1="14" x2="14" y2="2" />}
-              </svg>
-            </button>
-
-            {alertPanelOpen && (
-              <div className="alert-panel" ref={alertPanelRef}>
-                {/* Master toggle */}
-                <div className="alert-panel-master">
-                  <span className="alert-panel-label">Notifications</span>
-                  <button
-                    className={`alert-panel-master-toggle${alertsEnabled ? " alert-panel-master-on" : ""}`}
-                    onClick={handleToggleAlerts}
-                  >
-                    <span className="alert-panel-master-knob" />
-                  </button>
-                </div>
-
-                {/* Category toggles */}
-                <div className="alert-panel-categories">
-                  {ALERT_CATEGORIES.map((cat) => (
-                    <label className="alert-panel-category" key={cat.key}>
-                      <input
-                        type="checkbox"
-                        checked={categoryToggles[cat.key]}
-                        onChange={() => handleToggleCategory(cat.key)}
-                        disabled={!alertsEnabled}
-                        className="alert-panel-checkbox"
-                      />
-                      <div className="alert-panel-category-text">
-                        <span className="alert-panel-category-label">
-                          {cat.label}
-                        </span>
-                        <span className="alert-panel-category-desc">
-                          {cat.desc}
-                        </span>
-                      </div>
-                    </label>
-                  ))}
-                </div>
-
-                <div className="alert-panel-divider" />
-
-                {/* Event history */}
-                <div className="alert-panel-history-header">
-                  <span className="alert-panel-label">Recent Events</span>
-                  {alertHistory.length > 0 && (
-                    <button
-                      className="alert-panel-clear"
-                      onClick={handleClearHistory}
-                    >
-                      Clear
-                    </button>
-                  )}
-                </div>
-                <div className="alert-panel-history">
-                  {alertHistory.length === 0 ? (
-                    <div className="alert-panel-history-empty">
-                      No events yet
-                    </div>
-                  ) : (
-                    alertHistory.slice(0, 50).map((event) => (
-                      <div className="alert-panel-event" key={event.id}>
-                        <span
-                          className={`alert-panel-event-dot alert-panel-event-dot-${event.category}`}
-                        />
-                        <div className="alert-panel-event-content">
-                          <span className="alert-panel-event-title">
-                            {event.serviceName}
-                            {!event.notified &&
-                              event.category !== "discovery" && (
-                                <span className="alert-panel-event-muted">
-                                  {" "}
-                                  (muted)
-                                </span>
-                              )}
-                          </span>
-                          <span className="alert-panel-event-desc">
-                            {event.type === "container-stopped" && event.details
-                              ? `stopped (${event.details})`
-                              : ALERT_EVENT_LABELS[event.type] || event.type}
-                          </span>
-                        </div>
-                        <span className="alert-panel-event-time">
-                          {formatRelativeTime(event.timestamp)}
-                        </span>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
         </div>
       </div>
 

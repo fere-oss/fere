@@ -488,36 +488,6 @@ export interface NetworkPolicyResult {
   error?: string;
 }
 
-// Alert preferences
-export interface AlertPreferences {
-  alertsEnabled: boolean;
-  categoryToggles: {
-    down: boolean;
-    recovery: boolean;
-    degraded: boolean;
-    container: boolean;
-  };
-}
-
-// Alert event (in-app history)
-export interface AlertEvent {
-  id: string;
-  timestamp: number;
-  type: 'down' | 'recovery' | 'degraded' | 'container-stopped' | 'container-running' | 'service-discovered' | 'service-gone';
-  category: 'down' | 'recovery' | 'degraded' | 'container' | 'discovery';
-  serviceName: string;
-  serviceType: string;
-  nodeId: string;
-  details: string;
-  notified: boolean;
-}
-
-export interface AlertHistoryResult {
-  success: boolean;
-  events: AlertEvent[];
-  error?: string;
-}
-
 export type ActivityCategory = 'crash' | 'recovery' | 'anomaly' | 'sentinel' | 'discovery' | 'removal' | 'topology' | 'user-action';
 
 export interface ActivityEvent {
@@ -697,14 +667,6 @@ export interface ElectronAPI {
   // Auto-Launch
   getAutoLaunch: () => Promise<boolean>;
   setAutoLaunch: (enabled: boolean) => Promise<{ success: boolean; error?: string }>;
-
-  // Alert Preferences
-  getAlertPreferences: () => Promise<AlertPreferences>;
-  setAlertPreferences: (prefs: Partial<AlertPreferences>) => Promise<{ success: boolean; error?: string }>;
-
-  // Alert History
-  getAlertHistory: () => Promise<AlertHistoryResult>;
-  clearAlertHistory: () => Promise<{ success: boolean; error?: string }>;
 
   // Container Logs Streaming
   startContainerLogs: (containerId: string, options?: ContainerLogOptions) => Promise<ContainerLogStreamResult>;
