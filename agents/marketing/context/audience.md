@@ -2,24 +2,46 @@
 
 ## Primary Audience
 
-Students and junior developers who want to understand what is happening in their local dev environment.
+Local developers who want to see what's running on their laptop that isn't in the cloud.
 
-The key moment: the inflection point when they first add Docker or a second service to their project. Suddenly their mental model breaks. They have a frontend talking to a backend talking to a database, and they can't see the connections anymore. Fere makes the invisible visible.
+Every engineer has observability for production — Datadog, Grafana, Sentry, CloudWatch. Nobody has observability for localhost. The moment your laptop runs more than one service, you lose the thread: what's on port 5432 today, which container crashed overnight, why is the frontend hitting the wrong backend, what's still holding that port from yesterday's session.
 
-These users don't have deep systems knowledge yet. They need a tool that shows them what's running, what's connected to what, and what's healthy — without requiring them to know the right `lsof` flags or Docker networking internals.
+Fere is the missing observability layer for the machine under your desk. "Datadog for localhost."
+
+This spans from students hitting their second service for the first time, to senior engineers running ten containers across three projects. The common thread is the same: localhost got complicated, and there's no tool for it.
+
+## Activation Moment
+
+The inflection point is when a developer's local environment crosses from "one process I can hold in my head" to "multiple services I can't." Typically this is:
+
+- Adding Docker to a project for the first time
+- Splitting a monolith into a frontend + backend + database
+- Pulling a microservice repo with five+ services in docker-compose
+- Joining a team whose local stack takes 20 minutes to orient to every morning
+
+Onboarding copy should hit this moment. Audience targeting should not be scoped to it.
 
 ## Secondary Audience
 
-Small startup teams (2-8 engineers) running microservice-heavy local stacks. Full-stack engineers who own their whole stack and lose 20-30 minutes orienting themselves before they can start debugging.
-
-For these users, the value is speed. They already understand their stack conceptually, but they waste time every morning figuring out what's running, what's crashed, and what port something is on today.
+Small startup teams (2-8 engineers) running microservice-heavy local stacks. Full-stack engineers who own their whole stack and lose 20-30 minutes orienting themselves before they can start debugging. These users amplify the viral mechanism — they have teammates to share snapshots into.
 
 ## Not a Fit
 
-- Large enterprise teams with existing observability stacks (Datadog, Grafana, etc.)
+- Large enterprise teams with locked-down machines and mandated tooling
 - Frontend-only engineers who never touch backend services
 - Engineers working on a single monolith with no service dependencies
+- Pure cloud-native teams who develop entirely in remote environments (Codespaces, Gitpod)
 
 ## Viral Mechanism
 
-The shareable HTML snapshot export is the key distribution lever. One engineer exports their local topology, shares it with their team in Slack or a PR. The team sees it, asks "what tool is this?", and adopts Fere. The snapshot is the product demo.
+The shareable HTML snapshot export is the key distribution lever. One engineer exports their local topology, shares it in a Slack thread or PR. Teammates see it, ask "what tool is this?", and adopt Fere. The snapshot is the product demo.
+
+This mechanism requires a team to share into — which is why the primary ICP is working developers, not students. Students consume tools; working devs spread them.
+
+## Positioning Line
+
+> Observability for the machine under your desk.
+
+Alt:
+
+> Datadog shows you prod. Fere shows you localhost.
