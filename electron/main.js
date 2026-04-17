@@ -9,6 +9,7 @@ const {
   powerMonitor,
   dialog,
   safeStorage,
+  nativeTheme,
 } = require("electron");
 const { autoUpdater } = require("electron-updater");
 const path = require("path");
@@ -2651,6 +2652,11 @@ ipcMain.handle("auth:sign-out", () => {
   } catch (err) {
     return { success: false, error: err.message };
   }
+});
+
+ipcMain.handle("set-native-theme", (_event, theme) => {
+  if (theme === "dark") nativeTheme.themeSource = "dark";
+  else nativeTheme.themeSource = "light";
 });
 
 // Daily rate limit for Sentinel AI chat calls

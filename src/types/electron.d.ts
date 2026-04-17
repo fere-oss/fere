@@ -777,6 +777,7 @@ export interface ElectronAPI {
   offFindingResolved: () => void;
   onFindingWorsened: (callback: (findings: AgentFinding[]) => void) => void;
   offFindingWorsened: () => void;
+  setNativeTheme?: (theme: "light" | "dark") => Promise<void>;
 }
 
 export interface ChatStep {

@@ -51,6 +51,8 @@ const SYSTEM_TAB_LABEL = isMacOS ? "macOS" : "System";
 const SYSTEM_TAB_ID = "__system__";
 const TAB_GROUPING_KEY = "fere.tabGrouping";
 const WELCOME_SEEN_KEY = "fere.hasSeenWelcome";
+const THEME_KEY = "fere.theme";
+type Theme = "light" | "dark";
 
 const STACK_FRAMEWORK_LABELS: Record<string, string> = {
   nextjs: "Next",
@@ -293,6 +295,23 @@ function App() {
       return false;
     }
   });
+
+  // Theme state — persisted to localStorage, applied via data-theme attribute on <html>
+  const [theme, setTheme] = useState<Theme>(() => {
+    try {
+      return window.localStorage.getItem(THEME_KEY) === "dark" ? "dark" : "light";
+    } catch {
+      return "light";
+    }
+  });
+
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+    try {
+      window.localStorage.setItem(THEME_KEY, theme);
+    } catch { /* ignore */ }
+    window.electronAPI?.setNativeTheme?.(theme);
+  }, [theme]);
 
   // First detection toast
   // View mode state - graph or api-tester
@@ -686,6 +705,10 @@ function App() {
     });
     lastNodeIdByServiceRef.current = next;
   }, [visibleGraphNodes]);
+
+  const handleToggleTheme = useCallback(() => {
+    setTheme((t) => (t === "dark" ? "light" : "dark"));
+  }, []);
 
   const handleToggleAlerts = useCallback(async () => {
     setAlertsEnabled((prev) => {
@@ -1371,6 +1394,50 @@ function App() {
               <line x1="4.4" y1="7.1" x2="10.6" y2="4.4" />
               <line x1="4.4" y1="8.9" x2="10.6" y2="11.6" />
             </svg>
+          </button>
+          <button
+            className="alert-toggle"
+            onClick={handleToggleTheme}
+            title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+            aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+          >
+            {theme === "dark" ? (
+              <svg
+                width="15"
+                height="15"
+                viewBox="0 0 16 16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.4"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <circle cx="8" cy="8" r="2.8" />
+                <line x1="8" y1="1.2" x2="8" y2="2.8" />
+                <line x1="8" y1="13.2" x2="8" y2="14.8" />
+                <line x1="1.2" y1="8" x2="2.8" y2="8" />
+                <line x1="13.2" y1="8" x2="14.8" y2="8" />
+                <line x1="3.3" y1="3.3" x2="4.4" y2="4.4" />
+                <line x1="11.6" y1="11.6" x2="12.7" y2="12.7" />
+                <line x1="12.7" y1="3.3" x2="11.6" y2="4.4" />
+                <line x1="4.4" y1="11.6" x2="3.3" y2="12.7" />
+              </svg>
+            ) : (
+              <svg
+                width="15"
+                height="15"
+                viewBox="0 0 16 16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.4"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M13.2 10.4A6 6 0 0 1 5.6 2.8a6.2 6.2 0 1 0 7.6 7.6Z" />
+              </svg>
+            )}
           </button>
           <div style={{ position: "relative" } as React.CSSProperties}>
             <button

@@ -151,6 +151,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getApiKeyStatus: () => ipcRenderer.invoke('agent:get-api-key-status'),
   clearApiKey: () => ipcRenderer.invoke('agent:clear-api-key'),
 
+  // Theme
+  setNativeTheme: (theme) => ipcRenderer.invoke('set-native-theme', theme),
+
   // Fere Agent
   agentUsage: () => ipcRenderer.invoke('agent:usage'),
   agentScan: (nodeIds) => ipcRenderer.invoke('agent:scan', nodeIds),
