@@ -17,6 +17,7 @@ import { ContainerLogsTab } from "./components/ContainerLogsTab";
 import { AnalyticsView } from "./components/AnalyticsView";
 import { WelcomeModal } from "./components/WelcomeModal";
 import { ShareModal } from "./components/ShareModal";
+import { StackDiffModal } from "./components/StackDiffModal";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import {
   CommandPalette,
@@ -416,6 +417,7 @@ function App() {
 
   // Share modal state
   const [showShare, setShowShare] = useState(false);
+  const [showStackDiff, setShowStackDiff] = useState(false);
   const [authSession, setAuthSession] = useState<AuthSession | null>(null);
 
   const setIsAgentOpen = useCallback((open: boolean) => {
@@ -1397,6 +1399,28 @@ function App() {
           </button>
           <button
             className="alert-toggle"
+            onClick={() => setShowStackDiff(true)}
+            title="Stack Diff — compare your dev stack with a teammate"
+            aria-label="Stack Diff"
+          >
+            <svg
+              width="15"
+              height="15"
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.4"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              {/* two overlapping squares */}
+              <rect x="1.5" y="4.5" width="8" height="8" rx="1.5" />
+              <path d="M6.5 4.5V3a1.5 1.5 0 0 1 1.5-1.5h6A1.5 1.5 0 0 1 15.5 3v6a1.5 1.5 0 0 1-1.5 1.5h-1.5" />
+            </svg>
+          </button>
+          <button
+            className="alert-toggle"
             onClick={handleToggleTheme}
             title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
             aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
@@ -1874,6 +1898,11 @@ function App() {
             tabs.find((t) => t.id === selectedTab)?.label ?? SYSTEM_TAB_LABEL
           }
         />
+      )}
+
+      {/* Stack Diff Modal */}
+      {showStackDiff && (
+        <StackDiffModal onClose={() => setShowStackDiff(false)} />
       )}
     </div>
   );
