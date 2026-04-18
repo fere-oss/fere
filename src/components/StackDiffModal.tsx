@@ -34,7 +34,7 @@ function diffServices(
 ): StackDiffItem[] {
   const mineMap = new Map(mine.map((s) => [s.name, s]));
   const theirsMap = new Map(theirs.map((s) => [s.name, s]));
-  const names = Array.from(new Set([...mineMap.keys(), ...theirsMap.keys()])).sort();
+  const names = Array.from(new Set([...Array.from(mineMap.keys()), ...Array.from(theirsMap.keys())])).sort();
 
   return names.map((name): StackDiffItem => {
     const m = mineMap.get(name);
@@ -66,7 +66,7 @@ function diffContainers(
 ): StackDiffItem[] {
   const mineMap = new Map(mine.map((c) => [c.name, c]));
   const theirsMap = new Map(theirs.map((c) => [c.name, c]));
-  const names = Array.from(new Set([...mineMap.keys(), ...theirsMap.keys()])).sort();
+  const names = Array.from(new Set([...Array.from(mineMap.keys()), ...Array.from(theirsMap.keys())])).sort();
 
   return names.map((name): StackDiffItem => {
     const m = mineMap.get(name);
