@@ -756,6 +756,9 @@ export interface ElectronAPI {
   // Fere Agent
   agentUsage: () => Promise<{ used: number; limit: number; remaining: number; mode?: string }>;
   agentScan: (nodeIds?: string[]) => Promise<{ success: boolean; findings: AgentFinding[]; error?: string }>;
+
+  // Stack Diff
+  exportStackFingerprint: (opts: { label: string }) => Promise<StackFingerprint>;
   agentApplyFix: (action: AgentFixAction) => Promise<{ success: boolean; error?: string }>;
   openInClaudeCode: (finding: { id: string; service: string; summary: string; severity: AgentSeverity; detail?: string; impact?: string | null; affectedServices?: string[] }) => Promise<{ success: boolean; briefPath: string; projectPath: string; error?: string }>;
   agentChat: (
@@ -808,6 +811,53 @@ export interface ProactiveFinding {
 }
 
 export type AgentSeverity = 'critical' | 'warning' | 'suggestion';
+
+// Stack Diff types
+export interface FingerprintService {
+  name: string;
+  type: string;
+  ports: number[];
+  health: string;
+}
+
+export interface FingerprintContainer {
+  name: string;
+  image: string;
+  imageTag: string;
+  state: string;
+  ports: number[];
+}
+
+export interface StackFingerprint {
+  version: 1;
+  generatedAt: number;
+  label: string;
+  services: FingerprintService[];
+  containers: FingerprintContainer[];
+  envKeys: string[];
+  checksum: string;
+}
+
+export type DiffStatus = 'present' | 'missing' | 'different';
+
+export interface StackDiffItem {
+  name: string;
+  status: DiffStatus;
+  side?: 'mine' | 'theirs';
+  differences?: string[];
+}
+
+export interface StackDiffResult {
+  services: StackDiffItem[];
+  containers: StackDiffItem[];
+  envKeys: StackDiffItem[];
+  summary: {
+    matching: number;
+    onlyMine: number;
+    onlyTheirs: number;
+    different: number;
+  };
+}
 
 export interface AgentFixAction {
   type: 'kill-port' | 'restart-container' | 'copy-only' | 'write-file';
