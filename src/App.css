@@ -18131,3 +18131,9 @@ body.sentinel-panel-open .activity-donut-total {
   background: var(--bg-muted);
   color: var(--text-muted);
 }
+
+/* Blueprint panel layout adjustment when open */
+.graph-container.blueprint-open {
+  margin-right: 352px; /* 340px panel + 12px gap */
+  transition: margin-right 0.2s ease;
+}

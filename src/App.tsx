@@ -17,6 +17,7 @@ import { ContainerLogsTab } from "./components/ContainerLogsTab";
 import { AnalyticsView } from "./components/AnalyticsView";
 import { WelcomeModal } from "./components/WelcomeModal";
 import { ShareModal } from "./components/ShareModal";
+import { BlueprintPanel } from "./components/BlueprintPanel";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import {
   CommandPalette,
@@ -380,6 +381,7 @@ function App() {
   });
   const [alertPanelOpen, setAlertPanelOpen] = useState(false);
   const [alertHistory, setAlertHistory] = useState<AlertEvent[]>([]);
+  const [blueprintPanelOpen, setBlueprintPanelOpen] = useState(false);
   const alertPanelRef = useRef<HTMLDivElement>(null);
   const [optimisticDownNodes, setOptimisticDownNodes] = useState<
     Map<string, GraphNode>
@@ -1396,6 +1398,28 @@ function App() {
             </svg>
           </button>
           <button
+            className={`feedback-btn${blueprintPanelOpen ? " alert-toggle-active" : ""}`}
+            onClick={() => setBlueprintPanelOpen((v) => !v)}
+            title="Service Blueprint"
+          >
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <rect x="2" y="2" width="12" height="12" rx="2" />
+              <line x1="5" y1="6" x2="11" y2="6" />
+              <line x1="5" y1="10" x2="9" y2="10" />
+            </svg>
+            Blueprint
+          </button>
+          <button
             className="alert-toggle"
             onClick={handleToggleTheme}
             title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
@@ -1729,7 +1753,7 @@ function App() {
                 <div
                   className={`main-view ${viewMode === "graph" ? "main-view-active" : ""}`}
                 >
-                  <div className="graph-container">
+                  <div className={`graph-container${blueprintPanelOpen ? " blueprint-open" : ""}`}>
                     {loading ? (
                       <div className="loading">Scanning localhost...</div>
                     ) : (
@@ -1873,6 +1897,16 @@ function App() {
           activeTabLabel={
             tabs.find((t) => t.id === selectedTab)?.label ?? SYSTEM_TAB_LABEL
           }
+        />
+      )}
+
+      {/* Blueprint Panel */}
+      {blueprintPanelOpen && (
+        <BlueprintPanel
+          onClose={() => setBlueprintPanelOpen(false)}
+          snapshot={snapshot}
+          projectPath={selectedTab === SYSTEM_TAB_ID ? null : selectedTab}
+          label={tabs.find((t) => t.id === selectedTab)?.label ?? SYSTEM_TAB_LABEL}
         />
       )}
     </div>
