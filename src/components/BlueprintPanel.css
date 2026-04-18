@@ -1,25 +1,33 @@
 /* Blueprint Panel */
 .blueprint-panel {
   position: fixed;
-  right: 0;
-  top: 0;
-  bottom: 0;
+  top: var(--agp-top-offset, 156px);
+  right: 16px;
+  bottom: 16px;
   width: 340px;
   background: var(--bg-white);
-  border-left: 1px solid var(--border-color);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
   display: flex;
   flex-direction: column;
-  z-index: 200;
+  z-index: 190;
   overflow: hidden;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  animation: agp-slide-in 0.18s ease;
+}
+
+[data-theme="dark"] .blueprint-panel {
+  box-shadow: -4px 0 24px rgba(0, 0, 0, 0.5);
 }
 
 .blueprint-panel-header {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 12px 14px;
+  padding: 14px 16px 12px;
   border-bottom: 1px solid var(--border-color);
   flex-shrink: 0;
+  background: var(--bg-white);
 }
 
 .blueprint-panel-title {
@@ -341,8 +349,11 @@
   gap: 6px;
 }
 
-.blueprint-btn {
+.blueprint-footer-row .blueprint-btn {
   flex: 1;
+}
+
+.blueprint-btn {
   padding: 7px 10px;
   border-radius: 6px;
   font-size: 12px;

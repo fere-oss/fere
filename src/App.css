@@ -739,6 +739,14 @@ body.sentinel-panel-open .main-content {
   margin-right: calc(420px + 12px);
 }
 
+body.blueprint-panel-open .main-content {
+  margin-right: calc(340px + 12px);
+}
+
+body.blueprint-panel-open.sentinel-panel-open .main-content {
+  margin-right: calc(340px + 16px + 420px + 12px);
+}
+
 body.sentinel-panel-open .activity-stack-health-header {
   flex-direction: column;
 }
@@ -18132,8 +18140,7 @@ body.sentinel-panel-open .activity-donut-total {
   color: var(--text-muted);
 }
 
-/* Blueprint panel layout adjustment when open */
-.graph-container.blueprint-open {
-  margin-right: 352px; /* 340px panel + 12px gap */
-  transition: margin-right 0.2s ease;
+/* When blueprint panel is open alongside Sentinel, shift Sentinel to the left */
+.blueprint-panel-active .agp-popup {
+  right: calc(340px + 32px); /* 340px blueprint + 16px gap + 16px from edge */
 }

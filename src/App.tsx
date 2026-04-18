@@ -885,6 +885,16 @@ function App() {
     }
   }, [graphIndex.nonExternalNodes, databaseNode]);
 
+  // Sync blueprint-panel-open body class so CSS can push .main-content like Sentinel does
+  useEffect(() => {
+    if (blueprintPanelOpen) {
+      document.body.classList.add("blueprint-panel-open");
+    } else {
+      document.body.classList.remove("blueprint-panel-open");
+    }
+    return () => document.body.classList.remove("blueprint-panel-open");
+  }, [blueprintPanelOpen]);
+
   // Open database view directly from top tabs (show database list)
   const handleOpenDatabaseView = useCallback(() => {
     setViewMode("database");
@@ -1149,7 +1159,7 @@ function App() {
   }, [graphIndex.nonExternalNodes]);
 
   return (
-    <div className="app">
+    <div className={`app${blueprintPanelOpen ? " blueprint-panel-active" : ""}`}>
       <div
         className="app-window-top-hitbox"
         onDoubleClick={handleHeaderDoubleClick}
@@ -1753,7 +1763,7 @@ function App() {
                 <div
                   className={`main-view ${viewMode === "graph" ? "main-view-active" : ""}`}
                 >
-                  <div className={`graph-container${blueprintPanelOpen ? " blueprint-open" : ""}`}>
+                  <div className="graph-container">
                     {loading ? (
                       <div className="loading">Scanning localhost...</div>
                     ) : (
