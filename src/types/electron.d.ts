@@ -778,6 +778,68 @@ export interface ElectronAPI {
   onFindingWorsened: (callback: (findings: AgentFinding[]) => void) => void;
   offFindingWorsened: () => void;
   setNativeTheme?: (theme: "light" | "dark") => Promise<void>;
+
+  // Service Blueprint
+  saveBlueprint: (opts: { snapshot: SystemSnapshot; projectPath: string; label?: string }) => Promise<{ success: boolean; repoHash: string }>;
+  listBlueprints: () => Promise<BlueprintListItem[]>;
+  loadBlueprint: (hash: string) => Promise<Blueprint>;
+  deleteBlueprint: (hash: string) => Promise<void>;
+  checkBlueprint: (opts: { hash: string; snapshot: SystemSnapshot }) => Promise<BlueprintCheckResult>;
+}
+
+// Blueprint types
+export interface BlueprintService {
+  name: string;
+  type: string;
+  ports: number[];
+}
+
+export interface BlueprintContainer {
+  name: string;
+  image: string;
+  imageTag: string;
+  ports: number[];
+}
+
+export interface Blueprint {
+  version: 1;
+  savedAt: number;
+  repoPath: string;
+  repoHash: string;
+  label: string;
+  services: BlueprintService[];
+  containers: BlueprintContainer[];
+  requiredEnvKeys: string[];
+  dependencyOrder: string[];
+}
+
+export type GapStatus = 'ok' | 'missing' | 'wrong-version' | 'wrong-port' | 'not-running';
+
+export interface BlueprintGapItem {
+  name: string;
+  status: GapStatus;
+  expected?: string;
+  actual?: string;
+  detail?: string;
+}
+
+export interface BlueprintCheckResult {
+  completionPct: number;
+  services: BlueprintGapItem[];
+  containers: BlueprintGapItem[];
+  envKeys: BlueprintGapItem[];
+  missingCount: number;
+  wrongCount: number;
+  okCount: number;
+}
+
+export interface BlueprintListItem {
+  repoHash: string;
+  repoPath: string;
+  label: string;
+  savedAt: number;
+  serviceCount: number;
+  containerCount: number;
 }
 
 export interface ChatStep {
