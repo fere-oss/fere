@@ -157,6 +157,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Fere Agent
   agentUsage: () => ipcRenderer.invoke('agent:usage'),
   agentScan: (nodeIds) => ipcRenderer.invoke('agent:scan', nodeIds),
+
+  // Service Blueprint
+  saveBlueprint: (opts) => ipcRenderer.invoke('blueprint:save', opts),
+  loadBlueprint: (projectPath) => ipcRenderer.invoke('blueprint:load', projectPath),
+  deleteBlueprint: (projectPath) => ipcRenderer.invoke('blueprint:delete', projectPath),
+  checkBlueprint: (opts) => ipcRenderer.invoke('blueprint:check', opts),
   agentApplyFix: (action) => ipcRenderer.invoke('agent:apply-fix', action),
   openInClaudeCode: (finding) => ipcRenderer.invoke('agent:open-in-claude-code', finding),
   agentChat: (messages, nodeIds, tabLabel, options, graphEdges) =>

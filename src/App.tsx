@@ -18,6 +18,7 @@ import { AnalyticsView } from "./components/AnalyticsView";
 import { WelcomeModal } from "./components/WelcomeModal";
 import { ShareModal } from "./components/ShareModal";
 import { StackDiffModal } from "./components/StackDiffModal";
+import { BlueprintPanel } from "./components/BlueprintPanel";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import {
   CommandPalette,
@@ -300,7 +301,9 @@ function App() {
   // Theme state — persisted to localStorage, applied via data-theme attribute on <html>
   const [theme, setTheme] = useState<Theme>(() => {
     try {
-      return window.localStorage.getItem(THEME_KEY) === "dark" ? "dark" : "light";
+      return window.localStorage.getItem(THEME_KEY) === "dark"
+        ? "dark"
+        : "light";
     } catch {
       return "light";
     }
@@ -310,7 +313,9 @@ function App() {
     document.documentElement.setAttribute("data-theme", theme);
     try {
       window.localStorage.setItem(THEME_KEY, theme);
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
     window.electronAPI?.setNativeTheme?.(theme);
   }, [theme]);
 
@@ -381,6 +386,7 @@ function App() {
   });
   const [alertPanelOpen, setAlertPanelOpen] = useState(false);
   const [alertHistory, setAlertHistory] = useState<AlertEvent[]>([]);
+  const [blueprintPanelOpen, setBlueprintPanelOpen] = useState(false);
   const alertPanelRef = useRef<HTMLDivElement>(null);
   const [optimisticDownNodes, setOptimisticDownNodes] = useState<
     Map<string, GraphNode>
@@ -458,7 +464,10 @@ function App() {
   }, []);
 
   useEffect(() => {
-    window.electronAPI.authGetSession().then(setAuthSession).catch(() => {});
+    window.electronAPI
+      .authGetSession()
+      .then(setAuthSession)
+      .catch(() => {});
     const cleanup = window.electronAPI.onAuthSessionChanged((session) => {
       setAuthSession(session);
     });
@@ -885,6 +894,16 @@ function App() {
     }
   }, [graphIndex.nonExternalNodes, databaseNode]);
 
+  // Sync blueprint-panel-open body class so CSS can push .main-content like Sentinel does
+  useEffect(() => {
+    if (blueprintPanelOpen) {
+      document.body.classList.add("blueprint-panel-open");
+    } else {
+      document.body.classList.remove("blueprint-panel-open");
+    }
+    return () => document.body.classList.remove("blueprint-panel-open");
+  }, [blueprintPanelOpen]);
+
   // Open database view directly from top tabs (show database list)
   const handleOpenDatabaseView = useCallback(() => {
     setViewMode("database");
@@ -1149,7 +1168,9 @@ function App() {
   }, [graphIndex.nonExternalNodes]);
 
   return (
-    <div className="app">
+    <div
+      className={`app${blueprintPanelOpen ? " blueprint-panel-active" : ""}`}
+    >
       <div
         className="app-window-top-hitbox"
         onDoubleClick={handleHeaderDoubleClick}
@@ -1175,8 +1196,13 @@ function App() {
                 referrerPolicy="no-referrer"
               />
             ) : (
-              <div className="app-profile-avatar app-profile-avatar-fallback" aria-hidden="true">
-                {getAuthAvatarFallback(authSession.displayName || authSession.email)}
+              <div
+                className="app-profile-avatar app-profile-avatar-fallback"
+                aria-hidden="true"
+              >
+                {getAuthAvatarFallback(
+                  authSession.displayName || authSession.email,
+                )}
               </div>
             )}
             <div className="app-profile-copy">
@@ -1184,7 +1210,10 @@ function App() {
                 {authSession.displayName || authSession.email}
               </span>
               <span className="app-profile-meta">
-                Signed in with {authSession.provider === "google" ? "Google" : authSession.provider || "account"}
+                Signed in with{" "}
+                {authSession.provider === "google"
+                  ? "Google"
+                  : authSession.provider || "account"}
               </span>
             </div>
             <button
@@ -1397,6 +1426,28 @@ function App() {
             </svg>
           </button>
           <button
+            className={`feedback-btn${blueprintPanelOpen ? " alert-toggle-active" : ""}`}
+            onClick={() => setBlueprintPanelOpen((v) => !v)}
+            title="Service Blueprint"
+          >
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <rect x="2" y="2" width="12" height="12" rx="2" />
+              <line x1="5" y1="6" x2="11" y2="6" />
+              <line x1="5" y1="10" x2="9" y2="10" />
+            </svg>
+            Blueprint
+          </button>
+          <button
             className="alert-toggle"
             onClick={() => setShowStackDiff(true)}
             title="Stack Diff — compare your dev stack with a teammate"
@@ -1421,8 +1472,12 @@ function App() {
           <button
             className="alert-toggle"
             onClick={handleToggleTheme}
-            title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-            aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+            title={
+              theme === "dark" ? "Switch to light mode" : "Switch to dark mode"
+            }
+            aria-label={
+              theme === "dark" ? "Switch to light mode" : "Switch to dark mode"
+            }
           >
             {theme === "dark" ? (
               <svg
@@ -1902,6 +1957,17 @@ function App() {
       {/* Stack Diff Modal */}
       {showStackDiff && (
         <StackDiffModal onClose={() => setShowStackDiff(false)} />
+      )}
+      {/* Blueprint Panel */}
+      {blueprintPanelOpen && (
+        <BlueprintPanel
+          onClose={() => setBlueprintPanelOpen(false)}
+          snapshot={snapshot}
+          projectPath={selectedTab === SYSTEM_TAB_ID ? null : selectedTab}
+          label={
+            tabs.find((t) => t.id === selectedTab)?.label ?? SYSTEM_TAB_LABEL
+          }
+        />
       )}
     </div>
   );

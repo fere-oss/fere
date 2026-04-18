@@ -178,6 +178,7 @@ const {
 } = require("./services/gistPublisher");
 const { executeTracedRequest } = require("./services/traceCapture");
 const { buildFingerprint } = require("./services/stackFingerprint");
+const blueprintManager = require("./services/blueprintManager");
 
 app.setName("Fere");
 app.name = "Fere";
@@ -4500,5 +4501,42 @@ ipcMain.handle("agent:chat", async (event, payload) => {
   } catch (err) {
     console.error("agent:chat error:", err);
     return { success: false, error: err.message };
+  }
+});
+
+// Blueprint IPC handlers
+ipcMain.handle("blueprint:save", async (_, { snapshot, projectPath, label }) => {
+  try {
+    return await blueprintManager.saveBlueprint(snapshot, projectPath, label);
+  } catch (err) {
+    console.error("blueprint:save error:", err);
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle("blueprint:load", async (_, projectPath) => {
+  try {
+    return blueprintManager.loadBlueprint(projectPath);
+  } catch (err) {
+    console.error("blueprint:load error:", err);
+    return null;
+  }
+});
+
+ipcMain.handle("blueprint:delete", async (_, projectPath) => {
+  try {
+    blueprintManager.deleteBlueprint(projectPath);
+  } catch (err) {
+    console.error("blueprint:delete error:", err);
+    throw err;
+  }
+});
+
+ipcMain.handle("blueprint:check", async (_, { projectPath, snapshot }) => {
+  try {
+    return blueprintManager.checkBlueprint(projectPath, snapshot);
+  } catch (err) {
+    console.error("blueprint:check error:", err);
+    throw err;
   }
 });
