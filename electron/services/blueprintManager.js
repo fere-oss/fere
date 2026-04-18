@@ -2,21 +2,11 @@
 
 const fs = require('fs');
 const path = require('path');
-const os = require('os');
-const crypto = require('crypto');
 
-const BLUEPRINTS_DIR = path.join(os.homedir(), '.fere', 'blueprints');
+const BLUEPRINT_FILENAME = '.fere/blueprint.json';
 
-function ensureBlueprintsDir() {
-  fs.mkdirSync(BLUEPRINTS_DIR, { recursive: true });
-}
-
-function repoHash(repoPath) {
-  return crypto.createHash('sha256').update(repoPath).digest('hex').slice(0, 10);
-}
-
-function blueprintPath(hash) {
-  return path.join(BLUEPRINTS_DIR, `${hash}.json`);
+function blueprintFilePath(projectPath) {
+  return path.join(projectPath, BLUEPRINT_FILENAME);
 }
 
 function extractEnvKeys(projectPath) {
@@ -34,22 +24,22 @@ function extractEnvKeys(projectPath) {
 }
 
 async function saveBlueprint(snapshot, projectPath, label) {
-  ensureBlueprintsDir();
+  if (!projectPath || projectPath === '__system__') {
+    throw new Error('Blueprint requires a project path');
+  }
 
-  const hash = repoHash(projectPath);
+  // Ensure .fere/ directory exists inside the repo
+  const fereDir = path.join(projectPath, '.fere');
+  fs.mkdirSync(fereDir, { recursive: true });
 
   // Extract services from graph nodes matching this project
   const services = (snapshot.graph?.nodes ?? [])
     .filter(n => {
       if (n.isGhost) return false;
       if (n.type === 'external') return false;
-      // If projectPath is provided, filter by it; otherwise include all non-external nodes
-      if (projectPath) {
-        const nodePath = n.projectPath || n.repoPath;
-        if (!nodePath) return false;
-        return nodePath === projectPath || nodePath.startsWith(projectPath) || projectPath.startsWith(nodePath);
-      }
-      return true;
+      const nodePath = n.projectPath || n.repoPath;
+      if (!nodePath) return false;
+      return nodePath === projectPath || nodePath.startsWith(projectPath) || projectPath.startsWith(nodePath);
     })
     .map(n => ({
       name: n.name,
@@ -63,14 +53,12 @@ async function saveBlueprint(snapshot, projectPath, label) {
     .filter(c => {
       const composeDir = c.labels?.['com.docker.compose.project.working_dir'];
       if (composeDir) {
-        if (!projectPath) return true; // System-wide: include all with compose labels
         return (
           composeDir === projectPath ||
           composeDir.startsWith(projectPath) ||
           projectPath.startsWith(composeDir)
         );
       }
-      // If no compose info, include all running containers when saving
       return c.state === 'running';
     })
     .map(c => {
@@ -86,19 +74,16 @@ async function saveBlueprint(snapshot, projectPath, label) {
     })
     .sort((a, b) => a.name.localeCompare(b.name));
 
-  const requiredEnvKeys = projectPath ? extractEnvKeys(projectPath) : [];
+  const requiredEnvKeys = extractEnvKeys(projectPath);
 
-  // Compute dependency order: topological sort of edges between these service nodes
+  // Topological sort of edges between project nodes for dependency order
   const serviceIds = new Set(
     (snapshot.graph?.nodes ?? [])
       .filter(n => {
         if (n.isGhost || n.type === 'external') return false;
-        if (projectPath) {
-          const nodePath = n.projectPath || n.repoPath;
-          if (!nodePath) return false;
-          return nodePath === projectPath || nodePath.startsWith(projectPath) || projectPath.startsWith(nodePath);
-        }
-        return true;
+        const nodePath = n.projectPath || n.repoPath;
+        if (!nodePath) return false;
+        return nodePath === projectPath || nodePath.startsWith(projectPath) || projectPath.startsWith(nodePath);
       })
       .map(n => n.id)
   );
@@ -106,22 +91,14 @@ async function saveBlueprint(snapshot, projectPath, label) {
   const edges = (snapshot.graph?.edges ?? [])
     .filter(e => serviceIds.has(e.source) && serviceIds.has(e.target));
 
-  // Build name lookup map
   const nodeNames = new Map();
   for (const node of snapshot.graph?.nodes ?? []) {
-    if (serviceIds.has(node.id)) {
-      nodeNames.set(node.id, node.name);
-    }
+    if (serviceIds.has(node.id)) nodeNames.set(node.id, node.name);
   }
 
-  // Simple topological sort by in-degree (edges point from dependency to dependent)
   const inDegree = new Map();
-  for (const id of serviceIds) {
-    inDegree.set(id, 0);
-  }
-  for (const edge of edges) {
-    inDegree.set(edge.source, (inDegree.get(edge.source) || 0) + 1);
-  }
+  for (const id of serviceIds) inDegree.set(id, 0);
+  for (const edge of edges) inDegree.set(edge.source, (inDegree.get(edge.source) || 0) + 1);
   const dependencyOrder = Array.from(inDegree.entries())
     .sort((a, b) => a[1] - b[1])
     .map(([id]) => nodeNames.get(id))
@@ -130,62 +107,40 @@ async function saveBlueprint(snapshot, projectPath, label) {
   const blueprint = {
     version: 1,
     savedAt: Date.now(),
-    repoPath: projectPath || '__system__',
-    repoHash: hash,
-    label: label || (projectPath ? path.basename(projectPath) : 'System'),
+    repoPath: projectPath,
+    label: label || path.basename(projectPath),
     services,
     containers,
     requiredEnvKeys,
     dependencyOrder,
   };
 
-  // Atomic write: write to tmp then rename
-  const filePath = blueprintPath(hash);
+  // Atomic write: tmp then rename
+  const filePath = blueprintFilePath(projectPath);
   const tmpPath = filePath + '.tmp';
   fs.writeFileSync(tmpPath, JSON.stringify(blueprint, null, 2), 'utf8');
   fs.renameSync(tmpPath, filePath);
 
-  return { success: true, repoHash: hash };
+  return { success: true };
 }
 
-function listBlueprints() {
-  ensureBlueprintsDir();
+function loadBlueprint(projectPath) {
   try {
-    return fs.readdirSync(BLUEPRINTS_DIR)
-      .filter(f => f.endsWith('.json') && !f.endsWith('.tmp'))
-      .map(f => {
-        try {
-          const content = JSON.parse(fs.readFileSync(path.join(BLUEPRINTS_DIR, f), 'utf8'));
-          return {
-            repoHash: content.repoHash,
-            repoPath: content.repoPath,
-            label: content.label,
-            savedAt: content.savedAt,
-            serviceCount: content.services?.length ?? 0,
-            containerCount: content.containers?.length ?? 0,
-          };
-        } catch (_) { return null; }
-      })
-      .filter(Boolean)
-      .sort((a, b) => b.savedAt - a.savedAt);
-  } catch (_) { return []; }
+    const content = fs.readFileSync(blueprintFilePath(projectPath), 'utf8');
+    return JSON.parse(content);
+  } catch (_) {
+    return null;
+  }
 }
 
-function loadBlueprint(hash) {
-  const filePath = blueprintPath(hash);
-  return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+function deleteBlueprint(projectPath) {
+  fs.unlinkSync(blueprintFilePath(projectPath));
 }
 
-function deleteBlueprint(hash) {
-  const filePath = blueprintPath(hash);
-  fs.unlinkSync(filePath);
-}
+function checkBlueprint(projectPath, snapshot) {
+  const blueprint = loadBlueprint(projectPath);
+  if (!blueprint) throw new Error('No blueprint found for this project');
 
-function checkBlueprint(hash, snapshot) {
-  const blueprint = loadBlueprint(hash);
-  const projectPath = blueprint.repoPath === '__system__' ? null : blueprint.repoPath;
-
-  // Build name lookup for current graph nodes
   const currentNodes = new Map();
   for (const node of snapshot.graph?.nodes ?? []) {
     currentNodes.set(node.name.toLowerCase(), node);
@@ -205,7 +160,6 @@ function checkBlueprint(hash, snapshot) {
     return { name: s.name, status: 'ok' };
   });
 
-  // Build container lookup
   const currentContainers = new Map();
   for (const c of snapshot.docker?.containers ?? []) {
     currentContainers.set(c.name.toLowerCase(), c);
@@ -217,7 +171,6 @@ function checkBlueprint(hash, snapshot) {
     if (current.state !== 'running') {
       return { name: c.name, status: 'not-running', actual: current.state, detail: `Container is ${current.state}` };
     }
-    // Check image tag
     const currentTag = (current.image || '').split(':')[1] || 'latest';
     if (c.imageTag !== 'latest' && currentTag !== c.imageTag) {
       return { name: c.name, status: 'wrong-version', expected: `${c.image}:${c.imageTag}`, actual: `${c.image}:${currentTag}`, detail: `Expected ${c.imageTag}, running ${currentTag}` };
@@ -225,8 +178,7 @@ function checkBlueprint(hash, snapshot) {
     return { name: c.name, status: 'ok' };
   });
 
-  // Check env keys
-  const currentKeys = projectPath ? new Set(extractEnvKeys(projectPath)) : new Set();
+  const currentKeys = new Set(extractEnvKeys(projectPath));
   const envResults = blueprint.requiredEnvKeys.map(key => {
     if (currentKeys.has(key)) return { name: key, status: 'ok' };
     return { name: key, status: 'missing', detail: 'Not found in any .env file' };
@@ -235,18 +187,10 @@ function checkBlueprint(hash, snapshot) {
   const allItems = [...serviceResults, ...containerResults, ...envResults];
   const okCount = allItems.filter(i => i.status === 'ok').length;
   const missingCount = allItems.filter(i => i.status === 'missing').length;
-  const wrongCount = allItems.filter(i => i.status === 'wrong-version' || i.status === 'wrong-port' || i.status === 'not-running').length;
+  const wrongCount = allItems.filter(i => ['wrong-version', 'wrong-port', 'not-running'].includes(i.status)).length;
   const completionPct = allItems.length > 0 ? Math.round((okCount / allItems.length) * 100) : 100;
 
-  return {
-    completionPct,
-    services: serviceResults,
-    containers: containerResults,
-    envKeys: envResults,
-    missingCount,
-    wrongCount,
-    okCount,
-  };
+  return { completionPct, services: serviceResults, containers: containerResults, envKeys: envResults, missingCount, wrongCount, okCount };
 }
 
-module.exports = { saveBlueprint, listBlueprints, loadBlueprint, deleteBlueprint, checkBlueprint };
+module.exports = { saveBlueprint, loadBlueprint, deleteBlueprint, checkBlueprint };

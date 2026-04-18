@@ -4490,36 +4490,27 @@ ipcMain.handle("blueprint:save", async (_, { snapshot, projectPath, label }) => 
   }
 });
 
-ipcMain.handle("blueprint:list", async () => {
+ipcMain.handle("blueprint:load", async (_, projectPath) => {
   try {
-    return blueprintManager.listBlueprints();
-  } catch (err) {
-    console.error("blueprint:list error:", err);
-    return [];
-  }
-});
-
-ipcMain.handle("blueprint:load", async (_, hash) => {
-  try {
-    return blueprintManager.loadBlueprint(hash);
+    return blueprintManager.loadBlueprint(projectPath);
   } catch (err) {
     console.error("blueprint:load error:", err);
-    throw err;
+    return null;
   }
 });
 
-ipcMain.handle("blueprint:delete", async (_, hash) => {
+ipcMain.handle("blueprint:delete", async (_, projectPath) => {
   try {
-    blueprintManager.deleteBlueprint(hash);
+    blueprintManager.deleteBlueprint(projectPath);
   } catch (err) {
     console.error("blueprint:delete error:", err);
     throw err;
   }
 });
 
-ipcMain.handle("blueprint:check", async (_, { hash, snapshot }) => {
+ipcMain.handle("blueprint:check", async (_, { projectPath, snapshot }) => {
   try {
-    return blueprintManager.checkBlueprint(hash, snapshot);
+    return blueprintManager.checkBlueprint(projectPath, snapshot);
   } catch (err) {
     console.error("blueprint:check error:", err);
     throw err;

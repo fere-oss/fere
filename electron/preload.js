@@ -160,9 +160,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Service Blueprint
   saveBlueprint: (opts) => ipcRenderer.invoke('blueprint:save', opts),
-  listBlueprints: () => ipcRenderer.invoke('blueprint:list'),
-  loadBlueprint: (hash) => ipcRenderer.invoke('blueprint:load', hash),
-  deleteBlueprint: (hash) => ipcRenderer.invoke('blueprint:delete', hash),
+  loadBlueprint: (projectPath) => ipcRenderer.invoke('blueprint:load', projectPath),
+  deleteBlueprint: (projectPath) => ipcRenderer.invoke('blueprint:delete', projectPath),
   checkBlueprint: (opts) => ipcRenderer.invoke('blueprint:check', opts),
   agentApplyFix: (action) => ipcRenderer.invoke('agent:apply-fix', action),
   openInClaudeCode: (finding) => ipcRenderer.invoke('agent:open-in-claude-code', finding),

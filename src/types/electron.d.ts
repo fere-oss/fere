@@ -780,11 +780,10 @@ export interface ElectronAPI {
   setNativeTheme?: (theme: "light" | "dark") => Promise<void>;
 
   // Service Blueprint
-  saveBlueprint: (opts: { snapshot: SystemSnapshot; projectPath: string; label?: string }) => Promise<{ success: boolean; repoHash: string }>;
-  listBlueprints: () => Promise<BlueprintListItem[]>;
-  loadBlueprint: (hash: string) => Promise<Blueprint>;
-  deleteBlueprint: (hash: string) => Promise<void>;
-  checkBlueprint: (opts: { hash: string; snapshot: SystemSnapshot }) => Promise<BlueprintCheckResult>;
+  saveBlueprint: (opts: { snapshot: SystemSnapshot; projectPath: string; label?: string }) => Promise<{ success: boolean }>;
+  loadBlueprint: (projectPath: string) => Promise<Blueprint | null>;
+  deleteBlueprint: (projectPath: string) => Promise<void>;
+  checkBlueprint: (opts: { projectPath: string; snapshot: SystemSnapshot }) => Promise<BlueprintCheckResult>;
 }
 
 // Blueprint types
@@ -805,7 +804,6 @@ export interface Blueprint {
   version: 1;
   savedAt: number;
   repoPath: string;
-  repoHash: string;
   label: string;
   services: BlueprintService[];
   containers: BlueprintContainer[];
@@ -833,14 +831,6 @@ export interface BlueprintCheckResult {
   okCount: number;
 }
 
-export interface BlueprintListItem {
-  repoHash: string;
-  repoPath: string;
-  label: string;
-  savedAt: number;
-  serviceCount: number;
-  containerCount: number;
-}
 
 export interface ChatStep {
   type: 'read_file' | 'list_directory' | 'run_command' | 'docker_logs' | 'docker_exec' | 'docker_control' | 'get_node_details' | 'propose_fix';

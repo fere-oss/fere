@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
 import type { SystemSnapshot, BlueprintGapItem, GapStatus } from '../types/electron';
 import { useBlueprintManager } from '../hooks/useBlueprintManager';
 import './BlueprintPanel.css';
@@ -107,9 +107,7 @@ function AccordionSection({
 
 export function BlueprintPanel({ onClose, snapshot, projectPath, label }: BlueprintPanelProps) {
   const {
-    blueprints,
-    selectedHash,
-    setSelectedHash,
+    blueprint,
     checkResult,
     saving,
     checking,
@@ -132,13 +130,7 @@ export function BlueprintPanel({ onClose, snapshot, projectPath, label }: Bluepr
     });
   }
 
-  // Find blueprint for current project
-  const currentProjectBlueprint = useMemo(() => {
-    if (!projectPath) return blueprints.find(b => b.repoPath === '__system__') ?? null;
-    return blueprints.find(b => b.repoPath === projectPath) ?? null;
-  }, [blueprints, projectPath]);
-
-  const hasBlueprint = !!currentProjectBlueprint || (selectedHash != null && blueprints.some(b => b.repoHash === selectedHash));
+  const hasBlueprint = !!blueprint;
 
   // Determine completion bar color class
   const barColorClass = checkResult
@@ -154,10 +146,8 @@ export function BlueprintPanel({ onClose, snapshot, projectPath, label }: Bluepr
       setDeletingConfirm(true);
       return;
     }
-    if (selectedHash) {
-      deleteBlueprint(selectedHash);
-      setDeletingConfirm(false);
-    }
+    deleteBlueprint();
+    setDeletingConfirm(false);
   }
 
   return (
@@ -194,25 +184,6 @@ export function BlueprintPanel({ onClose, snapshot, projectPath, label }: Bluepr
           </svg>
         </button>
       </div>
-
-      {/* Blueprint selector (only shows if multiple blueprints) */}
-      {blueprints.length > 1 && (
-        <div className="blueprint-panel-selector">
-          <select
-            className="blueprint-selector-select"
-            value={selectedHash ?? ''}
-            onChange={e => setSelectedHash(e.target.value || null)}
-            aria-label="Select blueprint"
-          >
-            <option value="">Select a blueprint…</option>
-            {blueprints.map(b => (
-              <option key={b.repoHash} value={b.repoHash}>
-                {b.label} ({b.serviceCount}s {b.containerCount}c)
-              </option>
-            ))}
-          </select>
-        </div>
-      )}
 
       {/* Body */}
       <div className="blueprint-panel-body">
@@ -315,7 +286,7 @@ export function BlueprintPanel({ onClose, snapshot, projectPath, label }: Bluepr
             <button
               className="blueprint-btn"
               onClick={() => check()}
-              disabled={checking || !snapshot || !selectedHash}
+              disabled={checking || !snapshot || !blueprint}
             >
               {checking ? 'Checking…' : 'Re-check'}
             </button>
@@ -347,7 +318,7 @@ export function BlueprintPanel({ onClose, snapshot, projectPath, label }: Bluepr
               <button
                 className="blueprint-btn blueprint-btn--danger"
                 onClick={handleDelete}
-                disabled={!selectedHash}
+                disabled={!blueprint}
               >
                 Delete Blueprint
               </button>
