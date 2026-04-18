@@ -27,18 +27,18 @@
 }
 
 [data-theme="dark"] {
-  --bg-primary:     #161616;
-  --bg-white:       #222222;
-  --bg-muted:       #1c1c1c;
-  --border-color:   #333333;
-  --border-hover:   #444444;
-  --text-primary:   #f0f0f0;
+  --bg-primary: #161616;
+  --bg-white: #222222;
+  --bg-muted: #1c1c1c;
+  --border-color: #333333;
+  --border-hover: #444444;
+  --text-primary: #f0f0f0;
   --text-secondary: #a3a3a3;
-  --text-muted:     #6e6e6e;
-  --text-faint:     #444444;
-  --green:          #76b900;
-  --blue:           #0078d4;
-  --neutral-gray:   #a3a3a3;
+  --text-muted: #6e6e6e;
+  --text-faint: #444444;
+  --green: #76b900;
+  --blue: #0078d4;
+  --neutral-gray: #a3a3a3;
 }
 
 body {
@@ -64,6 +64,38 @@ textarea {
   height: 100vh;
   overflow: hidden;
   position: relative;
+}
+
+/* VSCode-style title bar — slim drag strip with search centered */
+.app-titlebar {
+  display: flex;
+  align-items: center;
+  padding: 0 16px 0 84px; /* 84px = macOS traffic lights clearance */
+  height: 45px;
+  background: var(--bg-primary);
+  /* border-bottom: 1px solid var(--border-color); */
+  -webkit-app-region: drag;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 10;
+}
+
+/* Push command palette to center of the full window width */
+.app-titlebar .command-palette {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+/* Profile chip docked to the right of the titlebar */
+.app-titlebar-profile {
+  margin-left: auto;
+  flex-shrink: 0;
+  min-height: unset;
+  padding: 4px 8px;
+  border-radius: 8px;
+  font-size: 12px;
+  -webkit-app-region: no-drag;
 }
 
 .app-window-top-hitbox {
@@ -164,7 +196,7 @@ textarea {
 
 /* App Header */
 .app-header {
-  padding: 18px 16px 20px 32px;
+  padding: 12px 16px 14px 32px;
   -webkit-app-region: drag;
   -webkit-user-select: none;
   user-select: none;
@@ -838,8 +870,16 @@ body.sentinel-panel-open .activity-donut-total {
   border: 1px solid rgba(15, 23, 42, 0.08);
   border-radius: 20px;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.98)),
-    radial-gradient(circle at top left, rgba(14, 165, 233, 0.08), transparent 32%);
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.98),
+      rgba(248, 250, 252, 0.98)
+    ),
+    radial-gradient(
+      circle at top left,
+      rgba(14, 165, 233, 0.08),
+      transparent 32%
+    );
   box-shadow:
     0 16px 44px rgba(15, 23, 42, 0.12),
     0 2px 10px rgba(15, 23, 42, 0.05);
@@ -17492,11 +17532,26 @@ body.sentinel-panel-open .activity-donut-total {
 }
 
 /* Route method badges */
-[data-theme="dark"] .route-method.route-get    { background: rgba(34, 197, 94, 0.18);  color: #86efac; }
-[data-theme="dark"] .route-method.route-post   { background: rgba(249, 115, 22, 0.18); color: #fdba74; }
-[data-theme="dark"] .route-method.route-put    { background: rgba(59, 130, 246, 0.18); color: #93c5fd; }
-[data-theme="dark"] .route-method.route-delete { background: rgba(239, 68, 68, 0.18);  color: #fca5a5; }
-[data-theme="dark"] .route-method.route-patch  { background: rgba(168, 85, 247, 0.18); color: #d8b4fe; }
+[data-theme="dark"] .route-method.route-get {
+  background: rgba(34, 197, 94, 0.18);
+  color: #86efac;
+}
+[data-theme="dark"] .route-method.route-post {
+  background: rgba(249, 115, 22, 0.18);
+  color: #fdba74;
+}
+[data-theme="dark"] .route-method.route-put {
+  background: rgba(59, 130, 246, 0.18);
+  color: #93c5fd;
+}
+[data-theme="dark"] .route-method.route-delete {
+  background: rgba(239, 68, 68, 0.18);
+  color: #fca5a5;
+}
+[data-theme="dark"] .route-method.route-patch {
+  background: rgba(168, 85, 247, 0.18);
+  color: #d8b4fe;
+}
 
 /* Graph group labels */
 [data-theme="dark"] .graph-group-label {
@@ -17505,19 +17560,37 @@ body.sentinel-panel-open .activity-donut-total {
   color: #d4d4d4;
 }
 [data-theme="dark"] .graph-group-box {
-  background: color-mix(in srgb, var(--group-color, #4a4a60) 9%, rgba(34, 34, 34, 0.7));
-  border-color: color-mix(in srgb, var(--group-color, #4a4a60) 25%, rgba(51, 51, 51, 0.6));
+  background: color-mix(
+    in srgb,
+    var(--group-color, #4a4a60) 9%,
+    rgba(34, 34, 34, 0.7)
+  );
+  border-color: color-mix(
+    in srgb,
+    var(--group-color, #4a4a60) 25%,
+    rgba(51, 51, 51, 0.6)
+  );
 }
 
 /* Discovery / onboarding hints */
 [data-theme="dark"] .discovery-hint {
-  background: linear-gradient(180deg, rgba(34, 34, 34, 0.98), rgba(28, 28, 28, 0.98));
+  background: linear-gradient(
+    180deg,
+    rgba(34, 34, 34, 0.98),
+    rgba(28, 28, 28, 0.98)
+  );
   border-color: rgba(255, 255, 255, 0.08);
-  box-shadow: 0 16px 44px rgba(0, 0, 0, 0.55), 0 2px 10px rgba(0, 0, 0, 0.35);
+  box-shadow:
+    0 16px 44px rgba(0, 0, 0, 0.55),
+    0 2px 10px rgba(0, 0, 0, 0.35);
 }
-[data-theme="dark"] .discovery-hint-title { color: var(--text-primary); }
-[data-theme="dark"] .discovery-hint-body  { color: var(--text-secondary); }
-[data-theme="dark"] .discovery-hint-icon  {
+[data-theme="dark"] .discovery-hint-title {
+  color: var(--text-primary);
+}
+[data-theme="dark"] .discovery-hint-body {
+  color: var(--text-secondary);
+}
+[data-theme="dark"] .discovery-hint-icon {
   background: rgba(34, 34, 34, 0.92);
   border-color: rgba(255, 255, 255, 0.08);
 }
@@ -17526,18 +17599,24 @@ body.sentinel-panel-open .activity-donut-total {
   color: #161616;
   border-color: rgba(255, 255, 255, 0.12);
 }
-[data-theme="dark"] .discovery-hint-dismiss:hover { background: #d4d4d4; }
+[data-theme="dark"] .discovery-hint-dismiss:hover {
+  background: #d4d4d4;
+}
 [data-theme="dark"] .node-click-hint {
   background: linear-gradient(180deg, #222222, #1c1c1c);
   border-color: rgba(255, 255, 255, 0.08);
 }
-[data-theme="dark"] .node-click-hint-text    { color: var(--text-secondary); }
+[data-theme="dark"] .node-click-hint-text {
+  color: var(--text-secondary);
+}
 [data-theme="dark"] .node-click-hint-dismiss {
   background: #222222;
   color: var(--text-primary);
   border-color: rgba(255, 255, 255, 0.1);
 }
-[data-theme="dark"] .node-click-hint-dismiss:hover { background: #2e2e2e; }
+[data-theme="dark"] .node-click-hint-dismiss:hover {
+  background: #2e2e2e;
+}
 
 /* Graph canvas background */
 [data-theme="dark"] .graph-flow .react-flow__background {
@@ -17545,18 +17624,42 @@ body.sentinel-panel-open .activity-donut-total {
 }
 
 /* SQL syntax highlighting — VSCode Dark palette */
-[data-theme="dark"] .db-hl-keyword     { color: #569cd6; }
-[data-theme="dark"] .db-hl-function    { color: #dcdcaa; }
-[data-theme="dark"] .db-hl-identifier  { color: #9cdcfe; }
-[data-theme="dark"] .db-hl-qualified   { color: #9cdcfe; }
-[data-theme="dark"] .db-hl-string      { color: #ce9178; }
-[data-theme="dark"] .db-hl-number      { color: #b5cea8; }
-[data-theme="dark"] .db-hl-boolean     { color: #569cd6; }
-[data-theme="dark"] .db-hl-null        { color: #d7ba7d; }
-[data-theme="dark"] .db-hl-comment     { color: #6a9955; }
-[data-theme="dark"] .db-hl-operator    { color: #d4d4d4; }
-[data-theme="dark"] .db-hl-punctuation { color: #808080; }
-[data-theme="dark"] .db-hl-parameter   { color: #f48771; }
+[data-theme="dark"] .db-hl-keyword {
+  color: #569cd6;
+}
+[data-theme="dark"] .db-hl-function {
+  color: #dcdcaa;
+}
+[data-theme="dark"] .db-hl-identifier {
+  color: #9cdcfe;
+}
+[data-theme="dark"] .db-hl-qualified {
+  color: #9cdcfe;
+}
+[data-theme="dark"] .db-hl-string {
+  color: #ce9178;
+}
+[data-theme="dark"] .db-hl-number {
+  color: #b5cea8;
+}
+[data-theme="dark"] .db-hl-boolean {
+  color: #569cd6;
+}
+[data-theme="dark"] .db-hl-null {
+  color: #d7ba7d;
+}
+[data-theme="dark"] .db-hl-comment {
+  color: #6a9955;
+}
+[data-theme="dark"] .db-hl-operator {
+  color: #d4d4d4;
+}
+[data-theme="dark"] .db-hl-punctuation {
+  color: #808080;
+}
+[data-theme="dark"] .db-hl-parameter {
+  color: #f48771;
+}
 
 /* ─── Database: left sidebar ───────────────────────────────────────────── */
 
@@ -17709,7 +17812,9 @@ body.sentinel-panel-open .activity-donut-total {
 [data-theme="dark"] .db-header-tab.active {
   background: var(--bg-white);
   color: var(--text-primary);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.2);
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.3),
+    0 1px 2px rgba(0, 0, 0, 0.2);
 }
 
 /* ─── Database: URI connect bar ────────────────────────────────────────── */
@@ -17803,9 +17908,15 @@ body.sentinel-panel-open .activity-donut-total {
   background: var(--text-primary);
   color: var(--bg-primary);
 }
-[data-theme="dark"] .db-uri-status-testing { color: #fde047; }
-[data-theme="dark"] .db-uri-status-ok      { color: #86efac; }
-[data-theme="dark"] .db-uri-status-error   { color: #fca5a5; }
+[data-theme="dark"] .db-uri-status-testing {
+  color: #fde047;
+}
+[data-theme="dark"] .db-uri-status-ok {
+  color: #86efac;
+}
+[data-theme="dark"] .db-uri-status-error {
+  color: #fca5a5;
+}
 
 /* ─── Database: error states ───────────────────────────────────────────── */
 
@@ -18073,7 +18184,9 @@ body.sentinel-panel-open .activity-donut-total {
 
 [data-theme="dark"] .modal-content {
   background: var(--bg-white);
-  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 10px 10px -5px rgba(0, 0, 0, 0.3);
+  box-shadow:
+    0 20px 25px -5px rgba(0, 0, 0, 0.5),
+    0 10px 10px -5px rgba(0, 0, 0, 0.3);
 }
 
 /* ─── Requests: curl output and editor ──────────────────────────────────── */
@@ -18097,21 +18210,51 @@ body.sentinel-panel-open .activity-donut-total {
 
 /* ─── Requests: curl syntax highlighting (dark VSCode palette) ──────────── */
 
-[data-theme="dark"] .curl-hl-command    { color: #9ca3af; }
-[data-theme="dark"] .curl-hl-flag       { color: #8b95a7; }
-[data-theme="dark"] .curl-hl-method     { color: #86efac; }
-[data-theme="dark"] .curl-hl-url        { color: #fcd34d; }
-[data-theme="dark"] .curl-hl-quote      { color: #6b7280; }
-[data-theme="dark"] .curl-hl-header-key   { color: #9cdcfe; }
-[data-theme="dark"] .curl-hl-header-value { color: #fdba74; }
-[data-theme="dark"] .curl-hl-body       { color: #5eead4; }
-[data-theme="dark"] .curl-hl-string     { color: #93c5fd; }
-[data-theme="dark"] .curl-hl-number     { color: #c4b5fd; }
-[data-theme="dark"] .curl-hl-token      { color: var(--text-primary); }
-[data-theme="dark"] .curl-hl-env-key    { color: #fca5a5; }
-[data-theme="dark"] .curl-hl-env-value  { color: #5eead4; }
-[data-theme="dark"] .curl-hl-punctuation { color: #6b7280; }
-[data-theme="dark"] .curl-hl-continuation { color: #6b7280; }
+[data-theme="dark"] .curl-hl-command {
+  color: #9ca3af;
+}
+[data-theme="dark"] .curl-hl-flag {
+  color: #8b95a7;
+}
+[data-theme="dark"] .curl-hl-method {
+  color: #86efac;
+}
+[data-theme="dark"] .curl-hl-url {
+  color: #fcd34d;
+}
+[data-theme="dark"] .curl-hl-quote {
+  color: #6b7280;
+}
+[data-theme="dark"] .curl-hl-header-key {
+  color: #9cdcfe;
+}
+[data-theme="dark"] .curl-hl-header-value {
+  color: #fdba74;
+}
+[data-theme="dark"] .curl-hl-body {
+  color: #5eead4;
+}
+[data-theme="dark"] .curl-hl-string {
+  color: #93c5fd;
+}
+[data-theme="dark"] .curl-hl-number {
+  color: #c4b5fd;
+}
+[data-theme="dark"] .curl-hl-token {
+  color: var(--text-primary);
+}
+[data-theme="dark"] .curl-hl-env-key {
+  color: #fca5a5;
+}
+[data-theme="dark"] .curl-hl-env-value {
+  color: #5eead4;
+}
+[data-theme="dark"] .curl-hl-punctuation {
+  color: #6b7280;
+}
+[data-theme="dark"] .curl-hl-continuation {
+  color: #6b7280;
+}
 
 /* ─── Requests: state badges and interactive colors ─────────────────────── */
 

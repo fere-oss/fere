@@ -1154,9 +1154,19 @@ function App() {
         className="app-window-top-hitbox"
         onDoubleClick={handleHeaderDoubleClick}
       />
-      <div className="app-profile-slot">
+      {/* Title bar — command palette centered at top, VSCode-style */}
+      <div className="app-titlebar" onDoubleClick={handleHeaderDoubleClick}>
+        <CommandPalette
+          ref={commandPaletteRef}
+          graph={graph}
+          tabs={tabs}
+          selectedTab={selectedTab}
+          setSelectedTab={setSelectedTab}
+          setViewMode={setViewMode}
+          setIsAgentOpen={setIsAgentOpen}
+        />
         {authSession?.signedIn && (
-          <div className="app-profile-chip app-profile-chip-slot">
+          <div className="app-profile-chip app-titlebar-profile">
             {authSession.avatarUrl ? (
               <img
                 src={authSession.avatarUrl}
@@ -1329,17 +1339,6 @@ function App() {
             {analyticsBadge && <span className="analytics-tab-badge" />}
           </button>
         </div>
-
-        {/* Command Palette */}
-        <CommandPalette
-          ref={commandPaletteRef}
-          graph={graph}
-          tabs={tabs}
-          selectedTab={selectedTab}
-          setSelectedTab={setSelectedTab}
-          setViewMode={setViewMode}
-          setIsAgentOpen={setIsAgentOpen}
-        />
 
         {/* Header Actions */}
         <div className="app-header-actions">
