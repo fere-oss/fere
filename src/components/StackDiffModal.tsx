@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import type {
   StackFingerprint,
   StackDiffResult,
@@ -205,10 +205,11 @@ export function StackDiffModal({ onClose }: Props) {
   const [exporting, setExporting] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  // Load my fingerprint on demand (called when user clicks "Copy Fingerprint")
+  // Export fingerprint and copy to clipboard
   const handleExportAndCopy = useCallback(async () => {
     setExporting(true);
     try {
+      // Always fetch a fresh fingerprint so it reflects current runtime state
       const fp = await window.electronAPI.exportStackFingerprint({ label: "My Stack" });
       setMyFingerprint(fp);
       await window.electronAPI.copyText(JSON.stringify(fp, null, 2));
@@ -221,15 +222,13 @@ export function StackDiffModal({ onClose }: Props) {
     }
   }, []);
 
-  // Also load fingerprint eagerly when modal opens (for counts display)
-  const [loadedOnMount, setLoadedOnMount] = useState(false);
-  if (!loadedOnMount) {
-    setLoadedOnMount(true);
+  // Load fingerprint eagerly when modal opens (for counts display)
+  useEffect(() => {
     window.electronAPI
       .exportStackFingerprint({ label: "My Stack" })
       .then(setMyFingerprint)
-      .catch(() => {/* silently ignore */});
-  }
+      .catch(() => {/* silently ignore on load — user can still click Copy */});
+  }, []);
 
   const handleParse = useCallback(() => {
     setParseError("");
