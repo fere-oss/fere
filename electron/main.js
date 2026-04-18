@@ -177,6 +177,7 @@ const {
   buildPreviewUrl,
 } = require("./services/gistPublisher");
 const { executeTracedRequest } = require("./services/traceCapture");
+const { buildFingerprint } = require("./services/stackFingerprint");
 
 app.setName("Fere");
 app.name = "Fere";
@@ -2807,6 +2808,29 @@ ipcMain.handle("agent:open-in-claude-code", async (_, finding) => {
       briefPath: "",
       projectPath: "",
       error: err.message,
+    };
+  }
+});
+
+// ── Stack Diff ────────────────────────────────────────────────────────────────
+
+ipcMain.handle("stack:export-fingerprint", async (_, { label } = {}) => {
+  try {
+    const snapshot =
+      (snapshotScheduler && snapshotScheduler.getLatestSnapshot?.()) ||
+      (await getSystemSnapshot());
+    return buildFingerprint(snapshot, null, label || "My Stack");
+  } catch (err) {
+    console.error("stack:export-fingerprint error:", err);
+    // Return minimal valid fingerprint on error rather than crashing renderer
+    return {
+      version: 1,
+      generatedAt: Date.now(),
+      label: label || "My Stack",
+      services: [],
+      containers: [],
+      envKeys: [],
+      checksum: "00000000",
     };
   }
 });

@@ -173,4 +173,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   offFindingResolved: () => ipcRenderer.removeAllListeners('agent:finding-resolved'),
   onFindingWorsened: (callback) => ipcRenderer.on('agent:finding-worsened', (_, findings) => callback(findings)),
   offFindingWorsened: () => ipcRenderer.removeAllListeners('agent:finding-worsened'),
+
+  // Stack Diff
+  exportStackFingerprint: (opts) => ipcRenderer.invoke('stack:export-fingerprint', opts),
 });
