@@ -1,393 +1,386 @@
-# Fere Architecture and Feature Breakdown
+# Fere — Architecture
 
-## 1. Product Scope (Current)
-Fere is a macOS Electron desktop app that maps and monitors local development environments in near real time.
-
-Primary capabilities currently in the product:
-- Service topology graph from live process/port/connection data
-- Health status tracking per service (`active`, `idle`, `down`)
-- API route discovery from project source trees
-- External API/provider detection from source + env files
-- Multi-project tabbing (`macOS`/system + per-project views)
-- Docker container visibility (containers, networks, health)
-- Unified multi-container log streaming view
-- In-app API testing with cURL builder and persisted request history
-- Database tooling for containerized DBs + remote URI mode (MongoDB/PostgreSQL)
+Fere is a macOS Electron desktop app that maps and monitors local development environments in real time. It collects live data from the OS (processes, ports, TCP connections) and Docker to render a topology graph, track health, discover API routes, and surface runtime issues through the Sentinel engine.
 
 ---
 
-## 2. High-Level Architecture
+## Runtime layers
 
-### 2.1 Runtime Layers
-- Renderer (`React`):
-  - UI composition, graph rendering, feature tabs, request builder, DB views
-  - Receives system snapshots and deltas via preload API
-- Main process (`Electron`):
-  - Owns all OS-level and privileged operations
-  - Exposes IPC handlers for monitoring, control actions, Docker, DB, logs
-- Worker thread (`worker_threads`):
-  - Offloads CPU-heavy graph structure/metrics computation
-- Host tools/services:
-  - `ps`, `lsof`, Docker CLI, DB clients
+### Renderer (React + TypeScript)
 
-### 2.2 Core Data Flow
-1. Main process collects raw runtime data (processes, listening ports, established TCP connections, Docker snapshot).
-2. Snapshot scheduler decides full structure rebuild vs metrics-only overlay.
-3. Worker computes/updates graph nodes + edges.
-4. Main process emits full/delta snapshot events to renderer.
-5. Renderer applies deltas and updates graph + side panels.
-6. On-demand scans (routes, external APIs) enrich displayed services.
+Sandboxed browser context. Never accesses OS APIs directly.
+
+- Receives system snapshots and deltas through the preload bridge (`window.electronAPI`)
+- Owns all UI composition: topology graph, Sentinel panel, Requests tab, Database tab, Containers tab
+- Entry: `src/index.tsx` → `src/App.tsx`
+
+### Main process (Electron/Node)
+
+Owns all privileged operations — process enumeration, port scanning, Docker CLI, DB clients, HTTP execution.
+
+- Exposes IPC handlers for every privileged action
+- Runs the snapshot scheduler and graph builder worker
+- Entry: `electron/main.js`
+
+### Worker thread
+
+`electron/workers/graphBuilder.worker.js` offloads CPU-heavy graph node and edge computation off the main thread. Receives raw snapshots, returns structured graph data with cached topology.
+
+### Preload bridge
+
+`electron/preload.js` exposes `window.electronAPI` to the renderer via Electron's `contextBridge`. This is the only communication channel between renderer and main process. Its shape is defined as a TypeScript contract in `src/types/electron.d.ts`.
 
 ---
 
-## 3. Frontend Architecture (Renderer)
+## Core data flow
 
-## 3.1 Top-level Navigation (`src/App.tsx`)
-Fere currently has four main modes:
-- `Service Map`
-- `Containers`
-  - `Overview` sub-tab
-  - `Logs` sub-tab
-- `Requests`
-- `Database`
+```
+┌─────────────────────────────────────────────────────────┐
+│                     Main Process                         │
+│                                                          │
+│  OS commands  ──►  systemSnapshot  ──►  snapshotScheduler│
+│  (ps, lsof)         (parallel          (tiered cadence)  │
+│  Docker CLI          collection)              │          │
+│                                               ▼          │
+│                                       graphBuilder.worker│
+│                                       (structure + delta)│
+│                                               │          │
+│                                               ▼          │
+│                              emit: snapshot-delta event  │
+└───────────────────────────────────────────┬─────────────┘
+                                            │ IPC / preload bridge
+                                            ▼
+┌─────────────────────────────────────────────────────────┐
+│                      Renderer                            │
+│                                                          │
+│  useSystemMonitor  ──►  apply delta  ──►  React state   │
+│  (onSnapshotDelta)       (topology          │            │
+│                           or metrics)       ▼            │
+│                                        GraphView         │
+│                                        AgentPanel        │
+│                                        CurlBuilder       │
+│                                        ContainerLogsTab  │
+│                                        DatabasePage      │
+└─────────────────────────────────────────────────────────┘
+```
 
-The graph mode additionally has project tabs:
-- `macOS` system tab (`__system__`)
-- One tab per discovered `projectPath`
+**Snapshot cadence (tiered):**
 
-Tab metadata includes:
-- Service count
-- Inferred stack summary (e.g., Next + backend framework + DB/cache/broker labels)
+| Tier | Interval | Trigger |
+|------|----------|---------|
+| Fast probe | ~1.5 s | PID/port change detection |
+| Metrics overlay | ~5 s | Frequent updates when topology is stable |
+| Full structure rebuild | ~10 s | Forced, or on topology change |
 
-### 3.2 Graph Experience (`src/components/GraphView.tsx` + `src/components/graph/*`)
-Current behavior:
+On-demand scans (route discovery, external API detection) enrich the graph independently.
+
+---
+
+## Frontend structure
+
+### Navigation (`src/App.tsx`)
+
+Four top-level modes:
+
+| Mode | Description |
+|------|-------------|
+| Service Map | Live topology graph with project tabs |
+| Containers | Docker container graph + unified log streaming |
+| Requests | API tester with cURL builder, execution, and history |
+| Database | Container DB explorer + remote MongoDB/PostgreSQL URI mode |
+
+The Service Map additionally has per-project tabs: a system tab (`__system__`) and one tab per discovered `projectPath`.
+
+### Graph (`src/components/GraphView.tsx`, `src/components/graph/*`)
+
 - Hierarchical layered layout with stable ordering across refreshes
-- Grouping of related nodes
-- Standalone service section
-- Node detail panel with process/service metadata
-- Edge bundling for readability
-- Hover-highlight of immediate downstream dependencies
-- Context menu actions
-- Data freshness indicator (snapshot age by source)
-
-Performance-oriented behavior currently implemented:
-- Push-based delta updates (not full redraw polling only)
-- Topology-aware layout caching
-- Node measurement locking/unlocking strategy
-- Viewport-based node culling
-- `onlyRenderVisibleElements` for React Flow
-- Reduced zoom-time rerender pressure in node rendering
-
-### 3.3 Node Cards / Details
-Service cards include:
-- Health state
-- Type badge
-- Name + brand icon (Logo.dev-backed)
-- Port(s)
-- Optional project label
-- Optional API routes (capped preview)
-- Optional external APIs (capped preview)
-
-Node detail drawer includes:
-- Health and last seen
-- Process details (PID, user, CPU/memory, command)
-- Project metadata/path
-- Database inline viewer for DB nodes
-- Container health checks (when available)
-- External APIs list (provider/host entries)
-
-### 3.4 Sidebar (`src/components/ServiceSidebar.tsx`)
-- Service list with quick actions
-- Open service URL / open project terminal
-- Kill process action
-- Service metadata quick view (PID/command/etc.)
-
-### 3.5 Requests / cURL Builder (`src/components/CurlBuilder.tsx`)
-Current feature set:
-- Service and route selection from discovered graph services
-- Method/path/header/body composition
-- Raw cURL generation + syntax-highlighted display
-- Edit mode for manual cURL, parse back into UI model
-- Execute request in-app via main-process HTTP handler
-- Response panel with status, duration, size, headers, body
-- JSON-aware response formatting
-- Request history (load/replay/clear)
-
-### 3.6 Containers View
-- Overview graph scoped to running Docker containers
-- Logs sub-tab using unified multi-container stream
-
-### 3.7 Container Logs (`src/components/ContainerLogsTab.tsx`)
-Current behavior:
-- Select one/many containers to stream
-- Start/stop streams per container
-- Unified timeline with per-container color coding
-- Log level detection (`error`, `warn`, `info`, `debug`)
-- Search filter (regex-capable)
-- Level filter dropdown
-- Pause/resume, follow mode, copy, clear
-- Buffering + periodic flush for rendering performance
-- Stream lifecycle handling (data/error/close)
-
-### 3.8 Database UX (`src/components/database/*`, `DatabaseListView`, `DatabasePage`)
-Current feature set:
-- Database list from running DB containers
-- Data tab: tables/collections + preview
-- Query tab: multi-query tabs, keyboard execution shortcut
-- Table creation flow
-- Row deletion and table/collection deletion flows
-- DB-specific placeholders and formatting
-- Local storage for recent remote URIs
-
-Remote URI mode currently supports:
-- MongoDB URI connect/test/query/read
-- PostgreSQL URI connect/test/query/read
-- URI status feedback (`idle/testing/ok/error`)
-
----
-
-## 4. Main Process Architecture (`electron/main.js`)
-
-### 4.1 Window + Security Bootstrapping
-- Creates BrowserWindow with hardened webPreferences:
-  - `contextIsolation: true`
-  - `nodeIntegration: false`
-  - `sandbox: true`
-  - `webSecurity: true`
-- Applies navigation/window-open restrictions
-- Applies CSP policy per env (dev/prod)
-
-### 4.2 IPC Surface (Current)
-Main groups of handlers:
-- Monitoring:
-  - `get-system-snapshot`, `start-snapshot-stream`, `stop-snapshot-stream`
-  - `get-dev-processes`, `get-all-processes`, `get-listening-ports`, `get-connections`, `get-connection-graph`
-- Graph enrichment:
-  - `get-external-apis`
-- Service/container control:
-  - `kill-process`, `stop-container`
-- Quick actions:
-  - `open-url`, `open-terminal`
-- API testing:
-  - `execute-http-request`
-- Request history:
-  - `load-request-history`, `save-request-history`, `clear-request-history`
-- Docker:
-  - `is-docker-available`, `get-docker-containers`, `get-docker-networks`, `get-docker-snapshot`
-- Database:
-  - container DB operations (`get-database-tables`, `get-table-data`, `execute-database-query`, `create-database-table`)
-  - remote URI operations for Mongo/Postgres
-- Container logs streaming:
-  - start/stop per stream, stop per container, stop all
-  - emits `container-log-data`, `container-log-error`, `container-log-close`
-
----
-
-## 5. Monitoring and Graph Pipeline
-
-### 5.1 Snapshot Generation (`electron/services/systemSnapshot.js`)
-Per snapshot:
-- Gather in parallel:
-  - dev processes
-  - listening ports
-  - established connections
-- Build graph structure
-- Attach freshness metadata (`collectedAt`, source-age fields)
-
-### 5.2 Scheduler (`electron/services/snapshotScheduler.js`)
-Event-driven push model with tiered refresh:
-- Fast probe (~1.5s): lightweight PID/port change detection
-- Metrics reconcile (~5s): frequent updates when topology unchanged
-- Forced/full structure refresh (~10s or topology change)
-
-Includes:
-- Worker offload for CPU-heavy graph work
-- Pending snapshot buffering/backpressure handling
-- Delta generation and sequence tracking
-
-### 5.3 Graph Builder (`connectionGraph.js` + `graphFunctions.js`)
-Core responsibilities:
-- Process categorization (frontend/backend/db/cache/broker/etc.)
-- Known service naming and descriptions
-- Project path inference from cwd/commands
-- Route matching to service eligibility
-- Docker container merge into graph model
-- Overlay resource/health metrics
-
-### 5.4 Health Tracking (`healthTracker.js`)
-- Derives service health from process/listener/connection activity
-- Feeds node status (`green/yellow/red` style mapping)
-
----
-
-## 6. Discovery Engines
-
-### 6.1 API Route Scanner (`electron/services/routeScanner.js`)
-Framework detection and route extraction currently covers:
-- FastAPI
-- Flask
-- Express
-- Next.js (file-based API routing)
-- Koa
-- Hono
-- Plain Node HTTP servers
-
-Behavior:
-- Recursive scan with extension + directory filters
-- Route cache (TTL)
-- Framework-aware matching to services
-- Service-type guardrails (only API-capable node types)
-
-### 6.2 External API Scanner (`electron/services/externalApiScanner.js`)
-Detection inputs:
-- Source files across multiple languages
-- `.env*` files
-- Provider catalog (`config/api-providers.json`) + optional user overrides (`~/.fere/api-providers.json`)
-
-Matching signals:
-- URL host extraction
-- Provider domain matching
-- SDK pattern matching
-- Env var pattern matching
-
-Current noise controls:
-- Skip local/private/test hosts
-- Skip malformed/template hosts
-- Ignore blocked hosts (e.g., `example.com`, fonts hosts)
-- Skip system package-manager roots (`/opt/homebrew`, etc.)
-- Filter env-only/sdk-only weak matches unless corroborated
-
----
-
-## 7. Docker and Logs
-
-### 7.1 Docker Monitor (`electron/services/dockerMonitor.js`)
-Current behavior:
-- Availability check via Docker CLI
-- Container enumeration (`docker ps -a` JSON format)
-- Inspect-based enrichment:
-  - networks
-  - mounts
-  - health state/check history
-  - mapped/exposed ports
-- Network snapshot support
-- Container stop operation
-- Short-lived caching for expensive Docker calls
-
-### 7.2 Container Log Streaming (`electron/services/containerLogs.js`)
-- Starts `docker logs` streams per container
-- Emits normalized log events to renderer
-- Supports stopping individual streams, per-container streams, or all streams
-
----
-
-## 8. Database Subsystem (`electron/services/databaseQuery.js` + renderer DB pages)
-
-Containerized DB operations:
-- Detect DB type from image
-- List tables/collections
-- Fetch table/collection data (with limits)
-- Execute queries/commands
-- Create tables (where supported)
-
-Remote URI mode:
-- MongoDB URI connect/read/query
-- PostgreSQL URI connect/read/query
-- URI-mode state handling in renderer (connect/disconnect/test/recent URIs)
-
----
-
-## 9. Security Model (Current)
-
-### 9.1 Electron Hardening
-- `contextIsolation` enabled
-- Renderer sandboxed
-- No Node integration in renderer
-- New windows denied by default
-- Disallowed navigation blocked
-
-### 9.2 URL / Request Validation (`electron/security.js`)
-- External URL open restricted to `http/https`
-- Dangerous protocols blocked (`file:`, `javascript:`, `data:`, etc.)
-- HTTP request validation with SSRF protections available
-- Localhost/private access intentionally allowed for API tester local-dev use case
-- Response size cap on in-app HTTP tester (`MAX_RESPONSE_SIZE`)
-
-### 9.3 CSP
-- Session-level CSP applied in dev/prod
-- Explicit allowances for app needs (fonts, localhost dev, Logo.dev image host)
-
----
-
-## 10. Data Contracts and Types
-`src/types/electron.d.ts` defines shared contracts for:
-- Process, port, connection, graph node/edge
-- Snapshot + delta payloads
-- Docker data models
-- External API entities
-- Database query/table results
-- Container logs payloads
-- Preload API surface (`window.electronAPI`)
-
----
-
-## 11. State and Persistence
-
-Renderer state:
-- View mode and selected tab
-- Selected service/database/container context
-- Container logs UI filters and stream selection
-- cURL/request composition and output tabs
-
-Persistence currently used:
-- Request history persisted via main process service
-- Recent remote DB URIs in localStorage
-
----
-
-## 12. Performance Characteristics (Current)
-
-Implemented optimizations include:
-- Push-based snapshot deltas
-- Worker-thread offload for graph computation
-- Tiered refresh (fast probe/metrics/structure)
+- Node grouping, edge bundling, viewport culling, `onlyRenderVisibleElements`
+- Push-based delta updates — not full-redraw polling
 - Topology-aware layout cache
-- Batched CWD lookups and TTL caches
-- Route/API scan caching
-- Graph virtualization and visible-element rendering
-- Log buffering and capped log retention
+- Hover-highlight of immediate downstream dependencies
+- Context menu actions (kill, open in browser, open terminal, trace request)
+
+### Sentinel panel (`src/components/AgentPanel.tsx`)
+
+See [Sentinel capabilities](./AI_AGENT_CAPABILITIES.md) for behavioral detail.
+
+- Findings-first layout: issues ranked by severity and blast radius
+- Background rescans on topology change and on interval
+- Executable fix actions (kill-port, restart-container) and copy-only guidance
+- No chat history as primary UX
+
+### API tester (`src/components/CurlBuilder.tsx`)
+
+- Service and route selection from the live graph
+- Method, path, headers, body composition
+- Raw cURL generation and syntax-highlighted display
+- In-app request execution with response panel
+- Request history with load/replay
+
+### Container logs (`src/components/ContainerLogsTab.tsx`)
+
+- Multi-container selection, per-container color coding
+- Unified timeline with log-level detection
+- Search filter (regex), level filter, pause/resume, follow mode
+- Buffering and periodic flush for rendering performance
+
+### Database (`src/components/database/*`, `DatabaseListView`, `DatabasePage`)
+
+- Container DB list with tables/collections and data preview
+- Multi-tab query editor with keyboard execution shortcut
+- Table/collection creation and deletion
+- Remote URI mode: MongoDB, PostgreSQL
 
 ---
 
-## 13. Current Feature Checklist
-- Service map with dependency edges
-- Health indicators and freshness metadata
-- Process/port/command metadata views
-- Project-based graph tabs + system tab
-- API route discovery and per-service display
-- External API/provider detection
-- Logo-driven brand icons for services/APIs
-- Container graph, details, and stop action
-- Unified live container logs
-- API tester + cURL editor + history
-- Database explorer/query/create/delete for container DBs
-- Remote MongoDB/PostgreSQL URI mode
-- Open in browser, open terminal, kill process quick actions
+## Main process architecture
+
+### Security bootstrapping (`electron/main.js`, `electron/security.js`)
+
+`BrowserWindow` is created with hardened `webPreferences`:
+
+```js
+contextIsolation: true
+nodeIntegration: false
+sandbox: true
+webSecurity: true
+```
+
+- Navigation to non-`file://` origins is blocked
+- `window.open` is intercepted and denied
+- Dangerous protocols (`file:`, `javascript:`, `data:`, `vbscript:`) are blocked for external opens
+- CSP applied via session-level `webRequest` hook (separate policies for dev and production)
+- SSRF protection in the HTTP request handler — private/loopback IPs blocked unless explicitly allowed
+
+### IPC surface
+
+Handlers are registered in `electron/main.js`. The full surface is typed in `src/types/electron.d.ts` and exposed through `electron/preload.js`.
+
+**Handler groups:**
+
+| Group | Channels |
+|-------|----------|
+| Monitoring | `get-system-snapshot`, `start-snapshot-stream`, `stop-snapshot-stream`, `get-dev-processes`, `get-listening-ports`, `get-connections`, `get-connection-graph`, `get-environment-summary` |
+| Discovery | `rescan-routes`, `get-external-apis`, `get-external-api-providers` |
+| Process control | `kill-process`, `stop-container`, `start-container`, `restart-container`, `start-compose-project` |
+| HTTP requests | `execute-http-request`, `execute-traced-request`, `load-request-history`, `save-request-history`, `clear-request-history` |
+| Docker | `is-docker-available`, `get-docker-containers`, `get-docker-networks`, `get-docker-snapshot` |
+| Container logs | `start-container-logs`, `stop-container-logs`, `stop-all-container-logs`, `get-container-log-tail` |
+| Database | `get-database-tables`, `get-table-data`, `execute-database-query`, `create-database-table`, `connect-mongo-uri`, `connect-postgres-uri`, `connect-elasticsearch-uri` |
+| Sentinel | `agent:scan`, `agent:apply-fix`, `agent:chat`, `agent:usage` |
+| Auth | `auth:sign-in-github`, `auth:sign-in-google`, `auth:get-session`, `auth:sign-out` |
+| Blueprint | `blueprint:save`, `blueprint:load`, `blueprint:check`, `blueprint:delete` |
+| Settings | `get-network-policy`, `set-network-policy`, `get-alert-preferences`, `set-alert-preferences` |
+| Sharing | `export-graph-file`, `publish-graph`, `update-shared-graph` |
 
 ---
 
-## 14. Source Map (Where Features Live)
-- App shell and tab orchestration: `src/App.tsx`
-- System snapshot hook + delta patching: `src/hooks/useSystemMonitor.ts`
-- Graph rendering/layout: `src/components/GraphView.tsx`, `src/components/graph/*`
-- Sidebar actions: `src/components/ServiceSidebar.tsx`
-- Requests/cURL: `src/components/CurlBuilder.tsx`
-- Container logs UI: `src/components/ContainerLogsTab.tsx`
-- Database UI/state: `src/components/DatabaseListView.tsx`, `src/components/DatabasePage.tsx`, `src/components/database/*`
-- Main process + IPC: `electron/main.js`
-- Preload bridge: `electron/preload.js`
-- Security layer: `electron/security.js`
-- Monitoring services: `electron/services/systemSnapshot.js`, `electron/services/snapshotScheduler.js`, `electron/services/connectionGraph.js`, `electron/services/graphFunctions.js`
-- Discovery services: `electron/services/routeScanner.js`, `electron/services/externalApiScanner.js`
-- Docker/log/db services: `electron/services/dockerMonitor.js`, `electron/services/containerLogs.js`, `electron/services/databaseQuery.js`
-- API provider config: `config/api-providers.json`
+## Monitoring and graph pipeline
+
+### Snapshot collection (`electron/services/systemSnapshot.js`)
+
+Per snapshot, collected in parallel:
+
+- Dev processes via `ps`
+- Listening ports via `lsof -i -P -n`
+- Established TCP connections via `lsof -i -n`
+- Docker snapshot via Docker CLI
+
+### Snapshot scheduler (`electron/services/snapshotScheduler.js`)
+
+Event-driven push model. Manages tiered cadence, worker restart on crash (max 5 attempts), delta generation, sequence tracking for gap detection in the renderer, and battery-state-aware interval multipliers.
+
+### Graph builder (`electron/services/connectionGraph.js`, `electron/services/graphFunctions.js`)
+
+Runs in the worker thread. Responsibilities:
+
+- Process categorization (frontend, backend, db, cache, broker, etc.)
+- Known service naming and brand icon inference
+- Project path inference from process cwd and command args
+- Docker container merge into the graph model
+- Edge inference from TCP connections
+- CPU/memory metrics overlay on existing nodes
+
+### Health tracking (`electron/services/healthTracker.js`)
+
+Derives `active` / `idle` / `down` health state from process, listener, and connection activity. Health state transitions fire `fere:health-degraded` CustomEvents consumed by the Sentinel engine.
+
+---
+
+## Discovery engines
+
+### Route scanner (`electron/services/routeScanner.js`)
+
+Recursively scans project source trees and extracts HTTP routes. Framework support:
+
+- FastAPI, Flask
+- Express, Koa, Hono, plain Node HTTP
+- Next.js (file-based API routing)
+
+Results are cached with TTL and matched to graph nodes by service type.
+
+### External API scanner (`electron/services/externalApiScanner.js`)
+
+Detects third-party API usage from:
+
+- Source files (URL extraction, SDK pattern matching)
+- `.env*` files (env var pattern matching)
+- Provider catalog: `config/api-providers.json` and optional user overrides at `~/.fere/api-providers.json`
+
+Noise controls skip local/private/test hosts, malformed patterns, and weak single-signal matches.
+
+---
+
+## Sentinel engine (`electron/services/sentinelEngine.js`)
+
+Sentinel is Fere's deterministic runtime operator. It runs structured checks against the live snapshot and returns ranked `AgentFinding` objects.
+
+For behavioral detail, check types, and UX contract, see [Sentinel capabilities](./AI_AGENT_CAPABILITIES.md).
+
+**Scan output types:**
+
+```typescript
+AgentFinding {
+  id: string
+  severity: 'critical' | 'warning' | 'suggestion'
+  category: 'health' | 'connectivity' | 'config' | 'security' | 'dependency'
+  service: string
+  summary: string
+  detail: string
+  impact: string | null
+  affectedServices: string[]
+  fix: AgentFixAction | null
+}
+
+AgentFixAction {
+  type: 'kill-port' | 'restart-container' | 'copy-only' | 'write-file'
+  // ...action-specific fields
+}
+```
+
+---
+
+## Docker and logs
+
+### Docker monitor (`electron/services/dockerMonitor.js`)
+
+- Availability check via Docker CLI
+- Container enumeration (`docker ps -a` JSON)
+- Inspect-based enrichment: networks, mounts, health state, mapped ports
+- Container start/stop operations
+- Short-lived TTL caching for expensive CLI calls
+
+### Container log streaming (`electron/services/containerLogs.js`)
+
+- Starts `docker logs --follow` streams per container
+- Emits normalized `container-log-data` events to the renderer
+- Manages stream lifecycle: start, stop per container, stop all
+
+---
+
+## Database subsystem
+
+### `electron/services/databaseQuery.js`
+
+Supports containerized databases (detected from Docker image name) and remote URI mode.
+
+**Containerized operations:** list databases, list tables/collections, fetch data (with limits), execute queries, create tables.
+
+**Remote URI mode:**
+
+| Type | URI format |
+|------|-----------|
+| MongoDB | `mongodb://...` or `mongodb+srv://...` |
+| PostgreSQL | `postgresql://...` or `postgres://...` |
+| Elasticsearch | `http://...` or `https://...` (ES endpoint) |
+
+---
+
+## Request flow tracing
+
+The trace feature fires an HTTP request and visualizes how it propagates through the local service graph by diffing TCP connections before and after. See [request-flow-tracing-spec.md](./request-flow-tracing-spec.md) for the full specification.
+
+Backend service: `electron/services/traceCapture.js`
+
+---
+
+## Data contracts and types
+
+`src/types/electron.d.ts` is the canonical type contract shared between the renderer and main process. It defines:
+
+- `GraphNode`, `GraphEdge`, `SystemSnapshot`, `SnapshotDelta`
+- `Process`, `ListeningPort`, `Connection`
+- `DockerContainer`, `DockerNetwork`
+- `AgentFinding`, `AgentFixAction`, `FixProposal`
+- `TraceHop`, `TraceResult`
+- `DatabaseTable`, `QueryResult`
+- `ElectronAPI` — the full shape of `window.electronAPI`
+
+**This contract is frozen during refactoring.** Channel names and method signatures must not change without coordinating both sides of the bridge.
+
+---
+
+## State and persistence
+
+**Renderer state (in-memory):**
+
+- View mode and selected tab
+- Selected service, database, container context
+- Container log filters and stream selection
+- Request composition and output tabs
+
+**Persisted state:**
+
+| Data | Storage |
+|------|---------|
+| Request history | Main process (`electron/services/requestHistory.js`, disk JSON) |
+| Alert preferences | `~/.fere/alert-preferences.json` |
+| Recent remote DB URIs | Renderer `localStorage` |
+| Blueprint | `.fere/blueprint.json` in project root (committable) |
+| Activity log | `~/.fere/activity-log.json` |
+| Metric history | In-memory ring buffer (`electron/services/metricHistory.js`) |
+
+---
+
+## Performance characteristics
+
+| Optimization | Location |
+|-------------|----------|
+| Push-based snapshot deltas | `snapshotScheduler.js` + `useSystemMonitor.ts` |
+| Worker-thread graph computation | `graphBuilder.worker.js` |
+| Tiered refresh cadence | `snapshotScheduler.js` |
+| Topology-aware layout cache | `src/components/graph/` |
+| Batched CWD lookups with TTL | `graphFunctions.js` |
+| Route and API scan caching | `routeScanner.js`, `externalApiScanner.js` |
+| Viewport culling + visible-element rendering | `GraphView.tsx`, `graph/viewportCulling.ts` |
+| Log buffering with capped retention | `ContainerLogsTab.tsx` |
+| Adaptive snapshot interval (visibility + battery) | `snapshotScheduler.js` |
+
+---
+
+## Source map
+
+| Area | Files |
+|------|-------|
+| App shell, view modes, tabs | `src/App.tsx` |
+| Snapshot delta patching | `src/hooks/useSystemMonitor.ts` |
+| Graph rendering + layout | `src/components/GraphView.tsx`, `src/components/graph/*` |
+| Sentinel panel | `src/components/AgentPanel.tsx` |
+| API tester / cURL builder | `src/components/CurlBuilder.tsx` |
+| Container logs UI | `src/components/ContainerLogsTab.tsx` |
+| Database UI | `src/components/DatabaseListView.tsx`, `src/components/DatabasePage.tsx`, `src/components/database/*` |
+| Main process + IPC handlers | `electron/main.js` |
+| Preload bridge | `electron/preload.js` |
+| Security + SSRF protection | `electron/security.js` |
+| Snapshot collection | `electron/services/systemSnapshot.js` |
+| Snapshot scheduler | `electron/services/snapshotScheduler.js` |
+| Graph construction | `electron/services/connectionGraph.js`, `electron/services/graphFunctions.js` |
+| Sentinel engine | `electron/services/sentinelEngine.js` |
+| Route discovery | `electron/services/routeScanner.js` |
+| External API detection | `electron/services/externalApiScanner.js` |
+| Docker monitoring | `electron/services/dockerMonitor.js` |
+| Container log streaming | `electron/services/containerLogs.js` |
+| Database queries | `electron/services/databaseQuery.js` |
+| Request flow tracing | `electron/services/traceCapture.js` |
+| Type contracts | `src/types/electron.d.ts` |
+| API provider catalog | `config/api-providers.json` |

@@ -20,7 +20,25 @@
       "Read(//Users/siddharthbalaji/.fere/**)",
       "Bash(python3 -c ':*)",
       "Bash(find /Users/snehilk/Desktop/Coding/fere/src -name \"*.css\" -exec grep -l \"agp-\" {} \\\\;)",
-      "Bash(xargs -I {} basename {})"
+      "Bash(xargs -I {} basename {})",
+      "Bash(sed -i '' \"s|require\\('./platform'\\)|require\\('../platform'\\)|g\" /Users/snehilk/Desktop/Coding/fere/electron/services/monitoring/processMonitor.js)",
+      "Bash(sed -i '' \"s|require\\('./platform'\\)|require\\('../platform'\\)|g\" /Users/snehilk/Desktop/Coding/fere/electron/services/monitoring/portMonitor.js)",
+      "Bash(sed -i '' \"s|require\\('./activityLog'\\)|require\\('../system/activityLog'\\)|g\" /Users/snehilk/Desktop/Coding/fere/electron/services/monitoring/metricHistory.js)",
+      "Bash(sed -i '' \"s|require\\('./platform'\\)|require\\('../platform'\\)|g\" /Users/snehilk/Desktop/Coding/fere/electron/services/discovery/externalApiScanner.js)",
+      "Bash(sed -i '' \"s|require\\('./platform/docker'\\)|require\\('../platform/docker'\\)|g\" /Users/snehilk/Desktop/Coding/fere/electron/services/docker/dockerMonitor.js)",
+      "Bash(sed -i '' \"s|require\\('./localConnectionScanner'\\)|require\\('../discovery/localConnectionScanner'\\)|g\" /Users/snehilk/Desktop/Coding/fere/electron/services/docker/dockerMonitor.js)",
+      "Bash(sed -i '' \"s|require\\('./platform/docker'\\)|require\\('../platform/docker'\\)|g\" /Users/snehilk/Desktop/Coding/fere/electron/services/docker/containerLogs.js)",
+      "Bash(sed -i '' \"s|require\\('./platform/docker'\\)|require\\('../platform/docker'\\)|g\" /Users/snehilk/Desktop/Coding/fere/electron/services/database/databaseQuery.js)",
+      "Bash(sed -i '' 's|require\\(\"./platform\"\\)|require\\(\"../platform\"\\)|g' /Users/snehilk/Desktop/Coding/fere/electron/services/system/traceCapture.js)",
+      "Bash(sed -i '' \"s|require\\('./processMonitor'\\)|require\\('../monitoring/processMonitor'\\)|g\" /Users/snehilk/Desktop/Coding/fere/electron/services/system/snapshotScheduler.js)",
+      "Bash(sed -i '' \"s|require\\('./portMonitor'\\)|require\\('../monitoring/portMonitor'\\)|g\" /Users/snehilk/Desktop/Coding/fere/electron/services/system/snapshotScheduler.js)",
+      "Bash(sed -i '' \"s|require\\('./dockerMonitor'\\)|require\\('../docker/dockerMonitor'\\)|g\" /Users/snehilk/Desktop/Coding/fere/electron/services/system/snapshotScheduler.js)",
+      "Bash(sed -i '' \"s|require\\('./connectionGraph'\\)|require\\('../graph/connectionGraph'\\)|g\" /Users/snehilk/Desktop/Coding/fere/electron/services/system/snapshotScheduler.js)",
+      "Bash(sed -i '' \"s|require\\('./platform'\\)|require\\('../platform'\\)|g\" /Users/snehilk/Desktop/Coding/fere/electron/services/graph/connectionGraph.js)",
+      "Bash(sed -i '' \"s|require\\('./processMonitor'\\)|require\\('../monitoring/processMonitor'\\)|g\" /Users/snehilk/Desktop/Coding/fere/electron/services/graph/connectionGraph.js)",
+      "Bash(sed -i '' \"s|require\\('./portMonitor'\\)|require\\('../monitoring/portMonitor'\\)|g\" /Users/snehilk/Desktop/Coding/fere/electron/services/graph/connectionGraph.js)",
+      "Bash(sed -i '' \"s|require\\('./routeScanner'\\)|require\\('../discovery/routeScanner'\\)|g\" /Users/snehilk/Desktop/Coding/fere/electron/services/graph/connectionGraph.js)",
+      "Bash(sed -i '' \"s|require\\('./localConnectionScanner'\\)|require\\('../discovery/localConnectionScanner'\\)|g\" /Users/snehilk/Desktop/Coding/fere/electron/services/graph/connectionGraph.js)"
     ]
   }
 }

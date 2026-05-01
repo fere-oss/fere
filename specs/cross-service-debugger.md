@@ -1,6 +1,11 @@
-# Autonomous Cross-Service Debugger — Implementation Spec
+# Autonomous cross-service debugger — Implementation spec
 
-> Status: historical / superseded. This spec captures the earlier autonomous AI-debugger direction. The current shipped direction is the findings-first Sentinel workflow documented in `docs/fere-agent-plan.md` and `docs/AI_AGENT_CAPABILITIES.md`.
+> **Status: historical / superseded**
+>
+> This spec captures an earlier direction: an autonomous AI-debugger that investigated cross-service bugs via a Claude tool-use loop. That direction was abandoned in favor of the deterministic, findings-first Sentinel workflow.
+>
+> The current Sentinel architecture is documented in [`docs/AI_AGENT_CAPABILITIES.md`](../docs/AI_AGENT_CAPABILITIES.md).
+> Do not use this spec as a reference for active development.
 
 ## Overview
 
