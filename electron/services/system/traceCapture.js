@@ -1,5 +1,5 @@
 const crypto = require("crypto");
-const platform = require("./platform");
+const platform = require("../platform");
 
 const POLL_INTERVAL_MS = 200;
 const TRACE_TIMEOUT_MS = 30000;

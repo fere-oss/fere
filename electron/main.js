@@ -80,32 +80,32 @@ const {
   getProcessByPid,
   killProcess,
   clearProcessCache,
-} = require("./services/processMonitor");
+} = require("./services/monitoring/processMonitor");
 const {
   getListeningPorts,
   getEstablishedConnections,
   clearPortCache,
-} = require("./services/portMonitor");
+} = require("./services/monitoring/portMonitor");
 const {
   buildConnectionGraph,
   getEnvironmentSummary,
-} = require("./services/connectionGraph");
-const { getSystemSnapshot } = require("./services/systemSnapshot");
-const { SnapshotScheduler } = require("./services/snapshotScheduler");
+} = require("./services/graph/connectionGraph");
+const { getSystemSnapshot } = require("./services/system/systemSnapshot");
+const { SnapshotScheduler } = require("./services/system/snapshotScheduler");
 const {
   scanExternalApis,
   getExternalApiProviders,
-} = require("./services/externalApiScanner");
+} = require("./services/discovery/externalApiScanner");
 const {
   scanRoutes,
   clearRouteCache,
   getRouteCacheTimestamp,
-} = require("./services/routeScanner");
+} = require("./services/discovery/routeScanner");
 const {
   loadHistory,
   saveHistoryEntry,
   clearHistory,
-} = require("./services/requestHistory");
+} = require("./services/system/requestHistory");
 const {
   getDatabaseTables,
   getTableData,
@@ -120,7 +120,7 @@ const {
   connectElasticsearchUri,
   getElasticsearchUriIndexData,
   executeElasticsearchUriQuery,
-} = require("./services/databaseQuery");
+} = require("./services/database/databaseQuery");
 const {
   isDockerAvailable,
   getDockerContainers,
@@ -130,14 +130,14 @@ const {
   startContainer,
   restartContainer,
   startComposeProject,
-} = require("./services/dockerMonitor");
+} = require("./services/docker/dockerMonitor");
 const {
   startLogStream,
   stopLogStream,
   stopContainerStreams,
   stopAllStreams,
   getActiveStreams,
-} = require("./services/containerLogs");
+} = require("./services/docker/containerLogs");
 const {
   initAlertManager,
   evaluateAlerts,
@@ -147,38 +147,38 @@ const {
   clearAlertHistory,
   markIntentionalStopForPid,
   markIntentionalStopForContainer,
-} = require("./services/alertManager");
+} = require("./services/system/alertManager");
 const {
   initActivityLog,
   shutdownActivityLog,
   logEvent: logActivityEvent,
   getActivityLog,
   activityEmitter,
-} = require("./services/activityLog");
+} = require("./services/system/activityLog");
 const {
   feedFromSnapshot,
   getMetricHistory,
   checkAnomalies,
-} = require("./services/metricHistory");
+} = require("./services/monitoring/metricHistory");
 const analytics = require("./analytics");
 const {
   runScan,
   executeAction,
   buildChatContext,
   buildNodeDetails,
-} = require("./services/fereAgent");
-const { openInClaudeCode } = require("./services/claudeCodeBrief");
+} = require("./services/ai/sentinelEngine");
+const { openInClaudeCode } = require("./services/ai/claudeCodeBrief");
 const OpenAI = require("openai").default;
 const sentry = require("./sentry");
-const { generateHTML } = require("./services/graphExporter");
+const { generateHTML } = require("./services/sharing/graphExporter");
 const {
   createGist,
   updateGist,
   buildPreviewUrl,
-} = require("./services/gistPublisher");
-const { executeTracedRequest } = require("./services/traceCapture");
-const { buildFingerprint } = require("./services/stackFingerprint");
-const blueprintManager = require("./services/blueprintManager");
+} = require("./services/sharing/gistPublisher");
+const { executeTracedRequest } = require("./services/system/traceCapture");
+const { buildFingerprint } = require("./services/graph/stackFingerprint");
+const blueprintManager = require("./services/sharing/blueprintManager");
 
 app.setName("Fere");
 app.name = "Fere";

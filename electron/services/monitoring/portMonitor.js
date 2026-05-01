@@ -1,4 +1,4 @@
-const platform = require('./platform');
+const platform = require('../platform');
 
 const CACHE_TTL_MS = 5000;
 const listeningCache = { timestamp: 0, data: [], promise: null };

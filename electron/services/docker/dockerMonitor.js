@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
-const { runDocker, clearDockerBinCache } = require('./platform/docker');
-const { scanDockerServiceConnections } = require('./localConnectionScanner');
+const { runDocker, clearDockerBinCache } = require('../platform/docker');
+const { scanDockerServiceConnections } = require('../discovery/localConnectionScanner');
 
 const CACHE_TTL_MS = 2000; // 2 second cache for Docker data (Docker commands are slower)
 const containersCache = { timestamp: 0, data: [], promise: null };

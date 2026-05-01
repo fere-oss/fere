@@ -4,7 +4,7 @@
  * 720 samples per service (1 hour at 5s intervals).
  */
 
-const { logEvent } = require('./activityLog');
+const { logEvent } = require('../system/activityLog');
 
 const RING_SIZE = 720; // 1 hour at 5s intervals
 const ANOMALY_CHECK_INTERVAL_MS = 60000; // check anomalies every 60s

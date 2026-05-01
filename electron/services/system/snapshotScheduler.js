@@ -6,17 +6,17 @@ const {
   getProcessCacheInfo,
   getProcessPids,
   clearProcessCache,
-} = require('./processMonitor');
+} = require('../monitoring/processMonitor');
 const {
   getListeningPorts,
   getEstablishedConnections,
   getPortCacheInfo,
   getListeningPortNumbers,
   clearPortCache,
-} = require('./portMonitor');
-const { getDockerSnapshot, getLastDockerStatus } = require('./dockerMonitor');
-const { batchGetProcessCwds, collectHealthByPid, collectRoutes, collectLocalConnections } = require('./connectionGraph');
-const { hasTopologyChanged, buildGraphStructure, collectProjectPaths } = require('./graphFunctions');
+} = require('../monitoring/portMonitor');
+const { getDockerSnapshot, getLastDockerStatus } = require('../docker/dockerMonitor');
+const { batchGetProcessCwds, collectHealthByPid, collectRoutes, collectLocalConnections } = require('../graph/connectionGraph');
+const { hasTopologyChanged, buildGraphStructure, collectProjectPaths } = require('../graph/graphFunctions');
 
 /**
  * SnapshotScheduler — event-driven collection pipeline with Worker offload.
@@ -591,7 +591,7 @@ class SnapshotScheduler extends EventEmitter {
    */
   async _buildOnMainThread(rawData, workerData, healthByPid) {
     try {
-      const { containerHealthToGraphHealth } = require('./dockerMonitor');
+      const { containerHealthToGraphHealth } = require('../docker/dockerMonitor');
       let result;
 
       if (workerData) {

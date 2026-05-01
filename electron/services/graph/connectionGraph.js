@@ -10,16 +10,16 @@
  */
 
 const path = require('path');
-const platform = require('./platform');
-const { getDevProcesses } = require('./processMonitor');
-const { getListeningPorts, getEstablishedConnections } = require('./portMonitor');
-const { scanRoutes, matchRoutesToService } = require('./routeScanner');
-const { scanLocalConnections } = require('./localConnectionScanner');
-const { updateHealthTracking, getHealthStatus } = require('./healthTracker');
+const platform = require('../platform');
+const { getDevProcesses } = require('../monitoring/processMonitor');
+const { getListeningPorts, getEstablishedConnections } = require('../monitoring/portMonitor');
+const { scanRoutes, matchRoutesToService } = require('../discovery/routeScanner');
+const { scanLocalConnections } = require('../discovery/localConnectionScanner');
+const { updateHealthTracking, getHealthStatus } = require('../monitoring/healthTracker');
 const {
   getDockerSnapshot,
   containerHealthToGraphHealth,
-} = require('./dockerMonitor');
+} = require('../docker/dockerMonitor');
 const {
   categorizeProcess,
   inferProjectFromCommand,

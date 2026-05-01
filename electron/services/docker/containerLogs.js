@@ -1,5 +1,5 @@
 const { spawn } = require('child_process');
-const { resolveDockerBinary, getDockerBinaries } = require('./platform/docker');
+const { resolveDockerBinary, getDockerBinaries } = require('../platform/docker');
 
 const TIMESTAMP_RE = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z)\s+(.*)$/;
 

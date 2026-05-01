@@ -1,7 +1,7 @@
-const { getDevProcesses, getProcessCacheInfo } = require('./processMonitor');
-const { getListeningPorts, getEstablishedConnections, getPortCacheInfo } = require('./portMonitor');
-const { buildConnectionGraph } = require('./connectionGraph');
-const { getLastDockerStatus } = require('./dockerMonitor');
+const { getDevProcesses, getProcessCacheInfo } = require('../monitoring/processMonitor');
+const { getListeningPorts, getEstablishedConnections, getPortCacheInfo } = require('../monitoring/portMonitor');
+const { buildConnectionGraph } = require('../graph/connectionGraph');
+const { getLastDockerStatus } = require('../docker/dockerMonitor');
 
 // Performance timing - only log if enabled via env var
 const PERF_LOGGING = process.env.FERE_PERF_LOG === '1';

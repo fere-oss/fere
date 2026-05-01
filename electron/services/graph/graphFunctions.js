@@ -8,16 +8,16 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { getPortDescription } = require('./portMonitor');
-const { matchRoutesToService } = require('./routeScanner');
+const { getPortDescription } = require('../monitoring/portMonitor');
+const { matchRoutesToService } = require('../discovery/routeScanner');
 const {
   PLATFORM_KNOWN_SERVICES,
   extractAppNameFromCommand,
   HOME_DIR_PATH_PREFIXES,
-} = require('./platform');
+} = require('../platform');
 const {
   getComposeDefinedServices,
-} = require('./dockerMonitor');
+} = require('../docker/dockerMonitor');
 
 // ============================================
 // Known Services Dictionary

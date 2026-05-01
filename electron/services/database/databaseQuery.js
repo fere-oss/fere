@@ -2,7 +2,7 @@ const { spawn } = require('child_process');
 const fs = require('fs');
 const http = require('http');
 const https = require('https');
-const { getDockerBinaryOrThrow } = require('./platform/docker');
+const { getDockerBinaryOrThrow } = require('../platform/docker');
 
 let PgClient = null;
 try {
