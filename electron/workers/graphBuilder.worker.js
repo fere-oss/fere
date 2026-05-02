@@ -16,7 +16,7 @@ const { parentPort } = require('worker_threads');
 const {
   buildGraphStructure,
   overlayMetrics,
-} = require('../services/graphFunctions');
+} = require('../services/graph/graphFunctions');
 
 // Persistent cached structure for metrics-only updates
 let cachedStructure = null;

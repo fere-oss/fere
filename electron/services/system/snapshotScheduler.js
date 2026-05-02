@@ -102,7 +102,7 @@ class SnapshotScheduler extends EventEmitter {
 
     // Spawn the Worker
     try {
-      this.worker = new Worker(path.join(__dirname, '../workers/graphBuilder.worker.js'));
+      this.worker = new Worker(path.join(__dirname, '../../workers/graphBuilder.worker.js'));
       this.worker.on('message', (msg) => this._handleWorkerMessage(msg));
       this.worker.on('error', (err) => {
         console.error('[SnapshotScheduler] Worker error:', err);
@@ -220,7 +220,7 @@ class SnapshotScheduler extends EventEmitter {
       this._workerRestartTimer = null;
       if (!this.running) return;
       try {
-        this.worker = new Worker(path.join(__dirname, '../workers/graphBuilder.worker.js'));
+        this.worker = new Worker(path.join(__dirname, '../../workers/graphBuilder.worker.js'));
         this.worker.on('message', (msg) => this._handleWorkerMessage(msg));
         this.worker.on('error', (err) => {
           console.error('[SnapshotScheduler] Worker error after restart:', err);
