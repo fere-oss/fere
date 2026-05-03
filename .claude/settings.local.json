@@ -20,7 +20,14 @@
       "Read(//Users/siddharthbalaji/.fere/**)",
       "Bash(python3 -c ':*)",
       "Bash(find /Users/snehilk/Desktop/Coding/fere/src -name \"*.css\" -exec grep -l \"agp-\" {} \\\\;)",
-      "Bash(xargs -I {} basename {})"
+      "Bash(xargs -I {} basename {})",
+      "WebFetch(domain:docs.claude.com)",
+      "WebSearch",
+      "Bash(node -e \"console.log\\(JSON.stringify\\(require\\('/Users/siddharthbalaji/Documents/fere/node_modules/@modelcontextprotocol/sdk/package.json'\\).exports, null, 2\\)\\)\")",
+      "Bash(chmod +x /Users/siddharthbalaji/Documents/fere/bin/fere-mcp.js)",
+      "Bash(node -c /Users/siddharthbalaji/Documents/fere/bin/fere-mcp.js)",
+      "Bash(node -c /Users/siddharthbalaji/Documents/fere/electron/services/mcpBridge.js)",
+      "Bash(node -e ' *)"
     ]
   }
 }

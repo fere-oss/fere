@@ -6,8 +6,12 @@
   "license": "MIT",
   "private": true,
   "main": "electron/main.js",
+  "bin": {
+    "fere-mcp": "./bin/fere-mcp.js"
+  },
   "homepage": "./",
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@sentry/electron": "^7.10.0",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^6.9.1",
@@ -121,6 +125,7 @@
     "files": [
       "build/**/*",
       "electron/**/*",
+      "bin/**/*",
       "package.json"
     ],
     "directories": {

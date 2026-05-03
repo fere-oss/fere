@@ -168,6 +168,7 @@ const {
   buildNodeDetails,
 } = require("./services/fereAgent");
 const { openInClaudeCode } = require("./services/claudeCodeBrief");
+const mcpBridge = require("./services/mcpBridge");
 const OpenAI = require("openai").default;
 const sentry = require("./sentry");
 const { generateHTML } = require("./services/graphExporter");
@@ -420,6 +421,23 @@ app.whenReady().then(() => {
   if (!isDev) {
     autoUpdater.checkForUpdatesAndNotify();
   }
+
+  // Start the MCP bridge so AI clients (Claude Code, Cursor) can pull live
+  // runtime data via the bin/fere-mcp.js stdio shim.
+  mcpBridge
+    .start({
+      snapshotScheduler: { get previousSnapshot() { return snapshotScheduler && snapshotScheduler.previousSnapshot; }, getLatestSnapshot: () => snapshotScheduler && snapshotScheduler.getLatestSnapshot && snapshotScheduler.getLatestSnapshot() },
+      runScan,
+      scanRoutes,
+      scanExternalApis,
+      agentDockerLogs: (id, lines) => agentDockerLogs(id, lines),
+    })
+    .then(({ port }) => {
+      console.log(`[mcp] bridge listening on 127.0.0.1:${port}`);
+    })
+    .catch((err) => {
+      console.error('[mcp] bridge failed to start:', err && err.message);
+    });
 });
 
 app.on("window-all-closed", () => {
@@ -434,6 +452,7 @@ app.on("before-quit", () => {
 });
 
 app.on("will-quit", async () => {
+  try { mcpBridge.stop(); } catch { /* noop */ }
   await sentry.flush();
   try {
     shutdownActivityLog();
