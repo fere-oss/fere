@@ -991,9 +991,14 @@ function FindingCard({
                 className="agp-finding-fix-btn"
                 onClick={() => onFix(item.id)}
                 disabled={isStreaming}
+                title={
+                  item.fix.type === "restart-container"
+                    ? "Restart this container"
+                    : `Kill the process on port ${item.fix.port}`
+                }
               >
                 {item.fix.type === "restart-container"
-                  ? "Restart container"
+                  ? "Restart"
                   : `Kill :${item.fix.port}`}
               </button>
             )}
@@ -1001,26 +1006,27 @@ function FindingCard({
             className="agp-finding-explain-btn"
             onClick={() => onExplain(item)}
             disabled={isStreaming}
+            title="Explain this finding in chat"
           >
             Explain
           </button>
           <button
             className="agp-finding-claudecode-btn"
-            onClick={() => onOpenInClaudeCode(item)}
-            disabled={isStreaming}
-            title="Open investigation brief in Claude Code"
-          >
-            Open in Claude Code
-          </button>
-          <button
-            className="agp-finding-claudecode-btn"
             onClick={() => onInvestigate(item)}
             disabled={isStreaming || investigation?.status === "running"}
-            title="Run a headless Claude investigation against this finding (uses your Claude Code install)"
+            title="Run a headless Claude investigation here (uses your Claude Code install)"
           >
             {investigation?.status === "running"
               ? "Investigating…"
-              : "Investigate with Claude"}
+              : "Investigate"}
+          </button>
+          <button
+            className="agp-finding-claudecode-btn"
+            onClick={() => onOpenInClaudeCode(item)}
+            disabled={isStreaming}
+            title="Open Terminal at this project with the investigation brief in Claude Code"
+          >
+            Hand off
           </button>
         </div>
       )}
@@ -1071,16 +1077,27 @@ function FindingCard({
               className="agp-finding-explain-btn"
               onClick={() => onExplain(item)}
               disabled={isStreaming}
+              title="Explain this finding in chat"
             >
               Explain
             </button>
             <button
               className="agp-finding-claudecode-btn"
+              onClick={() => onInvestigate(item)}
+              disabled={isStreaming || investigation?.status === "running"}
+              title="Run a headless Claude investigation here"
+            >
+              {investigation?.status === "running"
+                ? "Investigating…"
+                : "Investigate"}
+            </button>
+            <button
+              className="agp-finding-claudecode-btn"
               onClick={() => onOpenInClaudeCode(item)}
               disabled={isStreaming}
-              title="Open investigation brief in Claude Code"
+              title="Open Terminal at this project with the investigation brief"
             >
-              Open in Claude Code
+              Hand off
             </button>
           </div>
         </div>
