@@ -27,7 +27,8 @@
       "Bash(chmod +x /Users/siddharthbalaji/Documents/fere/bin/fere-mcp.js)",
       "Bash(node -c /Users/siddharthbalaji/Documents/fere/bin/fere-mcp.js)",
       "Bash(node -c /Users/siddharthbalaji/Documents/fere/electron/services/mcpBridge.js)",
-      "Bash(node -e ' *)"
+      "Bash(node -e ' *)",
+      "Bash(node -c /Users/siddharthbalaji/Documents/fere/electron/preload.js)"
     ]
   }
 }

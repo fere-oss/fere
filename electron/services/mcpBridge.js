@@ -94,8 +94,23 @@ async function handleRequest(req, res) {
   }
 
   const url = new URL(req.url, `http://127.0.0.1:${port}`);
-  const params = url.searchParams;
 
+  if (req.method === 'POST') {
+    const body = await readJsonBody(req).catch(() => ({}));
+    try {
+      let result;
+      switch (url.pathname) {
+        case '/apply-fix': result = await handleApplyFix(body); break;
+        default:
+          return reply(res, 404, { error: `unknown POST path: ${url.pathname}` });
+      }
+      return reply(res, 200, result);
+    } catch (err) {
+      return reply(res, 500, { error: err && err.message ? err.message : String(err) });
+    }
+  }
+
+  const params = url.searchParams;
   try {
     let result;
     switch (url.pathname) {
@@ -113,6 +128,23 @@ async function handleRequest(req, res) {
   } catch (err) {
     return reply(res, 500, { error: err && err.message ? err.message : String(err) });
   }
+}
+
+function readJsonBody(req) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let total = 0;
+    req.on('data', (c) => {
+      total += c.length;
+      if (total > 64 * 1024) { reject(new Error('request body too large')); req.destroy(); return; }
+      chunks.push(c);
+    });
+    req.on('end', () => {
+      const raw = Buffer.concat(chunks).toString('utf8') || '{}';
+      try { resolve(JSON.parse(raw)); } catch { resolve({}); }
+    });
+    req.on('error', reject);
+  });
 }
 
 function reply(res, status, body) {
@@ -357,6 +389,59 @@ async function handleLogs(params) {
 
   const logs = await deps.agentDockerLogs(container, lines);
   return { logs, lines };
+}
+
+async function handleApplyFix(body) {
+  const findingId = body && body.finding_id;
+  if (!findingId) throw new Error('finding_id is required');
+
+  const snapshot = getSnapshot();
+  if (!snapshot) {
+    return { approved: false, executed: false, reason: 'no snapshot available yet' };
+  }
+
+  const findings = await deps.runScan(snapshot);
+  const finding = findings.find((f) => f.id === findingId);
+  if (!finding) {
+    return { approved: false, executed: false, reason: `finding '${findingId}' not found` };
+  }
+  if (!finding.fix) {
+    return { approved: false, executed: false, reason: 'finding has no fix action' };
+  }
+  if (finding.fix.type === 'copy-only') {
+    return {
+      approved: false,
+      executed: false,
+      reason: 'fix is copy-only guidance and cannot be applied automatically',
+    };
+  }
+
+  let decision;
+  try {
+    decision = await deps.requestApproval({ finding, action: finding.fix });
+  } catch (err) {
+    return {
+      approved: false,
+      executed: false,
+      reason: err && err.message ? err.message : 'approval failed',
+    };
+  }
+
+  if (!decision || !decision.approved) {
+    return {
+      approved: false,
+      executed: false,
+      reason: (decision && decision.reason) || 'denied by user',
+    };
+  }
+
+  const result = await deps.executeAction(finding.fix);
+  return {
+    approved: true,
+    executed: !!(result && result.success),
+    summary: finding.fix.label || finding.fix.type,
+    result,
+  };
 }
 
 module.exports = { start, stop };

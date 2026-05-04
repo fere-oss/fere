@@ -18,6 +18,7 @@ import { AnalyticsView } from "./components/AnalyticsView";
 import { WelcomeModal } from "./components/WelcomeModal";
 import { ShareModal } from "./components/ShareModal";
 import { StackDiffModal } from "./components/StackDiffModal";
+import { McpApprovalModal } from "./components/McpApprovalModal";
 import { BlueprintPanel } from "./components/BlueprintPanel";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import {
@@ -1958,6 +1959,10 @@ function App() {
       {showStackDiff && (
         <StackDiffModal onClose={() => setShowStackDiff(false)} />
       )}
+
+      {/* MCP fix approval — shown only when an external AI client requests a fix */}
+      <McpApprovalModal />
+
       {/* Blueprint Panel */}
       {blueprintPanelOpen && (
         <BlueprintPanel

@@ -431,6 +431,8 @@ app.whenReady().then(() => {
       scanRoutes,
       scanExternalApis,
       agentDockerLogs: (id, lines) => agentDockerLogs(id, lines),
+      requestApproval: requestMcpApproval,
+      executeAction: (action) => executeAction(action),
     })
     .then(({ port }) => {
       console.log(`[mcp] bridge listening on 127.0.0.1:${port}`);
@@ -438,6 +440,55 @@ app.whenReady().then(() => {
     .catch((err) => {
       console.error('[mcp] bridge failed to start:', err && err.message);
     });
+});
+
+// ── MCP human-in-the-loop approval ───────────────────────────────────────────
+// The MCP bridge calls requestMcpApproval() before executing any state-changing
+// fix. We forward the request to the renderer, show a modal, and resolve the
+// promise with whatever the user clicks. Times out at 60s if the window isn't
+// focused.
+
+const MCP_APPROVAL_TIMEOUT_MS = 60_000;
+const pendingMcpApprovals = new Map();
+
+function requestMcpApproval(payload) {
+  return new Promise((resolve) => {
+    if (!mainWindow || mainWindow.isDestroyed() || !mainWindow.webContents) {
+      resolve({ approved: false, reason: 'Fere window unavailable' });
+      return;
+    }
+    const requestId = crypto.randomUUID();
+    const timer = setTimeout(() => {
+      if (pendingMcpApprovals.delete(requestId)) {
+        resolve({ approved: false, reason: 'approval timed out (60s)' });
+      }
+    }, MCP_APPROVAL_TIMEOUT_MS);
+    pendingMcpApprovals.set(requestId, { resolve, timer });
+
+    try {
+      mainWindow.show();
+      mainWindow.focus();
+    } catch { /* noop */ }
+
+    mainWindow.webContents.send('mcp:approval-request', {
+      requestId,
+      finding: payload.finding,
+      action: payload.action,
+      timeoutMs: MCP_APPROVAL_TIMEOUT_MS,
+    });
+  });
+}
+
+ipcMain.on('mcp:approval-response', (_event, payload) => {
+  if (!payload || typeof payload.requestId !== 'string') return;
+  const pending = pendingMcpApprovals.get(payload.requestId);
+  if (!pending) return;
+  clearTimeout(pending.timer);
+  pendingMcpApprovals.delete(payload.requestId);
+  pending.resolve({
+    approved: !!payload.approved,
+    reason: payload.reason,
+  });
 });
 
 app.on("window-all-closed", () => {

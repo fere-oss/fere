@@ -787,6 +787,18 @@ export interface ElectronAPI {
   loadBlueprint: (projectPath: string) => Promise<Blueprint | null>;
   deleteBlueprint: (projectPath: string) => Promise<void>;
   checkBlueprint: (opts: { projectPath: string; snapshot: SystemSnapshot }) => Promise<BlueprintCheckResult>;
+
+  // MCP — human-in-the-loop approval for AI-proposed fixes
+  onMcpApprovalRequest: (callback: (payload: McpApprovalRequest) => void) => void;
+  offMcpApprovalRequest: () => void;
+  respondMcpApproval: (requestId: string, approved: boolean, reason?: string) => void;
+}
+
+export interface McpApprovalRequest {
+  requestId: string;
+  finding: AgentFinding;
+  action: AgentFixAction;
+  timeoutMs: number;
 }
 
 // Blueprint types

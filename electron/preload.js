@@ -182,4 +182,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Stack Diff
   exportStackFingerprint: (opts) => ipcRenderer.invoke('stack:export-fingerprint', opts),
+
+  // MCP — human-in-the-loop approval for fixes proposed by AI clients
+  onMcpApprovalRequest: (callback) =>
+    ipcRenderer.on('mcp:approval-request', (_, payload) => callback(payload)),
+  offMcpApprovalRequest: () => ipcRenderer.removeAllListeners('mcp:approval-request'),
+  respondMcpApproval: (requestId, approved, reason) =>
+    ipcRenderer.send('mcp:approval-response', { requestId, approved, reason }),
 });

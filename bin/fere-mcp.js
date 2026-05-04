@@ -49,7 +49,7 @@ function isPidAlive(pid) {
   }
 }
 
-function bridgeRequest(pathname, params) {
+function bridgeRequest(pathname, params, options) {
   const lock = readLockfile();
   if (!lock) {
     return Promise.reject(
@@ -59,8 +59,10 @@ function bridgeRequest(pathname, params) {
     );
   }
 
+  const opts = options || {};
+  const isPost = opts.method === 'POST';
   const url = new URL(`http://127.0.0.1:${lock.port}${pathname}`);
-  if (params) {
+  if (!isPost && params) {
     for (const [k, v] of Object.entries(params)) {
       if (v !== undefined && v !== null && v !== '') {
         url.searchParams.set(k, String(v));
@@ -69,11 +71,20 @@ function bridgeRequest(pathname, params) {
   }
 
   return new Promise((resolve, reject) => {
-    const req = http.get(
+    const headers = { Authorization: `Bearer ${lock.token}` };
+    let bodyStr = null;
+    if (isPost) {
+      bodyStr = JSON.stringify(params || {});
+      headers['Content-Type'] = 'application/json';
+      headers['Content-Length'] = Buffer.byteLength(bodyStr);
+    }
+
+    const req = http.request(
       url,
       {
-        headers: { Authorization: `Bearer ${lock.token}` },
-        timeout: 15000,
+        method: isPost ? 'POST' : 'GET',
+        headers,
+        timeout: opts.timeout || 15000,
       },
       (res) => {
         const chunks = [];
@@ -106,8 +117,10 @@ function bridgeRequest(pathname, params) {
     });
     req.on('timeout', () => {
       req.destroy();
-      reject(new Error('Fere bridge timed out after 15s'));
+      reject(new Error(`Fere bridge timed out after ${opts.timeout || 15000}ms`));
     });
+    if (bodyStr) req.write(bodyStr);
+    req.end();
   });
 }
 
@@ -195,6 +208,21 @@ const TOOLS = [
       required: ['container'],
     },
   },
+  {
+    name: 'apply_fix',
+    description:
+      'Apply the fix attached to a Sentinel finding (kill a process on a port, restart a container, etc). REQUIRES HUMAN APPROVAL: Fere shows a modal to the user; the call blocks for up to 60 seconds waiting for them to click Approve or Deny. Returns { approved, executed, reason, summary, result }. Use only after list_findings has shown the finding to the user — do not invent finding IDs.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        finding_id: {
+          type: 'string',
+          description: 'The id of the finding (from list_findings). The fix attached to that finding is what gets applied.',
+        },
+      },
+      required: ['finding_id'],
+    },
+  },
 ];
 
 // ─── Server wiring ────────────────────────────────────────────────────────────
@@ -230,6 +258,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         break;
       case 'get_logs':
         result = await bridgeRequest('/logs', { container: a.container, lines: a.lines });
+        break;
+      case 'apply_fix':
+        result = await bridgeRequest(
+          '/apply-fix',
+          { finding_id: a.finding_id },
+          { method: 'POST', timeout: 90_000 },
+        );
         break;
       default:
         return {
