@@ -1,6 +1,6 @@
 import posthog from "posthog-js";
 
-const POSTHOG_API_KEY = "phc_MhtttIQgm4pTxbn7pfAV8Bsn2M3q2KegvObHotkPodv";
+const POSTHOG_API_KEY = process.env.REACT_APP_POSTHOG_API_KEY || "";
 const POSTHOG_HOST = "https://us.i.posthog.com";
 
 let initialized = false;
@@ -37,6 +37,7 @@ function getOrCreateDistinctId(): string {
 
 export function initAnalytics(): void {
   if (initialized) return;
+  if (!POSTHOG_API_KEY) return; // no-op when key is not configured
   initialized = true;
 
   posthog.init(POSTHOG_API_KEY, {

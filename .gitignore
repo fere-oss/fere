@@ -20,6 +20,9 @@
 *.zip
 *.app
 
+# Electron runtime config (contains infra URLs — use runtime-config.example.json as template)
+electron/runtime-config.json
+
 # misc
 .DS_Store
 *.DS_Store

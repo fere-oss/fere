@@ -80,7 +80,7 @@ function extractPortsFromFile(filePath) {
     }
     return Array.from(ports);
   } catch {
-    return [];
+    return []; // unreadable or binary file — skip
   }
 }
 

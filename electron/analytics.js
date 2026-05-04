@@ -2,7 +2,7 @@ const { PostHog } = require("posthog-node");
 const os = require("os");
 const crypto = require("crypto");
 
-const POSTHOG_API_KEY = "phc_MhtttIQgm4pTxbn7pfAV8Bsn2M3q2KegvObHotkPodv";
+const POSTHOG_API_KEY = process.env.POSTHOG_API_KEY || "";
 const POSTHOG_HOST = "https://us.i.posthog.com";
 
 let client = null;
@@ -21,6 +21,7 @@ function getDistinctId() {
 
 function init() {
   if (client) return;
+  if (!POSTHOG_API_KEY) return; // no-op when key is not configured
   client = new PostHog(POSTHOG_API_KEY, {
     host: POSTHOG_HOST,
     flushAt: 10,

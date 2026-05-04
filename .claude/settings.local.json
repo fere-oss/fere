@@ -38,7 +38,13 @@
       "Bash(sed -i '' \"s|require\\('./processMonitor'\\)|require\\('../monitoring/processMonitor'\\)|g\" /Users/snehilk/Desktop/Coding/fere/electron/services/graph/connectionGraph.js)",
       "Bash(sed -i '' \"s|require\\('./portMonitor'\\)|require\\('../monitoring/portMonitor'\\)|g\" /Users/snehilk/Desktop/Coding/fere/electron/services/graph/connectionGraph.js)",
       "Bash(sed -i '' \"s|require\\('./routeScanner'\\)|require\\('../discovery/routeScanner'\\)|g\" /Users/snehilk/Desktop/Coding/fere/electron/services/graph/connectionGraph.js)",
-      "Bash(sed -i '' \"s|require\\('./localConnectionScanner'\\)|require\\('../discovery/localConnectionScanner'\\)|g\" /Users/snehilk/Desktop/Coding/fere/electron/services/graph/connectionGraph.js)"
+      "Bash(sed -i '' \"s|require\\('./localConnectionScanner'\\)|require\\('../discovery/localConnectionScanner'\\)|g\" /Users/snehilk/Desktop/Coding/fere/electron/services/graph/connectionGraph.js)",
+      "Bash(grep -n \"} catch {$\" /Users/snehilk/Desktop/Coding/fere/electron/services/discovery/localConnectionScanner.js)",
+      "Bash(sed -n '940,950p' /Users/snehilk/Desktop/Coding/fere/electron/main.js)",
+      "Bash(sed -n '1222,1252p' /Users/snehilk/Desktop/Coding/fere/electron/main.js)",
+      "Bash(sed -n '2288,2296p' /Users/snehilk/Desktop/Coding/fere/electron/main.js)",
+      "Bash(sed -n '2754,2762p' /Users/snehilk/Desktop/Coding/fere/electron/main.js)",
+      "Bash(git -C /Users/snehilk/Desktop/Coding/fere status --short)"
     ]
   }
 }

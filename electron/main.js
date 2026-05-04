@@ -17,6 +17,11 @@ const fs = require("fs");
 const os = require("os");
 const crypto = require("crypto");
 require("dotenv").config({ path: path.join(__dirname, "../.env") });
+const {
+  AUTH_CALLBACK_PORT,
+  AUTH_TOKEN_REFRESH_INTERVAL_MS,
+  SENTINEL_DAILY_LIMIT,
+} = require("./constants");
 
 function loadRuntimeConfig() {
   const configPath = path.join(__dirname, "runtime-config.json");
@@ -415,7 +420,7 @@ app.whenReady().then(() => {
 
   // Refresh auth token on launch and every 30 minutes
   refreshAuthToken().catch(() => {});
-  setInterval(() => refreshAuthToken().catch(() => {}), 30 * 60 * 1000);
+  setInterval(() => refreshAuthToken().catch(() => {}), AUTH_TOKEN_REFRESH_INTERVAL_MS);
 
   if (!isDev) {
     autoUpdater.checkForUpdatesAndNotify();
@@ -942,7 +947,9 @@ function getUserApiKey() {
   if (settings.encryptedApiKey && safeStorage.isEncryptionAvailable()) {
     try {
       return safeStorage.decryptString(Buffer.from(settings.encryptedApiKey, "base64"));
-    } catch {}
+    } catch {
+      // decryption failed — key treated as missing (e.g. keychain unavailable)
+    }
   }
   return null;
 }
@@ -1208,7 +1215,6 @@ function handleAuthCallback(url) {
 const http = require("http");
 
 let authServer = null;
-const AUTH_CALLBACK_PORT = 38383;
 
 function startPkceSignIn(provider) {
   if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
@@ -1223,7 +1229,7 @@ function startPkceSignIn(provider) {
   // This lets us serve a self-closing page so the browser tab goes away.
   return new Promise((resolve) => {
     // Shut down any previous server
-    if (authServer) { try { authServer.close(); } catch {} }
+    if (authServer) { try { authServer.close(); } catch { /* best-effort close */ } }
 
     authServer = http.createServer((req, res) => {
       const reqUrl = new URL(req.url, `http://localhost`);
@@ -1245,7 +1251,7 @@ function startPkceSignIn(provider) {
 
       // Shut down the server after a short delay
       setTimeout(() => {
-        try { authServer.close(); } catch {}
+        try { authServer.close(); } catch { /* best-effort close */ }
         authServer = null;
       }, 1000);
     });
@@ -1299,8 +1305,7 @@ ipcMain.handle("auth:sign-out", () => {
 });
 
 
-// Daily rate limit for Sentinel AI chat calls
-const SENTINEL_DAILY_LIMIT = 5;
+// Daily rate limit for Sentinel AI chat calls — see electron/constants.js
 
 function getLocalDateString() {
   const d = new Date();
@@ -2289,7 +2294,9 @@ async function agentDiscoverDockerPlan(projectRoot, projectPaths) {
           "- backend/requirements.txt has google-genai==1.29.0 with httpx<0.28 (conflict).",
         );
       }
-    } catch {}
+    } catch {
+      // malformed requirements.txt — skip dependency conflict check
+    }
   }
 
   return lines.join("\n");
@@ -2755,7 +2762,9 @@ ipcMain.handle("agent:chat", async (event, payload) => {
           if (!data || data === "[DONE]") continue;
           try {
             yield JSON.parse(data);
-          } catch {}
+          } catch {
+            // skip malformed SSE chunk
+          }
         }
       }
     }
