@@ -792,6 +792,17 @@ export interface ElectronAPI {
   onMcpApprovalRequest: (callback: (payload: McpApprovalRequest) => void) => void;
   offMcpApprovalRequest: () => void;
   respondMcpApproval: (requestId: string, approved: boolean, reason?: string) => void;
+
+  // Headless Claude investigation — Fere spawns `claude -p` with the Fere MCP
+  // attached and streams progress back to the renderer.
+  investigateFinding: (
+    finding: AgentFinding,
+    investigationId: string,
+  ) => Promise<InvestigationResult>;
+  onInvestigationStep: (callback: (step: InvestigationStep) => void) => void;
+  offInvestigationStep: () => void;
+  onInvestigationComplete: (callback: (result: InvestigationCompletion) => void) => void;
+  offInvestigationComplete: () => void;
 }
 
 export interface McpApprovalRequest {
@@ -800,6 +811,25 @@ export interface McpApprovalRequest {
   action: AgentFixAction;
   timeoutMs: number;
 }
+
+export interface InvestigationResult {
+  success: boolean;
+  result?: string;
+  error?: string;
+  durationMs?: number;
+}
+
+export interface InvestigationCompletion extends InvestigationResult {
+  investigationId: string;
+}
+
+export type InvestigationStep =
+  | { investigationId: string; kind: 'start'; finding: { id: string; summary: string } }
+  | { investigationId: string; kind: 'system'; subtype: string | null }
+  | { investigationId: string; kind: 'tool_use'; tool: string; input: unknown }
+  | { investigationId: string; kind: 'tool_result'; tool_use_id: string; isError: boolean }
+  | { investigationId: string; kind: 'text'; text: string }
+  | { investigationId: string; kind: 'result'; result: string | null; isError: boolean; durationMs?: number; costUsd?: number };
 
 // Blueprint types
 export interface BlueprintService {

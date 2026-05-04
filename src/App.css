@@ -16286,6 +16286,28 @@ body.sentinel-panel-open .activity-donut-total {
   color: var(--text-secondary);
 }
 
+.agp-finding-investigation {
+  padding: 4px 14px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.agp-finding-investigation-result {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--text-primary);
+  background: var(--bg-muted);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 8px 10px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
 .agp-finding-escalated {
   display: flex;
   flex-direction: column;

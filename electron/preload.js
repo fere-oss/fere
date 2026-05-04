@@ -189,4 +189,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
   offMcpApprovalRequest: () => ipcRenderer.removeAllListeners('mcp:approval-request'),
   respondMcpApproval: (requestId, approved, reason) =>
     ipcRenderer.send('mcp:approval-response', { requestId, approved, reason }),
+
+  // Headless Claude — Fere drives a one-shot Claude Code investigation
+  // against a finding, with the Fere MCP attached so Claude can pull live
+  // runtime data while it works.
+  investigateFinding: (finding, investigationId) =>
+    ipcRenderer.invoke('agent:investigate-finding', { finding, investigationId }),
+  onInvestigationStep: (callback) =>
+    ipcRenderer.on('agent:investigation-step', (_, payload) => callback(payload)),
+  offInvestigationStep: () => ipcRenderer.removeAllListeners('agent:investigation-step'),
+  onInvestigationComplete: (callback) =>
+    ipcRenderer.on('agent:investigation-complete', (_, payload) => callback(payload)),
+  offInvestigationComplete: () => ipcRenderer.removeAllListeners('agent:investigation-complete'),
 });

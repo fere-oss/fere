@@ -942,6 +942,8 @@ function FindingCard({
   onExplain,
   onDismiss,
   onOpenInClaudeCode,
+  onInvestigate,
+  investigation,
   isStreaming,
 }: {
   item: FeedFinding;
@@ -949,6 +951,13 @@ function FindingCard({
   onExplain: (finding: FeedFinding) => void;
   onDismiss: (id: string) => void;
   onOpenInClaudeCode: (finding: FeedFinding) => void;
+  onInvestigate: (finding: FeedFinding) => void;
+  investigation?: {
+    status: "running" | "done" | "error";
+    lastTool?: string;
+    result?: string;
+    error?: string;
+  };
   isStreaming: boolean;
 }) {
   const canDismiss =
@@ -1003,6 +1012,39 @@ function FindingCard({
           >
             Open in Claude Code
           </button>
+          <button
+            className="agp-finding-claudecode-btn"
+            onClick={() => onInvestigate(item)}
+            disabled={isStreaming || investigation?.status === "running"}
+            title="Run a headless Claude investigation against this finding (uses your Claude Code install)"
+          >
+            {investigation?.status === "running"
+              ? "Investigating…"
+              : "Investigate with Claude"}
+          </button>
+        </div>
+      )}
+
+      {investigation && (
+        <div className="agp-finding-investigation">
+          {investigation.status === "running" && (
+            <div className="agp-finding-status">
+              <span className="agp-step-spinner" />
+              {investigation.lastTool
+                ? `Claude → ${investigation.lastTool}`
+                : "Claude is investigating…"}
+            </div>
+          )}
+          {investigation.status === "done" && investigation.result && (
+            <pre className="agp-finding-investigation-result">
+              {investigation.result}
+            </pre>
+          )}
+          {investigation.status === "error" && (
+            <div className="agp-finding-status agp-finding-status-escalated">
+              {investigation.error}
+            </div>
+          )}
         </div>
       )}
 
@@ -1088,6 +1130,18 @@ export function AgentPanel({
   const [detectionEnabled, setDetectionEnabled] = useState(false);
   const [autopilotEnabled, setAutopilotEnabled] = useState(false);
   const [handoffCopied, setHandoffCopied] = useState(false);
+
+  // Headless Claude investigations keyed by finding id. Populated by
+  // investigateFinding() and updated as IPC step/complete events arrive.
+  type InvestigationState = {
+    status: "running" | "done" | "error";
+    lastTool?: string;
+    result?: string;
+    error?: string;
+  };
+  const [investigations, setInvestigations] = useState<
+    Record<string, InvestigationState>
+  >({});
 
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -2025,6 +2079,74 @@ export function AgentPanel({
     return () => window.electronAPI.offProactiveFinding();
   }, [detectionEnabled, surfaceFindings]);
 
+  // Headless Claude investigation events. Always on — independent of Sentinel
+  // detection state, since users can trigger investigations manually.
+  useEffect(() => {
+    window.electronAPI.onInvestigationStep((step) => {
+      const id = step.investigationId;
+      if (!id) return;
+      if (step.kind === "tool_use") {
+        setInvestigations((prev) => ({
+          ...prev,
+          [id]: {
+            ...(prev[id] ?? { status: "running" as const }),
+            status: "running",
+            lastTool: step.tool,
+          },
+        }));
+      }
+    });
+    window.electronAPI.onInvestigationComplete((evt) => {
+      const id = evt.investigationId;
+      if (!id) return;
+      setInvestigations((prev) => ({
+        ...prev,
+        [id]: evt.success
+          ? { status: "done", result: evt.result }
+          : { status: "error", error: evt.error || "Investigation failed" },
+      }));
+    });
+    return () => {
+      window.electronAPI.offInvestigationStep();
+      window.electronAPI.offInvestigationComplete();
+    };
+  }, []);
+
+  const investigateFinding = useCallback(
+    (finding: FeedFinding) => {
+      const investigationId = finding.id;
+      setInvestigations((prev) => ({
+        ...prev,
+        [investigationId]: { status: "running" },
+      }));
+      const findingForBridge: AgentFinding = {
+        id: finding.id,
+        severity: finding.severity,
+        // FeedFinding doesn't carry category/detail/impact/affected — main
+        // process re-runs scan and matches by id, so these are best-effort.
+        category: "health",
+        service: finding.service,
+        summary: finding.summary,
+        detail: finding.error ?? "",
+        impact: null,
+        affectedServices: [],
+        fix: finding.fix,
+      };
+      void window.electronAPI
+        .investigateFinding(findingForBridge, investigationId)
+        .catch((err: unknown) => {
+          setInvestigations((prev) => ({
+            ...prev,
+            [investigationId]: {
+              status: "error",
+              error: err instanceof Error ? err.message : String(err),
+            },
+          }));
+        });
+    },
+    [],
+  );
+
   // Subscribe to resolved findings — transition to "verified" and clear from surfaced set
   useEffect(() => {
     if (!detectionEnabled) return;
@@ -2615,6 +2737,8 @@ export function AgentPanel({
                         onExplain={explainFinding}
                         onDismiss={dismissFinding}
                         onOpenInClaudeCode={openFindingInClaudeCode}
+                        onInvestigate={investigateFinding}
+                        investigation={investigations[item.id]}
                         isStreaming={isStreaming}
                       />
                     );
