@@ -1,5 +1,9 @@
 # Fere
 
+[![CI](https://github.com/RahulThennarasu/fere/actions/workflows/ci.yml/badge.svg)](https://github.com/RahulThennarasu/fere/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Version](https://img.shields.io/github/v/release/RahulThennarasu/fere?label=version)](https://github.com/RahulThennarasu/fere/releases)
+
 Fere is a desktop app for understanding what is running on your machine right now.
 
 It watches local processes, listening ports, TCP connections, Docker containers, routes, external API usage, logs, databases, and request flow, then turns that into a live, interactive map of your development environment. The goal is simple: make local infrastructure visible enough that you can answer questions like:
@@ -516,9 +520,28 @@ Main code references:
 - Docker, database, and AI features degrade gracefully when their dependencies are unavailable
 - route and provider discovery are heuristic and source-based, so they are informative rather than perfect
 
+## Contributing
+
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions, code conventions, and the PR process.
+
+Quick start:
+
+```bash
+git clone https://github.com/RahulThennarasu/fere
+cd fere
+npm install
+npm run electron:dev
+```
+
+## Community
+
+- [GitHub Issues](https://github.com/RahulThennarasu/fere/issues) — bug reports and feature requests
+- [Code of Conduct](CODE_OF_CONDUCT.md)
+
 ## Architecture
 
 For deeper internals, read:
 
 - [`docs/architecture.md`](docs/architecture.md)
+- [`ARCHITECTURE.md`](ARCHITECTURE.md) — public IPC bridge overview
 
