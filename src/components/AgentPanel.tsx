@@ -936,6 +936,175 @@ function loadPersistedChatState(): PersistedChatState {
   }
 }
 
+type AgentProviderInfoLite = {
+  id: string;
+  displayName: string;
+  binary: string;
+  installHint: string;
+  detected: boolean;
+};
+
+function InvestigateButton({
+  item,
+  investigation,
+  isStreaming,
+  agentProviders,
+  agentLoadState,
+  agentLoadError,
+  onRefreshAgents,
+  activeProvider,
+  menuOpen,
+  setMenuOpen,
+  onInvestigate,
+  onChooseDefault,
+}: {
+  item: FeedFinding;
+  investigation?: {
+    status: "running" | "done" | "error";
+    lastTool?: string;
+    result?: string;
+    error?: string;
+  };
+  isStreaming: boolean;
+  agentProviders: AgentProviderInfoLite[];
+  agentLoadState: "idle" | "loading" | "ready" | "error";
+  agentLoadError: string | null;
+  onRefreshAgents: () => void | Promise<void>;
+  activeProvider: AgentProviderInfoLite | null;
+  menuOpen: boolean;
+  setMenuOpen: (v: boolean) => void;
+  onInvestigate: (finding: FeedFinding, providerId?: string) => void;
+  onChooseDefault: (id: string) => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  // Close on outside click
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onDoc = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [menuOpen, setMenuOpen]);
+
+  const running = investigation?.status === "running";
+  const disabled = isStreaming || running;
+  const detected = agentProviders.filter((p) => p.detected);
+  const hasAny = detected.length > 0;
+
+  const label = running
+    ? "Investigating…"
+    : hasAny
+      ? `Investigate${activeProvider ? ` (${activeProvider.displayName})` : ""}`
+      : "Investigate";
+
+  return (
+    <div className="agp-finding-investigate-split" ref={ref}>
+      <button
+        className="agp-finding-claudecode-btn agp-finding-investigate-main"
+        onClick={() => {
+          if (!hasAny) {
+            setMenuOpen(true);
+            return;
+          }
+          onInvestigate(item, activeProvider?.id);
+        }}
+        disabled={disabled}
+        title={
+          activeProvider
+            ? `Run a headless ${activeProvider.displayName} investigation here`
+            : "No agent CLI detected — click the caret to see install options"
+        }
+      >
+        {label}
+      </button>
+      <button
+        className="agp-finding-claudecode-btn agp-finding-investigate-caret"
+        onClick={() => setMenuOpen(!menuOpen)}
+        disabled={isStreaming}
+        title="Choose an agent"
+        aria-haspopup="menu"
+        aria-expanded={menuOpen}
+      >
+        ▾
+      </button>
+      {menuOpen && (
+        <div className="agp-finding-agent-menu" role="menu">
+          {(agentLoadState === "loading" || agentLoadState === "idle") && (
+            <div className="agp-finding-agent-menu-empty">
+              Detecting agents…
+            </div>
+          )}
+          {agentLoadState === "error" && (
+            <>
+              <div className="agp-finding-agent-menu-empty">
+                Failed to detect: {agentLoadError ?? "unknown error"}
+              </div>
+              <button
+                className="agp-finding-agent-menu-item"
+                onClick={() => { void onRefreshAgents(); }}
+              >
+                <span className="agp-finding-agent-menu-name">Retry</span>
+              </button>
+            </>
+          )}
+          {agentLoadState === "ready" && agentProviders.length === 0 && (
+            <div className="agp-finding-agent-menu-empty">
+              No agent CLI detected. Install Claude Code or OpenAI Codex,
+              then click Retry.
+            </div>
+          )}
+          {agentLoadState === "ready" && agentProviders.map((p) => (
+            <div key={p.id} className="agp-finding-agent-menu-row">
+              {p.detected ? (
+                <button
+                  className="agp-finding-agent-menu-item"
+                  role="menuitem"
+                  onClick={() => {
+                    onChooseDefault(p.id);
+                    onInvestigate(item, p.id);
+                  }}
+                >
+                  <span className="agp-finding-agent-menu-name">
+                    {p.displayName}
+                  </span>
+                  {activeProvider?.id === p.id && (
+                    <span className="agp-finding-agent-menu-check">✓</span>
+                  )}
+                </button>
+              ) : (
+                <div className="agp-finding-agent-menu-item agp-finding-agent-menu-disabled">
+                  <span className="agp-finding-agent-menu-name">
+                    {p.displayName}
+                  </span>
+                  <span
+                    className="agp-finding-agent-menu-install"
+                    title={p.installHint}
+                  >
+                    not installed
+                  </span>
+                </div>
+              )}
+            </div>
+          ))}
+          {agentLoadState === "ready" && (
+            <button
+              className="agp-finding-agent-menu-item agp-finding-agent-menu-refresh"
+              onClick={() => { void onRefreshAgents(); }}
+              title="Re-run detection"
+            >
+              <span className="agp-finding-agent-menu-name">Refresh</span>
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function FindingCard({
   item,
   onFix,
@@ -944,6 +1113,12 @@ function FindingCard({
   onOpenInClaudeCode,
   onInvestigate,
   investigation,
+  agentProviders,
+  agentLoadState,
+  agentLoadError,
+  onRefreshAgents,
+  defaultAgentId,
+  setDefaultAgentId,
   isStreaming,
 }: {
   item: FeedFinding;
@@ -951,15 +1126,33 @@ function FindingCard({
   onExplain: (finding: FeedFinding) => void;
   onDismiss: (id: string) => void;
   onOpenInClaudeCode: (finding: FeedFinding) => void;
-  onInvestigate: (finding: FeedFinding) => void;
+  onInvestigate: (finding: FeedFinding, providerId?: string) => void;
   investigation?: {
     status: "running" | "done" | "error";
     lastTool?: string;
     result?: string;
     error?: string;
   };
+  agentProviders: {
+    id: string;
+    displayName: string;
+    binary: string;
+    installHint: string;
+    detected: boolean;
+  }[];
+  agentLoadState: "idle" | "loading" | "ready" | "error";
+  agentLoadError: string | null;
+  onRefreshAgents: () => void | Promise<void>;
+  defaultAgentId: string | null;
+  setDefaultAgentId: (id: string | null) => void;
   isStreaming: boolean;
 }) {
+  const [agentMenuOpen, setAgentMenuOpen] = useState(false);
+  const detectedProviders = agentProviders.filter((p) => p.detected);
+  const activeProvider =
+    detectedProviders.find((p) => p.id === defaultAgentId) ??
+    detectedProviders[0] ??
+    null;
   const canDismiss =
     item.stage === "detected" ||
     item.stage === "verified" ||
@@ -1010,49 +1203,75 @@ function FindingCard({
           >
             Explain
           </button>
-          <button
-            className="agp-finding-claudecode-btn"
-            onClick={() => onInvestigate(item)}
-            disabled={isStreaming || investigation?.status === "running"}
-            title="Run a headless Claude investigation here (uses your Claude Code install)"
-          >
-            {investigation?.status === "running"
-              ? "Investigating…"
-              : "Investigate"}
-          </button>
+          <InvestigateButton
+            item={item}
+            investigation={investigation}
+            isStreaming={isStreaming}
+            agentProviders={agentProviders}
+            agentLoadState={agentLoadState}
+            agentLoadError={agentLoadError}
+            onRefreshAgents={onRefreshAgents}
+            activeProvider={activeProvider}
+            menuOpen={agentMenuOpen}
+            setMenuOpen={setAgentMenuOpen}
+            onInvestigate={onInvestigate}
+            onChooseDefault={(id) => {
+              setDefaultAgentId(id);
+              setAgentMenuOpen(false);
+            }}
+          />
           <button
             className="agp-finding-claudecode-btn"
             onClick={() => onOpenInClaudeCode(item)}
             disabled={isStreaming}
-            title="Open Terminal at this project with the investigation brief in Claude Code"
+            title="Open Terminal at this project with the investigation brief"
           >
             Hand off
           </button>
         </div>
       )}
 
-      {investigation && (
-        <div className="agp-finding-investigation">
-          {investigation.status === "running" && (
-            <div className="agp-finding-status">
-              <span className="agp-step-spinner" />
-              {investigation.lastTool
-                ? `Claude → ${investigation.lastTool}`
-                : "Claude is investigating…"}
-            </div>
-          )}
-          {investigation.status === "done" && investigation.result && (
-            <pre className="agp-finding-investigation-result">
-              {investigation.result}
-            </pre>
-          )}
-          {investigation.status === "error" && (
-            <div className="agp-finding-status agp-finding-status-escalated">
-              {investigation.error}
-            </div>
-          )}
-        </div>
-      )}
+      {investigation && (() => {
+        const trimmed = (investigation.result ?? "").trim();
+        const isMeaningful =
+          trimmed.length > 0 &&
+          trimmed !== "(no output)" &&
+          trimmed !== "()";
+        const showResult = investigation.status === "done" && isMeaningful;
+        const showEmptyDone = investigation.status === "done" && !isMeaningful;
+        const showRunning = investigation.status === "running";
+        const showError = investigation.status === "error";
+        if (!showResult && !showEmptyDone && !showRunning && !showError) {
+          return null;
+        }
+        return (
+          <div className="agp-finding-investigation">
+            {showRunning && (
+              <div className="agp-finding-status">
+                <span className="agp-step-spinner" />
+                {investigation.lastTool
+                  ? `Claude → ${investigation.lastTool}`
+                  : "Claude is investigating…"}
+              </div>
+            )}
+            {showResult && (
+              <pre className="agp-finding-investigation-result">
+                {trimmed}
+              </pre>
+            )}
+            {showEmptyDone && (
+              <div className="agp-finding-status">
+                Investigation finished with no output.
+              </div>
+            )}
+            {showError && (
+              <div className="agp-finding-status agp-finding-status-escalated">
+                {investigation.error}
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {(item.stage === "fixing" || item.stage === "fixed") && (
         <div className="agp-finding-status">
@@ -1081,16 +1300,23 @@ function FindingCard({
             >
               Explain
             </button>
-            <button
-              className="agp-finding-claudecode-btn"
-              onClick={() => onInvestigate(item)}
-              disabled={isStreaming || investigation?.status === "running"}
-              title="Run a headless Claude investigation here"
-            >
-              {investigation?.status === "running"
-                ? "Investigating…"
-                : "Investigate"}
-            </button>
+            <InvestigateButton
+              item={item}
+              investigation={investigation}
+              isStreaming={isStreaming}
+              agentProviders={agentProviders}
+              agentLoadState={agentLoadState}
+              agentLoadError={agentLoadError}
+              onRefreshAgents={onRefreshAgents}
+              activeProvider={activeProvider}
+              menuOpen={agentMenuOpen}
+              setMenuOpen={setAgentMenuOpen}
+              onInvestigate={onInvestigate}
+              onChooseDefault={(id) => {
+                setDefaultAgentId(id);
+                setAgentMenuOpen(false);
+              }}
+            />
             <button
               className="agp-finding-claudecode-btn"
               onClick={() => onOpenInClaudeCode(item)}
@@ -1159,6 +1385,65 @@ export function AgentPanel({
   const [investigations, setInvestigations] = useState<
     Record<string, InvestigationState>
   >({});
+
+  // Available agent CLIs detected on the user's machine + the persisted default.
+  type AgentProviderInfo = {
+    id: string;
+    displayName: string;
+    binary: string;
+    installHint: string;
+    detected: boolean;
+  };
+  const AGENT_PREF_KEY = "fere.defaultAgentProvider";
+  const [agentProviders, setAgentProviders] = useState<AgentProviderInfo[]>([]);
+  const [agentLoadState, setAgentLoadState] = useState<
+    "idle" | "loading" | "ready" | "error"
+  >("loading");
+  const [agentLoadError, setAgentLoadError] = useState<string | null>(null);
+  const [defaultAgentId, setDefaultAgentIdState] = useState<string | null>(() => {
+    if (typeof localStorage === "undefined") return null;
+    return localStorage.getItem(AGENT_PREF_KEY);
+  });
+  const setDefaultAgentId = useCallback((id: string | null) => {
+    setDefaultAgentIdState(id);
+    if (typeof localStorage !== "undefined") {
+      if (id) localStorage.setItem(AGENT_PREF_KEY, id);
+      else localStorage.removeItem(AGENT_PREF_KEY);
+    }
+  }, []);
+
+  const refreshAgentProviders = useCallback(async () => {
+    setAgentLoadState("loading");
+    setAgentLoadError(null);
+    try {
+      const api = window.electronAPI as unknown as {
+        listAgentProviders?: (opts?: { fresh?: boolean }) => Promise<{
+          providers: AgentProviderInfo[];
+          error?: string;
+        }>;
+      };
+      if (typeof api.listAgentProviders !== "function") {
+        throw new Error(
+          "listAgentProviders is not exposed on electronAPI. Restart the Fere app (preload.js changes don't hot-reload).",
+        );
+      }
+      const res = await api.listAgentProviders({ fresh: true });
+      setAgentProviders(res.providers ?? []);
+      setAgentLoadState("ready");
+      if (res.error) setAgentLoadError(res.error);
+      const detected = (res.providers ?? []).filter((p) => p.detected);
+      const stillValid =
+        defaultAgentId && detected.some((p) => p.id === defaultAgentId);
+      if (!stillValid && detected.length > 0) {
+        setDefaultAgentId(detected[0].id);
+      } else if (!stillValid) {
+        setDefaultAgentId(null);
+      }
+    } catch (err) {
+      setAgentLoadState("error");
+      setAgentLoadError(err instanceof Error ? err.message : String(err));
+    }
+  }, [defaultAgentId, setDefaultAgentId]);
 
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -2096,7 +2381,14 @@ export function AgentPanel({
     return () => window.electronAPI.offProactiveFinding();
   }, [detectionEnabled, surfaceFindings]);
 
-  // Headless Claude investigation events. Always on — independent of Sentinel
+  // Detect installed agent CLIs (Claude Code, Codex, ...) once on mount.
+  // refreshAgentProviders() also runs on demand from the dropdown menu.
+  useEffect(() => {
+    void refreshAgentProviders();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Headless agent investigation events. Always on — independent of Sentinel
   // detection state, since users can trigger investigations manually.
   useEffect(() => {
     window.electronAPI.onInvestigationStep((step) => {
@@ -2130,7 +2422,7 @@ export function AgentPanel({
   }, []);
 
   const investigateFinding = useCallback(
-    (finding: FeedFinding) => {
+    (finding: FeedFinding, providerId?: string) => {
       const investigationId = finding.id;
       setInvestigations((prev) => ({
         ...prev,
@@ -2149,8 +2441,9 @@ export function AgentPanel({
         affectedServices: [],
         fix: finding.fix,
       };
+      const chosenProvider = providerId ?? defaultAgentId ?? undefined;
       void window.electronAPI
-        .investigateFinding(findingForBridge, investigationId)
+        .investigateFinding(findingForBridge, investigationId, chosenProvider)
         .catch((err: unknown) => {
           setInvestigations((prev) => ({
             ...prev,
@@ -2161,7 +2454,7 @@ export function AgentPanel({
           }));
         });
     },
-    [],
+    [defaultAgentId],
   );
 
   // Subscribe to resolved findings — transition to "verified" and clear from surfaced set
@@ -2756,6 +3049,12 @@ export function AgentPanel({
                         onOpenInClaudeCode={openFindingInClaudeCode}
                         onInvestigate={investigateFinding}
                         investigation={investigations[item.id]}
+                        agentProviders={agentProviders}
+                        agentLoadState={agentLoadState}
+                        agentLoadError={agentLoadError}
+                        onRefreshAgents={refreshAgentProviders}
+                        defaultAgentId={defaultAgentId}
+                        setDefaultAgentId={setDefaultAgentId}
                         isStreaming={isStreaming}
                       />
                     );

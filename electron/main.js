@@ -169,7 +169,7 @@ const {
 } = require("./services/fereAgent");
 const { openInClaudeCode } = require("./services/claudeCodeBrief");
 const mcpBridge = require("./services/mcpBridge");
-const headlessClaude = require("./services/headlessClaude");
+const headlessAgent = require("./services/headlessAgent");
 const OpenAI = require("openai").default;
 const sentry = require("./sentry");
 const { generateHTML } = require("./services/graphExporter");
@@ -492,41 +492,61 @@ ipcMain.on('mcp:approval-response', (_event, payload) => {
   });
 });
 
-// Spawn headless Claude Code with the Fere MCP attached, scoped to a single
-// finding. Streams tool calls + text back to the renderer as they happen.
-ipcMain.handle('agent:investigate-finding', async (event, { finding, investigationId }) => {
-  if (!finding || !finding.id) {
-    return { success: false, error: 'finding is required' };
-  }
+// Spawn a headless AI coding CLI (Claude Code, Codex, …) with the Fere MCP
+// attached, scoped to a single finding. Streams tool calls + text back to the
+// renderer as they happen. The chosen provider is passed in by the renderer;
+// if omitted, the first detected provider is used.
+ipcMain.handle(
+  'agent:investigate-finding',
+  async (event, { finding, investigationId, providerId }) => {
+    if (!finding || !finding.id) {
+      return { success: false, error: 'finding is required' };
+    }
 
-  const snapshot = (snapshotScheduler && snapshotScheduler.previousSnapshot) || null;
-  let projectPath = null;
-  if (snapshot && Array.isArray(snapshot.graph?.nodes)) {
-    for (const node of snapshot.graph.nodes) {
-      const name = node.name || node.label || node.service;
-      if (name === finding.service && node.projectPath) {
-        projectPath = node.projectPath;
-        break;
+    const snapshot = (snapshotScheduler && snapshotScheduler.previousSnapshot) || null;
+    let projectPath = null;
+    if (snapshot && Array.isArray(snapshot.graph?.nodes)) {
+      for (const node of snapshot.graph.nodes) {
+        const name = node.name || node.label || node.service;
+        if (name === finding.service && node.projectPath) {
+          projectPath = node.projectPath;
+          break;
+        }
       }
     }
+
+    const send = (channel, payload) => {
+      if (!event.sender.isDestroyed()) event.sender.send(channel, payload);
+    };
+
+    const onStep = (step) => {
+      send('agent:investigation-step', { investigationId, ...step });
+    };
+
+    const result = await headlessAgent.runInvestigation({
+      finding,
+      projectPath,
+      providerId,
+      onStep,
+    });
+
+    send('agent:investigation-complete', { investigationId, ...result });
+    return result;
+  },
+);
+
+ipcMain.handle('agent:list-providers', async (_event, opts) => {
+  try {
+    if (opts && opts.fresh) {
+      const providers = require('./services/agentProviders');
+      providers.clearDetectionCache();
+      const resolver = require('./services/agentProviders/_resolveBinary');
+      resolver.clearCache();
+    }
+    return { providers: await headlessAgent.listProviders() };
+  } catch (err) {
+    return { providers: [], error: err && err.message ? err.message : String(err) };
   }
-
-  const send = (channel, payload) => {
-    if (!event.sender.isDestroyed()) event.sender.send(channel, payload);
-  };
-
-  const onStep = (step) => {
-    send('agent:investigation-step', { investigationId, ...step });
-  };
-
-  const result = await headlessClaude.runInvestigation({
-    finding,
-    projectPath,
-    onStep,
-  });
-
-  send('agent:investigation-complete', { investigationId, ...result });
-  return result;
 });
 
 app.on("window-all-closed", () => {

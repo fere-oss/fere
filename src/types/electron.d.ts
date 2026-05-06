@@ -793,16 +793,29 @@ export interface ElectronAPI {
   offMcpApprovalRequest: () => void;
   respondMcpApproval: (requestId: string, approved: boolean, reason?: string) => void;
 
-  // Headless Claude investigation — Fere spawns `claude -p` with the Fere MCP
-  // attached and streams progress back to the renderer.
+  // Headless agent investigation — Fere spawns an AI CLI (Claude Code, Codex,
+  // ...) with the Fere MCP attached and streams progress back to the renderer.
+  listAgentProviders: (opts?: { fresh?: boolean }) => Promise<{
+    providers: AgentProviderInfo[];
+    error?: string;
+  }>;
   investigateFinding: (
     finding: AgentFinding,
     investigationId: string,
+    providerId?: string,
   ) => Promise<InvestigationResult>;
   onInvestigationStep: (callback: (step: InvestigationStep) => void) => void;
   offInvestigationStep: () => void;
   onInvestigationComplete: (callback: (result: InvestigationCompletion) => void) => void;
   offInvestigationComplete: () => void;
+}
+
+export interface AgentProviderInfo {
+  id: string;
+  displayName: string;
+  binary: string;
+  installHint: string;
+  detected: boolean;
 }
 
 export interface McpApprovalRequest {
@@ -814,6 +827,7 @@ export interface McpApprovalRequest {
 
 export interface InvestigationResult {
   success: boolean;
+  providerId?: string;
   result?: string;
   error?: string;
   durationMs?: number;

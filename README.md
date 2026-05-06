@@ -332,6 +332,19 @@ The app includes a welcome/onboarding modal with previews for:
 
 This is part of the current shipped product surface and not just a design stub.
 
+## Headless investigations from Sentinel
+
+Sentinel can drive a headless AI coding CLI on your behalf. Click **Investigate** on any finding and Fere spawns a one-shot session of your chosen agent with the Fere MCP attached, scoped to the affected service's project. The agent investigates, optionally calls `apply_fix` (which still goes through Fere's approval modal), and the result lands inline on the finding card.
+
+Currently supported providers:
+
+| Provider | Install | Notes |
+| --- | --- | --- |
+| **Claude Code** | `npm i -g @anthropic-ai/claude-code` | Per-invocation MCP via `--mcp-config`. Tool allowlist enforced. |
+| **OpenAI Codex** | `npm i -g @openai/codex` | Per-invocation MCP via `-c` config overrides (no global pollution). Sandbox `read-only` enforced. |
+
+Click the caret next to the Investigate button to switch agents. The choice is persisted per-machine. Agents that aren't installed appear greyed out with the install hint. Fere falls back to the **Hand off** button (clipboard + Terminal) for any other agent.
+
 ## MCP Server (for Claude Code, Cursor, Windsurf, Zed)
 
 Fere ships an MCP server (`fere-mcp`) so AI coding clients can pull live runtime data from your local stack instead of guessing. While Fere is running, your AI client can call:
