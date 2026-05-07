@@ -944,6 +944,35 @@ type AgentProviderInfoLite = {
   detected: boolean;
 };
 
+function AgentErrorToast({
+  providerName,
+  message,
+  onDismiss,
+}: {
+  providerName: string;
+  message: string;
+  onDismiss: () => void;
+}) {
+  useEffect(() => {
+    const t = setTimeout(onDismiss, 6000);
+    return () => clearTimeout(t);
+  }, [onDismiss]);
+
+  return (
+    <div className="agp-agent-toast" role="alert">
+      <div className="agp-agent-toast-title">{providerName} couldn't run</div>
+      <div className="agp-agent-toast-msg">{message}</div>
+      <button
+        className="agp-agent-toast-dismiss"
+        onClick={onDismiss}
+        aria-label="Dismiss"
+      >
+        ×
+      </button>
+    </div>
+  );
+}
+
 function InvestigateButton({
   item,
   investigation,
@@ -964,6 +993,8 @@ function InvestigateButton({
     lastTool?: string;
     result?: string;
     error?: string;
+    providerName?: string;
+    providerId?: string;
   };
   isStreaming: boolean;
   agentProviders: AgentProviderInfoLite[];
@@ -1132,6 +1163,8 @@ function FindingCard({
     lastTool?: string;
     result?: string;
     error?: string;
+    providerName?: string;
+    providerId?: string;
   };
   agentProviders: {
     id: string;
@@ -1246,14 +1279,17 @@ function FindingCard({
         }
         return (
           <div className="agp-finding-investigation">
-            {showRunning && (
-              <div className="agp-finding-status">
-                <span className="agp-step-spinner" />
-                {investigation.lastTool
-                  ? `Claude → ${investigation.lastTool}`
-                  : "Claude is investigating…"}
-              </div>
-            )}
+            {showRunning && (() => {
+              const who = investigation.providerName || "Agent";
+              return (
+                <div className="agp-finding-status">
+                  <span className="agp-step-spinner" />
+                  {investigation.lastTool
+                    ? `${who} → ${investigation.lastTool}`
+                    : `${who} is investigating…`}
+                </div>
+              );
+            })()}
             {showResult && (
               <pre className="agp-finding-investigation-result">
                 {trimmed}
@@ -1374,13 +1410,20 @@ export function AgentPanel({
   const [autopilotEnabled, setAutopilotEnabled] = useState(false);
   const [handoffCopied, setHandoffCopied] = useState(false);
 
-  // Headless Claude investigations keyed by finding id. Populated by
+  // Transient popup for agent failures (e.g. provider not installed,
+  // codex not authed). Auto-dismisses after a few seconds.
+  type AgentToast = { providerName: string; message: string };
+  const [agentToast, setAgentToast] = useState<AgentToast | null>(null);
+
+  // Headless agent investigations keyed by finding id. Populated by
   // investigateFinding() and updated as IPC step/complete events arrive.
   type InvestigationState = {
     status: "running" | "done" | "error";
     lastTool?: string;
     result?: string;
     error?: string;
+    providerName?: string;
+    providerId?: string;
   };
   const [investigations, setInvestigations] = useState<
     Record<string, InvestigationState>
@@ -2408,12 +2451,29 @@ export function AgentPanel({
     window.electronAPI.onInvestigationComplete((evt) => {
       const id = evt.investigationId;
       if (!id) return;
-      setInvestigations((prev) => ({
-        ...prev,
-        [id]: evt.success
-          ? { status: "done", result: evt.result }
-          : { status: "error", error: evt.error || "Investigation failed" },
-      }));
+      let providerNameForToast: string | undefined;
+      setInvestigations((prev) => {
+        const existing = prev[id];
+        providerNameForToast = existing?.providerName;
+        return {
+          ...prev,
+          [id]: evt.success
+            ? { ...existing, status: "done", result: evt.result }
+            : {
+                ...existing,
+                status: "error",
+                error: evt.error || "Investigation failed",
+              },
+        };
+      });
+      if (!evt.success) {
+        // Surface a popup so the user can't miss it — inline error text in the
+        // finding card is easy to overlook for off-screen findings.
+        setAgentToast({
+          providerName: providerNameForToast || "Agent",
+          message: evt.error || "Investigation failed",
+        });
+      }
     });
     return () => {
       window.electronAPI.offInvestigationStep();
@@ -2424,9 +2484,28 @@ export function AgentPanel({
   const investigateFinding = useCallback(
     (finding: FeedFinding, providerId?: string) => {
       const investigationId = finding.id;
+      const chosenProviderId = providerId ?? defaultAgentId ?? undefined;
+      const chosenProvider = chosenProviderId
+        ? agentProviders.find((p) => p.id === chosenProviderId)
+        : agentProviders.find((p) => p.detected);
+
+      // If the user explicitly picked a provider that isn't installed/detected,
+      // surface a popup immediately rather than spawning and failing late.
+      if (chosenProviderId && chosenProvider && !chosenProvider.detected) {
+        setAgentToast({
+          providerName: chosenProvider.displayName,
+          message: `${chosenProvider.displayName} isn't set up on this machine. Install it with: ${chosenProvider.installHint}`,
+        });
+        return;
+      }
+
       setInvestigations((prev) => ({
         ...prev,
-        [investigationId]: { status: "running" },
+        [investigationId]: {
+          status: "running",
+          providerId: chosenProvider?.id,
+          providerName: chosenProvider?.displayName,
+        },
       }));
       const findingForBridge: AgentFinding = {
         id: finding.id,
@@ -2441,20 +2520,20 @@ export function AgentPanel({
         affectedServices: [],
         fix: finding.fix,
       };
-      const chosenProvider = providerId ?? defaultAgentId ?? undefined;
       void window.electronAPI
-        .investigateFinding(findingForBridge, investigationId, chosenProvider)
+        .investigateFinding(findingForBridge, investigationId, chosenProviderId)
         .catch((err: unknown) => {
           setInvestigations((prev) => ({
             ...prev,
             [investigationId]: {
+              ...(prev[investigationId] ?? { status: "running" as const }),
               status: "error",
               error: err instanceof Error ? err.message : String(err),
             },
           }));
         });
     },
-    [defaultAgentId],
+    [agentProviders, defaultAgentId],
   );
 
   // Subscribe to resolved findings — transition to "verified" and clear from surfaced set
@@ -2753,6 +2832,13 @@ export function AgentPanel({
 
   return (
     <>
+      {agentToast && (
+        <AgentErrorToast
+          providerName={agentToast.providerName}
+          message={agentToast.message}
+          onDismiss={() => setAgentToast(null)}
+        />
+      )}
       <button
         className={`agp-trigger-logo-btn${open ? " agp-trigger-btn-active" : ""}`}
         onClick={() => setOpen((v) => !v)}

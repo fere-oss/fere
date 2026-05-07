@@ -14325,6 +14325,54 @@ body.sentinel-panel-open .activity-donut-total {
   z-index: 2000;
 }
 
+.agp-agent-toast {
+  position: fixed;
+  top: 24px;
+  right: 24px;
+  z-index: 3000;
+  max-width: 360px;
+  padding: 12px 36px 12px 14px;
+  background: var(--bg-white);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.14);
+  -webkit-app-region: no-drag;
+  animation: agpSlideIn 0.18s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.agp-agent-toast-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+
+.agp-agent-toast-msg {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+  white-space: pre-wrap;
+}
+
+.agp-agent-toast-dismiss {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  width: 22px;
+  height: 22px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.agp-agent-toast-dismiss:hover {
+  background: var(--bg-hover, rgba(0, 0, 0, 0.06));
+}
+
 @keyframes agpSlideIn {
   from {
     opacity: 0;

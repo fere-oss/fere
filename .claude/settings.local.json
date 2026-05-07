@@ -38,7 +38,11 @@
       "Bash(ps -p 41255 -o lstart,pid,command)",
       "Bash(ps -p 41255 -o lstart=,pid=,command=)",
       "Bash(ps -o lstart -o pid -o command -p 41255)",
-      "Bash(ps -o lstart -o pid -p 41102)"
+      "Bash(ps -o lstart -o pid -p 41102)",
+      "Bash(codex --version)",
+      "Bash(claude --version)",
+      "Bash(echo \"exit=$?\")",
+      "Bash(brew list *)"
     ]
   }
 }

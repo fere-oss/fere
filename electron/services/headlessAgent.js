@@ -161,6 +161,11 @@ async function runInvestigation({ finding, projectPath, providerId, onStep }) {
       child = spawn(spec.command, spec.args, {
         cwd: spec.cwd || cwd,
         env: spec.env || process.env,
+        // Ignore stdin: Codex's `exec --json` will block reading stdin as a
+        // <stdin> block even when a prompt is passed as an argument. Without
+        // this, codex hangs forever waiting on EOF that Node's default piped
+        // stdin never sends.
+        stdio: ['ignore', 'pipe', 'pipe'],
       });
     } catch (err) {
       return resolve({
@@ -235,10 +240,19 @@ async function runInvestigation({ finding, projectPath, providerId, onStep }) {
           durationMs,
         });
       } else {
+        // Prefer the structured error captured from the JSONL stream
+        // (e.g. codex's turn.failed/error events) over raw stderr — codex
+        // writes diagnostic noise like "Reading additional input from
+        // stdin..." to stderr that hides the real cause.
+        const structuredError = resultIsError ? finalResult : null;
         resolve({
           success: false,
           providerId: provider.id,
-          error: stderrBuf.trim() || `${spec.command} exited with code ${code}`,
+          error:
+            structuredError ||
+            stderrBuf.trim() ||
+            fallback ||
+            `${spec.command} exited with code ${code}`,
           durationMs,
         });
       }

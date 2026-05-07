@@ -54,20 +54,77 @@ function build({ prompt, mcpShimPath, cwd }) {
 }
 
 // Defensive classifier — Codex JSONL has shifted shapes across releases.
-// Try the common variants in order; return null for anything unrecognized.
+// Current shape (codex-cli 0.121+): top-level events like
+//   { type: 'thread.started', ... }
+//   { type: 'turn.started' }
+//   { type: 'item.started', item: { type: 'message_output' | 'tool_call' | ... } }
+//   { type: 'item.completed', item: { ... } }
+//   { type: 'turn.completed', usage: {...} }
+//   { type: 'turn.failed', error: { message } }
+//   { type: 'error', message }
+// Older variants used { msg: { type, ... } }. We try both.
 function classifyEvent(event) {
   if (!event || typeof event !== 'object') return null;
 
-  // Some versions wrap payloads under `msg` or `item` keys.
+  const topType = event.type;
   const inner = event.msg || event.item || event;
-  const type = inner.type || event.type;
+  const innerType = inner.type || topType;
 
-  // Tool calls — names vary: tool_call, function_call, mcp_tool_call
+  // Hard error events — codex emits a top-level `{type: 'error', message}` or
+  // `{type: 'turn.failed', error: {message}}` and then exits.
+  if (topType === 'error') {
+    return { kind: 'result', result: extractErrorMessage(event), isError: true };
+  }
+  if (topType === 'turn.failed') {
+    return { kind: 'result', result: extractErrorMessage(event.error || event), isError: true };
+  }
+
+  // Item-style events (codex >= 0.100): wrap a tool_call / message_output / etc.
+  if (topType === 'item.started' || topType === 'item.completed' || topType === 'item.updated') {
+    const item = event.item || {};
+    const itemType = item.type;
+
+    if (itemType === 'tool_call' || itemType === 'mcp_tool_call' || itemType === 'function_call') {
+      const tool =
+        item.tool ||
+        item.name ||
+        item.tool_name ||
+        (item.function && item.function.name) ||
+        'tool';
+      // Only emit on start so we don't double-emit on completed
+      if (topType !== 'item.started') return null;
+      return { kind: 'tool_use', tool, input: item.arguments || item.args || item.input };
+    }
+
+    if (itemType === 'message_output' || itemType === 'agent_message' || itemType === 'message') {
+      const text = extractText(item);
+      if (text) return { kind: 'text', text };
+    }
+
+    return null;
+  }
+
+  // Successful turn end — surface the last agent message if present
+  if (topType === 'turn.completed' || innerType === 'task_complete' || innerType === 'session_complete') {
+    return {
+      kind: 'result',
+      result:
+        event.last_agent_message ||
+        inner.last_agent_message ||
+        inner.message ||
+        inner.text ||
+        inner.output ||
+        null,
+      isError: false,
+    };
+  }
+
+  // Older / alternate flat shapes
   if (
-    type === 'tool_call' ||
-    type === 'function_call' ||
-    type === 'mcp_tool_call' ||
-    type === 'tool_use'
+    innerType === 'tool_call' ||
+    innerType === 'function_call' ||
+    innerType === 'mcp_tool_call' ||
+    innerType === 'tool_use'
   ) {
     const tool =
       inner.tool ||
@@ -79,9 +136,9 @@ function classifyEvent(event) {
   }
 
   if (
-    type === 'tool_result' ||
-    type === 'function_call_output' ||
-    type === 'tool_output'
+    innerType === 'tool_result' ||
+    innerType === 'function_call_output' ||
+    innerType === 'tool_output'
   ) {
     return {
       kind: 'tool_result',
@@ -90,48 +147,47 @@ function classifyEvent(event) {
     };
   }
 
-  // Agent text — 'agent_message', 'message', 'output_text', 'response.text'
   if (
-    type === 'agent_message' ||
-    type === 'message' ||
-    type === 'output_text' ||
-    type === 'response.output_text.delta' ||
-    type === 'response.completed'
+    innerType === 'agent_message' ||
+    innerType === 'message' ||
+    innerType === 'output_text' ||
+    innerType === 'response.output_text.delta' ||
+    innerType === 'response.completed'
   ) {
-    const text =
-      (typeof inner.text === 'string' && inner.text) ||
-      (typeof inner.content === 'string' && inner.content) ||
-      (typeof inner.delta === 'string' && inner.delta) ||
-      (Array.isArray(inner.content) &&
-        inner.content
-          .map((c) => (typeof c === 'string' ? c : c && c.text) || '')
-          .filter(Boolean)
-          .join(''));
-    if (text && text.trim()) {
-      return { kind: 'text', text };
-    }
-  }
-
-  // Final result — codex emits a 'task_complete' or 'response.completed' event
-  if (
-    type === 'task_complete' ||
-    type === 'session_complete' ||
-    type === 'agent_session_complete' ||
-    type === 'response.completed'
-  ) {
-    return {
-      kind: 'result',
-      result:
-        inner.last_agent_message ||
-        inner.message ||
-        inner.text ||
-        inner.output ||
-        null,
-      isError: !!inner.error,
-    };
+    const text = extractText(inner);
+    if (text) return { kind: 'text', text };
   }
 
   return null;
+}
+
+function extractText(payload) {
+  if (!payload) return '';
+  if (typeof payload.text === 'string' && payload.text.trim()) return payload.text;
+  if (typeof payload.content === 'string' && payload.content.trim()) return payload.content;
+  if (typeof payload.delta === 'string' && payload.delta.trim()) return payload.delta;
+  if (Array.isArray(payload.content)) {
+    const joined = payload.content
+      .map((c) => (typeof c === 'string' ? c : (c && c.text) || ''))
+      .filter(Boolean)
+      .join('');
+    if (joined.trim()) return joined;
+  }
+  return '';
+}
+
+// Codex error events sometimes nest a stringified JSON inside `message` —
+// pull out the human-readable message if so.
+function extractErrorMessage(payload) {
+  if (!payload) return null;
+  const raw = payload.message || payload.error || payload.text || null;
+  if (typeof raw !== 'string') return raw || null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && parsed.error && parsed.error.message) return parsed.error.message;
+    if (parsed && parsed.message) return parsed.message;
+  } catch { /* not nested JSON */ }
+  return raw;
 }
 
 module.exports = {
