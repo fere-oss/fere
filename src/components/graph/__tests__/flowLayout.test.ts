@@ -1,20 +1,19 @@
 import { buildStableConnectedLayout, FLOW_LAYOUT } from "../flowLayout";
 import { computeHierarchicalLayout } from "../layout";
 import { makeNode, makeEdge, resetCounters } from "../testHelpers";
-import type { LayoutNode } from "../types";
 
 beforeEach(() => resetCounters());
 
 describe("buildStableConnectedLayout", () => {
-  function getConnected(nodes: ReturnType<typeof makeNode>[], edges: ReturnType<typeof makeEdge>[]) {
+  function getConnected(
+    nodes: ReturnType<typeof makeNode>[],
+    edges: ReturnType<typeof makeEdge>[],
+  ) {
     return computeHierarchicalLayout(nodes, edges).connected;
   }
 
   it("preserves order when called with empty caches", () => {
-    const nodes = [
-      makeNode({ id: "a", type: "frontend" }),
-      makeNode({ id: "b", type: "backend" }),
-    ];
+    const nodes = [makeNode({ id: "a", type: "frontend" }), makeNode({ id: "b", type: "backend" })];
     const edges = [makeEdge("a", "b")];
     const connected = getConnected(nodes, edges);
     const orderCache = new Map<number, string[]>();
@@ -68,9 +67,7 @@ describe("buildStableConnectedLayout", () => {
     const result = buildStableConnectedLayout(connected, orderCache, groupOrderCache);
 
     // api-1 and api-2 should be adjacent in the order (same group)
-    const layer1Nodes = result
-      .filter((ln) => ln.layer === 1)
-      .sort((a, b) => a.order - b.order);
+    const layer1Nodes = result.filter((ln) => ln.layer === 1).sort((a, b) => a.order - b.order);
     const ids = layer1Nodes.map((ln) => ln.node.id);
     const idx1 = ids.indexOf("api-1");
     const idx2 = ids.indexOf("api-2");

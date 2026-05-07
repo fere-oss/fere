@@ -19,9 +19,7 @@ interface ServiceDropdownProps {
 }
 
 function typeLabel(type: string) {
-  return (
-    SERVICE_COLORS[type]?.label || type.charAt(0).toUpperCase() + type.slice(1)
-  );
+  return SERVICE_COLORS[type]?.label || type.charAt(0).toUpperCase() + type.slice(1);
 }
 
 function AddServicesModal({
@@ -59,10 +57,7 @@ function AddServicesModal({
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div
-        className="modal-content add-services-modal"
-        onClick={(e) => e.stopPropagation()}
-      >
+      <div className="modal-content add-services-modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h2 className="modal-title">Add Services</h2>
           <button className="modal-close" onClick={onClose} type="button">
@@ -81,9 +76,7 @@ function AddServicesModal({
         </div>
         <div className="modal-body add-services-modal-body">
           {addableNodes.length === 0 ? (
-            <div className="add-services-empty">
-              All active services are already tracked
-            </div>
+            <div className="add-services-empty">All active services are already tracked</div>
           ) : (
             <div className="add-services-list">
               {addableNodes.map((node) => {
@@ -119,9 +112,7 @@ function AddServicesModal({
                       size={16}
                     />
                     <span className="add-services-name">{node.name}</span>
-                    <span className="service-dropdown-type">
-                      {typeLabel(node.type)}
-                    </span>
+                    <span className="service-dropdown-type">{typeLabel(node.type)}</span>
                   </label>
                 );
               })}
@@ -165,10 +156,7 @@ export function ServiceDropdown({
   useEffect(() => {
     function handleClick(e: MouseEvent) {
       if (showAddModal) return; // modal handles its own clicks
-      if (
-        dropdownRef.current &&
-        !dropdownRef.current.contains(e.target as Node)
-      ) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
         const target = e.target as HTMLElement;
         if (target.closest(".app-tab")) return;
         onClose();
@@ -214,64 +202,47 @@ export function ServiceDropdown({
                 containerImage: undefined,
               });
           return (
-          <div
-            className="service-dropdown-row"
-            key={key}
-          >
-            <span
-              className="service-dropdown-dot"
-              style={{
-                backgroundColor: s.running
-                  ? HEALTH_COLORS.green.color
-                  : HEALTH_COLORS.red.color,
-                boxShadow: s.running
-                  ? HEALTH_COLORS.green.glow
-                  : HEALTH_COLORS.red.glow,
-              }}
-            />
-            <BrandIcon
-              value={brandValue}
-              className="service-dropdown-brand-icon"
-              size={14}
-            />
-            <span className="service-dropdown-name">{s.service.name}</span>
-            <span className="service-dropdown-type">
-              {typeLabel(s.service.type)}
-            </span>
-            {!s.running && (
+            <div className="service-dropdown-row" key={key}>
+              <span
+                className="service-dropdown-dot"
+                style={{
+                  backgroundColor: s.running ? HEALTH_COLORS.green.color : HEALTH_COLORS.red.color,
+                  boxShadow: s.running ? HEALTH_COLORS.green.glow : HEALTH_COLORS.red.glow,
+                }}
+              />
+              <BrandIcon value={brandValue} className="service-dropdown-brand-icon" size={14} />
+              <span className="service-dropdown-name">{s.service.name}</span>
+              <span className="service-dropdown-type">{typeLabel(s.service.type)}</span>
+              {!s.running && (
+                <button
+                  className="service-dropdown-start"
+                  title="Start service"
+                  onClick={() => onStart(s.service)}
+                >
+                  <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+                    <path d="M4 2l10 6-10 6V2z" />
+                  </svg>
+                </button>
+              )}
               <button
-                className="service-dropdown-start"
-                title="Start service"
-                onClick={() => onStart(s.service)}
+                className="service-dropdown-dismiss"
+                title="Dismiss"
+                onClick={() => onDismiss(key)}
               >
                 <svg
                   width="12"
                   height="12"
                   viewBox="0 0 16 16"
-                  fill="currentColor"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
                 >
-                  <path d="M4 2l10 6-10 6V2z" />
+                  <path d="M4 4L12 12M12 4L4 12" />
                 </svg>
               </button>
-            )}
-            <button
-              className="service-dropdown-dismiss"
-              title="Dismiss"
-              onClick={() => onDismiss(key)}
-            >
-              <svg
-                width="12"
-                height="12"
-                viewBox="0 0 16 16"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.5"
-              >
-                <path d="M4 4L12 12M12 4L4 12" />
-              </svg>
-            </button>
-          </div>
-        )})}
+            </div>
+          );
+        })}
 
         {/* Dismissed section */}
         {dismissedServices.length > 0 && (
@@ -288,9 +259,7 @@ export function ServiceDropdown({
                 stroke="currentColor"
                 strokeWidth="2"
                 style={{
-                  transform: showDismissed
-                    ? "rotate(0deg)"
-                    : "rotate(-90deg)",
+                  transform: showDismissed ? "rotate(0deg)" : "rotate(-90deg)",
                   transition: "transform 0.15s ease",
                 }}
               >
@@ -310,51 +279,47 @@ export function ServiceDropdown({
                       containerImage: undefined,
                     });
                 return (
-                <div
-                  className="service-dropdown-row service-dropdown-row-dismissed"
-                  key={`dismissed-${key}`}
-                >
-                  <span className="service-dropdown-dot service-dropdown-dot-dismissed" />
-                  <BrandIcon
-                    value={brandValue}
-                    className="service-dropdown-brand-icon"
-                    size={14}
-                  />
-                  <span className="service-dropdown-name service-dropdown-name-dismissed">
-                    {s.name}
-                  </span>
-                  <span className="service-dropdown-type">
-                    {typeLabel(s.type)}
-                  </span>
-                  <button
-                    className="service-dropdown-restore"
-                    onClick={() => onRestore(key)}
+                  <div
+                    className="service-dropdown-row service-dropdown-row-dismissed"
+                    key={`dismissed-${key}`}
                   >
-                    Restore
-                  </button>
-                  <button
-                    className="service-dropdown-remove"
-                    title="Remove permanently"
-                    onClick={() => onRemove(key)}
-                  >
-                    <svg
-                      width="12"
-                      height="12"
-                      viewBox="0 0 16 16"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.5"
+                    <span className="service-dropdown-dot service-dropdown-dot-dismissed" />
+                    <BrandIcon
+                      value={brandValue}
+                      className="service-dropdown-brand-icon"
+                      size={14}
+                    />
+                    <span className="service-dropdown-name service-dropdown-name-dismissed">
+                      {s.name}
+                    </span>
+                    <span className="service-dropdown-type">{typeLabel(s.type)}</span>
+                    <button className="service-dropdown-restore" onClick={() => onRestore(key)}>
+                      Restore
+                    </button>
+                    <button
+                      className="service-dropdown-remove"
+                      title="Remove permanently"
+                      onClick={() => onRemove(key)}
                     >
-                      <path d="M3 4h10M6 4V3a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v1M5 4v9a1 1 0 0 0 1 1h4a1 1 0 0 0 1-1V4" />
-                    </svg>
-                  </button>
-                </div>
-              )})}
+                      <svg
+                        width="12"
+                        height="12"
+                        viewBox="0 0 16 16"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.5"
+                      >
+                        <path d="M3 4h10M6 4V3a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v1M5 4v9a1 1 0 0 0 1 1h4a1 1 0 0 0 1-1V4" />
+                      </svg>
+                    </button>
+                  </div>
+                );
+              })}
           </>
         )}
 
         {/* Start all stopped services */}
-        {services.filter(s => !s.running).length > 1 && (
+        {services.filter((s) => !s.running).length > 1 && (
           <button
             className="service-dropdown-start-all"
             onClick={() => {
@@ -364,27 +329,19 @@ export function ServiceDropdown({
             }}
           >
             <span className="service-dropdown-start-all-main">
-              <svg
-                width="12"
-                height="12"
-                viewBox="0 0 16 16"
-                fill="currentColor"
-              >
+              <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
                 <path d="M4 2l10 6-10 6V2z" />
               </svg>
               <span>Start all</span>
             </span>
             <span className="service-dropdown-start-all-count">
-              {services.filter(s => !s.running).length}
+              {services.filter((s) => !s.running).length}
             </span>
           </button>
         )}
 
         {/* Add service button */}
-        <button
-          className="service-dropdown-add"
-          onClick={() => setShowAddModal(true)}
-        >
+        <button className="service-dropdown-add" onClick={() => setShowAddModal(true)}>
           <svg
             width="12"
             height="12"

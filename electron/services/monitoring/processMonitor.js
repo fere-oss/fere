@@ -1,84 +1,153 @@
-const platform = require('../platform');
+const platform = require("../platform");
 
 const CACHE_TTL_MS = 5000;
 const processCache = { timestamp: 0, data: [], promise: null };
 
 // Last known process collection status (updated on each ps call)
-let lastProcessStatus = { code: 'ok' };
+let lastProcessStatus = { code: "ok" };
 
 // Dev-related process patterns to filter for
 const DEV_PATTERNS = [
-  'node', 'npm', 'npx', 'yarn', 'pnpm', 'bun',
-  'python', 'python3', 'pip', 'uvicorn', 'gunicorn', 'flask', 'django',
-  'ruby', 'rails', 'bundle',
-  'go', 'air',
-  'java', 'gradle', 'maven', 'mvn',
-  'rust', 'cargo',
-  'php', 'composer', 'artisan',
-  'redis-server', 'redis-cli',
-  'postgres', 'psql', 'pg_',
-  'mysql', 'mysqld',
-  'mongo', 'mongod',
-  'docker', 'docker-compose', 'podman',
-  'ssh', 'sshd', 'sftp', 'scp', 'autossh', 'rsync',
-  'nginx', 'apache', 'httpd',
-  'webpack', 'vite', 'esbuild', 'rollup', 'parcel',
-  'electron',
-  'next', 'nuxt', 'gatsby',
-  'uvicorn', 'fastapi',
-  'deno',
+  "node",
+  "npm",
+  "npx",
+  "yarn",
+  "pnpm",
+  "bun",
+  "python",
+  "python3",
+  "pip",
+  "uvicorn",
+  "gunicorn",
+  "flask",
+  "django",
+  "ruby",
+  "rails",
+  "bundle",
+  "go",
+  "air",
+  "java",
+  "gradle",
+  "maven",
+  "mvn",
+  "rust",
+  "cargo",
+  "php",
+  "composer",
+  "artisan",
+  "redis-server",
+  "redis-cli",
+  "postgres",
+  "psql",
+  "pg_",
+  "mysql",
+  "mysqld",
+  "mongo",
+  "mongod",
+  "docker",
+  "docker-compose",
+  "podman",
+  "ssh",
+  "sshd",
+  "sftp",
+  "scp",
+  "autossh",
+  "rsync",
+  "nginx",
+  "apache",
+  "httpd",
+  "webpack",
+  "vite",
+  "esbuild",
+  "rollup",
+  "parcel",
+  "electron",
+  "next",
+  "nuxt",
+  "gatsby",
+  "uvicorn",
+  "fastapi",
+  "deno",
 ];
 
 // Pre-compiled regex from DEV_PATTERNS for O(1) amortized matching
 const DEV_PATTERNS_RE = new RegExp(
-  DEV_PATTERNS.map(p => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')
+  DEV_PATTERNS.map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|"),
 );
 
 // IDE/editor background processes to exclude (language servers, extensions, etc.)
 const IDE_EXCLUDE_PATTERNS = [
   // VS Code extensions & helpers
-  'vscode-', '.vscode', 'extensionhost',
-  'code helper', 'code - insiders helper',
+  "vscode-",
+  ".vscode",
+  "extensionhost",
+  "code helper",
+  "code - insiders helper",
   // Language servers
-  'typescript-language-server', 'tsserver',
-  'pylsp', 'pyright', 'jedi-language-server',
-  'gopls', 'rust-analyzer', 'clangd', 'sourcekit-lsp',
-  'jdtls', 'eclipse.jdt', 'redhat.java',
-  'haskell-language-server', 'lua-language-server',
-  'omnisharp', 'solargraph', 'sorbet', 'ruby-lsp',
-  'tailwindcss-language-server', 'css-languageserver',
-  'html-languageserver', 'json-languageserver',
-  'yaml-language-server', 'bash-language-server',
+  "typescript-language-server",
+  "tsserver",
+  "pylsp",
+  "pyright",
+  "jedi-language-server",
+  "gopls",
+  "rust-analyzer",
+  "clangd",
+  "sourcekit-lsp",
+  "jdtls",
+  "eclipse.jdt",
+  "redhat.java",
+  "haskell-language-server",
+  "lua-language-server",
+  "omnisharp",
+  "solargraph",
+  "sorbet",
+  "ruby-lsp",
+  "tailwindcss-language-server",
+  "css-languageserver",
+  "html-languageserver",
+  "json-languageserver",
+  "yaml-language-server",
+  "bash-language-server",
   // JetBrains
-  'jetbrains', 'intellij', 'pycharm', 'webstorm',
-  'goland', 'rider', 'clion', 'phpstorm', 'rubymine',
-  'datagrip', 'fsnotifier',
+  "jetbrains",
+  "intellij",
+  "pycharm",
+  "webstorm",
+  "goland",
+  "rider",
+  "clion",
+  "phpstorm",
+  "rubymine",
+  "datagrip",
+  "fsnotifier",
   // Generic language server pattern
-  'language-server', 'languageserver', 'lsp-server',
+  "language-server",
+  "languageserver",
+  "lsp-server",
 ];
 
 const IDE_EXCLUDE_RE = new RegExp(
-  IDE_EXCLUDE_PATTERNS.map(p => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'),
-  'i'
+  IDE_EXCLUDE_PATTERNS.map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|"),
+  "i",
 );
 
 // Wrapper process names that should show their script argument
-const WRAPPER_NAMES = new Set(['node', 'python', 'python3', 'ruby']);
+const WRAPPER_NAMES = new Set(["node", "python", "python3", "ruby"]);
 
 /**
  * Extract a clean process name from the full command
  */
 function extractProcessName(command) {
   // Remove path prefixes
-  const parts = command.split(' ')[0].split('/');
+  const parts = command.split(" ")[0].split("/");
   let name = parts[parts.length - 1];
 
   // Handle common wrappers
   if (WRAPPER_NAMES.has(name)) {
-    const args = command.split(' ');
+    const args = command.split(" ");
     if (args.length > 1) {
-      const script = args[1].split('/').pop();
-      if (script && !script.startsWith('-')) {
+      const script = args[1].split("/").pop();
+      if (script && !script.startsWith("-")) {
         name = `${name}: ${script}`;
       }
     }
@@ -116,25 +185,28 @@ async function getAllProcesses() {
     try {
       const rawProcesses = await platform.getProcessList();
       // Decorate with extractProcessName (business logic stays here)
-      const data = rawProcesses.map(proc => ({
+      const data = rawProcesses.map((proc) => ({
         ...proc,
         name: extractProcessName(proc.command),
       }));
       processCache.data = data;
       processCache.timestamp = Date.now();
       processCache.promise = null;
-      lastProcessStatus = { code: 'ok' };
+      lastProcessStatus = { code: "ok" };
       return data;
     } catch (error) {
-      console.error('Error getting processes:', error);
+      console.error("Error getting processes:", error);
       processCache.promise = null;
-      const msg = String(error?.message || error?.stderr || '');
-      if (error.code === 'ENOENT' || /not found/i.test(msg)) {
-        lastProcessStatus = { code: 'unavailable', message: 'System process tool not found' };
+      const msg = String(error?.message || error?.stderr || "");
+      if (error.code === "ENOENT" || /not found/i.test(msg)) {
+        lastProcessStatus = { code: "unavailable", message: "System process tool not found" };
       } else if (/permission denied/i.test(msg)) {
-        lastProcessStatus = { code: 'permission_denied', message: 'Insufficient permissions for process scanning' };
+        lastProcessStatus = {
+          code: "permission_denied",
+          message: "Insufficient permissions for process scanning",
+        };
       } else {
-        lastProcessStatus = { code: 'degraded', message: 'Process scanning encountered an error' };
+        lastProcessStatus = { code: "degraded", message: "Process scanning encountered an error" };
       }
       return [];
     }
@@ -176,7 +248,7 @@ async function getProcessByPid(pid) {
 /**
  * Kill a process by PID
  */
-async function killProcess(pid, signal = 'TERM') {
+async function killProcess(pid, signal = "TERM") {
   return platform.killProcess(pid, signal);
 }
 
@@ -190,7 +262,7 @@ async function getProcessPids() {
 // Re-export parseProcesses for backward compatibility (used in tests)
 function parseProcesses(psOutput) {
   const rawProcesses = platform.parseProcessList(psOutput);
-  return rawProcesses.map(proc => ({
+  return rawProcesses.map((proc) => ({
     ...proc,
     name: extractProcessName(proc.command),
   }));

@@ -22,26 +22,15 @@ export function TierLabelNode({ data }: { data: { text: string } }) {
   return <div className="graph-tier-label">{data.text}</div>;
 }
 
-export function GroupLabelNode({
-  data,
-}: {
-  data: { text: string; color: string };
-}) {
+export function GroupLabelNode({ data }: { data: { text: string; color: string } }) {
   return (
-    <div
-      className="graph-group-label"
-      style={{ ["--group-color" as string]: data.color }}
-    >
+    <div className="graph-group-label" style={{ ["--group-color" as string]: data.color }}>
       {data.text}
     </div>
   );
 }
 
-export function GroupBoxNode({
-  data,
-}: {
-  data: { width: number; height: number; color: string };
-}) {
+export function GroupBoxNode({ data }: { data: { width: number; height: number; color: string } }) {
   return (
     <div
       className="graph-group-box"
@@ -63,12 +52,7 @@ const FlowServiceNodeInner = memo(function FlowServiceNodeInner({
   const dataRef = useRef(data);
   dataRef.current = data;
   const { hoveredNodeId, connectedNodeIds } = useHoverState();
-  const {
-    phase: tracePhase,
-    traceNodeIds,
-    entryNodeId,
-    result: traceResult,
-  } = useTraceState();
+  const { phase: tracePhase, traceNodeIds, entryNodeId, result: traceResult } = useTraceState();
 
   useEffect(() => {
     if (!nodeRef.current) return;
@@ -79,8 +63,7 @@ const FlowServiceNodeInner = memo(function FlowServiceNodeInner({
       rafId = requestAnimationFrame(() => {
         const d = dataRef.current;
         // Use unscaled layout height so zoom level doesn't change measured node size.
-        const height =
-          element.offsetHeight || element.getBoundingClientRect().height;
+        const height = element.offsetHeight || element.getBoundingClientRect().height;
         d.onMeasure(d.node.id, height);
       });
     };
@@ -99,13 +82,9 @@ const FlowServiceNodeInner = memo(function FlowServiceNodeInner({
 
   // Trace takes priority over hover when a trace is active
   const isConnected = connectedNodeIds.has(data.node.id);
-  const dimmed = traceActive
-    ? !isInTrace
-    : hoveredNodeId !== null && !isConnected;
+  const dimmed = traceActive ? !isInTrace : hoveredNodeId !== null && !isConnected;
   // Keep trace styling isolated to rf-node-trace-active (no hover highlight glow/scale while tracing).
-  const highlighted = traceActive
-    ? false
-    : hoveredNodeId !== null && isConnected;
+  const highlighted = traceActive ? false : hoveredNodeId !== null && isConnected;
 
   // Build the entry marker label: "▶ POST /api/orders"
   let entryLabel = "";
@@ -147,9 +126,7 @@ const FlowServiceNodeInner = memo(function FlowServiceNodeInner({
             <span className="trace-entry-method" style={{ color: methodColor }}>
               {traceResult?.request.method}
             </span>
-            <span className="trace-entry-path">
-              {entryLabel.split(" ").slice(1).join(" ")}
-            </span>
+            <span className="trace-entry-path">{entryLabel.split(" ").slice(1).join(" ")}</span>
             {tracePhase === "capturing" && (
               <span className="trace-entry-status">
                 <span className="trace-entry-spinner" />
@@ -157,9 +134,7 @@ const FlowServiceNodeInner = memo(function FlowServiceNodeInner({
             )}
             {tracePhase === "complete" && traceResult && (
               <span className="trace-entry-time">
-                {traceResult.timedOut
-                  ? "Timed out"
-                  : `${Math.round(traceResult.totalTime)}ms`}
+                {traceResult.timedOut ? "Timed out" : `${Math.round(traceResult.totalTime)}ms`}
               </span>
             )}
           </div>

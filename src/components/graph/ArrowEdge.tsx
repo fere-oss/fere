@@ -1,9 +1,4 @@
-import {
-  getBezierPath,
-  getSmoothStepPath,
-  Position,
-  type EdgeProps,
-} from "reactflow";
+import { getBezierPath, getSmoothStepPath, Position, type EdgeProps } from "reactflow";
 import { TraceBezierEdge, TraceStepEdge } from "./TraceEdge";
 
 export type ArrowEdgeData = {
@@ -17,7 +12,13 @@ export type ArrowEdgeData = {
   bundleCount?: number;
 };
 
-function EdgePath({ id, edgePath, bundleCount, labelX, labelY }: {
+function EdgePath({
+  id,
+  edgePath,
+  bundleCount,
+  labelX,
+  labelY,
+}: {
   id: string;
   edgePath: string;
   bundleCount?: number;
@@ -63,10 +64,7 @@ function EdgePath({ id, edgePath, bundleCount, labelX, labelY }: {
   );
 }
 
-export function ArrowBezierEdge({
-  id,
-  data,
-}: EdgeProps<ArrowEdgeData>) {
+export function ArrowBezierEdge({ id, data }: EdgeProps<ArrowEdgeData>) {
   if (!data) return null;
   const [edgePath, labelX, labelY] = getBezierPath({
     sourceX: data.sx,
@@ -76,13 +74,18 @@ export function ArrowBezierEdge({
     targetY: data.ty,
     targetPosition: data.targetPos,
   });
-  return <EdgePath id={id} edgePath={edgePath} bundleCount={data.bundleCount} labelX={labelX} labelY={labelY} />;
+  return (
+    <EdgePath
+      id={id}
+      edgePath={edgePath}
+      bundleCount={data.bundleCount}
+      labelX={labelX}
+      labelY={labelY}
+    />
+  );
 }
 
-export function ArrowStepEdge({
-  id,
-  data,
-}: EdgeProps<ArrowEdgeData>) {
+export function ArrowStepEdge({ id, data }: EdgeProps<ArrowEdgeData>) {
   if (!data) return null;
   const [edgePath, labelX, labelY] = getSmoothStepPath({
     sourceX: data.sx,
@@ -93,7 +96,15 @@ export function ArrowStepEdge({
     targetPosition: data.targetPos,
     borderRadius: 16,
   });
-  return <EdgePath id={id} edgePath={edgePath} bundleCount={data.bundleCount} labelX={labelX} labelY={labelY} />;
+  return (
+    <EdgePath
+      id={id}
+      edgePath={edgePath}
+      bundleCount={data.bundleCount}
+      labelX={labelX}
+      labelY={labelY}
+    />
+  );
 }
 
 export const flowEdgeTypes = {

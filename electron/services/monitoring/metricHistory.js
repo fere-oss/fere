@@ -4,7 +4,7 @@
  * 720 samples per service (1 hour at 5s intervals).
  */
 
-const { logEvent } = require('../system/activityLog');
+const { logEvent } = require("../system/activityLog");
 
 const RING_SIZE = 720; // 1 hour at 5s intervals
 const ANOMALY_CHECK_INTERVAL_MS = 60000; // check anomalies every 60s
@@ -115,7 +115,9 @@ function checkAnomalies(connectionCountByService) {
 
 function checkMemoryGrowth(serviceName, samples, state) {
   const thirtyMinAgo = Date.now() - 30 * 60 * 1000;
-  const oldSamples = samples.filter(s => s.t <= thirtyMinAgo + 60000 && s.t >= thirtyMinAgo - 60000);
+  const oldSamples = samples.filter(
+    (s) => s.t <= thirtyMinAgo + 60000 && s.t >= thirtyMinAgo - 60000,
+  );
   if (oldSamples.length === 0) return;
 
   const oldMem = oldSamples.reduce((sum, s) => sum + s.mem, 0) / oldSamples.length;
@@ -123,11 +125,15 @@ function checkMemoryGrowth(serviceName, samples, state) {
   const currentMem = recentSamples.reduce((sum, s) => sum + s.mem, 0) / recentSamples.length;
 
   const now = Date.now();
-  if (oldMem > 0 && currentMem > oldMem * 3 && (!state.lastMemAnomalyAt || now - state.lastMemAnomalyAt >= ANOMALY_COOLDOWN_MS)) {
+  if (
+    oldMem > 0 &&
+    currentMem > oldMem * 3 &&
+    (!state.lastMemAnomalyAt || now - state.lastMemAnomalyAt >= ANOMALY_COOLDOWN_MS)
+  ) {
     state.lastMemAnomalyAt = now;
     logEvent({
-      category: 'anomaly',
-      severity: 'warning',
+      category: "anomaly",
+      severity: "warning",
       title: `${serviceName} memory grew ${Math.round(currentMem / oldMem)}x in 30 min`,
       detail: `Memory increased from ${Math.round(oldMem)}MB to ${Math.round(currentMem)}MB over the last 30 minutes.`,
       serviceName,
@@ -141,14 +147,18 @@ function checkCpuSpike(serviceName, samples, state, now) {
   const recentSamples = samples.slice(-24); // ~2 minutes at 5s intervals
   if (recentSamples.length < 24) return;
 
-  const allHigh = recentSamples.every(s => s.cpu > 80);
+  const allHigh = recentSamples.every((s) => s.cpu > 80);
 
-  if (allHigh && !state.cpuHighReported && (!state.lastCpuAnomalyAt || now - state.lastCpuAnomalyAt >= ANOMALY_COOLDOWN_MS)) {
+  if (
+    allHigh &&
+    !state.cpuHighReported &&
+    (!state.lastCpuAnomalyAt || now - state.lastCpuAnomalyAt >= ANOMALY_COOLDOWN_MS)
+  ) {
     state.cpuHighReported = true;
     state.lastCpuAnomalyAt = now;
     logEvent({
-      category: 'anomaly',
-      severity: 'warning',
+      category: "anomaly",
+      severity: "warning",
       title: `${serviceName} CPU above 80% for 2+ minutes`,
       detail: `CPU has been sustained above 80% (avg ${Math.round(recentSamples.reduce((s, x) => s + x.cpu, 0) / recentSamples.length)}%).`,
       serviceName,

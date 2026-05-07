@@ -1,8 +1,4 @@
-import type {
-  GraphNode,
-  GraphEdge,
-  ServiceStatuses,
-} from "../../types/electron";
+import type { GraphNode, GraphEdge, ServiceStatuses } from "../../types/electron";
 
 export interface GraphViewProps {
   nodes: GraphNode[];

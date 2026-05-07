@@ -20,7 +20,8 @@ export function getNodeTabPath(node: GraphNode, grouping: TabGrouping): string |
 
 function detectDbLabel(command: string, name: string): string {
   if (command.includes("postgres") || name.includes("postgres")) return "Postgres";
-  if (command.includes("mysql") || name.includes("mysql") || command.includes("mariadb")) return "MySQL";
+  if (command.includes("mysql") || name.includes("mysql") || command.includes("mariadb"))
+    return "MySQL";
   if (command.includes("mongo") || name.includes("mongo")) return "MongoDB";
   if (command.includes("sqlite") || name.includes("sqlite")) return "SQLite";
   return "Database";
@@ -65,7 +66,8 @@ export function detectProjectStack(nodes: GraphNode[]): string | null {
     if (command.includes("hono")) frameworks.add("hono");
 
     if (node.type === "frontend") hasFrontend = true;
-    if (node.type === "backend" || node.type === "nodejs" || node.type === "python") hasBackend = true;
+    if (node.type === "backend" || node.type === "nodejs" || node.type === "python")
+      hasBackend = true;
 
     if (node.type === "database") dbLabels.add(detectDbLabel(command, name));
     if (node.type === "cache") cacheLabels.add(detectCacheLabel(command, name));

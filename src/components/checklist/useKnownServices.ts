@@ -53,10 +53,7 @@ function loadRemovedKeys(tabId: string): Set<string> {
 
 function persistRemovedKeys(tabId: string, keys: Set<string>) {
   try {
-    window.localStorage.setItem(
-      removedStorageKey(tabId),
-      JSON.stringify(Array.from(keys)),
-    );
+    window.localStorage.setItem(removedStorageKey(tabId), JSON.stringify(Array.from(keys)));
   } catch {
     /* ignore */
   }
@@ -142,7 +139,11 @@ function dedupeServices(services: KnownService[]): KnownService[] {
       (!existing.projectPath && !!service.projectPath);
 
     if (preferCurrent) {
-      byLooseId.set(key, { ...existing, ...service, dismissed: existing.dismissed || service.dismissed });
+      byLooseId.set(key, {
+        ...existing,
+        ...service,
+        dismissed: existing.dismissed || service.dismissed,
+      });
     }
   }
   return Array.from(byLooseId.values());
@@ -177,10 +178,7 @@ function matchesServiceNodeLoose(service: KnownService, node: GraphNode): boolea
 
 type TabGrouping = "repo" | "subproject";
 
-function getNodeTabPath(
-  node: GraphNode,
-  grouping: TabGrouping,
-): string | null {
+function getNodeTabPath(node: GraphNode, grouping: TabGrouping): string | null {
   if (!node.projectPath) return null;
   if (grouping === "repo") {
     return node.repoPath || node.projectPath;
@@ -194,23 +192,17 @@ function isNodeRunning(node: GraphNode): boolean {
   return true;
 }
 
-export function useKnownServices(
-  tabs: Tab[],
-  nodes: GraphNode[],
-  tabGrouping: TabGrouping,
-) {
+export function useKnownServices(tabs: Tab[], nodes: GraphNode[], tabGrouping: TabGrouping) {
   // Map<tabId, KnownService[]>
-  const [serviceMap, setServiceMap] = useState<Map<string, KnownService[]>>(
-    () => {
-      const map = new Map<string, KnownService[]>();
-      tabs.forEach((tab) => {
-        if (tab.id !== SYSTEM_TAB_ID) {
-          map.set(tab.id, dedupeServices(loadServices(tab.id)));
-        }
-      });
-      return map;
-    },
-  );
+  const [serviceMap, setServiceMap] = useState<Map<string, KnownService[]>>(() => {
+    const map = new Map<string, KnownService[]>();
+    tabs.forEach((tab) => {
+      if (tab.id !== SYSTEM_TAB_ID) {
+        map.set(tab.id, dedupeServices(loadServices(tab.id)));
+      }
+    });
+    return map;
+  });
 
   // Track permanently removed service keys so auto-learn doesn't re-add them
   const [removedKeys] = useState(() => {
@@ -289,7 +281,10 @@ export function useKnownServices(
           const idx = findServiceIndexByNode(updated, node);
 
           if (idx === -1) {
-            if (!existingKeys.has(key) && (!tabRemoved || (!tabRemoved.has(key) && !tabRemoved.has(legacy)))) {
+            if (
+              !existingKeys.has(key) &&
+              (!tabRemoved || (!tabRemoved.has(key) && !tabRemoved.has(legacy)))
+            ) {
               updated.push({
                 name: node.name,
                 type: node.type,
@@ -338,7 +333,7 @@ export function useKnownServices(
 
       return changed ? newMap : prev;
     });
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- removedKeys is a mutated Map ref, not React state; its identity never changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- removedKeys is a mutated Map ref, not React state; its identity never changes
   }, [nodes, tabs, tabGrouping]);
 
   // Evaluate status for all tabs
@@ -346,30 +341,26 @@ export function useKnownServices(
     const cache = new Map<string, ProjectStatus>();
 
     serviceMap.forEach((services: KnownService[], tabId: string) => {
-      const activeServices = services.filter(
-        (s: KnownService) => !s.dismissed,
-      );
+      const activeServices = services.filter((s: KnownService) => !s.dismissed);
       if (activeServices.length === 0) {
         cache.set(tabId, { running: 0, total: 0, services: [] });
         return;
       }
 
       const tabNodes = nodes.filter(
-        (n) =>
-          n.type !== "external" && getNodeTabPath(n, tabGrouping) === tabId,
+        (n) => n.type !== "external" && getNodeTabPath(n, tabGrouping) === tabId,
       );
 
-      const evaluated: ServiceStatus[] = activeServices.map(
-        (svc: KnownService) => {
-          const svcKey = serviceKey(svc);
-          const matchingNode = tabNodes.find((n) => nodeServiceKey(n) === svcKey)
-            || tabNodes.find((n) => matchesServiceNodeLoose(svc, n));
-          return {
-            service: svc,
-            running: matchingNode ? isNodeRunning(matchingNode) : false,
-          };
-        },
-      );
+      const evaluated: ServiceStatus[] = activeServices.map((svc: KnownService) => {
+        const svcKey = serviceKey(svc);
+        const matchingNode =
+          tabNodes.find((n) => nodeServiceKey(n) === svcKey) ||
+          tabNodes.find((n) => matchesServiceNodeLoose(svc, n));
+        return {
+          service: svc,
+          running: matchingNode ? isNodeRunning(matchingNode) : false,
+        };
+      });
 
       cache.set(tabId, {
         running: evaluated.filter((e) => e.running).length,
@@ -396,53 +387,46 @@ export function useKnownServices(
     [serviceMap],
   );
 
-  const dismissService = useCallback(
-    (tabId: string, key: string) => {
-      setServiceMap((prev) => {
-        const newMap = new Map(prev);
-        const services = [...(newMap.get(tabId) || [])];
-        const idx = services.findIndex(
-          (s) => serviceKey(s) === key,
-        );
-        if (idx !== -1) {
-          services[idx] = { ...services[idx], dismissed: true };
-          newMap.set(tabId, services);
-          persistServices(tabId, services);
-        }
-        return newMap;
-      });
-    },
-    [],
-  );
+  const dismissService = useCallback((tabId: string, key: string) => {
+    setServiceMap((prev) => {
+      const newMap = new Map(prev);
+      const services = [...(newMap.get(tabId) || [])];
+      const idx = services.findIndex((s) => serviceKey(s) === key);
+      if (idx !== -1) {
+        services[idx] = { ...services[idx], dismissed: true };
+        newMap.set(tabId, services);
+        persistServices(tabId, services);
+      }
+      return newMap;
+    });
+  }, []);
 
-  const restoreService = useCallback(
-    (tabId: string, key: string) => {
-      setServiceMap((prev) => {
-        const newMap = new Map(prev);
-        const services = [...(newMap.get(tabId) || [])];
-        const idx = services.findIndex(
-          (s) => serviceKey(s) === key,
-        );
-        if (idx !== -1) {
-          services[idx] = { ...services[idx], dismissed: false };
-          newMap.set(tabId, services);
-          persistServices(tabId, services);
-        }
-        return newMap;
-      });
-    },
-    [],
-  );
+  const restoreService = useCallback((tabId: string, key: string) => {
+    setServiceMap((prev) => {
+      const newMap = new Map(prev);
+      const services = [...(newMap.get(tabId) || [])];
+      const idx = services.findIndex((s) => serviceKey(s) === key);
+      if (idx !== -1) {
+        services[idx] = { ...services[idx], dismissed: false };
+        newMap.set(tabId, services);
+        persistServices(tabId, services);
+      }
+      return newMap;
+    });
+  }, []);
 
   const addService = useCallback(
-    (tabId: string, node: {
-      name: string;
-      type: string;
-      containerId?: string;
-      projectPath?: string;
-      isDockerContainer?: boolean;
-      command?: string;
-    }) => {
+    (
+      tabId: string,
+      node: {
+        name: string;
+        type: string;
+        containerId?: string;
+        projectPath?: string;
+        isDockerContainer?: boolean;
+        command?: string;
+      },
+    ) => {
       const key = serviceKey(node);
 
       // Remove from blocklist if it was previously permanently removed
@@ -461,9 +445,7 @@ export function useKnownServices(
         const services = [...(newMap.get(tabId) || [])];
         if (services.some((s) => serviceKey(s) === key)) {
           // Already exists — just un-dismiss it
-          const idx = services.findIndex(
-            (s) => serviceKey(s) === key,
-          );
+          const idx = services.findIndex((s) => serviceKey(s) === key);
           if (idx !== -1 && services[idx].dismissed) {
             services[idx] = { ...services[idx], dismissed: false };
             newMap.set(tabId, services);
@@ -502,9 +484,7 @@ export function useKnownServices(
 
         const newMap = new Map(prev);
         const services = [...(newMap.get(tabId) || [])];
-        const filtered = services.filter(
-          (s) => serviceKey(s) !== key,
-        );
+        const filtered = services.filter((s) => serviceKey(s) !== key);
         if (filtered.length !== services.length) {
           newMap.set(tabId, filtered);
           persistServices(tabId, filtered);

@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
-import type { Blueprint, BlueprintCheckResult, SystemSnapshot } from '../types/electron';
+import { useState, useEffect, useCallback } from "react";
+import type { Blueprint, BlueprintCheckResult, SystemSnapshot } from "../types/electron";
 
 export function useBlueprintManager(snapshot: SystemSnapshot | null, projectPath: string | null) {
   const [blueprint, setBlueprint] = useState<Blueprint | null>(null);
@@ -8,7 +8,10 @@ export function useBlueprintManager(snapshot: SystemSnapshot | null, projectPath
   const [checking, setChecking] = useState(false);
 
   const loadBlueprint = useCallback(async () => {
-    if (!projectPath) { setBlueprint(null); return; }
+    if (!projectPath) {
+      setBlueprint(null);
+      return;
+    }
     try {
       const bp = await window.electronAPI.loadBlueprint(projectPath);
       setBlueprint(bp);
@@ -17,7 +20,9 @@ export function useBlueprintManager(snapshot: SystemSnapshot | null, projectPath
     }
   }, [projectPath]);
 
-  useEffect(() => { loadBlueprint(); }, [loadBlueprint]);
+  useEffect(() => {
+    loadBlueprint();
+  }, [loadBlueprint]);
 
   const check = useCallback(async () => {
     if (!snapshot || !projectPath) return;
@@ -26,7 +31,7 @@ export function useBlueprintManager(snapshot: SystemSnapshot | null, projectPath
       const result = await window.electronAPI.checkBlueprint({ projectPath, snapshot });
       setCheckResult(result);
     } catch (err) {
-      console.error('[useBlueprintManager] Failed to check:', err);
+      console.error("[useBlueprintManager] Failed to check:", err);
     } finally {
       setChecking(false);
     }
@@ -38,18 +43,21 @@ export function useBlueprintManager(snapshot: SystemSnapshot | null, projectPath
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [blueprint?.repoPath]);
 
-  const save = useCallback(async (label?: string) => {
-    if (!snapshot || !projectPath) return;
-    setSaving(true);
-    try {
-      await window.electronAPI.saveBlueprint({ snapshot, projectPath, label });
-      await loadBlueprint();
-    } catch (err) {
-      console.error('[useBlueprintManager] Failed to save:', err);
-    } finally {
-      setSaving(false);
-    }
-  }, [snapshot, projectPath, loadBlueprint]);
+  const save = useCallback(
+    async (label?: string) => {
+      if (!snapshot || !projectPath) return;
+      setSaving(true);
+      try {
+        await window.electronAPI.saveBlueprint({ snapshot, projectPath, label });
+        await loadBlueprint();
+      } catch (err) {
+        console.error("[useBlueprintManager] Failed to save:", err);
+      } finally {
+        setSaving(false);
+      }
+    },
+    [snapshot, projectPath, loadBlueprint],
+  );
 
   const deleteBp = useCallback(async () => {
     if (!projectPath) return;
@@ -58,7 +66,7 @@ export function useBlueprintManager(snapshot: SystemSnapshot | null, projectPath
       setBlueprint(null);
       setCheckResult(null);
     } catch (err) {
-      console.error('[useBlueprintManager] Failed to delete:', err);
+      console.error("[useBlueprintManager] Failed to delete:", err);
     }
   }, [projectPath]);
 

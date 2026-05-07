@@ -42,7 +42,10 @@ function getStatusColor(status: number): string {
   return "#EF4444";
 }
 
-function getNodeInfo(nodeId: string, nodes: GraphNode[]): { name: string; brand: string | null; isGraphNode: boolean } {
+function getNodeInfo(
+  nodeId: string,
+  nodes: GraphNode[],
+): { name: string; brand: string | null; isGraphNode: boolean } {
   const node = nodes.find((n) => n.id === nodeId);
   if (node) {
     const port = node.ports[0]?.port;
@@ -125,11 +128,7 @@ export function TraceWaterfall({
   const displayedHops = result.hops;
   const depths = computeDepths(displayedHops);
   const bottleneckIdx = findBottleneck(displayedHops);
-  const likelyFailingHopIdx = findLikelyFailingHop(
-    displayedHops,
-    result.response,
-    result.timedOut,
-  );
+  const likelyFailingHopIdx = findLikelyFailingHop(displayedHops, result.response, result.timedOut);
   const totalTime = Math.max(1, result.totalTime || 1);
   const responseWindow = Math.min(totalTime, Math.max(0.2, Math.min(2, totalTime * 0.2)));
 
@@ -143,11 +142,16 @@ export function TraceWaterfall({
   }, [onDismiss]);
 
   const methodColor =
-    result.request.method === "GET" ? "#22C55E" :
-    result.request.method === "POST" ? "#F97316" :
-    result.request.method === "DELETE" ? "#EF4444" : "#2563EB";
+    result.request.method === "GET"
+      ? "#22C55E"
+      : result.request.method === "POST"
+        ? "#F97316"
+        : result.request.method === "DELETE"
+          ? "#EF4444"
+          : "#2563EB";
 
-  const rowCount = displayedHops.length + (result.response ? 1 : 0) + (displayedHops.length === 0 ? 1 : 0);
+  const rowCount =
+    displayedHops.length + (result.response ? 1 : 0) + (displayedHops.length === 0 ? 1 : 0);
   const expandedHeight = Math.min(560, Math.max(220, 56 + 24 + 22 + rowCount * 30 + 18));
 
   if (collapsed) {
@@ -215,12 +219,13 @@ export function TraceWaterfall({
               Timeout
             </span>
           )}
-          <span className="trace-waterfall-total">
-            {formatLatency(result.totalTime)}
-          </span>
+          <span className="trace-waterfall-total">{formatLatency(result.totalTime)}</span>
           <button
             className="trace-waterfall-close"
-            onClick={(e) => { e.stopPropagation(); setCollapsed(true); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              setCollapsed(true);
+            }}
             aria-label="Minimize trace"
             title="Minimize"
           >
@@ -228,7 +233,10 @@ export function TraceWaterfall({
           </button>
           <button
             className="trace-waterfall-close"
-            onClick={(e) => { e.stopPropagation(); onDismiss(); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              onDismiss();
+            }}
             aria-label="Close trace"
             title="Close"
           >
@@ -242,11 +250,7 @@ export function TraceWaterfall({
         {/* Timeline axis */}
         <div className="trace-waterfall-axis">
           {[0, 0.25, 0.5, 0.75, 1].map((pct) => (
-            <span
-              key={pct}
-              className="trace-waterfall-tick"
-              style={{ left: `${pct * 100}%` }}
-            >
+            <span key={pct} className="trace-waterfall-tick" style={{ left: `${pct * 100}%` }}>
               {formatAxisTick(totalTime * pct, totalTime)}
             </span>
           ))}
@@ -274,7 +278,9 @@ export function TraceWaterfall({
             const isLikelyFailure = i === likelyFailingHopIdx;
             const color = isLikelyFailure
               ? "#EF4444"
-              : (isInferred ? "rgba(100, 116, 139, 0.5)" : getLatencyColor(hop.latency));
+              : isInferred
+                ? "rgba(100, 116, 139, 0.5)"
+                : getLatencyColor(hop.latency);
             const target = getNodeInfo(hop.targetNodeId, nodes);
 
             return (
@@ -287,9 +293,7 @@ export function TraceWaterfall({
                 onClick={() => onClickHop(hop)}
               >
                 <div className="trace-waterfall-label">
-                  <span className="trace-waterfall-arrow">
-                    {isInferred ? "⇢" : "→"}
-                  </span>
+                  <span className="trace-waterfall-arrow">{isInferred ? "⇢" : "→"}</span>
                   <span className="trace-waterfall-node-name-wrap">
                     {target.isGraphNode && (
                       <BrandIcon
@@ -318,7 +322,10 @@ export function TraceWaterfall({
                     <span className="trace-waterfall-failure-tag">likely error</span>
                   )}
                 </div>
-                <div className="trace-waterfall-latency" style={{ color: isInferred ? "#94A3B8" : color }}>
+                <div
+                  className="trace-waterfall-latency"
+                  style={{ color: isInferred ? "#94A3B8" : color }}
+                >
                   {formatHopLatency(hop.latency, isInferred)}
                 </div>
               </div>

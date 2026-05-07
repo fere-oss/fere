@@ -19,7 +19,9 @@ export function makeNode(overrides: Partial<GraphNode> = {}): GraphNode {
     ports: overrides.ports ?? [{ port: 3000 + nodeCounter, host: "127.0.0.1", description: null }],
     healthStatus: overrides.healthStatus ?? ("green" as HealthStatus),
     lastSeen: overrides.lastSeen ?? Date.now(),
-    ...(overrides.isDockerContainer !== undefined ? { isDockerContainer: overrides.isDockerContainer } : {}),
+    ...(overrides.isDockerContainer !== undefined
+      ? { isDockerContainer: overrides.isDockerContainer }
+      : {}),
     ...(overrides.projectPath !== undefined ? { projectPath: overrides.projectPath } : {}),
     ...(overrides.routes !== undefined ? { routes: overrides.routes } : {}),
     ...(overrides.externalApis !== undefined ? { externalApis: overrides.externalApis } : {}),
@@ -31,7 +33,11 @@ let edgeCounter = 0;
 /**
  * Factory for creating test GraphEdge instances.
  */
-export function makeEdge(source: string, target: string, overrides: Partial<GraphEdge> = {}): GraphEdge {
+export function makeEdge(
+  source: string,
+  target: string,
+  overrides: Partial<GraphEdge> = {},
+): GraphEdge {
   return {
     id: overrides.id ?? `edge-${++edgeCounter}`,
     source,

@@ -1,21 +1,21 @@
-import type { GraphNode, GraphEdge } from '../../types/electron';
-import type { LayoutNode } from './types';
-import { getBaseName, getTypePriority } from './constants';
+import type { GraphNode, GraphEdge } from "../../types/electron";
+import type { LayoutNode } from "./types";
+import { getBaseName, getTypePriority } from "./constants";
 
 // Find all nodes that are connected (have at least one edge)
 const findConnectedNodes = (
   nodes: GraphNode[],
-  edges: GraphEdge[]
+  edges: GraphEdge[],
 ): { connected: Set<string>; standalone: Set<string> } => {
   const connected = new Set<string>();
-  edges.forEach(edge => {
+  edges.forEach((edge) => {
     connected.add(edge.source);
     connected.add(edge.target);
   });
 
-  const nodeIds = new Set(nodes.map(n => n.id));
+  const nodeIds = new Set(nodes.map((n) => n.id));
   const standalone = new Set<string>();
-  nodeIds.forEach(id => {
+  nodeIds.forEach((id) => {
     if (!connected.has(id)) standalone.add(id);
   });
 
@@ -26,10 +26,10 @@ const findConnectedNodes = (
 const computeTopologicalLayers = (
   nodes: GraphNode[],
   edges: GraphEdge[],
-  connectedNodeIds: Set<string>
+  connectedNodeIds: Set<string>,
 ): Map<string, number> => {
-  const nodeMap = new Map(nodes.map(n => [n.id, n]));
-  const connectedNodes = nodes.filter(n => connectedNodeIds.has(n.id));
+  const nodeMap = new Map(nodes.map((n) => [n.id, n]));
+  const connectedNodes = nodes.filter((n) => connectedNodeIds.has(n.id));
 
   if (connectedNodes.length === 0) return new Map();
 
@@ -38,13 +38,13 @@ const computeTopologicalLayers = (
   const incoming = new Map<string, Set<string>>();
   const inDegree = new Map<string, number>();
 
-  connectedNodes.forEach(node => {
+  connectedNodes.forEach((node) => {
     outgoing.set(node.id, new Set());
     incoming.set(node.id, new Set());
     inDegree.set(node.id, 0);
   });
 
-  edges.forEach(edge => {
+  edges.forEach((edge) => {
     if (connectedNodeIds.has(edge.source) && connectedNodeIds.has(edge.target)) {
       outgoing.get(edge.source)?.add(edge.target);
       incoming.get(edge.target)?.add(edge.source);
@@ -55,20 +55,20 @@ const computeTopologicalLayers = (
   // Find root nodes (no incoming edges) - these go at top
   // Prioritize by type (frontends first)
   const roots = connectedNodes
-    .filter(n => (inDegree.get(n.id) || 0) === 0)
+    .filter((n) => (inDegree.get(n.id) || 0) === 0)
     .sort((a, b) => getTypePriority(a.type) - getTypePriority(b.type));
 
   // If no roots found (cycle), pick the node with lowest type priority
   if (roots.length === 0) {
-    const sorted = [...connectedNodes].sort((a, b) =>
-      getTypePriority(a.type) - getTypePriority(b.type)
+    const sorted = [...connectedNodes].sort(
+      (a, b) => getTypePriority(a.type) - getTypePriority(b.type),
     );
     roots.push(sorted[0]);
   }
 
   // BFS to assign layers
   const layers = new Map<string, number>();
-  const queue: { node: GraphNode; layer: number }[] = roots.map(n => ({ node: n, layer: 0 }));
+  const queue: { node: GraphNode; layer: number }[] = roots.map((n) => ({ node: n, layer: 0 }));
   const visited = new Set<string>();
 
   while (queue.length > 0) {
@@ -87,7 +87,7 @@ const computeTopologicalLayers = (
 
     // Add children
     const children = outgoing.get(node.id) || new Set();
-    children.forEach(childId => {
+    children.forEach((childId) => {
       const childNode = nodeMap.get(childId);
       if (childNode) {
         queue.push({ node: childNode, layer: layer + 1 });
@@ -102,7 +102,7 @@ const buildAdjacencyLists = (edges: GraphEdge[]) => {
   const outgoing = new Map<string, Set<string>>(); // node -> nodes it connects TO
   const incoming = new Map<string, Set<string>>(); // node -> nodes that connect TO it
 
-  edges.forEach(edge => {
+  edges.forEach((edge) => {
     if (!outgoing.has(edge.source)) outgoing.set(edge.source, new Set());
     if (!incoming.has(edge.target)) incoming.set(edge.target, new Set());
     outgoing.get(edge.source)!.add(edge.target);
@@ -115,12 +115,12 @@ const buildAdjacencyLists = (edges: GraphEdge[]) => {
 const computeBarycenter = (
   nodeId: string,
   adjacents: Set<string> | undefined,
-  nodeOrders: Map<string, number>
+  nodeOrders: Map<string, number>,
 ): number => {
   if (!adjacents || adjacents.size === 0) return 0;
   let sum = 0;
   let count = 0;
-  adjacents.forEach(adjId => {
+  adjacents.forEach((adjId) => {
     const order = nodeOrders.get(adjId);
     if (order !== undefined) {
       sum += order;
@@ -133,12 +133,12 @@ const computeBarycenter = (
 // Compute hierarchical layout for connected and standalone nodes
 export const computeHierarchicalLayout = (
   nodes: GraphNode[],
-  edges: GraphEdge[]
+  edges: GraphEdge[],
 ): { connected: LayoutNode[]; standalone: LayoutNode[] } => {
   // Step 1: Find connected vs standalone nodes
   const { connected: connectedIds, standalone: standaloneIds } = findConnectedNodes(nodes, edges);
-  const connectedNodes = nodes.filter(n => connectedIds.has(n.id));
-  const standaloneNodes = nodes.filter(n => standaloneIds.has(n.id));
+  const connectedNodes = nodes.filter((n) => connectedIds.has(n.id));
+  const standaloneNodes = nodes.filter((n) => standaloneIds.has(n.id));
 
   // Step 2: Compute topological layers for connected nodes based on actual edges
   const topologicalLayers = computeTopologicalLayers(nodes, edges, connectedIds);
@@ -146,7 +146,7 @@ export const computeHierarchicalLayout = (
 
   // Step 3: Group nodes by layer
   const nodesByLayer = new Map<number, GraphNode[]>();
-  connectedNodes.forEach(node => {
+  connectedNodes.forEach((node) => {
     const layer = topologicalLayers.get(node.id) || 0;
     if (!nodesByLayer.has(layer)) nodesByLayer.set(layer, []);
     nodesByLayer.get(layer)!.push(node);
@@ -157,7 +157,7 @@ export const computeHierarchicalLayout = (
   nodesByLayer.forEach((layerNodes, layer) => {
     // Group similar nodes together
     const groups = new Map<string, GraphNode[]>();
-    layerNodes.forEach(node => {
+    layerNodes.forEach((node) => {
       const baseName = getBaseName(node.name);
       if (!groups.has(baseName)) groups.set(baseName, []);
       groups.get(baseName)!.push(node);
@@ -165,8 +165,8 @@ export const computeHierarchicalLayout = (
 
     // Sort groups by type priority and group size
     const sortedGroups = Array.from(groups.entries()).sort((a, b) => {
-      const aMinPriority = Math.min(...a[1].map(n => getTypePriority(n.type)));
-      const bMinPriority = Math.min(...b[1].map(n => getTypePriority(n.type)));
+      const aMinPriority = Math.min(...a[1].map((n) => getTypePriority(n.type)));
+      const bMinPriority = Math.min(...b[1].map((n) => getTypePriority(n.type)));
       if (aMinPriority !== bMinPriority) return aMinPriority - bMinPriority;
       return b[1].length - a[1].length; // Larger groups first
     });
@@ -178,7 +178,7 @@ export const computeHierarchicalLayout = (
         if (priorityDiff !== 0) return priorityDiff;
         return a.name.localeCompare(b.name);
       });
-      groupNodes.forEach(node => {
+      groupNodes.forEach((node) => {
         layerOrders.set(node.id, order++);
       });
     });
@@ -194,8 +194,9 @@ export const computeHierarchicalLayout = (
       const layer = sortedLayers[i];
       const layerNodes = nodesByLayer.get(layer) || [];
 
-      const barycenters: { node: GraphNode; bc: number; originalOrder: number; groupId: string }[] = [];
-      layerNodes.forEach(node => {
+      const barycenters: { node: GraphNode; bc: number; originalOrder: number; groupId: string }[] =
+        [];
+      layerNodes.forEach((node) => {
         const bc = computeBarycenter(node.id, incoming.get(node.id), layerOrders);
         barycenters.push({
           node,
@@ -221,8 +222,9 @@ export const computeHierarchicalLayout = (
       const layer = sortedLayers[i];
       const layerNodes = nodesByLayer.get(layer) || [];
 
-      const barycenters: { node: GraphNode; bc: number; originalOrder: number; groupId: string }[] = [];
-      layerNodes.forEach(node => {
+      const barycenters: { node: GraphNode; bc: number; originalOrder: number; groupId: string }[] =
+        [];
+      layerNodes.forEach((node) => {
         const bc = computeBarycenter(node.id, outgoing.get(node.id), layerOrders);
         barycenters.push({
           node,
@@ -244,7 +246,7 @@ export const computeHierarchicalLayout = (
     }
   }
 
-  const connectedResult: LayoutNode[] = connectedNodes.map(node => ({
+  const connectedResult: LayoutNode[] = connectedNodes.map((node) => ({
     node,
     layer: topologicalLayers.get(node.id) || 0,
     order: layerOrders.get(node.id) || 0,
@@ -252,22 +254,22 @@ export const computeHierarchicalLayout = (
   }));
 
   const standaloneByType = new Map<string, GraphNode[]>();
-  standaloneNodes.forEach(node => {
+  standaloneNodes.forEach((node) => {
     const type = node.type;
     if (!standaloneByType.has(type)) standaloneByType.set(type, []);
     standaloneByType.get(type)!.push(node);
   });
 
-  const sortedTypes = Array.from(standaloneByType.keys()).sort((a, b) =>
-    getTypePriority(a) - getTypePriority(b)
+  const sortedTypes = Array.from(standaloneByType.keys()).sort(
+    (a, b) => getTypePriority(a) - getTypePriority(b),
   );
 
   let standaloneOrder = 0;
   const standaloneResult: LayoutNode[] = [];
-  sortedTypes.forEach(type => {
+  sortedTypes.forEach((type) => {
     const typeNodes = standaloneByType.get(type)!;
     typeNodes.sort((a, b) => a.name.localeCompare(b.name));
-    typeNodes.forEach(node => {
+    typeNodes.forEach((node) => {
       standaloneResult.push({
         node,
         layer: -1,

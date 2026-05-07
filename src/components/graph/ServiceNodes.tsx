@@ -22,12 +22,8 @@ function getRemoteAccessKind(node: GraphNode): "SSH" | "SFTP" | "SCP" | null {
 
 function getRemoteAccessTarget(node: GraphNode): string | null {
   if (node.remoteAccess?.host) {
-    const userPrefix = node.remoteAccess.user
-      ? `${node.remoteAccess.user}@`
-      : "";
-    const portSuffix = node.remoteAccess.port
-      ? `:${node.remoteAccess.port}`
-      : "";
+    const userPrefix = node.remoteAccess.user ? `${node.remoteAccess.user}@` : "";
+    const portSuffix = node.remoteAccess.port ? `:${node.remoteAccess.port}` : "";
     return `${userPrefix}${node.remoteAccess.host}${portSuffix}`;
   }
 
@@ -119,16 +115,11 @@ export function CompactServiceNode({
               boxShadow: healthInfo.glow,
             }}
           />
-          <span
-            className="compact-node-health-label"
-            style={{ color: healthInfo.color }}
-          >
+          <span className="compact-node-health-label" style={{ color: healthInfo.color }}>
             {healthInfo.label}
           </span>
         </div>
-        <span className="compact-node-badge">
-          {remoteKind || getTypeBadge(node.type)}
-        </span>
+        <span className="compact-node-badge">{remoteKind || getTypeBadge(node.type)}</span>
       </div>
 
       <h4 className="compact-node-name">{node.name}</h4>
@@ -177,8 +168,7 @@ export function CompactServiceNode({
               .slice(0, 2)
               .map((n) => n.name)
               .join(", ")}
-            {node.containerNetworks.length > 2 &&
-              ` +${node.containerNetworks.length - 2}`}
+            {node.containerNetworks.length > 2 && ` +${node.containerNetworks.length - 2}`}
           </span>
         </div>
       )}
@@ -252,38 +242,31 @@ export const ServiceNode = React.memo(function ServiceNode({
     ? { color: "var(--text-muted)", glow: "none", label: "Not running" }
     : getHealthInfo(node.healthStatus);
   const showDockerBadge =
-    node.isDockerContainer &&
-    DOCKER_BADGE_TYPES.has((node.type || "").toLowerCase());
+    node.isDockerContainer && DOCKER_BADGE_TYPES.has((node.type || "").toLowerCase());
   const mainPort = node.ports[0]?.port;
   const remoteKind = getRemoteAccessKind(node);
-  const remoteTarget = useMemo(
-    () => getRemoteAccessTarget(node),
-    [node],
-  );
-  const tunnelSummary = useMemo(
-    () => getTunnelSummary(node),
-    [node],
-  );
-  const inboundSshSummary = useMemo(
-    () => getInboundSshSummary(node),
-    [node],
-  );
-  const remoteHealthSummary = useMemo(
-    () => getRemoteHealthSummary(node),
-    [node],
-  );
+  const remoteTarget = useMemo(() => getRemoteAccessTarget(node), [node]);
+  const tunnelSummary = useMemo(() => getTunnelSummary(node), [node]);
+  const inboundSshSummary = useMemo(() => getInboundSshSummary(node), [node]);
+  const remoteHealthSummary = useMemo(() => getRemoteHealthSummary(node), [node]);
   const routes = useMemo(() => node.routes || [], [node.routes]);
   const visibleRoutes = useMemo(() => {
     if (routes.length <= 3) return routes;
 
     const routeMethodRank = (method: string): number => {
       switch (method.toUpperCase()) {
-        case "DELETE": return 0;
-        case "POST": return 1;
-        case "PUT": return 2;
-        case "PATCH": return 3;
-        case "GET": return 4;
-        default: return 5;
+        case "DELETE":
+          return 0;
+        case "POST":
+          return 1;
+        case "PUT":
+          return 2;
+        case "PATCH":
+          return 3;
+        case "GET":
+          return 4;
+        default:
+          return 5;
       }
     };
 
@@ -322,9 +305,7 @@ export const ServiceNode = React.memo(function ServiceNode({
   // ServiceNode re-renders whenever the cache entry for this node changes,
   // without depending on ReactFlow's internal re-render propagation.
   const apiEntry = useSyncExternalStore(subscribeExternalApiCacheUpdates, () =>
-    shouldShowApis && node.projectPath
-      ? (externalApiCache.get(node.projectPath) ?? null)
-      : null,
+    shouldShowApis && node.projectPath ? (externalApiCache.get(node.projectPath) ?? null) : null,
   );
   const externalApis = shouldShowApis ? apiEntry?.apis || [] : [];
   const visibleApis = externalApis.slice(0, 3);
@@ -337,9 +318,7 @@ export const ServiceNode = React.memo(function ServiceNode({
   // Container-type Docker nodes show the Docker logo by default — they are
   // generic containers without a specific recognized runtime brand.
   const serviceBrand =
-    node.isDockerContainer && node.type === "container"
-      ? "docker"
-      : inferServiceBrand(node);
+    node.isDockerContainer && node.type === "container" ? "docker" : inferServiceBrand(node);
 
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -366,10 +345,7 @@ export const ServiceNode = React.memo(function ServiceNode({
           const result = await window.electronAPI.startContainer(id);
           started = !!result?.success;
         } else if (startCommand && startProjectPath) {
-          const result = await window.electronAPI.startProcess(
-            startCommand,
-            startProjectPath,
-          );
+          const result = await window.electronAPI.startProcess(startCommand, startProjectPath);
           started = !!result?.success;
         }
       } catch {
@@ -384,9 +360,7 @@ export const ServiceNode = React.memo(function ServiceNode({
     [node, startCommand, startProjectPath, starting],
   );
 
-  const canStart =
-    isDownLike &&
-    (node.isDockerContainer || (startCommand && startProjectPath));
+  const canStart = isDownLike && (node.isDockerContainer || (startCommand && startProjectPath));
 
   return (
     <div
@@ -411,23 +385,12 @@ export const ServiceNode = React.memo(function ServiceNode({
             }}
             title={healthInfo.label}
           />
-          <span
-            className="service-node-health-label"
-            style={{ color: healthInfo.color }}
-          >
+          <span className="service-node-health-label" style={{ color: healthInfo.color }}>
             {healthInfo.label}
           </span>
           {showDockerBadge && (
-            <span
-              className="service-node-docker-badge"
-              title="Docker Container"
-            >
-              <svg
-                width="12"
-                height="12"
-                viewBox="0 0 24 24"
-                fill="currentColor"
-              >
+            <span className="service-node-docker-badge" title="Docker Container">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M13.983 11.078h2.119a.186.186 0 00.186-.185V9.006a.186.186 0 00-.186-.186h-2.119a.185.185 0 00-.185.185v1.888c0 .102.083.185.185.185m-2.954-5.43h2.118a.186.186 0 00.186-.186V3.574a.186.186 0 00-.186-.185h-2.118a.185.185 0 00-.185.185v1.888c0 .102.082.185.185.186m0 2.716h2.118a.187.187 0 00.186-.186V6.29a.186.186 0 00-.186-.185h-2.118a.185.185 0 00-.185.185v1.887c0 .102.082.185.185.186m-2.93 0h2.12a.186.186 0 00.184-.186V6.29a.185.185 0 00-.185-.185H8.1a.185.185 0 00-.185.185v1.887c0 .102.083.185.185.186m-2.964 0h2.119a.186.186 0 00.185-.186V6.29a.185.185 0 00-.185-.185H5.136a.186.186 0 00-.186.185v1.887c0 .102.084.185.186.186m5.893 2.715h2.118a.186.186 0 00.186-.185V9.006a.186.186 0 00-.186-.186h-2.118a.185.185 0 00-.185.185v1.888c0 .102.082.185.185.185m-2.93 0h2.12a.185.185 0 00.184-.185V9.006a.185.185 0 00-.184-.186h-2.12a.185.185 0 00-.184.185v1.888c0 .102.083.185.185.185m-2.964 0h2.119a.185.185 0 00.185-.185V9.006a.186.186 0 00-.185-.186h-2.119a.185.185 0 00-.186.185v1.888c0 .102.084.185.186.185m-2.92 0h2.12a.185.185 0 00.184-.185V9.006a.185.185 0 00-.184-.186h-2.12a.186.186 0 00-.186.186v1.887c0 .102.084.185.186.185m-2.929 0h2.119a.185.185 0 00.185-.185V9.006a.186.186 0 00-.185-.186h-2.12a.185.185 0 00-.184.185v1.888c0 .102.083.185.185.185M23.763 9.89c-.065-.051-.672-.51-1.954-.51-.338.001-.676.03-1.01.087-.248-1.7-1.653-2.53-1.716-2.566l-.344-.199-.226.327c-.284.438-.49.922-.612 1.43-.23.97-.09 1.882.403 2.661-.595.332-1.55.413-1.744.42H.751a.751.751 0 00-.75.748 11.376 11.376 0 00.692 4.062c.545 1.428 1.355 2.48 2.41 3.124 1.18.723 3.1 1.137 5.275 1.137.983.003 1.963-.086 2.93-.266a12.248 12.248 0 003.823-1.389c.98-.567 1.86-1.288 2.61-2.136 1.252-1.418 1.998-2.997 2.553-4.4h.221c1.372 0 2.215-.549 2.68-1.009.309-.293.55-.65.707-1.046l.098-.288Z" />
               </svg>
             </span>
@@ -446,18 +409,13 @@ export const ServiceNode = React.memo(function ServiceNode({
 
       <h3 className="service-node-name">
         {serviceBrand && (
-          <BrandIcon
-            value={serviceBrand}
-            className="service-node-brand-icon"
-            size={15}
-          />
+          <BrandIcon value={serviceBrand} className="service-node-brand-icon" size={15} />
         )}
         <span>{node.name}</span>
       </h3>
       {node.isDockerContainer && node.containerImage && (
         <div className="service-node-docker-image" title={node.containerImage}>
-          {node.containerImage.split("/").pop()?.split(":")[0] ||
-            node.containerImage}
+          {node.containerImage.split("/").pop()?.split(":")[0] || node.containerImage}
         </div>
       )}
       {!node.isDockerContainer && projectLabel && (
@@ -497,11 +455,7 @@ export const ServiceNode = React.memo(function ServiceNode({
       )}
 
       {canStart && (
-        <button
-          className="service-node-start-btn"
-          onClick={handleStartService}
-          disabled={starting}
-        >
+        <button className="service-node-start-btn" onClick={handleStartService} disabled={starting}>
           {starting ? (
             <>
               <svg
@@ -519,12 +473,7 @@ export const ServiceNode = React.memo(function ServiceNode({
             </>
           ) : (
             <>
-              <svg
-                width="12"
-                height="12"
-                viewBox="0 0 16 16"
-                fill="currentColor"
-              >
+              <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
                 <path d="M4 2l10 6-10 6V2z" />
               </svg>
               Start
@@ -536,10 +485,7 @@ export const ServiceNode = React.memo(function ServiceNode({
       {!isDownLike && mainPort && (
         <div className="service-node-port">
           <span className="service-node-port-host">localhost</span>
-          <span
-            className="service-node-port-number"
-            style={{ color: accentColor }}
-          >
+          <span className="service-node-port-number" style={{ color: accentColor }}>
             :{mainPort}
           </span>
         </div>
@@ -550,16 +496,13 @@ export const ServiceNode = React.memo(function ServiceNode({
         node.containerNetworks &&
         node.containerNetworks.length > 0 && (
           <div className="service-node-docker-networks">
-            <span className="service-node-docker-networks-label">
-              Networks:
-            </span>
+            <span className="service-node-docker-networks-label">Networks:</span>
             <span className="service-node-docker-networks-list">
               {node.containerNetworks
                 .slice(0, 2)
                 .map((n) => n.name)
                 .join(", ")}
-              {node.containerNetworks.length > 2 &&
-                ` +${node.containerNetworks.length - 2}`}
+              {node.containerNetworks.length > 2 && ` +${node.containerNetworks.length - 2}`}
             </span>
           </div>
         )}
@@ -572,36 +515,25 @@ export const ServiceNode = React.memo(function ServiceNode({
           </div>
           <div className="service-node-routes-list">
             {visibleRoutes.map((route) => (
-              <div
-                key={`${route.method}-${route.path}`}
-                className="service-route"
-              >
-                <span
-                  className={`route-method route-${route.method.toLowerCase()}`}
-                >
+              <div key={`${route.method}-${route.path}`} className="service-route">
+                <span className={`route-method route-${route.method.toLowerCase()}`}>
                   {route.method}
                 </span>
                 <span className="route-path">{route.path}</span>
               </div>
             ))}
             {routes.length > visibleRoutes.length && (
-              <div className="service-route-more">
-                +{routes.length - visibleRoutes.length} more
-              </div>
+              <div className="service-route-more">+{routes.length - visibleRoutes.length} more</div>
             )}
           </div>
         </div>
       )}
 
       {!isDownLike && shouldShowApis && (
-        <div
-          className={`service-node-apis${apiCount === 0 ? " is-empty" : ""}`}
-        >
+        <div className={`service-node-apis${apiCount === 0 ? " is-empty" : ""}`}>
           <div className="service-node-apis-header">
             <span className="service-node-apis-title">External APIs</span>
-            <span className="service-node-apis-count">
-              {isApiLoading ? "…" : apiCount}
-            </span>
+            <span className="service-node-apis-count">{isApiLoading ? "…" : apiCount}</span>
           </div>
           <div className="service-node-apis-list">
             {apiCount === 0 ? (
@@ -612,9 +544,7 @@ export const ServiceNode = React.memo(function ServiceNode({
                   <span className="service-api-loading-line service-api-loading-line-short" />
                 </div>
               ) : (
-                <div className="service-api-placeholder">
-                  No external APIs detected
-                </div>
+                <div className="service-api-placeholder">No external APIs detected</div>
               )
             ) : (
               <>
@@ -625,9 +555,7 @@ export const ServiceNode = React.memo(function ServiceNode({
                   </div>
                 ))}
                 {apiCount > visibleApis.length && (
-                  <div className="service-api-more">
-                    +{apiCount - visibleApis.length} more
-                  </div>
+                  <div className="service-api-more">+{apiCount - visibleApis.length} more</div>
                 )}
               </>
             )}

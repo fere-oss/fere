@@ -45,10 +45,7 @@ export function useGraphLayoutData({
     return [...edges].sort((a, b) => a.id.localeCompare(b.id));
   }, [edges]);
 
-  const localNodes = useMemo(
-    () => stableNodes.filter((n) => n.type !== "external"),
-    [stableNodes],
-  );
+  const localNodes = useMemo(() => stableNodes.filter((n) => n.type !== "external"), [stableNodes]);
   const localNodeById = useMemo(
     () => new Map(localNodes.map((node) => [node.id, node])),
     [localNodes],
@@ -56,9 +53,7 @@ export function useGraphLayoutData({
 
   const localEdges = useMemo(() => {
     const localNodeIds = new Set(localNodes.map((n) => n.id));
-    return stableEdges.filter(
-      (e) => localNodeIds.has(e.source) && localNodeIds.has(e.target),
-    );
+    return stableEdges.filter((e) => localNodeIds.has(e.source) && localNodeIds.has(e.target));
   }, [localNodes, stableEdges]);
 
   const structuralEdges = useMemo(
@@ -91,9 +86,7 @@ export function useGraphLayoutData({
       if (sourcePriority === targetPriority) continue;
 
       const [lowNode, highNode] =
-        sourcePriority < targetPriority
-          ? [sourceNode, targetNode]
-          : [targetNode, sourceNode];
+        sourcePriority < targetPriority ? [sourceNode, targetNode] : [targetNode, sourceNode];
       const lowPriority = Math.min(sourcePriority, targetPriority);
       const highPriority = Math.max(sourcePriority, targetPriority);
 
@@ -151,8 +144,14 @@ export function useGraphLayoutData({
   // Topology key — stable across metrics-only changes (cpu/memory/health).
   // Only changes when nodes are added/removed or edges change.
   const topologyKey = useMemo(() => {
-    const nk = layoutNodes.map((n) => n.id).sort().join(",");
-    const ek = layoutEdges.map((e) => `${e.source}-${e.target}`).sort().join(",");
+    const nk = layoutNodes
+      .map((n) => n.id)
+      .sort()
+      .join(",");
+    const ek = layoutEdges
+      .map((e) => `${e.source}-${e.target}`)
+      .sort()
+      .join(",");
     return `${nk}|${ek}`;
   }, [layoutNodes, layoutEdges]);
 
@@ -165,57 +164,47 @@ export function useGraphLayoutData({
     standalone: LayoutNode[];
   }>({ key: "", connected: [], standalone: [] });
 
-  const { connected: connectedLayout, standalone: standaloneLayout } = useMemo(
-    () => {
-      if (isContainerView) return { connected: [], standalone: [] };
+  const { connected: connectedLayout, standalone: standaloneLayout } = useMemo(() => {
+    if (isContainerView) return { connected: [], standalone: [] };
 
-      if (topologyKey === layoutCacheRef.current.key) {
-        // Topology unchanged — reuse cached layer/order, update node references
-        // so metrics (cpu/memory/health) are fresh
-        const nodeMap = new Map(localNodes.map((n) => [n.id, n]));
-        return {
-          connected: layoutCacheRef.current.connected.map((ln) => ({
-            ...ln,
-            node: nodeMap.get(ln.node.id) || ln.node,
-          })),
-          standalone: layoutCacheRef.current.standalone.map((ln) => ({
-            ...ln,
-            node: nodeMap.get(ln.node.id) || ln.node,
-          })),
-        };
-      }
+    if (topologyKey === layoutCacheRef.current.key) {
+      // Topology unchanged — reuse cached layer/order, update node references
+      // so metrics (cpu/memory/health) are fresh
+      const nodeMap = new Map(localNodes.map((n) => [n.id, n]));
+      return {
+        connected: layoutCacheRef.current.connected.map((ln) => ({
+          ...ln,
+          node: nodeMap.get(ln.node.id) || ln.node,
+        })),
+        standalone: layoutCacheRef.current.standalone.map((ln) => ({
+          ...ln,
+          node: nodeMap.get(ln.node.id) || ln.node,
+        })),
+      };
+    }
 
-      // Topology changed — full recomputation
-      const start = performance.now();
-      const result = computeHierarchicalLayout(localNodes, hierarchyEdges);
-      if (shouldProfileLayout()) {
-        console.log(
-          `[PERF] computeHierarchicalLayout: ${(performance.now() - start).toFixed(2)}ms (${localNodes.length} nodes, ${hierarchyEdges.length} edges)`,
-        );
-      }
-      layoutCacheRef.current = { key: topologyKey, ...result };
-      return result;
-    },
-    [topologyKey, isContainerView, localNodes, hierarchyEdges],
-  );
-
-  const stableConnectedLayout = useMemo<LayoutNode[]>(
-    () => {
-      const start = performance.now();
-      const result = buildStableConnectedLayout(
-        connectedLayout,
-        orderCache,
-        groupOrderCache,
+    // Topology changed — full recomputation
+    const start = performance.now();
+    const result = computeHierarchicalLayout(localNodes, hierarchyEdges);
+    if (shouldProfileLayout()) {
+      console.log(
+        `[PERF] computeHierarchicalLayout: ${(performance.now() - start).toFixed(2)}ms (${localNodes.length} nodes, ${hierarchyEdges.length} edges)`,
       );
-      if (shouldProfileLayout()) {
-        console.log(
-          `[PERF] buildStableConnectedLayout: ${(performance.now() - start).toFixed(2)}ms (${connectedLayout.length} connected nodes)`,
-        );
-      }
-      return result;
-    },
-    [connectedLayout, orderCache, groupOrderCache],
-  );
+    }
+    layoutCacheRef.current = { key: topologyKey, ...result };
+    return result;
+  }, [topologyKey, isContainerView, localNodes, hierarchyEdges]);
+
+  const stableConnectedLayout = useMemo<LayoutNode[]>(() => {
+    const start = performance.now();
+    const result = buildStableConnectedLayout(connectedLayout, orderCache, groupOrderCache);
+    if (shouldProfileLayout()) {
+      console.log(
+        `[PERF] buildStableConnectedLayout: ${(performance.now() - start).toFixed(2)}ms (${connectedLayout.length} connected nodes)`,
+      );
+    }
+    return result;
+  }, [connectedLayout, orderCache, groupOrderCache]);
 
   const sortedLayers = useMemo(() => {
     const layers = new Set(stableConnectedLayout.map((ln) => ln.layer));
@@ -259,8 +248,7 @@ export function useGraphLayoutData({
         const bType = b[0].replace("docker:", "");
         const aPriorityType = aType === "remote-access" ? "client" : aType;
         const bPriorityType = bType === "remote-access" ? "client" : bType;
-        const priorityDiff =
-          getTypePriority(aPriorityType) - getTypePriority(bPriorityType);
+        const priorityDiff = getTypePriority(aPriorityType) - getTypePriority(bPriorityType);
         if (priorityDiff !== 0) return priorityDiff;
         return aType.localeCompare(bType);
       })
@@ -275,9 +263,7 @@ export function useGraphLayoutData({
         } else if (type === "service") {
           groupName = "System Services";
         } else {
-          groupName =
-            SERVICE_COLORS[type]?.label ||
-            type.charAt(0).toUpperCase() + type.slice(1);
+          groupName = SERVICE_COLORS[type]?.label || type.charAt(0).toUpperCase() + type.slice(1);
         }
         return {
           groupName,

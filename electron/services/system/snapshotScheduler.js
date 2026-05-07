@@ -1,22 +1,31 @@
-const path = require('path');
-const EventEmitter = require('events');
-const { Worker } = require('worker_threads');
+const path = require("path");
+const EventEmitter = require("events");
+const { Worker } = require("worker_threads");
 const {
   getDevProcesses,
   getProcessCacheInfo,
   getProcessPids,
   clearProcessCache,
-} = require('../monitoring/processMonitor');
+} = require("../monitoring/processMonitor");
 const {
   getListeningPorts,
   getEstablishedConnections,
   getPortCacheInfo,
   getListeningPortNumbers,
   clearPortCache,
-} = require('../monitoring/portMonitor');
-const { getDockerSnapshot, getLastDockerStatus } = require('../docker/dockerMonitor');
-const { batchGetProcessCwds, collectHealthByPid, collectRoutes, collectLocalConnections } = require('../graph/connectionGraph');
-const { hasTopologyChanged, buildGraphStructure, collectProjectPaths } = require('../graph/graphFunctions');
+} = require("../monitoring/portMonitor");
+const { getDockerSnapshot, getLastDockerStatus } = require("../docker/dockerMonitor");
+const {
+  batchGetProcessCwds,
+  collectHealthByPid,
+  collectRoutes,
+  collectLocalConnections,
+} = require("../graph/connectionGraph");
+const {
+  hasTopologyChanged,
+  buildGraphStructure,
+  collectProjectPaths,
+} = require("../graph/graphFunctions");
 
 /**
  * SnapshotScheduler — event-driven collection pipeline with Worker offload.
@@ -102,14 +111,14 @@ class SnapshotScheduler extends EventEmitter {
 
     // Spawn the Worker
     try {
-      this.worker = new Worker(path.join(__dirname, '../../workers/graphBuilder.worker.js'));
-      this.worker.on('message', (msg) => this._handleWorkerMessage(msg));
-      this.worker.on('error', (err) => {
-        console.error('[SnapshotScheduler] Worker error:', err);
+      this.worker = new Worker(path.join(__dirname, "../../workers/graphBuilder.worker.js"));
+      this.worker.on("message", (msg) => this._handleWorkerMessage(msg));
+      this.worker.on("error", (err) => {
+        console.error("[SnapshotScheduler] Worker error:", err);
         this.workerReady = false;
         this._restartWorker();
       });
-      this.worker.on('exit', (code) => {
+      this.worker.on("exit", (code) => {
         if (code !== 0 && this.running) {
           console.error(`[SnapshotScheduler] Worker exited with code ${code}, restarting...`);
           this._restartWorker();
@@ -117,7 +126,10 @@ class SnapshotScheduler extends EventEmitter {
       });
       this.workerReady = true;
     } catch (error) {
-      console.error('[SnapshotScheduler] Failed to create Worker, falling back to main thread:', error);
+      console.error(
+        "[SnapshotScheduler] Failed to create Worker, falling back to main thread:",
+        error,
+      );
       this.workerReady = false;
     }
 
@@ -206,7 +218,9 @@ class SnapshotScheduler extends EventEmitter {
     this._workerRestartCount++;
 
     if (this._workerRestartCount > MAX_RESTART_ATTEMPTS) {
-      console.error(`[SnapshotScheduler] Worker failed ${MAX_RESTART_ATTEMPTS} times, giving up. Falling back to main thread.`);
+      console.error(
+        `[SnapshotScheduler] Worker failed ${MAX_RESTART_ATTEMPTS} times, giving up. Falling back to main thread.`,
+      );
       this.workerReady = false;
       this.workerBusy = false;
       return;
@@ -214,20 +228,22 @@ class SnapshotScheduler extends EventEmitter {
 
     // Exponential backoff: 1s, 2s, 4s, 8s, 16s
     const delay = Math.min(1000 * Math.pow(2, this._workerRestartCount - 1), 16000);
-    console.warn(`[SnapshotScheduler] Restarting worker in ${delay}ms (attempt ${this._workerRestartCount}/${MAX_RESTART_ATTEMPTS})...`);
+    console.warn(
+      `[SnapshotScheduler] Restarting worker in ${delay}ms (attempt ${this._workerRestartCount}/${MAX_RESTART_ATTEMPTS})...`,
+    );
 
     this._workerRestartTimer = setTimeout(() => {
       this._workerRestartTimer = null;
       if (!this.running) return;
       try {
-        this.worker = new Worker(path.join(__dirname, '../../workers/graphBuilder.worker.js'));
-        this.worker.on('message', (msg) => this._handleWorkerMessage(msg));
-        this.worker.on('error', (err) => {
-          console.error('[SnapshotScheduler] Worker error after restart:', err);
+        this.worker = new Worker(path.join(__dirname, "../../workers/graphBuilder.worker.js"));
+        this.worker.on("message", (msg) => this._handleWorkerMessage(msg));
+        this.worker.on("error", (err) => {
+          console.error("[SnapshotScheduler] Worker error after restart:", err);
           this.workerReady = false;
           this._restartWorker();
         });
-        this.worker.on('exit', (code) => {
+        this.worker.on("exit", (code) => {
           if (code !== 0 && this.running) {
             console.error(`[SnapshotScheduler] Worker exited with code ${code}, restarting...`);
             this._restartWorker();
@@ -237,7 +253,7 @@ class SnapshotScheduler extends EventEmitter {
         this.workerBusy = false;
         this._workerRestartCount = 0; // Reset on successful start
       } catch (error) {
-        console.error('[SnapshotScheduler] Failed to restart Worker:', error);
+        console.error("[SnapshotScheduler] Failed to restart Worker:", error);
         this.workerReady = false;
         this.workerBusy = false;
       }
@@ -279,7 +295,7 @@ class SnapshotScheduler extends EventEmitter {
         this._applyFastProbeBackoff();
       }
     } catch (error) {
-      console.error('[SnapshotScheduler] Fast probe error:', error);
+      console.error("[SnapshotScheduler] Fast probe error:", error);
     }
   }
 
@@ -323,19 +339,19 @@ class SnapshotScheduler extends EventEmitter {
         getEstablishedConnections(),
       ]);
 
-      this.previousProcessPids = new Set(processes.map(p => p.pid));
-      this.previousPortNumbers = new Set(ports.map(p => p.port));
+      this.previousProcessPids = new Set(processes.map((p) => p.pid));
+      this.previousPortNumbers = new Set(ports.map((p) => p.port));
 
       const rawData = { processes, ports, connections };
       await this.processSnapshot(rawData);
     } catch (error) {
-      console.error('[SnapshotScheduler] Reconciliation error:', error);
+      console.error("[SnapshotScheduler] Reconciliation error:", error);
       // Emit a status-only update so the renderer knows collection is broken
       const collectedAt = Date.now();
       const processCacheInfo = getProcessCacheInfo();
       const portCacheInfo = getPortCacheInfo();
-      this.emit('snapshot', {
-        type: 'full',
+      this.emit("snapshot", {
+        type: "full",
         seq: this.seq++,
         timestamp: collectedAt,
         processes: [],
@@ -345,9 +361,15 @@ class SnapshotScheduler extends EventEmitter {
         docker: null,
         meta: {
           collectedAt,
-          processesAgeMs: processCacheInfo.timestamp ? collectedAt - processCacheInfo.timestamp : null,
-          portsAgeMs: portCacheInfo.listeningTimestamp ? collectedAt - portCacheInfo.listeningTimestamp : null,
-          connectionsAgeMs: portCacheInfo.connectionsTimestamp ? collectedAt - portCacheInfo.connectionsTimestamp : null,
+          processesAgeMs: processCacheInfo.timestamp
+            ? collectedAt - processCacheInfo.timestamp
+            : null,
+          portsAgeMs: portCacheInfo.listeningTimestamp
+            ? collectedAt - portCacheInfo.listeningTimestamp
+            : null,
+          connectionsAgeMs: portCacheInfo.connectionsTimestamp
+            ? collectedAt - portCacheInfo.connectionsTimestamp
+            : null,
           status: {
             ports: portCacheInfo.status,
             processes: processCacheInfo.status,
@@ -380,7 +402,7 @@ class SnapshotScheduler extends EventEmitter {
 
     if (needsStructure) {
       // STRUCTURE PATH: collect I/O data on main thread, send to worker
-      const pids = rawData.processes.filter(p => p.pid > 0).map(p => p.pid);
+      const pids = rawData.processes.filter((p) => p.pid > 0).map((p) => p.pid);
 
       const [cwdMap, dockerSnapshot] = await Promise.all([
         batchGetProcessCwds(pids),
@@ -432,12 +454,15 @@ class SnapshotScheduler extends EventEmitter {
         this.workerBusy = true;
         this._pendingRawForResult = rawData;
         try {
-          this.worker.postMessage({ type: 'build-structure', seq: this.seq, data: workerData });
+          this.worker.postMessage({ type: "build-structure", seq: this.seq, data: workerData });
         } catch (err) {
           // Worker died between readiness check and postMessage — reset and
           // fall back to main thread so snapshot processing isn't permanently
           // blocked.
-          console.error('[SnapshotScheduler] postMessage failed, falling back to main thread:', err);
+          console.error(
+            "[SnapshotScheduler] postMessage failed, falling back to main thread:",
+            err,
+          );
           this.workerBusy = false;
           this.workerReady = false;
           this._restartWorker();
@@ -454,12 +479,15 @@ class SnapshotScheduler extends EventEmitter {
         this._pendingRawForResult = rawData;
         try {
           this.worker.postMessage({
-            type: 'overlay-metrics',
+            type: "overlay-metrics",
             seq: this.seq,
             data: { processes: rawData.processes, healthByPid },
           });
         } catch (err) {
-          console.error('[SnapshotScheduler] postMessage failed, falling back to main thread:', err);
+          console.error(
+            "[SnapshotScheduler] postMessage failed, falling back to main thread:",
+            err,
+          );
           this.workerBusy = false;
           this.workerReady = false;
           this._restartWorker();
@@ -481,20 +509,20 @@ class SnapshotScheduler extends EventEmitter {
     this.workerBusy = false;
 
     switch (msg.type) {
-      case 'structure-result': {
+      case "structure-result": {
         this.lastStructureTime = Date.now();
         this.cachedResult = msg.data;
         this._emitSnapshot(msg.data, this._pendingRawForResult);
         break;
       }
 
-      case 'metrics-result': {
+      case "metrics-result": {
         this.cachedResult = msg.data;
         this._emitSnapshot(msg.data, this._pendingRawForResult);
         break;
       }
 
-      case 'needs-structure': {
+      case "needs-structure": {
         // Worker lost its cache — trigger a full structure build
         this.lastStructureTime = 0;
         if (this._pendingRawForResult) {
@@ -503,8 +531,8 @@ class SnapshotScheduler extends EventEmitter {
         return; // Don't process pending below
       }
 
-      case 'error': {
-        console.error('[SnapshotScheduler] Worker reported error:', msg.error);
+      case "error": {
+        console.error("[SnapshotScheduler] Worker reported error:", msg.error);
         break;
       }
     }
@@ -522,13 +550,13 @@ class SnapshotScheduler extends EventEmitter {
    */
   _mergeEdgeMemory(nodes, edges) {
     const now = Date.now();
-    const nodeIds = new Set(nodes.map(n => n.id));
+    const nodeIds = new Set(nodes.map((n) => n.id));
 
     // Store observed local edges (lsof + source-analysis) so they survive rebuilds.
     // Docker depends_on edges are excluded — they're rebuilt deterministically each time.
     for (const edge of edges) {
-      const proto = edge.protocol || '';
-      if (proto.startsWith('docker-network')) continue;
+      const proto = edge.protocol || "";
+      if (proto.startsWith("docker-network")) continue;
       if (!nodeIds.has(edge.source) || !nodeIds.has(edge.target)) continue;
       this.edgeMemory.set(edge.id, { edge, expiresAt: now + this.EDGE_MEMORY_TTL_MS });
     }
@@ -539,7 +567,7 @@ class SnapshotScheduler extends EventEmitter {
     }
 
     // Merge remembered edges that are no longer in current graph
-    const currentEdgeIds = new Set(edges.map(e => e.id));
+    const currentEdgeIds = new Set(edges.map((e) => e.id));
     const merged = [...edges];
     for (const [id, { edge }] of this.edgeMemory) {
       if (currentEdgeIds.has(id)) continue;
@@ -567,9 +595,15 @@ class SnapshotScheduler extends EventEmitter {
       docker: dockerSnapshot || null,
       meta: {
         collectedAt,
-        processesAgeMs: processCacheInfo.timestamp ? collectedAt - processCacheInfo.timestamp : null,
-        portsAgeMs: portCacheInfo.listeningTimestamp ? collectedAt - portCacheInfo.listeningTimestamp : null,
-        connectionsAgeMs: portCacheInfo.connectionsTimestamp ? collectedAt - portCacheInfo.connectionsTimestamp : null,
+        processesAgeMs: processCacheInfo.timestamp
+          ? collectedAt - processCacheInfo.timestamp
+          : null,
+        portsAgeMs: portCacheInfo.listeningTimestamp
+          ? collectedAt - portCacheInfo.listeningTimestamp
+          : null,
+        connectionsAgeMs: portCacheInfo.connectionsTimestamp
+          ? collectedAt - portCacheInfo.connectionsTimestamp
+          : null,
         status: {
           ports: portCacheInfo.status,
           processes: processCacheInfo.status,
@@ -582,7 +616,7 @@ class SnapshotScheduler extends EventEmitter {
     this.previousSnapshot = snapshot;
 
     if (delta) {
-      this.emit('snapshot', delta);
+      this.emit("snapshot", delta);
     }
   }
 
@@ -591,7 +625,7 @@ class SnapshotScheduler extends EventEmitter {
    */
   async _buildOnMainThread(rawData, workerData, healthByPid) {
     try {
-      const { containerHealthToGraphHealth } = require('../docker/dockerMonitor');
+      const { containerHealthToGraphHealth } = require("../docker/dockerMonitor");
       let result;
 
       if (workerData) {
@@ -601,7 +635,7 @@ class SnapshotScheduler extends EventEmitter {
         });
       } else {
         // Metrics-only fallback: rebuild fully (no cached structure on main thread)
-        const pids = rawData.processes.filter(p => p.pid > 0).map(p => p.pid);
+        const pids = rawData.processes.filter((p) => p.pid > 0).map((p) => p.pid);
         const [cwdMap, dockerSnapshot] = await Promise.all([
           batchGetProcessCwds(pids),
           getDockerSnapshot(),
@@ -623,7 +657,7 @@ class SnapshotScheduler extends EventEmitter {
       this.cachedResult = result;
       this._emitSnapshot(result, rawData);
     } catch (error) {
-      console.error('[SnapshotScheduler] Main thread build error:', error);
+      console.error("[SnapshotScheduler] Main thread build error:", error);
     }
   }
 
@@ -634,7 +668,7 @@ class SnapshotScheduler extends EventEmitter {
   computeDelta(currentSnapshot) {
     if (!this.previousSnapshot) {
       return {
-        type: 'full',
+        type: "full",
         seq: this.seq++,
         timestamp: Date.now(),
         ...currentSnapshot,
@@ -643,7 +677,7 @@ class SnapshotScheduler extends EventEmitter {
 
     const prev = this.previousSnapshot;
     const delta = {
-      type: 'delta',
+      type: "delta",
       seq: this.seq++,
       timestamp: Date.now(),
     };
@@ -652,30 +686,36 @@ class SnapshotScheduler extends EventEmitter {
 
     // --- Process diff (keyed by PID) ---
     // Use a Map only for prev (need object lookup); Set for curr (presence-only)
-    const prevPids = new Map(prev.processes.map(p => [p.pid, p]));
-    const currPidSet = new Set(currentSnapshot.processes.map(p => p.pid));
+    const prevPids = new Map(prev.processes.map((p) => [p.pid, p]));
+    const currPidSet = new Set(currentSnapshot.processes.map((p) => p.pid));
 
-    const addedProcesses = currentSnapshot.processes.filter(p => !prevPids.has(p.pid));
+    const addedProcesses = currentSnapshot.processes.filter((p) => !prevPids.has(p.pid));
     const removedProcessPids = [];
     for (const pid of prevPids.keys()) {
       if (!currPidSet.has(pid)) removedProcessPids.push(pid);
     }
-    const modifiedProcesses = currentSnapshot.processes.filter(p => {
+    const modifiedProcesses = currentSnapshot.processes.filter((p) => {
       const prev = prevPids.get(p.pid);
       return prev && (prev.cpu !== p.cpu || prev.memory !== p.memory || prev.status !== p.status);
     });
 
     if (addedProcesses.length || removedProcessPids.length || modifiedProcesses.length) {
-      delta.processes = { added: addedProcesses, removed: removedProcessPids, modified: modifiedProcesses };
+      delta.processes = {
+        added: addedProcesses,
+        removed: removedProcessPids,
+        modified: modifiedProcesses,
+      };
       if (addedProcesses.length || removedProcessPids.length) hasTopologyChange = true;
     }
 
     // --- Port diff (keyed by "port-pid") ---
     // Use Sets for both sides — only need presence checking
-    const prevPortKeySet = new Set(prev.ports.map(p => `${p.port}-${p.pid}`));
-    const currPortKeySet = new Set(currentSnapshot.ports.map(p => `${p.port}-${p.pid}`));
+    const prevPortKeySet = new Set(prev.ports.map((p) => `${p.port}-${p.pid}`));
+    const currPortKeySet = new Set(currentSnapshot.ports.map((p) => `${p.port}-${p.pid}`));
 
-    const addedPorts = currentSnapshot.ports.filter(p => !prevPortKeySet.has(`${p.port}-${p.pid}`));
+    const addedPorts = currentSnapshot.ports.filter(
+      (p) => !prevPortKeySet.has(`${p.port}-${p.pid}`),
+    );
     const removedPortKeys = [];
     for (const k of prevPortKeySet) {
       if (!currPortKeySet.has(k)) removedPortKeys.push(k);
@@ -687,10 +727,18 @@ class SnapshotScheduler extends EventEmitter {
     }
 
     // --- Connection diff (keyed by composite key) ---
-    const prevConnKeySet = new Set(prev.connections.map(c => `${c.pid}-${c.localPort}-${c.remoteHost}-${c.remotePort}`));
-    const currConnKeySet = new Set(currentSnapshot.connections.map(c => `${c.pid}-${c.localPort}-${c.remoteHost}-${c.remotePort}`));
+    const prevConnKeySet = new Set(
+      prev.connections.map((c) => `${c.pid}-${c.localPort}-${c.remoteHost}-${c.remotePort}`),
+    );
+    const currConnKeySet = new Set(
+      currentSnapshot.connections.map(
+        (c) => `${c.pid}-${c.localPort}-${c.remoteHost}-${c.remotePort}`,
+      ),
+    );
 
-    const addedConns = currentSnapshot.connections.filter(c => !prevConnKeySet.has(`${c.pid}-${c.localPort}-${c.remoteHost}-${c.remotePort}`));
+    const addedConns = currentSnapshot.connections.filter(
+      (c) => !prevConnKeySet.has(`${c.pid}-${c.localPort}-${c.remoteHost}-${c.remotePort}`),
+    );
     const removedConnKeys = [];
     for (const k of prevConnKeySet) {
       if (!currConnKeySet.has(k)) removedConnKeys.push(k);
@@ -702,10 +750,10 @@ class SnapshotScheduler extends EventEmitter {
     }
 
     // --- Graph node diff (keyed by node.id) ---
-    const prevNodes = new Map(prev.graph.nodes.map(n => [n.id, n]));
-    const currNodeIdSet = new Set(currentSnapshot.graph.nodes.map(n => n.id));
+    const prevNodes = new Map(prev.graph.nodes.map((n) => [n.id, n]));
+    const currNodeIdSet = new Set(currentSnapshot.graph.nodes.map((n) => n.id));
 
-    const addedNodes = currentSnapshot.graph.nodes.filter(n => !prevNodes.has(n.id));
+    const addedNodes = currentSnapshot.graph.nodes.filter((n) => !prevNodes.has(n.id));
     const removedNodeIds = [];
     for (const id of prevNodes.keys()) {
       if (!currNodeIdSet.has(id)) removedNodeIds.push(id);
@@ -730,9 +778,17 @@ class SnapshotScheduler extends EventEmitter {
       const containerStateChanged = p.containerState !== n.containerState;
 
       // Quick exit if no primitives changed — skip expensive array comparison
-      const anyPrimitiveChanged = typeChanged || nameChanged || commandChanged ||
-        projectChanged || projectPathChanged || repoPathChanged ||
-        healthChanged || cpuChanged || memoryChanged || containerStateChanged;
+      const anyPrimitiveChanged =
+        typeChanged ||
+        nameChanged ||
+        commandChanged ||
+        projectChanged ||
+        projectPathChanged ||
+        repoPathChanged ||
+        healthChanged ||
+        cpuChanged ||
+        memoryChanged ||
+        containerStateChanged;
 
       // Shallow array comparison instead of JSON.stringify
       const portsChanged = !shallowArrayEqual(p.ports, n.ports);
@@ -764,16 +820,16 @@ class SnapshotScheduler extends EventEmitter {
     }
 
     // --- Graph edge diff (keyed by edge.id) ---
-    const prevEdgeIdSet = new Set(prev.graph.edges.map(e => e.id));
-    const currEdgeIdSet = new Set(currentSnapshot.graph.edges.map(e => e.id));
+    const prevEdgeIdSet = new Set(prev.graph.edges.map((e) => e.id));
+    const currEdgeIdSet = new Set(currentSnapshot.graph.edges.map((e) => e.id));
 
-    const addedEdges = currentSnapshot.graph.edges.filter(e => !prevEdgeIdSet.has(e.id));
+    const addedEdges = currentSnapshot.graph.edges.filter((e) => !prevEdgeIdSet.has(e.id));
     const removedEdgeIds = [];
     for (const id of prevEdgeIdSet) {
       if (!currEdgeIdSet.has(id)) {
         // Source-analysis edges represent static code topology — never remove them
         // via delta. They disappear naturally when their endpoint nodes are removed.
-        if (id.startsWith('source-analysis:')) continue;
+        if (id.startsWith("source-analysis:")) continue;
         removedEdgeIds.push(id);
       }
     }
@@ -790,12 +846,15 @@ class SnapshotScheduler extends EventEmitter {
     // Emit on topology changes OR metrics-only changes (cpu/memory/health)
     const hasMetricsChange =
       (delta.processes && delta.processes.modified && delta.processes.modified.length > 0) ||
-      (delta.graph && delta.graph.nodes && delta.graph.nodes.modified && delta.graph.nodes.modified.length > 0);
+      (delta.graph &&
+        delta.graph.nodes &&
+        delta.graph.nodes.modified &&
+        delta.graph.nodes.modified.length > 0);
 
     if (!hasTopologyChange && !hasMetricsChange) return null;
 
     if (!hasTopologyChange && hasMetricsChange) {
-      delta.type = 'metrics';
+      delta.type = "metrics";
     }
 
     return delta;
@@ -829,10 +888,12 @@ function shallowArrayEqual(a, b) {
   if (!a || !b) return false;
   if (a.length !== b.length) return false;
   for (let i = 0; i < a.length; i++) {
-    const ai = a[i], bi = b[i];
+    const ai = a[i],
+      bi = b[i];
     if (ai === bi) continue;
     // For primitive elements
-    if (typeof ai !== 'object' || typeof bi !== 'object' || ai === null || bi === null) return false;
+    if (typeof ai !== "object" || typeof bi !== "object" || ai === null || bi === null)
+      return false;
     // Shallow object comparison — sufficient for port/route objects
     const keysA = Object.keys(ai);
     const keysB = Object.keys(bi);

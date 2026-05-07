@@ -3,12 +3,10 @@
  * @param {Electron.IpcMain} ipcMain
  * @param {{ isDockerAvailable, getDockerContainers, getDockerNetworks, getDockerSnapshot }} deps
  */
-function registerDockerHandlers(ipcMain, {
-  isDockerAvailable,
-  getDockerContainers,
-  getDockerNetworks,
-  getDockerSnapshot,
-}) {
+function registerDockerHandlers(
+  ipcMain,
+  { isDockerAvailable, getDockerContainers, getDockerNetworks, getDockerSnapshot },
+) {
   ipcMain.handle("is-docker-available", async () => {
     try {
       return await isDockerAvailable();

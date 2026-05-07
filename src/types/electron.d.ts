@@ -20,7 +20,7 @@ export interface DockerPort {
   hostPort: number | null;
   containerPort: number;
   protocol: string;
-  type: 'mapped' | 'exposed';
+  type: "mapped" | "exposed";
 }
 
 export interface DockerNetwork {
@@ -33,7 +33,7 @@ export interface DockerNetwork {
 }
 
 export interface DockerMount {
-  type: 'bind' | 'volume' | 'tmpfs';
+  type: "bind" | "volume" | "tmpfs";
   source: string;
   destination: string;
   mode: string;
@@ -49,7 +49,16 @@ export interface DockerHealthCheck {
 }
 
 export interface DockerHealth {
-  status: 'healthy' | 'unhealthy' | 'starting' | 'running' | 'paused' | 'restarting' | 'exited' | 'dead' | 'unknown';
+  status:
+    | "healthy"
+    | "unhealthy"
+    | "starting"
+    | "running"
+    | "paused"
+    | "restarting"
+    | "exited"
+    | "dead"
+    | "unknown";
   failingStreak?: number;
   exitCode?: number;
   checks: DockerHealthCheck[];
@@ -62,7 +71,7 @@ export interface DockerContainer {
   command: string;
   created: string;
   status: string;
-  state: 'running' | 'exited' | 'paused' | 'restarting' | 'dead' | 'created';
+  state: "running" | "exited" | "paused" | "restarting" | "dead" | "created";
   ports: DockerPort[];
   networks: DockerNetwork[];
   mounts: DockerMount[];
@@ -100,7 +109,7 @@ export interface DockerContainerConnection {
 export interface ContainerLogData {
   line: string;
   timestamp: string | null;
-  stream: 'stdout' | 'stderr';
+  stream: "stdout" | "stderr";
   containerId: string;
   streamId: string;
 }
@@ -144,7 +153,7 @@ export interface DockerSnapshot {
 
 export interface DatabaseTablesResult {
   tables: string[];
-  dbType?: 'postgresql' | 'mysql' | 'mongodb' | 'elasticsearch';
+  dbType?: "postgresql" | "mysql" | "mongodb" | "elasticsearch";
   database?: string;
   error?: string;
 }
@@ -152,7 +161,7 @@ export interface DatabaseTablesResult {
 export interface TableDataResult {
   columns: string[];
   rows: Record<string, unknown>[];
-  dbType?: 'postgresql' | 'mysql' | 'mongodb' | 'elasticsearch';
+  dbType?: "postgresql" | "mysql" | "mongodb" | "elasticsearch";
   tableName?: string;
   error?: string;
 }
@@ -162,7 +171,7 @@ export interface QueryResult {
   rows?: Record<string, unknown>[];
   rowCount?: number;
   output?: string;
-  dbType?: 'postgresql' | 'mysql' | 'mongodb' | 'elasticsearch';
+  dbType?: "postgresql" | "mysql" | "mongodb" | "elasticsearch";
   error?: string;
 }
 
@@ -188,7 +197,21 @@ export interface Service {
   pid: number;
   name: string;
   command: string;
-  type: 'database' | 'cache' | 'webserver' | 'container' | 'frontend' | 'backend' | 'nodejs' | 'python' | 'service' | 'external' | 'broker' | 'realtime' | 'worker' | 'client';
+  type:
+    | "database"
+    | "cache"
+    | "webserver"
+    | "container"
+    | "frontend"
+    | "backend"
+    | "nodejs"
+    | "python"
+    | "service"
+    | "external"
+    | "broker"
+    | "realtime"
+    | "worker"
+    | "client";
   user: string;
   tty?: string | null;
   project?: string | null;
@@ -229,7 +252,7 @@ export interface Connection {
 }
 
 // Health status types
-export type HealthStatus = 'green' | 'yellow' | 'red';
+export type HealthStatus = "green" | "yellow" | "red";
 
 // Graph types
 export interface GraphNode {
@@ -237,7 +260,21 @@ export interface GraphNode {
   pid: number;
   name: string;
   command: string;
-  type: 'database' | 'cache' | 'webserver' | 'container' | 'frontend' | 'backend' | 'nodejs' | 'python' | 'service' | 'external' | 'broker' | 'realtime' | 'worker' | 'client';
+  type:
+    | "database"
+    | "cache"
+    | "webserver"
+    | "container"
+    | "frontend"
+    | "backend"
+    | "nodejs"
+    | "python"
+    | "service"
+    | "external"
+    | "broker"
+    | "realtime"
+    | "worker"
+    | "client";
   cpu: number;
   memory: number;
   user: string;
@@ -260,7 +297,7 @@ export interface GraphNode {
   isDockerContainer?: boolean;
   containerId?: string;
   containerImage?: string;
-  containerState?: 'running' | 'exited' | 'paused' | 'restarting' | 'dead' | 'created';
+  containerState?: "running" | "exited" | "paused" | "restarting" | "dead" | "created";
   containerStatus?: string;
   containerHealth?: DockerHealth;
   containerNetworks?: DockerNetwork[];
@@ -269,15 +306,15 @@ export interface GraphNode {
   memoryUsage?: string;
   // Remote access metadata (SSH/SFTP/SCP session details)
   remoteAccess?: {
-    tool: 'ssh' | 'sftp' | 'scp' | 'autossh';
+    tool: "ssh" | "sftp" | "scp" | "autossh";
     alias?: string | null;
     user: string | null;
     host: string | null;
     port: number | null;
-    source: 'command' | 'connection';
+    source: "command" | "connection";
     startTime: string | null;
     tunnels?: Array<{
-      mode: 'L' | 'R' | 'D';
+      mode: "L" | "R" | "D";
       listenHost: string | null;
       listenPort: number | null;
       targetHost: string | null;
@@ -325,7 +362,7 @@ export interface ApiRoute {
 
 export interface ExternalApi {
   name: string;
-  kind: 'provider' | 'host';
+  kind: "provider" | "host";
   matchedOn: string[];
   hosts?: string[];
 }
@@ -335,7 +372,7 @@ export interface ExternalApiProvider {
   domains: string[];
 }
 
-export type ServiceStatusCode = 'ok' | 'unavailable' | 'permission_denied' | 'timeout' | 'degraded';
+export type ServiceStatusCode = "ok" | "unavailable" | "permission_denied" | "timeout" | "degraded";
 
 export interface ServiceStatus {
   code: ServiceStatusCode;
@@ -441,7 +478,7 @@ export interface TraceHop {
   startTime: number;
   endTime: number;
   latency: number;
-  connectionType: 'tcp' | 'external';
+  connectionType: "tcp" | "external";
   inferred: boolean;
 }
 
@@ -480,7 +517,7 @@ export interface TraceRequestResult {
 }
 
 // Network policy
-export type NetworkPolicy = 'local' | 'public';
+export type NetworkPolicy = "local" | "public";
 
 export interface NetworkPolicyResult {
   success: boolean;
@@ -503,8 +540,15 @@ export interface AlertPreferences {
 export interface AlertEvent {
   id: string;
   timestamp: number;
-  type: 'down' | 'recovery' | 'degraded' | 'container-stopped' | 'container-running' | 'service-discovered' | 'service-gone';
-  category: 'down' | 'recovery' | 'degraded' | 'container' | 'discovery';
+  type:
+    | "down"
+    | "recovery"
+    | "degraded"
+    | "container-stopped"
+    | "container-running"
+    | "service-discovered"
+    | "service-gone";
+  category: "down" | "recovery" | "degraded" | "container" | "discovery";
   serviceName: string;
   serviceType: string;
   nodeId: string;
@@ -518,13 +562,21 @@ export interface AlertHistoryResult {
   error?: string;
 }
 
-export type ActivityCategory = 'crash' | 'recovery' | 'anomaly' | 'sentinel' | 'discovery' | 'removal' | 'topology' | 'user-action';
+export type ActivityCategory =
+  | "crash"
+  | "recovery"
+  | "anomaly"
+  | "sentinel"
+  | "discovery"
+  | "removal"
+  | "topology"
+  | "user-action";
 
 export interface ActivityEvent {
   id: string;
   timestamp: number;
   category: ActivityCategory;
-  severity: 'critical' | 'warning' | 'info';
+  severity: "critical" | "warning" | "info";
   title: string;
   detail: string;
   serviceName: string | null;
@@ -557,34 +609,42 @@ export interface MetricHistory {
 
 // Snapshot delta types (event-driven pipeline)
 export interface SnapshotDelta {
-  type: 'full' | 'delta' | 'metrics';
+  type: "full" | "delta" | "metrics";
   seq: number;
   timestamp: number;
   // For type 'full': same shape as SystemSnapshot
-  processes?: Process[] | {
-    added: Process[];
-    removed: number[];
-    modified: (Partial<Process> & { pid: number })[];
-  };
-  ports?: Port[] | {
-    added: Port[];
-    removed: string[];
-  };
-  connections?: Connection[] | {
-    added: Connection[];
-    removed: string[];
-  };
-  graph?: ConnectionGraph | {
-    nodes?: {
-      added: GraphNode[];
-      removed: string[];
-      modified: (Partial<GraphNode> & { id: string })[];
-    };
-    edges?: {
-      added: GraphEdge[];
-      removed: string[];
-    };
-  };
+  processes?:
+    | Process[]
+    | {
+        added: Process[];
+        removed: number[];
+        modified: (Partial<Process> & { pid: number })[];
+      };
+  ports?:
+    | Port[]
+    | {
+        added: Port[];
+        removed: string[];
+      };
+  connections?:
+    | Connection[]
+    | {
+        added: Connection[];
+        removed: string[];
+      };
+  graph?:
+    | ConnectionGraph
+    | {
+        nodes?: {
+          added: GraphNode[];
+          removed: string[];
+          modified: (Partial<GraphNode> & { id: string })[];
+        };
+        edges?: {
+          added: GraphEdge[];
+          removed: string[];
+        };
+      };
   docker?: DockerSnapshot | null;
   meta?: {
     collectedAt: number;
@@ -624,7 +684,7 @@ export interface ShareSettings {
 // Auth types
 export interface AuthSession {
   signedIn: boolean;
-  provider: 'github' | 'google' | null;
+  provider: "github" | "google" | null;
   displayName: string | null;
   avatarUrl: string | null;
   email: string | null;
@@ -651,21 +711,50 @@ export interface ElectronAPI {
   getDockerNetworks: () => Promise<DockerNetworkInfo[]>;
   getDockerSnapshot: () => Promise<DockerSnapshot>;
   isDockerAvailable: () => Promise<boolean>;
-  getContainerLogTail: (containerId: string, tail?: number) => Promise<{ success: boolean; logs: string }>;
+  getContainerLogTail: (
+    containerId: string,
+    tail?: number,
+  ) => Promise<{ success: boolean; logs: string }>;
 
   // Database queries
   getDatabaseTables: (containerId: string, containerImage: string) => Promise<DatabaseTablesResult>;
-  getTableData: (containerId: string, containerImage: string, tableName: string, limit?: number) => Promise<TableDataResult>;
-  executeDatabaseQuery: (containerId: string, containerImage: string, query: string) => Promise<QueryResult>;
-  createDatabaseTable: (containerId: string, containerImage: string, tableName: string, columns: ColumnDefinition[]) => Promise<CreateTableResult>;
+  getTableData: (
+    containerId: string,
+    containerImage: string,
+    tableName: string,
+    limit?: number,
+  ) => Promise<TableDataResult>;
+  executeDatabaseQuery: (
+    containerId: string,
+    containerImage: string,
+    query: string,
+  ) => Promise<QueryResult>;
+  createDatabaseTable: (
+    containerId: string,
+    containerImage: string,
+    tableName: string,
+    columns: ColumnDefinition[],
+  ) => Promise<CreateTableResult>;
   connectMongoUri: (uri: string) => Promise<DatabaseTablesResult>;
-  getMongoUriCollectionData: (uri: string, collectionName: string, limit?: number) => Promise<TableDataResult>;
+  getMongoUriCollectionData: (
+    uri: string,
+    collectionName: string,
+    limit?: number,
+  ) => Promise<TableDataResult>;
   executeMongoUriQuery: (uri: string, command: string) => Promise<QueryResult>;
   connectPostgresUri: (uri: string) => Promise<DatabaseTablesResult>;
-  getPostgresUriTableData: (uri: string, tableName: string, limit?: number) => Promise<TableDataResult>;
+  getPostgresUriTableData: (
+    uri: string,
+    tableName: string,
+    limit?: number,
+  ) => Promise<TableDataResult>;
   executePostgresUriQuery: (uri: string, query: string) => Promise<QueryResult>;
   connectElasticsearchUri: (baseUrl: string) => Promise<DatabaseTablesResult>;
-  getElasticsearchUriIndexData: (baseUrl: string, indexName: string, limit?: number) => Promise<TableDataResult>;
+  getElasticsearchUriIndexData: (
+    baseUrl: string,
+    indexName: string,
+    limit?: number,
+  ) => Promise<TableDataResult>;
   executeElasticsearchUriQuery: (baseUrl: string, query: string) => Promise<QueryResult>;
 
   // Process control
@@ -701,14 +790,19 @@ export interface ElectronAPI {
 
   // Alert Preferences
   getAlertPreferences: () => Promise<AlertPreferences>;
-  setAlertPreferences: (prefs: Partial<AlertPreferences>) => Promise<{ success: boolean; error?: string }>;
+  setAlertPreferences: (
+    prefs: Partial<AlertPreferences>,
+  ) => Promise<{ success: boolean; error?: string }>;
 
   // Alert History
   getAlertHistory: () => Promise<AlertHistoryResult>;
   clearAlertHistory: () => Promise<{ success: boolean; error?: string }>;
 
   // Container Logs Streaming
-  startContainerLogs: (containerId: string, options?: ContainerLogOptions) => Promise<ContainerLogStreamResult>;
+  startContainerLogs: (
+    containerId: string,
+    options?: ContainerLogOptions,
+  ) => Promise<ContainerLogStreamResult>;
   stopContainerLogs: (streamId: string) => Promise<ContainerLogStopResult>;
   stopContainerStreams: (containerId: string) => Promise<ContainerLogStopResult>;
   stopAllContainerLogs: () => Promise<{ success: boolean; error?: string }>;
@@ -730,12 +824,17 @@ export interface ElectronAPI {
   // Share / Export
   getShareSettings: () => Promise<ShareSettings>;
   saveGithubToken: (token: string) => Promise<{ success: boolean; error?: string }>;
-  exportGraphFile: (options: PublishGraphOptions) => Promise<{ success: boolean; filePath?: string; error?: string }>;
+  exportGraphFile: (
+    options: PublishGraphOptions,
+  ) => Promise<{ success: boolean; filePath?: string; error?: string }>;
   publishGraph: (options: PublishGraphOptions) => Promise<PublishGraphResult>;
   updateSharedGraph: (options: PublishGraphOptions) => Promise<PublishGraphResult>;
 
   // Open file in editor
-  openInEditor: (filePath: string, line?: number) => Promise<{ success: boolean; editor?: string; error?: string }>;
+  openInEditor: (
+    filePath: string,
+    line?: number,
+  ) => Promise<{ success: boolean; editor?: string; error?: string }>;
 
   // Platform info
   platform: string;
@@ -755,18 +854,28 @@ export interface ElectronAPI {
 
   // Fere Agent
   agentUsage: () => Promise<{ used: number; limit: number; remaining: number; mode?: string }>;
-  agentScan: (nodeIds?: string[]) => Promise<{ success: boolean; findings: AgentFinding[]; error?: string }>;
+  agentScan: (
+    nodeIds?: string[],
+  ) => Promise<{ success: boolean; findings: AgentFinding[]; error?: string }>;
 
   // Stack Diff
   exportStackFingerprint: (opts: { label: string }) => Promise<StackFingerprint>;
   agentApplyFix: (action: AgentFixAction) => Promise<{ success: boolean; error?: string }>;
-  openInClaudeCode: (finding: { id: string; service: string; summary: string; severity: AgentSeverity; detail?: string; impact?: string | null; affectedServices?: string[] }) => Promise<{ success: boolean; briefPath: string; projectPath: string; error?: string }>;
+  openInClaudeCode: (finding: {
+    id: string;
+    service: string;
+    summary: string;
+    severity: AgentSeverity;
+    detail?: string;
+    impact?: string | null;
+    affectedServices?: string[];
+  }) => Promise<{ success: boolean; briefPath: string; projectPath: string; error?: string }>;
   agentChat: (
-    messages: { role: 'user' | 'assistant'; content: string }[],
+    messages: { role: "user" | "assistant"; content: string }[],
     nodeIds?: string[],
     tabLabel?: string | null,
     options?: { autopilotEnabled?: boolean },
-    graphEdges?: GraphEdge[]
+    graphEdges?: GraphEdge[],
   ) => Promise<{ success: boolean; content?: string; error?: string }>;
   onChatToken: (callback: (token: string) => void) => void;
   offChatToken: () => void;
@@ -783,10 +892,17 @@ export interface ElectronAPI {
   setNativeTheme?: (theme: "light" | "dark") => Promise<void>;
 
   // Service Blueprint
-  saveBlueprint: (opts: { snapshot: SystemSnapshot; projectPath: string; label?: string }) => Promise<{ success: boolean }>;
+  saveBlueprint: (opts: {
+    snapshot: SystemSnapshot;
+    projectPath: string;
+    label?: string;
+  }) => Promise<{ success: boolean }>;
   loadBlueprint: (projectPath: string) => Promise<Blueprint | null>;
   deleteBlueprint: (projectPath: string) => Promise<void>;
-  checkBlueprint: (opts: { projectPath: string; snapshot: SystemSnapshot }) => Promise<BlueprintCheckResult>;
+  checkBlueprint: (opts: {
+    projectPath: string;
+    snapshot: SystemSnapshot;
+  }) => Promise<BlueprintCheckResult>;
 }
 
 // Blueprint types
@@ -814,7 +930,7 @@ export interface Blueprint {
   dependencyOrder: string[];
 }
 
-export type GapStatus = 'ok' | 'missing' | 'wrong-version' | 'wrong-port' | 'not-running';
+export type GapStatus = "ok" | "missing" | "wrong-version" | "wrong-port" | "not-running";
 
 export interface BlueprintGapItem {
   name: string;
@@ -834,9 +950,16 @@ export interface BlueprintCheckResult {
   okCount: number;
 }
 
-
 export interface ChatStep {
-  type: 'read_file' | 'list_directory' | 'run_command' | 'docker_logs' | 'docker_exec' | 'docker_control' | 'get_node_details' | 'propose_fix';
+  type:
+    | "read_file"
+    | "list_directory"
+    | "run_command"
+    | "docker_logs"
+    | "docker_exec"
+    | "docker_control"
+    | "get_node_details"
+    | "propose_fix";
   label: string;
   path: string;
   done?: boolean;
@@ -846,7 +969,7 @@ export interface FixProposal {
   id: string;
   label: string;
   description: string;
-  fix_type: 'restart-container' | 'kill-port' | 'launch-in-terminal';
+  fix_type: "restart-container" | "kill-port" | "launch-in-terminal";
   container_id?: string;
   port?: number;
   pid?: number;
@@ -862,7 +985,7 @@ export interface ProactiveFinding {
   detail: string;
 }
 
-export type AgentSeverity = 'critical' | 'warning' | 'suggestion';
+export type AgentSeverity = "critical" | "warning" | "suggestion";
 
 // Stack Diff types
 export interface FingerprintService {
@@ -890,12 +1013,12 @@ export interface StackFingerprint {
   checksum: string;
 }
 
-export type DiffStatus = 'present' | 'missing' | 'different';
+export type DiffStatus = "present" | "missing" | "different";
 
 export interface StackDiffItem {
   name: string;
   status: DiffStatus;
-  side?: 'mine' | 'theirs';
+  side?: "mine" | "theirs";
   differences?: string[];
 }
 
@@ -912,7 +1035,7 @@ export interface StackDiffResult {
 }
 
 export interface AgentFixAction {
-  type: 'kill-port' | 'restart-container' | 'copy-only' | 'write-file';
+  type: "kill-port" | "restart-container" | "copy-only" | "write-file";
   port?: number;
   pid?: number;
   containerId?: string;
@@ -922,7 +1045,7 @@ export interface AgentFixAction {
   content?: string;
 }
 
-export type AgentCategory = 'health' | 'connectivity' | 'config' | 'security' | 'dependency';
+export type AgentCategory = "health" | "connectivity" | "config" | "security" | "dependency";
 
 export interface AgentFinding {
   id: string;

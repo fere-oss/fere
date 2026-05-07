@@ -34,9 +34,7 @@ export function normalizeDomain(domain: string): string | null {
   return parts.slice(-2).join(".");
 }
 
-export function buildProviderDomainMap(
-  providers: ExternalApiProvider[],
-): Record<string, string> {
+export function buildProviderDomainMap(providers: ExternalApiProvider[]): Record<string, string> {
   const map: Record<string, string> = {};
   for (const provider of providers) {
     const key = normalizeLabel(provider.name);
@@ -109,15 +107,10 @@ export function findProviderMentionHits(
   return hits;
 }
 
-export function getLogoUrl(
-  name: string,
-  providerDomains: Record<string, string>,
-): string | null {
+export function getLogoUrl(name: string, providerDomains: Record<string, string>): string | null {
   const normalizedName = normalizeLabel(name);
   const aliased = PROVIDER_ALIAS_MAP[normalizedName];
-  const domain =
-    providerDomains[normalizedName] ||
-    (aliased ? providerDomains[aliased] : "");
+  const domain = providerDomains[normalizedName] || (aliased ? providerDomains[aliased] : "");
   if (!domain) return null;
   const params = new URLSearchParams({
     size: "32",

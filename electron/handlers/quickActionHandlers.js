@@ -8,10 +8,7 @@ const { shell, clipboard, BrowserWindow } = require("electron");
  * @param {Electron.IpcMain} ipcMain
  * @param {object} deps
  */
-function registerQuickActionHandlers(ipcMain, {
-  validateExternalUrl,
-  platform,
-}) {
+function registerQuickActionHandlers(ipcMain, { validateExternalUrl, platform }) {
   ipcMain.handle("open-url", async (event, url) => {
     try {
       const validation = validateExternalUrl(url);

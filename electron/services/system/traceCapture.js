@@ -127,9 +127,7 @@ function findTargetNode(url, graphNodes) {
 }
 
 /** Data-layer node types that are always included as leaf nodes (no HTTP routes) */
-const DATA_LAYER_TYPES = new Set([
-  "database", "cache", "broker",
-]);
+const DATA_LAYER_TYPES = new Set(["database", "cache", "broker"]);
 
 /**
  * Check whether a service node has a route that plausibly matches the request path.
@@ -148,7 +146,7 @@ function routeMatches(node, requestPath) {
     const routeBase = route.path
       .replace(/\/+$/, "")
       .toLowerCase()
-      .replace(/\/:[^/]+/g, "");   // strip :param segments
+      .replace(/\/:[^/]+/g, ""); // strip :param segments
 
     // Match if paths share a common prefix beyond just "/"
     if (routeBase.length <= 1) continue;
@@ -257,12 +255,7 @@ async function executeTracedRequest(options, makeRequest) {
           const key = connKey(conn);
           if (beforeKeys.has(key)) continue;
 
-          const resolved = resolveConnection(
-            conn,
-            pidToNode,
-            portToNode,
-            externalApis
-          );
+          const resolved = resolveConnection(conn, pidToNode, portToNode, externalApis);
           if (!resolved) continue;
 
           const hopKey = `${resolved.sourceNodeId}->${resolved.targetNodeId}`;
@@ -288,10 +281,7 @@ async function executeTracedRequest(options, makeRequest) {
     requestResult = await Promise.race([
       makeRequest(),
       new Promise((_, reject) =>
-        setTimeout(
-          () => reject(new Error("Trace timeout")),
-          TRACE_TIMEOUT_MS
-        )
+        setTimeout(() => reject(new Error("Trace timeout")), TRACE_TIMEOUT_MS),
       ),
     ]);
   } catch (err) {
@@ -313,12 +303,7 @@ async function executeTracedRequest(options, makeRequest) {
     const key = connKey(conn);
     if (beforeKeys.has(key)) continue;
 
-    const resolved = resolveConnection(
-      conn,
-      pidToNode,
-      portToNode,
-      externalApis
-    );
+    const resolved = resolveConnection(conn, pidToNode, portToNode, externalApis);
     if (!resolved) continue;
 
     const hopKey = `${resolved.sourceNodeId}->${resolved.targetNodeId}`;
@@ -333,16 +318,12 @@ async function executeTracedRequest(options, makeRequest) {
   }
 
   // 5. Compute totalTime early so inference can use it
-  const totalTime = requestResult
-    ? requestResult.duration
-    : afterNow - traceStart;
+  const totalTime = requestResult ? requestResult.duration : afterNow - traceStart;
 
   // 6. Infer hops from known topology
   if (graphEdges && graphEdges.length > 0) {
     // First: infer edges where both endpoints were already detected
-    const detectedNodes = new Set(
-      timeline.flatMap((t) => [t.sourceNodeId, t.targetNodeId])
-    );
+    const detectedNodes = new Set(timeline.flatMap((t) => [t.sourceNodeId, t.targetNodeId]));
     for (const edge of graphEdges) {
       const hopKey = `${edge.source}->${edge.target}`;
       if (seenHopKeys.has(hopKey)) continue;
@@ -362,20 +343,35 @@ async function executeTracedRequest(options, makeRequest) {
     // can't see internal traffic), walk the graph from the target node via BFS
     if (timeline.length === 0) {
       const targetNode = findTargetNode(options.url, graphNodes);
-      console.log("[traceCapture] BFS fallback: url=", options.url,
-        "targetNode=", targetNode ? `${targetNode.name} (${targetNode.id})` : "NOT FOUND",
-        "graphNodes=", graphNodes.length,
-        "graphEdges=", graphEdges.length,
-        "nodePorts=", graphNodes.map(n => `${n.name}:[${n.ports.map(p => p.port).join(",")}]`).join(", ")
+      console.log(
+        "[traceCapture] BFS fallback: url=",
+        options.url,
+        "targetNode=",
+        targetNode ? `${targetNode.name} (${targetNode.id})` : "NOT FOUND",
+        "graphNodes=",
+        graphNodes.length,
+        "graphEdges=",
+        graphEdges.length,
+        "nodePorts=",
+        graphNodes.map((n) => `${n.name}:[${n.ports.map((p) => p.port).join(",")}]`).join(", "),
       );
       if (targetNode) {
         // Extract request path for route-aware filtering
         let requestPath = "/";
-        try { requestPath = new URL(options.url).pathname; } catch {}
+        try {
+          requestPath = new URL(options.url).pathname;
+        } catch {}
         const inferredEdges = bfsDockerHops(targetNode.id, graphNodes, graphEdges, requestPath);
-        console.log("[traceCapture] Route-aware BFS found", inferredEdges.length, "edges from", targetNode.name,
-          "for path", requestPath,
-          "edges:", inferredEdges.map(e => `${e.source}->${e.target}`).join(", "));
+        console.log(
+          "[traceCapture] Route-aware BFS found",
+          inferredEdges.length,
+          "edges from",
+          targetNode.name,
+          "for path",
+          requestPath,
+          "edges:",
+          inferredEdges.map((e) => `${e.source}->${e.target}`).join(", "),
+        );
         let time = 0;
         const hopInterval = totalTime / Math.max(1, inferredEdges.length + 1);
         for (const edge of inferredEdges) {
@@ -400,8 +396,7 @@ async function executeTracedRequest(options, makeRequest) {
 
   const hops = timeline.map((entry, i) => {
     const startTime = entry.detectedAt;
-    const endTime =
-      i + 1 < timeline.length ? timeline[i + 1].detectedAt : totalTime;
+    const endTime = i + 1 < timeline.length ? timeline[i + 1].detectedAt : totalTime;
     return {
       sourceNodeId: entry.sourceNodeId,
       targetNodeId: entry.targetNodeId,

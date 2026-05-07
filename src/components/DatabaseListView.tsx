@@ -1,12 +1,12 @@
-import { useState, useCallback } from 'react';
-import type { GraphNode } from '../types/electron';
-import { DatabasePage } from './DatabasePage';
+import { useState, useCallback } from "react";
+import type { GraphNode } from "../types/electron";
+import { DatabasePage } from "./DatabasePage";
 
 interface SavedDatabaseConnection {
   id: string;
   uri: string;
   name: string;
-  dbType: 'mongodb' | 'postgresql' | 'elasticsearch';
+  dbType: "mongodb" | "postgresql" | "elasticsearch";
   createdAt: number;
 }
 
@@ -16,58 +16,73 @@ interface DatabaseListViewProps {
   onSelectNode: (node: GraphNode | null) => void;
 }
 
-const SAVED_CONNECTIONS_KEY = 'fere.savedDatabaseConnections';
+const SAVED_CONNECTIONS_KEY = "fere.savedDatabaseConnections";
 
 function detectDbLabelFromNode(node: GraphNode): string {
-  const image = (node.containerImage || '').toLowerCase();
-  const name = (node.name || '').toLowerCase();
-  if (image.includes('postgres') || name.includes('postgres')) return 'PostgreSQL';
-  if (image.includes('mysql') || name.includes('mysql') || image.includes('mariadb')) return 'MySQL';
-  if (image.includes('mongo') || name.includes('mongo')) return 'MongoDB';
-  if (image.includes('elasticsearch') || name.includes('elasticsearch') || image.includes('opensearch') || name.includes('opensearch')) return 'Elasticsearch';
-  if (image.includes('redis') || name.includes('redis')) return 'Redis';
-  if (image.includes('sqlite') || name.includes('sqlite')) return 'SQLite';
-  return 'Database';
+  const image = (node.containerImage || "").toLowerCase();
+  const name = (node.name || "").toLowerCase();
+  if (image.includes("postgres") || name.includes("postgres")) return "PostgreSQL";
+  if (image.includes("mysql") || name.includes("mysql") || image.includes("mariadb"))
+    return "MySQL";
+  if (image.includes("mongo") || name.includes("mongo")) return "MongoDB";
+  if (
+    image.includes("elasticsearch") ||
+    name.includes("elasticsearch") ||
+    image.includes("opensearch") ||
+    name.includes("opensearch")
+  )
+    return "Elasticsearch";
+  if (image.includes("redis") || name.includes("redis")) return "Redis";
+  if (image.includes("sqlite") || name.includes("sqlite")) return "SQLite";
+  return "Database";
 }
 
-function detectUriDbType(uri: string): 'mongodb' | 'postgresql' | 'elasticsearch' | null {
+function detectUriDbType(uri: string): "mongodb" | "postgresql" | "elasticsearch" | null {
   const lower = uri.trim().toLowerCase();
-  if (lower.startsWith('mongodb://') || lower.startsWith('mongodb+srv://')) return 'mongodb';
-  if (lower.startsWith('postgresql://') || lower.startsWith('postgres://')) return 'postgresql';
-  if (lower.startsWith('http://') || lower.startsWith('https://')) return 'elasticsearch';
+  if (lower.startsWith("mongodb://") || lower.startsWith("mongodb+srv://")) return "mongodb";
+  if (lower.startsWith("postgresql://") || lower.startsWith("postgres://")) return "postgresql";
+  if (lower.startsWith("http://") || lower.startsWith("https://")) return "elasticsearch";
   return null;
 }
 
 function deriveNameFromUri(uri: string): string {
   try {
     const url = new URL(uri.trim());
-    const host = url.hostname || 'unknown';
-    if ((host === 'localhost' || host === '127.0.0.1') && url.port) {
+    const host = url.hostname || "unknown";
+    if ((host === "localhost" || host === "127.0.0.1") && url.port) {
       return `${host}:${url.port}`;
     }
     return host;
   } catch {
-    return 'Remote Database';
+    return "Remote Database";
   }
 }
 
 function savedConnectionToGraphNode(conn: SavedDatabaseConnection): GraphNode {
-  const commandMap = { mongodb: 'remote-mongo', postgresql: 'remote-postgres', elasticsearch: 'remote-elasticsearch' };
-  const imageMap = { mongodb: 'mongo:remote', postgresql: 'postgres:remote', elasticsearch: 'elasticsearch:remote' };
+  const commandMap = {
+    mongodb: "remote-mongo",
+    postgresql: "remote-postgres",
+    elasticsearch: "remote-elasticsearch",
+  };
+  const imageMap = {
+    mongodb: "mongo:remote",
+    postgresql: "postgres:remote",
+    elasticsearch: "elasticsearch:remote",
+  };
   return {
     id: `__saved_${conn.id}__`,
     pid: 0,
     name: conn.name,
-    command: commandMap[conn.dbType] || 'remote-database',
-    type: 'database',
+    command: commandMap[conn.dbType] || "remote-database",
+    type: "database",
     cpu: 0,
     memory: 0,
-    user: 'remote',
+    user: "remote",
     ports: [],
-    healthStatus: 'green',
+    healthStatus: "green",
     lastSeen: conn.createdAt,
     isDockerContainer: false,
-    containerImage: imageMap[conn.dbType] || 'database:remote',
+    containerImage: imageMap[conn.dbType] || "database:remote",
     containerStatus: `saved-uri:${conn.uri}`,
   };
 }
@@ -88,9 +103,10 @@ export function DatabaseListView({
   selectedNode,
   onSelectNode,
 }: DatabaseListViewProps) {
-  const [savedConnections, setSavedConnections] = useState<SavedDatabaseConnection[]>(loadSavedConnections);
+  const [savedConnections, setSavedConnections] =
+    useState<SavedDatabaseConnection[]>(loadSavedConnections);
   const [showAddForm, setShowAddForm] = useState(false);
-  const [addUri, setAddUri] = useState('');
+  const [addUri, setAddUri] = useState("");
   const [addError, setAddError] = useState<string | null>(null);
   const [addConnecting, setAddConnecting] = useState(false);
 
@@ -98,24 +114,26 @@ export function DatabaseListView({
     setSavedConnections(connections);
     try {
       window.localStorage.setItem(SAVED_CONNECTIONS_KEY, JSON.stringify(connections));
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }, []);
 
   const handleAddConnection = useCallback(async () => {
     const trimmedUri = addUri.trim();
     if (!trimmedUri) {
-      setAddError('Enter a database URI');
+      setAddError("Enter a database URI");
       return;
     }
 
     const dbType = detectUriDbType(trimmedUri);
     if (!dbType) {
-      setAddError('URI must start with mongodb://, postgresql://, or http://');
+      setAddError("URI must start with mongodb://, postgresql://, or http://");
       return;
     }
 
     if (savedConnections.some((c) => c.uri === trimmedUri)) {
-      setAddError('This connection already exists');
+      setAddError("This connection already exists");
       return;
     }
 
@@ -123,11 +141,12 @@ export function DatabaseListView({
     setAddError(null);
 
     try {
-      const result = dbType === 'mongodb'
-        ? await window.electronAPI.connectMongoUri(trimmedUri)
-        : dbType === 'elasticsearch'
-          ? await window.electronAPI.connectElasticsearchUri(trimmedUri)
-          : await window.electronAPI.connectPostgresUri(trimmedUri);
+      const result =
+        dbType === "mongodb"
+          ? await window.electronAPI.connectMongoUri(trimmedUri)
+          : dbType === "elasticsearch"
+            ? await window.electronAPI.connectElasticsearchUri(trimmedUri)
+            : await window.electronAPI.connectPostgresUri(trimmedUri);
 
       if (result.error) {
         setAddError(result.error);
@@ -145,27 +164,30 @@ export function DatabaseListView({
       const updated = [...savedConnections, newConnection];
       persistConnections(updated);
 
-      setAddUri('');
+      setAddUri("");
       setShowAddForm(false);
       setAddError(null);
 
       onSelectNode(savedConnectionToGraphNode(newConnection));
     } catch (err) {
-      setAddError(err instanceof Error ? err.message : 'Connection failed');
+      setAddError(err instanceof Error ? err.message : "Connection failed");
     } finally {
       setAddConnecting(false);
     }
   }, [addUri, savedConnections, persistConnections, onSelectNode]);
 
-  const handleDeleteConnection = useCallback((connectionId: string, event: React.MouseEvent) => {
-    event.stopPropagation();
-    const updated = savedConnections.filter((c) => c.id !== connectionId);
-    persistConnections(updated);
+  const handleDeleteConnection = useCallback(
+    (connectionId: string, event: React.MouseEvent) => {
+      event.stopPropagation();
+      const updated = savedConnections.filter((c) => c.id !== connectionId);
+      persistConnections(updated);
 
-    if (selectedNode?.id === `__saved_${connectionId}__`) {
-      onSelectNode(null);
-    }
-  }, [savedConnections, persistConnections, selectedNode, onSelectNode]);
+      if (selectedNode?.id === `__saved_${connectionId}__`) {
+        onSelectNode(null);
+      }
+    },
+    [savedConnections, persistConnections, selectedNode, onSelectNode],
+  );
 
   const handleDatabasePageBack = () => {
     onSelectNode(null);
@@ -185,10 +207,17 @@ export function DatabaseListView({
           {databaseNodes.map((node) => (
             <button
               key={node.id}
-              className={`db-list-item ${selectedNode?.id === node.id ? 'active' : ''}`}
+              className={`db-list-item ${selectedNode?.id === node.id ? "active" : ""}`}
               onClick={() => onSelectNode(node)}
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+              >
                 <ellipse cx="12" cy="5" rx="7" ry="3" />
                 <path d="M5 5v7c0 1.7 3.1 3 7 3s7-1.3 7-3V5" />
                 <path d="M5 12v7c0 1.7 3.1 3 7 3s7-1.3 7-3v-7" />
@@ -197,9 +226,7 @@ export function DatabaseListView({
                 <span className="db-list-item-name">{node.name}</span>
                 <span className="db-list-item-type">{detectDbLabelFromNode(node)}</span>
               </div>
-              {node.containerState === 'running' && (
-                <span className="db-list-item-status" />
-              )}
+              {node.containerState === "running" && <span className="db-list-item-status" />}
             </button>
           ))}
 
@@ -209,10 +236,17 @@ export function DatabaseListView({
             return (
               <button
                 key={syntheticId}
-                className={`db-list-item ${selectedNode?.id === syntheticId ? 'active' : ''}`}
+                className={`db-list-item ${selectedNode?.id === syntheticId ? "active" : ""}`}
                 onClick={() => onSelectNode(savedConnectionToGraphNode(conn))}
               >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                >
                   <ellipse cx="12" cy="5" rx="7" ry="3" />
                   <path d="M5 5v7c0 1.7 3.1 3 7 3s7-1.3 7-3V5" />
                   <path d="M5 12v7c0 1.7 3.1 3 7 3s7-1.3 7-3v-7" />
@@ -220,7 +254,11 @@ export function DatabaseListView({
                 <div className="db-list-item-info">
                   <span className="db-list-item-name">{conn.name}</span>
                   <span className="db-list-item-type">
-                    {conn.dbType === 'mongodb' ? 'MongoDB' : conn.dbType === 'elasticsearch' ? 'Elasticsearch' : 'PostgreSQL'}
+                    {conn.dbType === "mongodb"
+                      ? "MongoDB"
+                      : conn.dbType === "elasticsearch"
+                        ? "Elasticsearch"
+                        : "PostgreSQL"}
                   </span>
                 </div>
                 <button
@@ -228,7 +266,14 @@ export function DatabaseListView({
                   onClick={(e) => handleDeleteConnection(conn.id, e)}
                   title="Remove connection"
                 >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  >
                     <line x1="18" y1="6" x2="6" y2="18" />
                     <line x1="6" y1="6" x2="18" y2="18" />
                   </svg>
@@ -240,7 +285,15 @@ export function DatabaseListView({
           {/* Empty state */}
           {databaseNodes.length === 0 && savedConnections.length === 0 && (
             <div className="db-list-empty">
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" opacity="0.3">
+              <svg
+                width="32"
+                height="32"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                opacity="0.3"
+              >
                 <ellipse cx="12" cy="5" rx="7" ry="3" />
                 <path d="M5 5v7c0 1.7 3.1 3 7 3s7-1.3 7-3V5" />
                 <path d="M5 12v7c0 1.7 3.1 3 7 3s7-1.3 7-3v-7" />
@@ -259,10 +312,17 @@ export function DatabaseListView({
                 type="text"
                 placeholder="mongodb://, postgresql://, or http://"
                 value={addUri}
-                onChange={(e) => { setAddUri(e.target.value); setAddError(null); }}
+                onChange={(e) => {
+                  setAddUri(e.target.value);
+                  setAddError(null);
+                }}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter') handleAddConnection();
-                  if (e.key === 'Escape') { setShowAddForm(false); setAddUri(''); setAddError(null); }
+                  if (e.key === "Enter") handleAddConnection();
+                  if (e.key === "Escape") {
+                    setShowAddForm(false);
+                    setAddUri("");
+                    setAddError(null);
+                  }
                 }}
                 autoFocus
               />
@@ -270,7 +330,11 @@ export function DatabaseListView({
               <div className="db-add-form-actions">
                 <button
                   className="db-add-form-cancel"
-                  onClick={() => { setShowAddForm(false); setAddUri(''); setAddError(null); }}
+                  onClick={() => {
+                    setShowAddForm(false);
+                    setAddUri("");
+                    setAddError(null);
+                  }}
                 >
                   Cancel
                 </button>
@@ -279,16 +343,20 @@ export function DatabaseListView({
                   onClick={handleAddConnection}
                   disabled={addConnecting || !addUri.trim()}
                 >
-                  {addConnecting ? 'Connecting...' : 'Connect'}
+                  {addConnecting ? "Connecting..." : "Connect"}
                 </button>
               </div>
             </div>
           ) : (
-            <button
-              className="db-add-connection-btn"
-              onClick={() => setShowAddForm(true)}
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <button className="db-add-connection-btn" onClick={() => setShowAddForm(true)}>
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
                 <line x1="12" y1="5" x2="12" y2="19" />
                 <line x1="5" y1="12" x2="19" y2="12" />
               </svg>
@@ -303,7 +371,15 @@ export function DatabaseListView({
           <DatabasePage node={selectedNode} onBack={handleDatabasePageBack} />
         ) : (
           <div className="db-list-no-selection">
-            <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" opacity="0.2">
+            <svg
+              width="64"
+              height="64"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1"
+              opacity="0.2"
+            >
               <ellipse cx="12" cy="5" rx="7" ry="3" />
               <path d="M5 5v7c0 1.7 3.1 3 7 3s7-1.3 7-3V5" />
               <path d="M5 12v7c0 1.7 3.1 3 7 3s7-1.3 7-3v-7" />

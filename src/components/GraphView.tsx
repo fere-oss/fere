@@ -1,10 +1,4 @@
-import React, {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  useCallback,
-} from "react";
+import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import ReactFlow, {
   Background,
@@ -192,12 +186,9 @@ export function GraphView({
 
     setSelectedNode(null);
   }, [nodes, selectedNode]);
-  const [reactFlowInstance, setReactFlowInstance] =
-    useState<ReactFlowInstance | null>(null);
+  const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null);
   const animatedNodeIdsRef = useRef<Set<string>>(new Set());
-  const [animateNodeIds, setAnimateNodeIds] = useState<Set<string>>(
-    () => new Set(),
-  );
+  const [animateNodeIds, setAnimateNodeIds] = useState<Set<string>>(() => new Set());
   const [contextMenu, setContextMenu] = useState<{
     node: GraphNode;
     x: number;
@@ -228,25 +219,22 @@ export function GraphView({
     },
     [isContainerView, onDatabaseClick],
   );
-  const handleContextMenu = useCallback(
-    (event: ReactMouseEvent, node: GraphNode) => {
-      event.preventDefault();
-      event.stopPropagation();
-      const container = containerRef.current;
-      if (!container) return;
-      const rect = container.getBoundingClientRect();
-      contextMenuOpenRef.current = true;
-      setHoveredNodeId(node.id);
-      setContextMenu({
-        node,
-        x: event.clientX - rect.left,
-        y: event.clientY - rect.top,
-        width: rect.width,
-        height: rect.height,
-      });
-    },
-    [],
-  );
+  const handleContextMenu = useCallback((event: ReactMouseEvent, node: GraphNode) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const container = containerRef.current;
+    if (!container) return;
+    const rect = container.getBoundingClientRect();
+    contextMenuOpenRef.current = true;
+    setHoveredNodeId(node.id);
+    setContextMenu({
+      node,
+      x: event.clientX - rect.left,
+      y: event.clientY - rect.top,
+      width: rect.width,
+      height: rect.height,
+    });
+  }, []);
   const {
     layoutNodes,
     layoutEdges,
@@ -269,20 +257,16 @@ export function GraphView({
         .join(","),
     [layoutNodes],
   );
-  const hoverEffectsEnabled = useMemo(
-    () => layoutNodes.length <= 90,
-    [layoutNodes.length],
-  );
-  const nodeIds = useMemo(
-    () => layoutNodes.map((node) => node.id),
-    [layoutNodes],
-  );
+  const hoverEffectsEnabled = useMemo(() => layoutNodes.length <= 90, [layoutNodes.length]);
+  const nodeIds = useMemo(() => layoutNodes.map((node) => node.id), [layoutNodes]);
   useExternalApis(projectPathsKey);
   const measurementMinHeight = isContainerView
     ? FLOW_LAYOUT.CONTAINER_NODE_MIN_HEIGHT
     : FLOW_LAYOUT.NODE_MIN_HEIGHT;
-  const { nodeHeightsRef, layoutVersion, handleNodeMeasure } =
-    useNodeMeasurements(nodeIds, measurementMinHeight);
+  const { nodeHeightsRef, layoutVersion, handleNodeMeasure } = useNodeMeasurements(
+    nodeIds,
+    measurementMinHeight,
+  );
   useEffect(() => {
     const nodeIds = nodesKey ? nodesKey.split(",") : [];
     if (nodeIds.length === 0) {
@@ -349,8 +333,7 @@ export function GraphView({
     for (const node of flowLayout.nodes) {
       posMap.set(node.id, node.position);
       if (node.type === "service") {
-        const h =
-          nodeHeightsRef.current.get(node.id) ?? FLOW_LAYOUT.NODE_MIN_HEIGHT;
+        const h = nodeHeightsRef.current.get(node.id) ?? FLOW_LAYOUT.NODE_MIN_HEIGHT;
         heightMap.set(node.id, h);
         serviceCenters.push({
           id: node.id,
@@ -377,9 +360,7 @@ export function GraphView({
       }
     }
 
-    const layoutLookup = new Map(
-      stableConnectedLayout.map((ln) => [ln.node.id, ln]),
-    );
+    const layoutLookup = new Map(stableConnectedLayout.map((ln) => [ln.node.id, ln]));
     const outgoingBySource = new Map<string, GraphEdge[]>();
     const incomingByTarget = new Map<string, GraphEdge[]>();
     layoutEdges.forEach((edge) => {
@@ -456,9 +437,7 @@ export function GraphView({
       // For each edge, the "other" node is the one that isn't the hovered node.
       const otherId = edge.source === hoveredNodeId ? edge.target : edge.source;
       const other = layoutLookup.get(otherId);
-      const groupKey = other
-        ? `layer-${other.layer}-${other.groupId}`
-        : otherId;
+      const groupKey = other ? `layer-${other.layer}-${other.groupId}` : otherId;
       const list = edgesByGroup.get(groupKey);
       if (list) list.push(edge);
       else edgesByGroup.set(groupKey, [edge]);
@@ -535,8 +514,7 @@ export function GraphView({
         ty: tgt.y,
         sourcePos: src.pos,
         targetPos: tgt.pos,
-        bundleCount: (edge as typeof edge & { _bundleCount?: number })
-          ._bundleCount,
+        bundleCount: (edge as typeof edge & { _bundleCount?: number })._bundleCount,
       };
       return [
         {
@@ -572,19 +550,13 @@ export function GraphView({
         const srcPos = hoverEdgeGeometry.posMap.get(edge.source);
         const tgtPos = hoverEdgeGeometry.posMap.get(edge.target);
         if (!srcPos || !tgtPos) return [];
-        const srcH =
-          hoverEdgeGeometry.heightMap.get(edge.source) ??
-          FLOW_LAYOUT.NODE_MIN_HEIGHT;
-        const tgtH =
-          hoverEdgeGeometry.heightMap.get(edge.target) ??
-          FLOW_LAYOUT.NODE_MIN_HEIGHT;
+        const srcH = hoverEdgeGeometry.heightMap.get(edge.source) ?? FLOW_LAYOUT.NODE_MIN_HEIGHT;
+        const tgtH = hoverEdgeGeometry.heightMap.get(edge.target) ?? FLOW_LAYOUT.NODE_MIN_HEIGHT;
         const dy = tgtPos.y - srcPos.y;
         const dx = tgtPos.x - srcPos.x;
         const sameLayer = Math.abs(dy) < 80;
-        let srcSide: "top" | "bottom" | "left" | "right" =
-          dy > 0 ? "bottom" : "top";
-        let tgtSide: "top" | "bottom" | "left" | "right" =
-          dy > 0 ? "top" : "bottom";
+        let srcSide: "top" | "bottom" | "left" | "right" = dy > 0 ? "bottom" : "top";
+        let tgtSide: "top" | "bottom" | "left" | "right" = dy > 0 ? "top" : "bottom";
         let edgeType: "traceBezier" | "traceStep" = "traceBezier";
         if (sameLayer) {
           if (dx > 0) {
@@ -599,8 +571,7 @@ export function GraphView({
         const src = hoverEdgeGeometry.endpoint(srcPos, srcH, srcSide);
         const tgt = hoverEdgeGeometry.endpoint(tgtPos, tgtH, tgtSide);
 
-        const isActiveHop =
-          traceState.phase === "animating" && i === traceState.activeHopIndex;
+        const isActiveHop = traceState.phase === "animating" && i === traceState.activeHopIndex;
         const isDrawn =
           traceState.phase === "complete" ||
           (traceState.phase === "animating" && i < traceState.activeHopIndex);
@@ -647,12 +618,7 @@ export function GraphView({
     }, duration);
 
     return () => clearTimeout(timer);
-  }, [
-    traceState.phase,
-    traceState.activeHopIndex,
-    traceState.result,
-    traceDispatch,
-  ]);
+  }, [traceState.phase, traceState.activeHopIndex, traceState.result, traceDispatch]);
 
   // Handle waterfall interactions
   const handleWaterfallHoverHop = useCallback((hop: TraceHop | null) => {
@@ -738,9 +704,7 @@ export function GraphView({
 
     // Guard against rare viewport glitches where the camera drifts away from
     // every service node after topology/layout updates.
-    const serviceNodes = flowLayout.nodes.filter(
-      (node) => node.type === "service",
-    );
+    const serviceNodes = flowLayout.nodes.filter((node) => node.type === "service");
     if (serviceNodes.length === 0) return;
 
     const recoveryKey = `${nodesKey}:${layoutVersion}`;
@@ -833,9 +797,7 @@ export function GraphView({
   useEffect(() => {
     const handler = (e: Event) => {
       const { nodeId, nodeName } = (e as CustomEvent).detail ?? {};
-      const target = layoutNodes.find(
-        (n) => n.id === nodeId || n.name === nodeName,
-      );
+      const target = layoutNodes.find((n) => n.id === nodeId || n.name === nodeName);
       if (!target) return;
       if (reactFlowInstance) {
         const rfNode = reactFlowInstance.getNode(target.id);
@@ -883,9 +845,7 @@ export function GraphView({
         pendingHover.current = node.id;
         hoverTimer.current = setTimeout(() => {
           const nextHovered = pendingHover.current;
-          setHoveredNodeId((current) =>
-            current === nextHovered ? current : nextHovered,
-          );
+          setHoveredNodeId((current) => (current === nextHovered ? current : nextHovered));
         }, 16);
       }
     },
@@ -983,15 +943,10 @@ export function GraphView({
   }
 
   return (
-    <div
-      className={`graph-view${isContainerView ? " container-view" : ""}`}
-      ref={containerRef}
-    >
+    <div className={`graph-view${isContainerView ? " container-view" : ""}`} ref={containerRef}>
       <ActivePorts nodes={layoutNodes} reactFlowInstance={reactFlowInstance} />
 
-      {showDiscoveryHint && (
-        <DiscoveryHint onDismiss={() => setShowDiscoveryHint(false)} />
-      )}
+      {showDiscoveryHint && <DiscoveryHint onDismiss={() => setShowDiscoveryHint(false)} />}
 
       <div className={`graph-flow${viewportReady ? "" : " graph-flow-hidden"}`}>
         <HoverContext.Provider value={hoverState}>
@@ -1029,12 +984,7 @@ export function GraphView({
                 onClick={() => reactFlowInstance?.zoomIn({ duration: 200 })}
                 title="Zoom in"
               >
-                <svg
-                  viewBox="0 0 16 16"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                >
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
                   <path d="M8 3v10M3 8h10" />
                 </svg>
               </ControlButton>
@@ -1042,27 +992,15 @@ export function GraphView({
                 onClick={() => reactFlowInstance?.zoomOut({ duration: 200 })}
                 title="Zoom out"
               >
-                <svg
-                  viewBox="0 0 16 16"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                >
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
                   <path d="M3 8h10" />
                 </svg>
               </ControlButton>
               <ControlButton
-                onClick={() =>
-                  reactFlowInstance?.fitView({ padding: 0.32, duration: 300 })
-                }
+                onClick={() => reactFlowInstance?.fitView({ padding: 0.32, duration: 300 })}
                 title="Recenter"
               >
-                <svg
-                  viewBox="0 0 16 16"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                >
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
                   <path d="M2 5V2h3M11 2h3v3M14 11v3h-3M5 14H2v-3" />
                 </svg>
               </ControlButton>

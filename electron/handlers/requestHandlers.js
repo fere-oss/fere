@@ -4,16 +4,19 @@
  * @param {Electron.IpcMain} ipcMain
  * @param {object} deps
  */
-function registerRequestHandlers(ipcMain, {
-  validateHttpRequestUrl,
-  getNetworkPolicy,
-  executeTracedRequest,
-  loadHistory,
-  saveHistoryEntry,
-  clearHistory,
-  analytics,
-  MAX_RESPONSE_SIZE,
-}) {
+function registerRequestHandlers(
+  ipcMain,
+  {
+    validateHttpRequestUrl,
+    getNetworkPolicy,
+    executeTracedRequest,
+    loadHistory,
+    saveHistoryEntry,
+    clearHistory,
+    analytics,
+    MAX_RESPONSE_SIZE,
+  },
+) {
   // Note: This app tests local dev services, so localhost is allowed.
   // For apps that must block SSRF entirely, set allowPrivate to false.
   ipcMain.handle("execute-http-request", async (event, options) => {
@@ -42,9 +45,7 @@ function registerRequestHandlers(ipcMain, {
 
         if (
           shouldSendBody &&
-          !Object.keys(requestHeaders).some(
-            (k) => k.toLowerCase() === "content-length",
-          )
+          !Object.keys(requestHeaders).some((k) => k.toLowerCase() === "content-length")
         ) {
           requestHeaders["Content-Length"] = Buffer.byteLength(body, "utf8").toString();
         }
@@ -177,9 +178,7 @@ function registerRequestHandlers(ipcMain, {
 
           if (
             shouldSendBody &&
-            !Object.keys(requestHeaders).some(
-              (k) => k.toLowerCase() === "content-length",
-            )
+            !Object.keys(requestHeaders).some((k) => k.toLowerCase() === "content-length")
           ) {
             requestHeaders["Content-Length"] = Buffer.byteLength(body, "utf8").toString();
           }

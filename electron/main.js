@@ -70,8 +70,7 @@ function validateRemoteDbUri(uri) {
   if (isPrivateHost(parsed.hostname)) {
     return {
       valid: false,
-      reason:
-        "Connections to private/internal addresses are not allowed for remote URIs",
+      reason: "Connections to private/internal addresses are not allowed for remote URIs",
     };
   }
 
@@ -91,10 +90,7 @@ const {
   getEstablishedConnections,
   clearPortCache,
 } = require("./services/monitoring/portMonitor");
-const {
-  buildConnectionGraph,
-  getEnvironmentSummary,
-} = require("./services/graph/connectionGraph");
+const { buildConnectionGraph, getEnvironmentSummary } = require("./services/graph/connectionGraph");
 const { getSystemSnapshot } = require("./services/system/systemSnapshot");
 const { SnapshotScheduler } = require("./services/system/snapshotScheduler");
 const {
@@ -106,11 +102,7 @@ const {
   clearRouteCache,
   getRouteCacheTimestamp,
 } = require("./services/discovery/routeScanner");
-const {
-  loadHistory,
-  saveHistoryEntry,
-  clearHistory,
-} = require("./services/system/requestHistory");
+const { loadHistory, saveHistoryEntry, clearHistory } = require("./services/system/requestHistory");
 const {
   getDatabaseTables,
   getTableData,
@@ -176,11 +168,7 @@ const { openInClaudeCode } = require("./services/ai/claudeCodeBrief");
 const OpenAI = require("openai").default;
 const sentry = require("./sentry");
 const { generateHTML } = require("./services/sharing/graphExporter");
-const {
-  createGist,
-  updateGist,
-  buildPreviewUrl,
-} = require("./services/sharing/gistPublisher");
+const { createGist, updateGist, buildPreviewUrl } = require("./services/sharing/gistPublisher");
 const { executeTracedRequest } = require("./services/system/traceCapture");
 const { buildFingerprint } = require("./services/graph/stackFingerprint");
 const blueprintManager = require("./services/sharing/blueprintManager");
@@ -266,9 +254,7 @@ process.on("uncaughtException", (err) => {
 });
 
 process.on("unhandledRejection", (reason) => {
-  sentry.captureException(
-    reason instanceof Error ? reason : new Error(String(reason)),
-  );
+  sentry.captureException(reason instanceof Error ? reason : new Error(String(reason)));
   console.error("Unhandled rejection:", reason);
 });
 
@@ -462,11 +448,7 @@ app.on("activate", () => {
  * for alert evaluation purposes.
  */
 function updateAlertNodeMap(delta) {
-  if (
-    delta.type === "full" &&
-    delta.graph &&
-    Array.isArray(delta.graph.nodes)
-  ) {
+  if (delta.type === "full" && delta.graph && Array.isArray(delta.graph.nodes)) {
     alertNodeMap = new Map(delta.graph.nodes.map((n) => [n.id, n]));
     return;
   }
@@ -627,24 +609,17 @@ ipcMain.handle("start-snapshot-stream", async (event) => {
             newFindings.push(f);
             _surfacedFindingIds.add(f.id);
             _surfacedFindingSeverity.set(f.id, f.severity);
-          } else if (
-            prevSev &&
-            (severityRank[f.severity] ?? 0) > (severityRank[prevSev] ?? 0)
-          ) {
+          } else if (prevSev && (severityRank[f.severity] ?? 0) > (severityRank[prevSev] ?? 0)) {
             worsenedFindings.push(f);
             _surfacedFindingSeverity.set(f.id, f.severity);
           }
         }
 
-        const windows = BrowserWindow.getAllWindows().filter(
-          (w) => !w.isDestroyed(),
-        );
+        const windows = BrowserWindow.getAllWindows().filter((w) => !w.isDestroyed());
 
         // Broadcast resolved finding IDs
         if (resolvedIds.length > 0) {
-          windows.forEach((win) =>
-            win.webContents.send("agent:finding-resolved", resolvedIds),
-          );
+          windows.forEach((win) => win.webContents.send("agent:finding-resolved", resolvedIds));
         }
 
         // Broadcast worsened findings
@@ -656,14 +631,10 @@ ipcMain.handle("start-snapshot-stream", async (event) => {
 
         // Broadcast new findings
         if (newFindings.length > 0) {
-          windows.forEach((win) =>
-            win.webContents.send("agent:proactive-finding", newFindings),
-          );
+          windows.forEach((win) => win.webContents.send("agent:proactive-finding", newFindings));
 
           // OS notification for critical findings when window is not focused
-          const criticals = newFindings.filter(
-            (f) => f.severity === "critical",
-          );
+          const criticals = newFindings.filter((f) => f.severity === "critical");
           const now = Date.now();
           const notifyThrottle = 60_000; // 1 notification per finding per minute
           for (const f of criticals) {
@@ -781,8 +752,7 @@ ipcMain.handle("get-external-apis", async (event, projectPath) => {
     // Periodic sweep: if the cache has grown large, prune all expired entries
     if (_externalApisCache.size > 50) {
       for (const [k, v] of _externalApisCache) {
-        if (now - v.time >= _EXTERNAL_APIS_CACHE_TTL)
-          _externalApisCache.delete(k);
+        if (now - v.time >= _EXTERNAL_APIS_CACHE_TTL) _externalApisCache.delete(k);
       }
     }
 
@@ -922,19 +892,6 @@ registerShareHandlers(ipcMain, {
 
 registerBlueprintHandlers(ipcMain, { blueprintManager });
 
-
-
-
-
-
-
-
-
-
-
-
-
-
 // ── Fere Agent ────────────────────────────────────────────────────────────────
 
 // ── API Key Management (BYOK via safeStorage / macOS Keychain) ───────────────
@@ -1018,7 +975,9 @@ function getAuthSession() {
     return null;
   }
   try {
-    const accessToken = safeStorage.decryptString(Buffer.from(settings.encryptedAuthAccessToken, "base64"));
+    const accessToken = safeStorage.decryptString(
+      Buffer.from(settings.encryptedAuthAccessToken, "base64"),
+    );
     const refreshToken = settings.encryptedAuthRefreshToken
       ? safeStorage.decryptString(Buffer.from(settings.encryptedAuthRefreshToken, "base64"))
       : null;
@@ -1047,7 +1006,16 @@ function extractDisplayName(userMeta, provider) {
   return userMeta.full_name || userMeta.name || userMeta.user_name || null;
 }
 
-function saveAuthSession({ accessToken, refreshToken, provider, providerId, displayName, avatarUrl, email, expiresAt }) {
+function saveAuthSession({
+  accessToken,
+  refreshToken,
+  provider,
+  providerId,
+  displayName,
+  avatarUrl,
+  email,
+  expiresAt,
+}) {
   if (!safeStorage.isEncryptionAvailable()) return;
   const patch = {
     encryptedAuthAccessToken: safeStorage.encryptString(accessToken).toString("base64"),
@@ -1192,21 +1160,23 @@ function handleAuthCallback(url) {
       return;
     }
     console.log("[auth] Received callback, exchanging code...");
-    exchangeCodeForSession(code).then((session) => {
-      if (session) {
-        console.log("[auth] Sign-in successful:", session.provider, session.displayName);
-      } else {
-        console.error("[auth] Code exchange returned no session");
-      }
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send("auth:session-changed", buildAuthSessionResponse(session));
-        // Bring the app window to front so user doesn't stay on the browser tab
-        mainWindow.show();
-        mainWindow.focus();
-      }
-    }).catch((err) => {
-      console.error("[auth] Callback exchange error:", err);
-    });
+    exchangeCodeForSession(code)
+      .then((session) => {
+        if (session) {
+          console.log("[auth] Sign-in successful:", session.provider, session.displayName);
+        } else {
+          console.error("[auth] Code exchange returned no session");
+        }
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send("auth:session-changed", buildAuthSessionResponse(session));
+          // Bring the app window to front so user doesn't stay on the browser tab
+          mainWindow.show();
+          mainWindow.focus();
+        }
+      })
+      .catch((err) => {
+        console.error("[auth] Callback exchange error:", err);
+      });
   } catch (err) {
     console.error("[auth] handleAuthCallback error:", err);
   }
@@ -1229,7 +1199,13 @@ function startPkceSignIn(provider) {
   // This lets us serve a self-closing page so the browser tab goes away.
   return new Promise((resolve) => {
     // Shut down any previous server
-    if (authServer) { try { authServer.close(); } catch { /* best-effort close */ } }
+    if (authServer) {
+      try {
+        authServer.close();
+      } catch {
+        /* best-effort close */
+      }
+    }
 
     authServer = http.createServer((req, res) => {
       const reqUrl = new URL(req.url, `http://localhost`);
@@ -1242,7 +1218,9 @@ function startPkceSignIn(provider) {
 
       // Serve a self-closing page
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-      res.end(`<!DOCTYPE html><html><body style="background:#1a1a1a;color:#aaa;font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0"><p>Signed in — you can close this tab.</p></body><script>window.close()</script></html>`);
+      res.end(
+        `<!DOCTYPE html><html><body style="background:#1a1a1a;color:#aaa;font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0"><p>Signed in — you can close this tab.</p></body><script>window.close()</script></html>`,
+      );
 
       // Exchange the code
       if (code) {
@@ -1251,7 +1229,11 @@ function startPkceSignIn(provider) {
 
       // Shut down the server after a short delay
       setTimeout(() => {
-        try { authServer.close(); } catch { /* best-effort close */ }
+        try {
+          authServer.close();
+        } catch {
+          /* best-effort close */
+        }
         authServer = null;
       }, 1000);
     });
@@ -1304,7 +1286,6 @@ ipcMain.handle("auth:sign-out", () => {
   }
 });
 
-
 // Daily rate limit for Sentinel AI chat calls — see electron/constants.js
 
 function getLocalDateString() {
@@ -1317,7 +1298,9 @@ function getSupabaseUserId(accessToken) {
   try {
     const payload = JSON.parse(Buffer.from(accessToken.split(".")[1], "base64").toString());
     return payload.sub;
-  } catch { return null; }
+  } catch {
+    return null;
+  }
 }
 
 async function getUsageCount(accessToken) {
@@ -1332,7 +1315,9 @@ async function getUsageCount(accessToken) {
     if (!res.ok) return 0;
     const rows = await res.json();
     return rows?.[0]?.count ?? 0;
-  } catch { return 0; }
+  } catch {
+    return 0;
+  }
 }
 
 async function incrementUsageCount(accessToken) {
@@ -1372,7 +1357,12 @@ ipcMain.handle("agent:usage", async () => {
   if (accessToken && SUPABASE_URL) {
     // Signed-in free-tier user — check Supabase
     const count = await getUsageCount(accessToken);
-    return { used: count, limit: SENTINEL_DAILY_LIMIT, remaining: SENTINEL_DAILY_LIMIT - count, mode: "free" };
+    return {
+      used: count,
+      limit: SENTINEL_DAILY_LIMIT,
+      remaining: SENTINEL_DAILY_LIMIT - count,
+      mode: "free",
+    };
   }
 
   // Not signed in, no key
@@ -1381,11 +1371,9 @@ ipcMain.handle("agent:usage", async () => {
 
 ipcMain.handle("agent:scan", async (_, nodeIds) => {
   try {
-    const snapshot = (snapshotScheduler && snapshotScheduler.getLatestSnapshot()) || await getSystemSnapshot();
-    const findings = await runScan(
-      snapshot,
-      Array.isArray(nodeIds) ? nodeIds : undefined,
-    );
+    const snapshot =
+      (snapshotScheduler && snapshotScheduler.getLatestSnapshot()) || (await getSystemSnapshot());
+    const findings = await runScan(snapshot, Array.isArray(nodeIds) ? nodeIds : undefined);
     const scopedNodes = Array.isArray(nodeIds)
       ? (snapshot.graph?.nodes ?? []).filter((node) => nodeIds.includes(node.id))
       : [];
@@ -1397,7 +1385,10 @@ ipcMain.handle("agent:scan", async (_, nodeIds) => {
       findings.length > 0
         ? `Sentinel detect found ${findings.length} issue${findings.length === 1 ? "" : "s"}`
         : "Sentinel detect found no issues",
-      findings.slice(0, 5).map((finding) => finding.summary).join(", "),
+      findings
+        .slice(0, 5)
+        .map((finding) => finding.summary)
+        .join(", "),
       projectName,
     );
     return { success: true, findings };
@@ -1461,8 +1452,7 @@ ipcMain.handle("agent:open-in-claude-code", async (_, finding) => {
 ipcMain.handle("stack:export-fingerprint", async (_, { label } = {}) => {
   try {
     const snapshot =
-      (snapshotScheduler && snapshotScheduler.getLatestSnapshot?.()) ||
-      (await getSystemSnapshot());
+      (snapshotScheduler && snapshotScheduler.getLatestSnapshot?.()) || (await getSystemSnapshot());
     return buildFingerprint(snapshot, null, label || "My Stack");
   } catch (err) {
     console.error("stack:export-fingerprint error:", err);
@@ -1507,9 +1497,7 @@ function pathWithinRoot(normalized, root) {
 
 function agentAllowedCommandCwd(normalizedCwd, projectPaths) {
   if (agentAllowedPath(normalizedCwd, projectPaths)) return true;
-  return AGENT_TRUSTED_DEV_ROOTS.some((root) =>
-    pathWithinRoot(normalizedCwd, root),
-  );
+  return AGENT_TRUSTED_DEV_ROOTS.some((root) => pathWithinRoot(normalizedCwd, root));
 }
 
 function agentReadFile(filePath, allowedPaths) {
@@ -1517,8 +1505,7 @@ function agentReadFile(filePath, allowedPaths) {
     return "Error: path must be absolute.";
   }
   const normalized = path.normalize(filePath);
-  if (normalized.split(path.sep).includes(".."))
-    return "Error: path traversal not allowed.";
+  if (normalized.split(path.sep).includes("..")) return "Error: path traversal not allowed.";
   if (!agentAllowedPath(normalized, allowedPaths)) {
     return `Error: ${normalized} is outside known project paths (${allowedPaths.join(", ")}).`;
   }
@@ -1567,11 +1554,9 @@ function agentReadFile(filePath, allowedPaths) {
     ".lock",
   ]);
   const ext = path.extname(normalized).toLowerCase();
-  if (ext && !ALLOWED_EXT.has(ext))
-    return `Error: file type ${ext} is not readable.`;
+  if (ext && !ALLOWED_EXT.has(ext)) return `Error: file type ${ext} is not readable.`;
   try {
-    if (!fs.existsSync(normalized))
-      return `Error: file not found: ${normalized}`;
+    if (!fs.existsSync(normalized)) return `Error: file not found: ${normalized}`;
     const stat = fs.statSync(normalized);
     if (!stat.isFile()) return `Error: ${normalized} is not a file.`;
     if (stat.size > 80 * 1024) {
@@ -1588,24 +1573,17 @@ function agentListDirectory(dirPath, allowedPaths) {
     return "Error: path must be absolute.";
   }
   const normalized = path.normalize(dirPath);
-  if (normalized.split(path.sep).includes(".."))
-    return "Error: path traversal not allowed.";
+  if (normalized.split(path.sep).includes("..")) return "Error: path traversal not allowed.";
   if (!agentAllowedPath(normalized, allowedPaths)) {
     return `Error: ${normalized} is outside known project paths.`;
   }
   try {
-    if (!fs.existsSync(normalized))
-      return `Error: directory not found: ${normalized}`;
+    if (!fs.existsSync(normalized)) return `Error: directory not found: ${normalized}`;
     const stat = fs.statSync(normalized);
     if (!stat.isDirectory()) return `Error: ${normalized} is not a directory.`;
     const entries = fs.readdirSync(normalized, { withFileTypes: true });
     const lines = entries
-      .filter(
-        (e) =>
-          e.name !== "node_modules" &&
-          e.name !== "__pycache__" &&
-          e.name !== ".git",
-      )
+      .filter((e) => e.name !== "node_modules" && e.name !== "__pycache__" && e.name !== ".git")
       .map((e) => (e.isDirectory() ? `${e.name}/` : e.name))
       .sort();
     return `${normalized}:\n${lines.join("\n")}`;
@@ -1616,8 +1594,7 @@ function agentListDirectory(dirPath, allowedPaths) {
 
 // Launch a command in a new macOS Terminal window (for long-running servers)
 async function agentLaunchInTerminal(command, cwd, projectPaths) {
-  if (typeof command !== "string" || !command.trim())
-    return "Error: command is empty.";
+  if (typeof command !== "string" || !command.trim()) return "Error: command is empty.";
   if (typeof cwd !== "string" || !path.isAbsolute(cwd))
     return "Error: cwd must be an absolute path.";
   const normalizedCwd = path.normalize(cwd);
@@ -1631,10 +1608,9 @@ async function agentLaunchInTerminal(command, cwd, projectPaths) {
   activate
   do script "cd \\"${escapedCwd}\\" && ${escapedCmd}"
 end tell`;
-  const { output, ok } = await execAsync(
-    `osascript -e '${script.replace(/'/g, "'\\''")}'`,
-    { timeout: 10000 },
-  );
+  const { output, ok } = await execAsync(`osascript -e '${script.replace(/'/g, "'\\''")}'`, {
+    timeout: 10000,
+  });
   if (!ok) return `Error opening Terminal: ${output}`;
   return `Launch requested in Terminal: ${command}. Status is NOT verified. Run an explicit check (for example: health endpoint, logs, or lsof on expected port) before claiming it is running.`;
 }
@@ -1707,8 +1683,7 @@ function normalizeMessageText(content) {
     return content
       .map((part) => {
         if (typeof part === "string") return part;
-        if (part && typeof part === "object" && typeof part.text === "string")
-          return part.text;
+        if (part && typeof part === "object" && typeof part.text === "string") return part.text;
         return "";
       })
       .join(" ");
@@ -1758,11 +1733,7 @@ function resolveNodeByName(name, scopedNodes, allNodes) {
     (node) => String(node?.name || "").toLowerCase() === normalized,
   );
   if (exactInScope) return exactInScope;
-  return (
-    allNodes.find(
-      (node) => String(node?.name || "").toLowerCase() === normalized,
-    ) ?? null
-  );
+  return allNodes.find((node) => String(node?.name || "").toLowerCase() === normalized) ?? null;
 }
 
 function findMentionedScopedNode(text, scopedNodes) {
@@ -1772,10 +1743,7 @@ function findMentionedScopedNode(text, scopedNodes) {
   const lower = text.toLowerCase();
   const candidates = scopedNodes
     .filter(
-      (node) =>
-        node?.type !== "external" &&
-        typeof node?.name === "string" &&
-        node.name.trim(),
+      (node) => node?.type !== "external" && typeof node?.name === "string" && node.name.trim(),
     )
     .sort((a, b) => b.name.length - a.name.length);
 
@@ -1847,8 +1815,7 @@ function formatConnectionLines(targetNode, edges, allNodes, direction) {
 
   return relevant.map((edge) => {
     const peerId = direction === "incoming" ? edge.source : edge.target;
-    const peerName =
-      allNodes.find((node) => node.id === peerId)?.name ?? peerId;
+    const peerName = allNodes.find((node) => node.id === peerId)?.name ?? peerId;
     const sourcePort = Number(edge.sourcePort) || 0;
     const targetPort = Number(edge.targetPort) || 0;
     if (sourcePort === 0 && targetPort === 0) {
@@ -1862,61 +1829,27 @@ function buildDirectNodeAnswer(questionType, targetNode, allNodes, edges) {
   if (!questionType || !targetNode) return null;
 
   if (questionType === "incoming-connections") {
-    const incoming = formatConnectionLines(
-      targetNode,
-      edges,
-      allNodes,
-      "incoming",
-    );
+    const incoming = formatConnectionLines(targetNode, edges, allNodes, "incoming");
     if (incoming.length === 0) {
       return `**${targetNode.name}** has no incoming connections in the current graph snapshot.`;
     }
-    return [
-      `Incoming connections for **${targetNode.name}**:`,
-      ...incoming,
-    ].join("\n");
+    return [`Incoming connections for **${targetNode.name}**:`, ...incoming].join("\n");
   }
 
   if (questionType === "outgoing-connections") {
-    const outgoing = formatConnectionLines(
-      targetNode,
-      edges,
-      allNodes,
-      "outgoing",
-    );
+    const outgoing = formatConnectionLines(targetNode, edges, allNodes, "outgoing");
     if (outgoing.length === 0) {
       return `**${targetNode.name}** has no outgoing connections in the current graph snapshot.`;
     }
-    return [
-      `Outgoing connections for **${targetNode.name}**:`,
-      ...outgoing,
-    ].join("\n");
+    return [`Outgoing connections for **${targetNode.name}**:`, ...outgoing].join("\n");
   }
 
   if (questionType === "all-connections") {
-    const incoming = formatConnectionLines(
-      targetNode,
-      edges,
-      allNodes,
-      "incoming",
-    );
-    const outgoing = formatConnectionLines(
-      targetNode,
-      edges,
-      allNodes,
-      "outgoing",
-    );
+    const incoming = formatConnectionLines(targetNode, edges, allNodes, "incoming");
+    const outgoing = formatConnectionLines(targetNode, edges, allNodes, "outgoing");
     const lines = [`Connections for **${targetNode.name}**:`];
-    lines.push(
-      incoming.length > 0
-        ? `Incoming:\n${incoming.join("\n")}`
-        : "Incoming:\n- None",
-    );
-    lines.push(
-      outgoing.length > 0
-        ? `Outgoing:\n${outgoing.join("\n")}`
-        : "Outgoing:\n- None",
-    );
+    lines.push(incoming.length > 0 ? `Incoming:\n${incoming.join("\n")}` : "Incoming:\n- None");
+    lines.push(outgoing.length > 0 ? `Outgoing:\n${outgoing.join("\n")}` : "Outgoing:\n- None");
     return lines.join("\n");
   }
 
@@ -1979,24 +1912,19 @@ function isDockerComposeUpCommand(command) {
 const { exec: _execAsync } = require("child_process");
 function execAsync(command, options = {}) {
   return new Promise((resolve) => {
-    _execAsync(
-      command,
-      { encoding: "utf8", ...options },
-      (err, stdout, stderr) => {
-        if (err) {
-          const msg = ((stdout || "") + (stderr || "") || err.message).trim();
-          resolve({ ok: false, output: `Exit ${err.code ?? 1}:\n${msg}` });
-        } else {
-          resolve({ ok: true, output: (stdout || "").trim() || "(no output)" });
-        }
-      },
-    );
+    _execAsync(command, { encoding: "utf8", ...options }, (err, stdout, stderr) => {
+      if (err) {
+        const msg = ((stdout || "") + (stderr || "") || err.message).trim();
+        resolve({ ok: false, output: `Exit ${err.code ?? 1}:\n${msg}` });
+      } else {
+        resolve({ ok: true, output: (stdout || "").trim() || "(no output)" });
+      }
+    });
   });
 }
 
 async function agentRunCommand(command, cwd, projectPaths, policies = {}) {
-  if (typeof command !== "string" || !command.trim())
-    return "Error: command is empty.";
+  if (typeof command !== "string" || !command.trim()) return "Error: command is empty.";
   if (typeof cwd !== "string" || !path.isAbsolute(cwd))
     return "Error: cwd must be an absolute path.";
   const normalizedCwd = path.normalize(cwd);
@@ -2011,8 +1939,7 @@ async function agentRunCommand(command, cwd, projectPaths, policies = {}) {
     return 'Error: install/update commands are disabled for this chat because the user explicitly requested "do not install".';
   }
   for (const pattern of BLOCKED_CMDS) {
-    if (pattern.test(command))
-      return `Error: command contains a blocked operation.`;
+    if (pattern.test(command)) return `Error: command contains a blocked operation.`;
   }
   const { output } = await execAsync(command, {
     cwd: normalizedCwd,
@@ -2024,23 +1951,19 @@ async function agentRunCommand(command, cwd, projectPaths, policies = {}) {
 }
 
 async function agentDockerLogs(containerId, tail = 80) {
-  if (!/^[a-zA-Z0-9_\-\.]+$/.test(containerId))
-    return "Error: invalid container id.";
-  const { output } = await execAsync(
-    `docker logs --tail ${Number(tail)} ${containerId} 2>&1`,
-    { timeout: 10000, maxBuffer: 1024 * 100 },
-  );
+  if (!/^[a-zA-Z0-9_\-\.]+$/.test(containerId)) return "Error: invalid container id.";
+  const { output } = await execAsync(`docker logs --tail ${Number(tail)} ${containerId} 2>&1`, {
+    timeout: 10000,
+    maxBuffer: 1024 * 100,
+  });
   return output || "(no logs)";
 }
 
 async function agentDockerExec(containerId, command) {
-  if (!/^[a-zA-Z0-9_\-\.]+$/.test(containerId))
-    return "Error: invalid container id.";
-  if (typeof command !== "string" || !command.trim())
-    return "Error: command is empty.";
+  if (!/^[a-zA-Z0-9_\-\.]+$/.test(containerId)) return "Error: invalid container id.";
+  if (typeof command !== "string" || !command.trim()) return "Error: command is empty.";
   for (const pattern of BLOCKED_CMDS) {
-    if (pattern.test(command))
-      return `Error: command contains a blocked operation.`;
+    if (pattern.test(command)) return `Error: command contains a blocked operation.`;
   }
   const { output } = await execAsync(
     `docker exec ${containerId} sh -c ${JSON.stringify(command)} 2>&1`,
@@ -2050,14 +1973,12 @@ async function agentDockerExec(containerId, command) {
 }
 
 async function agentDockerControl(containerId, action) {
-  if (!/^[a-zA-Z0-9_\-\.]+$/.test(containerId))
-    return "Error: invalid container id.";
+  if (!/^[a-zA-Z0-9_\-\.]+$/.test(containerId)) return "Error: invalid container id.";
   if (!["start", "stop", "restart"].includes(action))
     return "Error: action must be start, stop, or restart.";
-  const { ok, output } = await execAsync(
-    `docker ${action} ${containerId} 2>&1`,
-    { timeout: 20000 },
-  );
+  const { ok, output } = await execAsync(`docker ${action} ${containerId} 2>&1`, {
+    timeout: 20000,
+  });
   return ok ? `Container ${containerId} ${action}ed successfully.` : output;
 }
 
@@ -2075,10 +1996,7 @@ async function agentWriteFile(filePath, content, projectPaths) {
   if (normalized.split(path.sep).includes("..")) {
     return "Error: path traversal not allowed.";
   }
-  if (
-    /\.(pem|key|p12|pfx)$/i.test(normalized) ||
-    path.basename(normalized) === ".env"
-  ) {
+  if (/\.(pem|key|p12|pfx)$/i.test(normalized) || path.basename(normalized) === ".env") {
     return "Error: writing credential files is not allowed.";
   }
   try {
@@ -2133,10 +2051,7 @@ async function agentDiscoverRunbook(projectRoot, projectPaths) {
     path.join(root, "backend"),
     path.join(root, "web"),
     path.join(root, "server"),
-  ].filter(
-    (p, i, arr) =>
-      arr.indexOf(p) === i && fs.existsSync(p) && fs.statSync(p).isDirectory(),
-  );
+  ].filter((p, i, arr) => arr.indexOf(p) === i && fs.existsSync(p) && fs.statSync(p).isDirectory());
 
   const lines = [`Runbook discovery for ${root}`, ""];
   let foundAny = false;
@@ -2154,21 +2069,15 @@ async function agentDiscoverRunbook(projectRoot, projectPaths) {
         (typeof scripts.start === "string" && "start");
       lines.push(`- Verified: package.json exists (${pkgPath})`);
       if (runScript) {
-        lines.push(
-          `- Frontend/Node run command: \`npm run ${runScript}\` (cwd: ${dir})`,
-        );
+        lines.push(`- Frontend/Node run command: \`npm run ${runScript}\` (cwd: ${dir})`);
       } else {
-        lines.push(
-          "- Frontend/Node run command: not found in scripts.dev/scripts.start",
-        );
+        lines.push("- Frontend/Node run command: not found in scripts.dev/scripts.start");
       }
     } else {
       lines.push("- package.json: not found");
     }
 
-    const readmePath = ["README.md", "readme.md"]
-      .map((f) => path.join(dir, f))
-      .find(fs.existsSync);
+    const readmePath = ["README.md", "readme.md"].map((f) => path.join(dir, f)).find(fs.existsSync);
     const readmeText = readmePath ? safeReadText(readmePath) : null;
 
     const mainPy = path.join(dir, "main.py");
@@ -2190,9 +2099,7 @@ async function agentDiscoverRunbook(projectRoot, projectPaths) {
   }
 
   if (!foundAny) {
-    lines.push(
-      "No runnable frontend/backend commands found from package.json/main.py.",
-    );
+    lines.push("No runnable frontend/backend commands found from package.json/main.py.");
     lines.push(
       "Next step: inspect subdirectories with list_directory then read relevant README files.",
     );
@@ -2214,12 +2121,7 @@ async function agentDiscoverDockerPlan(projectRoot, projectPaths) {
   }
 
   const files = {
-    compose: [
-      "docker-compose.yml",
-      "docker-compose.yaml",
-      "compose.yml",
-      "compose.yaml",
-    ]
+    compose: ["docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml"]
       .map((f) => path.join(root, f))
       .find(fs.existsSync),
     rootDockerfile: path.join(root, "Dockerfile"),
@@ -2241,9 +2143,7 @@ async function agentDiscoverDockerPlan(projectRoot, projectPaths) {
     backendReqs: fs.existsSync(files.backendReqs),
     frontendPkg: fs.existsSync(files.frontendPkg),
     frontendLock: fs.existsSync(files.frontendLock),
-    agentsDir:
-      fs.existsSync(files.agentsDir) &&
-      fs.statSync(files.agentsDir).isDirectory(),
+    agentsDir: fs.existsSync(files.agentsDir) && fs.statSync(files.agentsDir).isDirectory(),
   };
 
   const lines = [];
@@ -2252,25 +2152,15 @@ async function agentDiscoverDockerPlan(projectRoot, projectPaths) {
   lines.push("Detected files:");
   lines.push(`- compose file: ${has.compose ? files.compose : "none"}`);
   lines.push(`- root Dockerfile: ${has.rootDockerfile ? "present" : "absent"}`);
-  lines.push(
-    `- Dockerfile.backend: ${has.backendDockerfile ? "present" : "absent"}`,
-  );
-  lines.push(
-    `- Dockerfile.frontend: ${has.frontendDockerfile ? "present" : "absent"}`,
-  );
+  lines.push(`- Dockerfile.backend: ${has.backendDockerfile ? "present" : "absent"}`);
+  lines.push(`- Dockerfile.frontend: ${has.frontendDockerfile ? "present" : "absent"}`);
   lines.push(`- backend/main.py: ${has.backendMain ? "present" : "absent"}`);
-  lines.push(
-    `- backend/requirements.txt: ${has.backendReqs ? "present" : "absent"}`,
-  );
-  lines.push(
-    `- frontend/package.json: ${has.frontendPkg ? "present" : "absent"}`,
-  );
+  lines.push(`- backend/requirements.txt: ${has.backendReqs ? "present" : "absent"}`);
+  lines.push(`- frontend/package.json: ${has.frontendPkg ? "present" : "absent"}`);
   lines.push(`- agents/: ${has.agentsDir ? "present" : "absent"}`);
   lines.push("");
   lines.push("Required dockerization constraints:");
-  lines.push(
-    "- Never invent server.js or package.json in project root unless they already exist.",
-  );
+  lines.push("- Never invent server.js or package.json in project root unless they already exist.");
   lines.push(
     "- For split repos (backend + frontend), do not use one generic root Dockerfile for both.",
   );
@@ -2469,8 +2359,7 @@ const AGENT_TOOLS = [
         properties: {
           name: {
             type: "string",
-            description:
-              "Service name (as shown in the topology, case-insensitive)",
+            description: "Service name (as shown in the topology, case-insensitive)",
           },
         },
         required: ["name"],
@@ -2488,8 +2377,7 @@ const AGENT_TOOLS = [
         properties: {
           command: {
             type: "string",
-            description:
-              "The command to run (e.g. 'uvicorn main:app --host 0.0.0.0 --port 8000')",
+            description: "The command to run (e.g. 'uvicorn main:app --host 0.0.0.0 --port 8000')",
           },
           cwd: {
             type: "string",
@@ -2592,13 +2480,15 @@ ipcMain.handle("agent:chat", async (event, payload) => {
     if (!apiKey && (!accessToken || !SUPABASE_URL)) {
       return {
         success: false,
-        error: "Sign in with Google for 5 free AI calls per day, or add your own API key for unlimited access.",
+        error:
+          "Sign in with Google for 5 free AI calls per day, or add your own API key for unlimited access.",
       };
     }
 
     // Prefer the scheduler's cached snapshot so the agent sees the same graph the UI shows.
     // Fall back to a fresh build only if the scheduler hasn't produced one yet.
-    const snapshot = (snapshotScheduler && snapshotScheduler.getLatestSnapshot()) || await getSystemSnapshot();
+    const snapshot =
+      (snapshotScheduler && snapshotScheduler.getLatestSnapshot()) || (await getSystemSnapshot());
 
     // Enrich nodes with external APIs (not in snapshot by default — on-demand only)
     const projectPaths = [
@@ -2628,29 +2518,25 @@ ipcMain.handle("agent:chat", async (event, payload) => {
       }
     }
 
-    const findings = await runScan(
-      snapshot,
-      Array.isArray(nodeIds) ? nodeIds : undefined,
-    );
+    const findings = await runScan(snapshot, Array.isArray(nodeIds) ? nodeIds : undefined);
     const policies = extractAgentPolicies(safeMessages);
-    const scopedIds =
-      Array.isArray(nodeIds) && nodeIds.length > 0 ? new Set(nodeIds) : null;
+    const scopedIds = Array.isArray(nodeIds) && nodeIds.length > 0 ? new Set(nodeIds) : null;
     const allNodes = snapshot.graph?.nodes ?? [];
     const allEdges = snapshot.graph?.edges ?? [];
-    const scopedNodes = scopedIds
-      ? allNodes.filter((node) => scopedIds.has(node.id))
-      : allNodes;
+    const scopedNodes = scopedIds ? allNodes.filter((node) => scopedIds.has(node.id)) : allNodes;
     // Prefer the UI's already-filtered edge list when provided — it is the exact
     // same set the node detail panel renders, so get_node_details returns matching data.
     const uiEdges = Array.isArray(graphEdges) && graphEdges.length > 0 ? graphEdges : null;
-    const scopedEdges = uiEdges ?? (scopedIds
-      ? allEdges.filter((edge) => {
-          if (edge.sourcePort === 0 && edge.targetPort === 0) {
-            return scopedIds.has(edge.source) && scopedIds.has(edge.target);
-          }
-          return scopedIds.has(edge.source) || scopedIds.has(edge.target);
-        })
-      : allEdges);
+    const scopedEdges =
+      uiEdges ??
+      (scopedIds
+        ? allEdges.filter((edge) => {
+            if (edge.sourcePort === 0 && edge.targetPort === 0) {
+              return scopedIds.has(edge.source) && scopedIds.has(edge.target);
+            }
+            return scopedIds.has(edge.source) || scopedIds.has(edge.target);
+          })
+        : allEdges);
     const baseSystemPrompt = await buildChatContext(
       snapshot,
       findings,
@@ -2776,20 +2662,19 @@ ipcMain.handle("agent:chat", async (event, payload) => {
       return streamProxyChatCompletion(requestPayload, countUsage);
     }
 
-    async function runTurn(
-      turnMessages,
-      continuationDepth = 0,
-      forcedExecutionAttempted = false,
-    ) {
-      const stream = await createChatCompletionStream({
-        model: "gpt-4o",
-        messages: turnMessages,
-        tools: AGENT_TOOLS,
-        tool_choice: "auto",
-        max_tokens: 4096,
-        temperature: 0.3,
-        stream: true,
-      }, false);
+    async function runTurn(turnMessages, continuationDepth = 0, forcedExecutionAttempted = false) {
+      const stream = await createChatCompletionStream(
+        {
+          model: "gpt-4o",
+          messages: turnMessages,
+          tools: AGENT_TOOLS,
+          tool_choice: "auto",
+          max_tokens: 4096,
+          temperature: 0.3,
+          stream: true,
+        },
+        false,
+      );
 
       const pendingCalls = {};
       const assistantMsg = {
@@ -2804,28 +2689,22 @@ ipcMain.handle("agent:chat", async (event, payload) => {
         finishReason = chunk.choices[0]?.finish_reason ?? finishReason;
 
         if (delta.content) {
-          if (!event.sender.isDestroyed())
-            event.sender.send("agent:chat-token", delta.content);
+          if (!event.sender.isDestroyed()) event.sender.send("agent:chat-token", delta.content);
           assistantMsg.content = (assistantMsg.content ?? "") + delta.content;
         }
 
         if (delta.tool_calls) {
           for (const tc of delta.tool_calls) {
             const i = tc.index ?? 0;
-            if (!pendingCalls[i])
-              pendingCalls[i] = { id: "", name: "", args: "" };
+            if (!pendingCalls[i]) pendingCalls[i] = { id: "", name: "", args: "" };
             if (tc.id) pendingCalls[i].id = tc.id;
             if (tc.function?.name) pendingCalls[i].name = tc.function.name;
-            if (tc.function?.arguments)
-              pendingCalls[i].args += tc.function.arguments;
+            if (tc.function?.arguments) pendingCalls[i].args += tc.function.arguments;
           }
         }
       }
 
-      if (
-        finishReason === "tool_calls" &&
-        Object.keys(pendingCalls).length > 0
-      ) {
+      if (finishReason === "tool_calls" && Object.keys(pendingCalls).length > 0) {
         const toolCallList = Object.values(pendingCalls).map((tc) => ({
           id: tc.id,
           type: "function",
@@ -2846,10 +2725,7 @@ ipcMain.handle("agent:chat", async (event, payload) => {
                 });
                 result = agentReadFile(args.path, projectPaths);
               } else if (tc.function.name === "write_file") {
-                const targetPath =
-                  typeof args.path === "string"
-                    ? path.normalize(args.path)
-                    : "";
+                const targetPath = typeof args.path === "string" ? path.normalize(args.path) : "";
                 const targetBase = path.basename(targetPath).toLowerCase();
                 const isDockerConfigWrite =
                   targetBase === "dockerfile" ||
@@ -2861,8 +2737,7 @@ ipcMain.handle("agent:chat", async (event, payload) => {
                 if (isDockerConfigWrite) {
                   const hasPreflight = Array.from(dockerPreflightRoots).some(
                     (rootPath) =>
-                      targetPath === rootPath ||
-                      targetPath.startsWith(rootPath + path.sep),
+                      targetPath === rootPath || targetPath.startsWith(rootPath + path.sep),
                   );
                   if (!hasPreflight) {
                     result = `Error: must call discover_docker_plan(project_root) for this project before writing Dockerfile/compose files.`;
@@ -2878,35 +2753,22 @@ ipcMain.handle("agent:chat", async (event, payload) => {
                   label: `write: ${path.basename(args.path)}`,
                   path: args.path,
                 });
-                result = await agentWriteFile(
-                  args.path,
-                  args.content,
-                  projectPaths,
-                );
+                result = await agentWriteFile(args.path, args.content, projectPaths);
               } else if (tc.function.name === "discover_runbook") {
                 sendStep(event, {
                   type: "list_directory",
                   label: `runbook: ${args.project_root}`,
                   path: args.project_root,
                 });
-                result = await agentDiscoverRunbook(
-                  args.project_root,
-                  projectPaths,
-                );
+                result = await agentDiscoverRunbook(args.project_root, projectPaths);
               } else if (tc.function.name === "discover_docker_plan") {
                 sendStep(event, {
                   type: "list_directory",
                   label: `docker-plan: ${args.project_root}`,
                   path: args.project_root,
                 });
-                result = await agentDiscoverDockerPlan(
-                  args.project_root,
-                  projectPaths,
-                );
-                if (
-                  typeof result === "string" &&
-                  !result.startsWith("Error:")
-                ) {
+                result = await agentDiscoverDockerPlan(args.project_root, projectPaths);
+                if (typeof result === "string" && !result.startsWith("Error:")) {
                   dockerPreflightRoots.add(path.normalize(args.project_root));
                 }
               } else if (tc.function.name === "list_directory") {
@@ -2922,19 +2784,14 @@ ipcMain.handle("agent:chat", async (event, payload) => {
                   label: `details: ${args.name}`,
                   path: args.name,
                 });
-                const node = resolveNodeByName(
-                  args.name,
-                  scopedNodes,
-                  allNodes,
-                );
+                const node = resolveNodeByName(args.name, scopedNodes, allNodes);
                 const detailNodes = scopedIds ? scopedNodes : allNodes;
                 const detailEdges = scopedIds ? scopedEdges : allEdges;
                 result = buildNodeDetails(node, detailNodes, detailEdges);
               } else if (tc.function.name === "propose_fix") {
                 if (options.autopilotEnabled) {
                   const autopilotAction =
-                    args.fix_type === "restart-container" &&
-                    typeof args.container_id === "string"
+                    args.fix_type === "restart-container" && typeof args.container_id === "string"
                       ? {
                           type: "restart-container",
                           containerId: args.container_id,
@@ -2952,9 +2809,7 @@ ipcMain.handle("agent:chat", async (event, payload) => {
                   if (autopilotAction) {
                     sendStep(event, {
                       type:
-                        args.fix_type === "restart-container"
-                          ? "docker_control"
-                          : "run_command",
+                        args.fix_type === "restart-container" ? "docker_control" : "run_command",
                       label: `[autopilot] ${args.label ?? args.fix_type}`,
                       path:
                         args.fix_type === "restart-container"
@@ -2991,18 +2846,11 @@ ipcMain.handle("agent:chat", async (event, payload) => {
                   label: `terminal: ${args.command}`,
                   path: args.cwd,
                 });
-                if (
-                  policies.disallowInstalls &&
-                  isInstallOrUpdateCommand(args.command)
-                ) {
+                if (policies.disallowInstalls && isInstallOrUpdateCommand(args.command)) {
                   result =
                     'Error: install/update commands are disabled for this chat because the user explicitly requested "do not install".';
                 } else {
-                  result = await agentLaunchInTerminal(
-                    args.command,
-                    args.cwd,
-                    projectPaths,
-                  );
+                  result = await agentLaunchInTerminal(args.command, args.cwd, projectPaths);
                   // For docker compose launches, immediately verify from the same cwd
                   // so the assistant returns concrete evidence instead of guesses.
                   if (
@@ -3030,22 +2878,14 @@ ipcMain.handle("agent:chat", async (event, payload) => {
                   label: args.command,
                   path: args.cwd,
                 });
-                result = await agentRunCommand(
-                  args.command,
-                  args.cwd,
-                  projectPaths,
-                  policies,
-                );
+                result = await agentRunCommand(args.command, args.cwd, projectPaths, policies);
               } else if (tc.function.name === "docker_logs") {
                 sendStep(event, {
                   type: "docker_logs",
                   label: `logs: ${args.container_id}`,
                   path: args.container_id,
                 });
-                result = await agentDockerLogs(
-                  args.container_id,
-                  args.tail ?? 80,
-                );
+                result = await agentDockerLogs(args.container_id, args.tail ?? 80);
               } else if (tc.function.name === "docker_exec") {
                 sendStep(event, {
                   type: "docker_exec",
@@ -3059,10 +2899,7 @@ ipcMain.handle("agent:chat", async (event, payload) => {
                   label: `${args.action}: ${args.container_id}`,
                   path: args.container_id,
                 });
-                result = await agentDockerControl(
-                  args.container_id,
-                  args.action,
-                );
+                result = await agentDockerControl(args.container_id, args.action);
               } else {
                 result = "Unknown tool.";
               }
@@ -3072,8 +2909,7 @@ ipcMain.handle("agent:chat", async (event, payload) => {
             return {
               role: "tool",
               tool_call_id: tc.id,
-              content:
-                typeof result === "string" ? result : JSON.stringify(result),
+              content: typeof result === "string" ? result : JSON.stringify(result),
             };
           }),
         );
@@ -3150,4 +2986,3 @@ ipcMain.handle("agent:chat", async (event, payload) => {
     return { success: false, error: err.message };
   }
 });
-

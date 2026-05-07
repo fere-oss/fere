@@ -10,7 +10,6 @@
 
 import { makeEdge, resetCounters } from "../testHelpers";
 import type { GraphEdge } from "../../../types/electron";
-import type { LayoutNode } from "../types";
 
 const BUNDLE_THRESHOLD = 3;
 
@@ -62,10 +61,7 @@ beforeEach(() => resetCounters());
 
 describe("edge bundling", () => {
   it("passes through edges below the bundle threshold", () => {
-    const edges = [
-      makeEdge("src", "t1"),
-      makeEdge("src", "t2"),
-    ];
+    const edges = [makeEdge("src", "t1"), makeEdge("src", "t2")];
     const lookup = new Map<string, LayoutLookupEntry>([
       ["t1", { layer: 1, groupId: "api" }],
       ["t2", { layer: 1, groupId: "api" }],
@@ -77,11 +73,7 @@ describe("edge bundling", () => {
   });
 
   it("bundles edges when threshold is reached", () => {
-    const edges = [
-      makeEdge("src", "t1"),
-      makeEdge("src", "t2"),
-      makeEdge("src", "t3"),
-    ];
+    const edges = [makeEdge("src", "t1"), makeEdge("src", "t2"), makeEdge("src", "t3")];
     const lookup = new Map<string, LayoutLookupEntry>([
       ["t1", { layer: 1, groupId: "api" }],
       ["t2", { layer: 1, groupId: "api" }],
@@ -181,11 +173,7 @@ describe("edge bundling", () => {
   });
 
   it("separates edges targeting different layers into different groups", () => {
-    const edges = [
-      makeEdge("src", "t1"),
-      makeEdge("src", "t2"),
-      makeEdge("src", "t3"),
-    ];
+    const edges = [makeEdge("src", "t1"), makeEdge("src", "t2"), makeEdge("src", "t3")];
     // Same groupId but different layers → treated as separate groups
     const lookup = new Map<string, LayoutLookupEntry>([
       ["t1", { layer: 1, groupId: "api" }],

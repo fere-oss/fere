@@ -18,7 +18,9 @@ export function DiscoveryHint({ onDismiss }: { onDismiss?: () => void }) {
   const handleDismiss = useCallback(() => {
     setVisible(false);
     setTimeout(() => {
-      try { localStorage.setItem(DISCOVERY_HINT_KEY, "true"); } catch {}
+      try {
+        localStorage.setItem(DISCOVERY_HINT_KEY, "true");
+      } catch {}
       onDismiss?.();
     }, 300);
   }, [onDismiss]);
@@ -36,26 +38,18 @@ export function DiscoveryHint({ onDismiss }: { onDismiss?: () => void }) {
           <circle cx="3" cy="8" r="2" fill="currentColor" />
           <circle cx="13" cy="4" r="2" fill="currentColor" />
           <circle cx="13" cy="12" r="2" fill="currentColor" />
-          <path
-            d="M5 8L11 5M5 8L11 11"
-            stroke="currentColor"
-            strokeWidth="1.5"
-          />
+          <path d="M5 8L11 5M5 8L11 11" stroke="currentColor" strokeWidth="1.5" />
         </svg>
       </div>
       <div className="discovery-hint-content">
         <span className="discovery-hint-title">This is your service map</span>
         <span className="discovery-hint-body">
-          Every box is a running service Fere found on your machine — servers,
-          databases, containers. Lines show how they connect. Click any service
-          to see its routes, health, and connections.
+          Every box is a running service Fere found on your machine — servers, databases,
+          containers. Lines show how they connect. Click any service to see its routes, health, and
+          connections.
         </span>
       </div>
-      <button
-        type="button"
-        className="discovery-hint-dismiss"
-        onClick={handleDismiss}
-      >
+      <button type="button" className="discovery-hint-dismiss" onClick={handleDismiss}>
         Got it
       </button>
     </div>
@@ -70,7 +64,9 @@ export function NodeClickHint() {
 
   const handleDismiss = useCallback(() => {
     setDismissed(true);
-    try { localStorage.setItem(NODE_CLICK_HINT_KEY, "true"); } catch {}
+    try {
+      localStorage.setItem(NODE_CLICK_HINT_KEY, "true");
+    } catch {}
   }, []);
 
   if (dismissed) return null;
@@ -80,11 +76,7 @@ export function NodeClickHint() {
       <span className="node-click-hint-text">
         This is everything Fere knows about this service. It updates in real time.
       </span>
-      <button
-        type="button"
-        className="node-click-hint-dismiss"
-        onClick={handleDismiss}
-      >
+      <button type="button" className="node-click-hint-dismiss" onClick={handleDismiss}>
         Got it
       </button>
     </div>
@@ -92,9 +84,17 @@ export function NodeClickHint() {
 }
 
 export function hasSeenDiscoveryHint(): boolean {
-  try { return !!localStorage.getItem(DISCOVERY_HINT_KEY); } catch { return true; }
+  try {
+    return !!localStorage.getItem(DISCOVERY_HINT_KEY);
+  } catch {
+    return true;
+  }
 }
 
 export function hasSeenNodeClickHint(): boolean {
-  try { return !!localStorage.getItem(NODE_CLICK_HINT_KEY); } catch { return true; }
+  try {
+    return !!localStorage.getItem(NODE_CLICK_HINT_KEY);
+  } catch {
+    return true;
+  }
 }

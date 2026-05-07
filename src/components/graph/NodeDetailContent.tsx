@@ -21,11 +21,11 @@ interface NodeDetailContentProps {
 
 // Strip the " · used by ..." or " · connects to ..." suffix from a description
 function getBaseDescription(description: string): string {
-  const idx = description.indexOf(' · ');
+  const idx = description.indexOf(" · ");
   if (idx === -1) return description;
   // Re-add trailing period if stripped
   const base = description.slice(0, idx);
-  return base.endsWith('.') ? base : base + '.';
+  return base.endsWith(".") ? base : base + ".";
 }
 
 function DescriptionWithConnections({
@@ -40,11 +40,11 @@ function DescriptionWithConnections({
   nodeType: string;
 }) {
   const baseDesc = getBaseDescription(description);
-  const INFRA_TYPES = new Set(['database', 'cache', 'broker']);
+  const INFRA_TYPES = new Set(["database", "cache", "broker"]);
   const isInfra = INFRA_TYPES.has(nodeType);
 
   // For infra nodes, show who uses them (incoming); for app nodes, show what they connect to (outgoing)
-  const verb = isInfra ? 'used by' : 'connects to';
+  const verb = isInfra ? "used by" : "connects to";
   const names = isInfra ? incomingNames : outgoingNames;
 
   return (
@@ -55,7 +55,9 @@ function DescriptionWithConnections({
           <span className="node-detail-connections-verb">{verb}</span>
           <div className="node-detail-connections-chips">
             {names.map((name) => (
-              <span key={name} className="node-detail-connection-chip">{name}</span>
+              <span key={name} className="node-detail-connection-chip">
+                {name}
+              </span>
             ))}
           </div>
         </div>
@@ -74,13 +76,16 @@ export function NodeDetailContent({
   const accentColor = getServiceColor(node.type);
   const healthInfo = getHealthInfo(node.healthStatus);
   const isDownLike = !!node.isGhost || node.healthStatus === "red";
-  const isUnhealthyRunning = node.isDockerContainer && node.containerState === 'running' && node.containerHealth?.status === 'unhealthy';
+  const isUnhealthyRunning =
+    node.isDockerContainer &&
+    node.containerState === "running" &&
+    node.containerHealth?.status === "unhealthy";
   const startCommand = node.startCommand || node.command || "";
   const startProjectPath = node.startProjectPath || node.projectPath || "";
   const canStart =
     (isDownLike || isUnhealthyRunning) &&
     (node.isDockerContainer || (startCommand && startProjectPath));
-  const canStop = node.isDockerContainer && node.containerState === 'running' && !node.isGhost;
+  const canStop = node.isDockerContainer && node.containerState === "running" && !node.isGhost;
   const [starting, setStarting] = useState(false);
   const [stopping, setStopping] = useState(false);
 
@@ -116,16 +121,13 @@ export function NodeDetailContent({
         started = !!result?.success;
       } else if (node.isDockerContainer) {
         const id = node.containerId || node.name;
-        const isRunning = node.containerState === 'running';
+        const isRunning = node.containerState === "running";
         const result = isRunning
           ? await window.electronAPI.restartContainer(id)
           : await window.electronAPI.startContainer(id);
         started = !!result?.success;
       } else if (startCommand && startProjectPath) {
-        const result = await window.electronAPI.startProcess(
-          startCommand,
-          startProjectPath,
-        );
+        const result = await window.electronAPI.startProcess(startCommand, startProjectPath);
         started = !!result?.success;
       }
     } catch {
@@ -159,14 +161,8 @@ export function NodeDetailContent({
     return new Date(timestamp).toLocaleTimeString();
   };
 
-  const incomingEdges = useMemo(
-    () => edges.filter((e) => e.target === node.id),
-    [edges, node.id],
-  );
-  const outgoingEdges = useMemo(
-    () => edges.filter((e) => e.source === node.id),
-    [edges, node.id],
-  );
+  const incomingEdges = useMemo(() => edges.filter((e) => e.target === node.id), [edges, node.id]);
+  const outgoingEdges = useMemo(() => edges.filter((e) => e.source === node.id), [edges, node.id]);
   const nodeNameMap = useMemo(() => {
     const map = new Map<string, string>();
     for (const n of allNodes) map.set(n.id, n.name);
@@ -176,18 +172,23 @@ export function NodeDetailContent({
     const seen = new Set<string>();
     return incomingEdges
       .map((e) => nodeNameMap.get(e.source) || e.source)
-      .filter((name) => { if (seen.has(name)) return false; seen.add(name); return true; });
+      .filter((name) => {
+        if (seen.has(name)) return false;
+        seen.add(name);
+        return true;
+      });
   }, [incomingEdges, nodeNameMap]);
   const dedupedOutgoingNames = useMemo(() => {
     const seen = new Set<string>();
     return outgoingEdges
       .map((e) => nodeNameMap.get(e.target) || e.target)
-      .filter((name) => { if (seen.has(name)) return false; seen.add(name); return true; });
+      .filter((name) => {
+        if (seen.has(name)) return false;
+        seen.add(name);
+        return true;
+      });
   }, [outgoingEdges, nodeNameMap]);
-  const getNodeName = useCallback(
-    (id: string) => nodeNameMap.get(id) || id,
-    [nodeNameMap],
-  );
+  const getNodeName = useCallback((id: string) => nodeNameMap.get(id) || id, [nodeNameMap]);
   const shouldShowExternalApis = supportsExternalApiScan(node);
   const remoteAccess = node.remoteAccess;
 
@@ -232,9 +233,7 @@ export function NodeDetailContent({
         setExternalApis([]);
         setExternalApiLoading(false);
         setExternalApiError(
-          error instanceof Error
-            ? error.message
-            : "Failed to load external APIs",
+          error instanceof Error ? error.message : "Failed to load external APIs",
         );
       }
     })();
@@ -257,39 +256,34 @@ export function NodeDetailContent({
                 boxShadow: healthInfo.glow,
               }}
             />
-            <span
-              className="node-detail-health-label"
-              style={{ color: healthInfo.color }}
-            >
+            <span className="node-detail-health-label" style={{ color: healthInfo.color }}>
               {healthInfo.label}
             </span>
-            <span className="node-detail-health-seen">
-              {formatLastSeen(node.lastSeen)}
-            </span>
+            <span className="node-detail-health-seen">{formatLastSeen(node.lastSeen)}</span>
           </div>
-          {node.isDockerContainer && (node.containerState || (node.containerHealth && node.containerHealth.status !== "unknown")) && (
-            <div className="node-detail-health-details">
-              {node.containerState && (
-                <span className={`node-detail-health-tag docker-state-${node.containerState}`}>
-                  {node.containerState}
-                </span>
-              )}
-              {node.containerHealth && node.containerHealth.status !== "unknown" && (
-                <span className={`node-detail-health-tag docker-health-${node.containerHealth.status}`}>
-                  {node.containerHealth.status}
-                  {node.containerHealth.failingStreak !== undefined &&
-                    node.containerHealth.failingStreak > 0 &&
-                    ` · ${node.containerHealth.failingStreak} failing`}
-                </span>
-              )}
-            </div>
-          )}
+          {node.isDockerContainer &&
+            (node.containerState ||
+              (node.containerHealth && node.containerHealth.status !== "unknown")) && (
+              <div className="node-detail-health-details">
+                {node.containerState && (
+                  <span className={`node-detail-health-tag docker-state-${node.containerState}`}>
+                    {node.containerState}
+                  </span>
+                )}
+                {node.containerHealth && node.containerHealth.status !== "unknown" && (
+                  <span
+                    className={`node-detail-health-tag docker-health-${node.containerHealth.status}`}
+                  >
+                    {node.containerHealth.status}
+                    {node.containerHealth.failingStreak !== undefined &&
+                      node.containerHealth.failingStreak > 0 &&
+                      ` · ${node.containerHealth.failingStreak} failing`}
+                  </span>
+                )}
+              </div>
+            )}
           {canStart && (
-            <button
-              className="node-detail-start-btn"
-              onClick={handleStart}
-              disabled={starting}
-            >
+            <button className="node-detail-start-btn" onClick={handleStart} disabled={starting}>
               {starting ? (
                 <>
                   <svg
@@ -307,25 +301,18 @@ export function NodeDetailContent({
                 </>
               ) : (
                 <>
-                  <svg
-                    width="14"
-                    height="14"
-                    viewBox="0 0 16 16"
-                    fill="currentColor"
-                  >
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
                     <path d="M4 2l10 6-10 6V2z" />
                   </svg>
-                  {node.isDockerContainer && node.containerState === 'running' ? 'Restart Service' : 'Start Service'}
+                  {node.isDockerContainer && node.containerState === "running"
+                    ? "Restart Service"
+                    : "Start Service"}
                 </>
               )}
             </button>
           )}
           {canStop && (
-            <button
-              className="node-detail-stop-btn"
-              onClick={handleStop}
-              disabled={stopping}
-            >
+            <button className="node-detail-stop-btn" onClick={handleStop} disabled={stopping}>
               {stopping ? (
                 <>
                   <svg
@@ -343,12 +330,7 @@ export function NodeDetailContent({
                 </>
               ) : (
                 <>
-                  <svg
-                    width="14"
-                    height="14"
-                    viewBox="0 0 16 16"
-                    fill="currentColor"
-                  >
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
                     <rect x="3" y="3" width="10" height="10" rx="1" />
                   </svg>
                   Stop Service
@@ -377,8 +359,7 @@ export function NodeDetailContent({
             />
           ) : (
             <div className="node-detail-ai-placeholder">
-              Generate a concise explanation of how this service fits into the
-              current stack.
+              Generate a concise explanation of how this service fits into the current stack.
             </div>
           )}
         </div>
@@ -398,15 +379,11 @@ export function NodeDetailContent({
             </div>
             <div className="node-detail-item">
               <span className="node-detail-label">CPU</span>
-              <span className="node-detail-value mono">
-                {node.cpu.toFixed(1)}%
-              </span>
+              <span className="node-detail-value mono">{node.cpu.toFixed(1)}%</span>
             </div>
             <div className="node-detail-item">
               <span className="node-detail-label">Memory</span>
-              <span className="node-detail-value mono">
-                {node.memory.toFixed(1)}%
-              </span>
+              <span className="node-detail-value mono">{node.memory.toFixed(1)}%</span>
             </div>
           </div>
         </div>
@@ -418,9 +395,7 @@ export function NodeDetailContent({
           <div className="node-detail-grid">
             <div className="node-detail-item">
               <span className="node-detail-label">Tool</span>
-              <span className="node-detail-value mono">
-                {remoteAccess.tool.toUpperCase()}
-              </span>
+              <span className="node-detail-value mono">{remoteAccess.tool.toUpperCase()}</span>
             </div>
             <div className="node-detail-item">
               <span className="node-detail-label">Source</span>
@@ -429,49 +404,37 @@ export function NodeDetailContent({
             {remoteAccess.alias && (
               <div className="node-detail-item">
                 <span className="node-detail-label">Alias</span>
-                <span className="node-detail-value mono">
-                  {remoteAccess.alias}
-                </span>
+                <span className="node-detail-value mono">{remoteAccess.alias}</span>
               </div>
             )}
             {remoteAccess.user && (
               <div className="node-detail-item">
                 <span className="node-detail-label">Remote User</span>
-                <span className="node-detail-value mono">
-                  {remoteAccess.user}
-                </span>
+                <span className="node-detail-value mono">{remoteAccess.user}</span>
               </div>
             )}
             {remoteAccess.host && (
               <div className="node-detail-item full-width">
                 <span className="node-detail-label">Remote Host</span>
-                <span className="node-detail-value mono small">
-                  {remoteAccess.host}
-                </span>
+                <span className="node-detail-value mono small">{remoteAccess.host}</span>
               </div>
             )}
             {remoteAccess.port && (
               <div className="node-detail-item">
                 <span className="node-detail-label">Remote Port</span>
-                <span className="node-detail-value mono">
-                  :{remoteAccess.port}
-                </span>
+                <span className="node-detail-value mono">:{remoteAccess.port}</span>
               </div>
             )}
             {remoteAccess.startTime && (
               <div className="node-detail-item">
                 <span className="node-detail-label">Process Start</span>
-                <span className="node-detail-value mono">
-                  {remoteAccess.startTime}
-                </span>
+                <span className="node-detail-value mono">{remoteAccess.startTime}</span>
               </div>
             )}
             {!!remoteAccess.inboundSessions && (
               <div className="node-detail-item">
                 <span className="node-detail-label">Inbound Sessions</span>
-                <span className="node-detail-value mono">
-                  {remoteAccess.inboundSessions}
-                </span>
+                <span className="node-detail-value mono">{remoteAccess.inboundSessions}</span>
               </div>
             )}
           </div>
@@ -480,10 +443,7 @@ export function NodeDetailContent({
             <div className="node-detail-remote-list">
               <div className="node-detail-label">Tunnels</div>
               {remoteAccess.tunnels.map((tunnel, idx) => (
-                <div
-                  key={`${tunnel.mode}-${idx}`}
-                  className="node-detail-remote-row"
-                >
+                <div key={`${tunnel.mode}-${idx}`} className="node-detail-remote-row">
                   <span className="node-detail-remote-mode">{tunnel.mode}</span>
                   {tunnel.mode === "D" ? (
                     <span className="node-detail-value mono">
@@ -493,8 +453,8 @@ export function NodeDetailContent({
                   ) : (
                     <span className="node-detail-value mono small">
                       {tunnel.listenHost ? `${tunnel.listenHost}:` : ""}
-                      {tunnel.listenPort ?? "?"} -&gt;{" "}
-                      {tunnel.targetHost ?? "?"}:{tunnel.targetPort ?? "?"}
+                      {tunnel.listenPort ?? "?"} -&gt; {tunnel.targetHost ?? "?"}:
+                      {tunnel.targetPort ?? "?"}
                     </span>
                   )}
                 </div>
@@ -502,34 +462,27 @@ export function NodeDetailContent({
             </div>
           )}
 
-          {remoteAccess.inboundClients &&
-            remoteAccess.inboundClients.length > 0 && (
-              <div className="node-detail-remote-list">
-                <div className="node-detail-label">Inbound Clients</div>
-                {remoteAccess.inboundClients.map((client) => (
-                  <div key={client} className="node-detail-remote-row">
-                    <span className="node-detail-value mono small">
-                      {client}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
+          {remoteAccess.inboundClients && remoteAccess.inboundClients.length > 0 && (
+            <div className="node-detail-remote-list">
+              <div className="node-detail-label">Inbound Clients</div>
+              {remoteAccess.inboundClients.map((client) => (
+                <div key={client} className="node-detail-remote-row">
+                  <span className="node-detail-value mono small">{client}</span>
+                </div>
+              ))}
+            </div>
+          )}
 
-          {remoteAccess.healthFlags &&
-            remoteAccess.healthFlags.notes.length > 0 && (
-              <div className="node-detail-remote-list">
-                <div className="node-detail-label">Session Status</div>
-                {remoteAccess.healthFlags.notes.map((note, idx) => (
-                  <div
-                    key={`${note}-${idx}`}
-                    className="node-detail-remote-row"
-                  >
-                    <span className="node-detail-value">{note}</span>
-                  </div>
-                ))}
-              </div>
-            )}
+          {remoteAccess.healthFlags && remoteAccess.healthFlags.notes.length > 0 && (
+            <div className="node-detail-remote-list">
+              <div className="node-detail-label">Session Status</div>
+              {remoteAccess.healthFlags.notes.map((note, idx) => (
+                <div key={`${note}-${idx}`} className="node-detail-remote-row">
+                  <span className="node-detail-value">{note}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -550,15 +503,11 @@ export function NodeDetailContent({
           <div className="node-detail-grid">
             <div className="node-detail-item">
               <span className="node-detail-label">Container ID</span>
-              <span className="node-detail-value mono">
-                {node.containerId?.substring(0, 12)}
-              </span>
+              <span className="node-detail-value mono">{node.containerId?.substring(0, 12)}</span>
             </div>
             <div className="node-detail-item">
               <span className="node-detail-label">CPU</span>
-              <span className="node-detail-value mono">
-                {node.cpu.toFixed(1)}%
-              </span>
+              <span className="node-detail-value mono">{node.cpu.toFixed(1)}%</span>
             </div>
             <div className="node-detail-item">
               <span className="node-detail-label">Memory</span>
@@ -567,14 +516,9 @@ export function NodeDetailContent({
               </span>
             </div>
           </div>
-          <div
-            className="node-detail-item full-width"
-            style={{ marginTop: "8px" }}
-          >
+          <div className="node-detail-item full-width" style={{ marginTop: "8px" }}>
             <span className="node-detail-label">Image</span>
-            <span className="node-detail-value mono small">
-              {node.containerImage}
-            </span>
+            <span className="node-detail-value mono small">{node.containerImage}</span>
           </div>
         </div>
       )}
@@ -583,125 +527,95 @@ export function NodeDetailContent({
         node.type === "database" &&
         node.containerId &&
         node.containerImage && (
-          <DatabaseViewer
-            containerId={node.containerId}
-            containerImage={node.containerImage}
-          />
+          <DatabaseViewer containerId={node.containerId} containerImage={node.containerImage} />
         )}
 
-
-      {node.isDockerContainer &&
-        node.containerNetworks &&
-        node.containerNetworks.length > 0 && (
-          <div className="node-detail-section">
-            <h3 className="node-detail-section-title">
-              Networks{" "}
-              <span className="node-detail-count">
-                {node.containerNetworks.length}
-              </span>
-            </h3>
-            <div className="node-detail-docker-networks">
-              {node.containerNetworks.map((network, idx) => (
-                <div key={idx} className="docker-network-item">
-                  <div className="docker-network-name">{network.name}</div>
-                  <div className="docker-network-details">
-                    {network.ipAddress && (
-                      <span className="docker-network-ip">
-                        IP: {network.ipAddress}
-                      </span>
-                    )}
-                    {network.gateway && (
-                      <span className="docker-network-gateway">
-                        Gateway: {network.gateway}
-                      </span>
-                    )}
-                  </div>
-                  {network.aliases && network.aliases.length > 0 && (
-                    <div className="docker-network-aliases">
-                      Aliases: {network.aliases.join(", ")}
-                    </div>
+      {node.isDockerContainer && node.containerNetworks && node.containerNetworks.length > 0 && (
+        <div className="node-detail-section">
+          <h3 className="node-detail-section-title">
+            Networks <span className="node-detail-count">{node.containerNetworks.length}</span>
+          </h3>
+          <div className="node-detail-docker-networks">
+            {node.containerNetworks.map((network, idx) => (
+              <div key={idx} className="docker-network-item">
+                <div className="docker-network-name">{network.name}</div>
+                <div className="docker-network-details">
+                  {network.ipAddress && (
+                    <span className="docker-network-ip">IP: {network.ipAddress}</span>
+                  )}
+                  {network.gateway && (
+                    <span className="docker-network-gateway">Gateway: {network.gateway}</span>
                   )}
                 </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-      {node.isDockerContainer &&
-        node.containerMounts &&
-        node.containerMounts.length > 0 && (
-          <div className="node-detail-section">
-            <h3 className="node-detail-section-title">
-              Volumes & Mounts{" "}
-              <span className="node-detail-count">
-                {node.containerMounts.length}
-              </span>
-            </h3>
-            <div className="node-detail-docker-mounts">
-              {node.containerMounts.map((mount, idx) => (
-                <div key={idx} className="docker-mount-item">
-                  <div className="docker-mount-header">
-                    <span
-                      className={`docker-mount-type docker-mount-type-${mount.type}`}
-                    >
-                      {mount.type}
-                    </span>
-                    {!mount.readWrite && (
-                      <span className="docker-mount-readonly">read-only</span>
-                    )}
+                {network.aliases && network.aliases.length > 0 && (
+                  <div className="docker-network-aliases">
+                    Aliases: {network.aliases.join(", ")}
                   </div>
-                  <div className="docker-mount-paths">
-                    <div className="docker-mount-source" title={mount.source}>
-                      {mount.name ||
-                        mount.source.split("/").slice(-2).join("/")}
-                    </div>
-                    <span className="docker-mount-arrow">→</span>
-                    <div
-                      className="docker-mount-dest"
-                      title={mount.destination}
-                    >
-                      {mount.destination}
-                    </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {node.isDockerContainer && node.containerMounts && node.containerMounts.length > 0 && (
+        <div className="node-detail-section">
+          <h3 className="node-detail-section-title">
+            Volumes & Mounts{" "}
+            <span className="node-detail-count">{node.containerMounts.length}</span>
+          </h3>
+          <div className="node-detail-docker-mounts">
+            {node.containerMounts.map((mount, idx) => (
+              <div key={idx} className="docker-mount-item">
+                <div className="docker-mount-header">
+                  <span className={`docker-mount-type docker-mount-type-${mount.type}`}>
+                    {mount.type}
+                  </span>
+                  {!mount.readWrite && <span className="docker-mount-readonly">read-only</span>}
+                </div>
+                <div className="docker-mount-paths">
+                  <div className="docker-mount-source" title={mount.source}>
+                    {mount.name || mount.source.split("/").slice(-2).join("/")}
+                  </div>
+                  <span className="docker-mount-arrow">→</span>
+                  <div className="docker-mount-dest" title={mount.destination}>
+                    {mount.destination}
                   </div>
                 </div>
-              ))}
-            </div>
+              </div>
+            ))}
           </div>
-        )}
+        </div>
+      )}
 
-      {node.isDockerContainer &&
-        node.containerPorts &&
-        node.containerPorts.length > 0 && (
-          <div className="node-detail-section">
-            <h3 className="node-detail-section-title">
-              Container Ports{" "}
-              <span className="node-detail-count">
-                {node.containerPorts.length}
-              </span>
-            </h3>
-            <div className="node-detail-docker-ports">
-              {node.containerPorts.map((port, idx) => (
-                <div key={idx} className="docker-port-item">
-                  {port.type === "mapped" ? (
-                    <>
-                      <span className="docker-port-host">
-                        {port.hostIp}:{port.hostPort}
-                      </span>
-                      <span className="docker-port-arrow">→</span>
-                      <span className="docker-port-container">
-                        {port.containerPort}/{port.protocol}
-                      </span>
-                    </>
-                  ) : (
-                    <span className="docker-port-exposed">
-                      {port.containerPort}/{port.protocol} (exposed)
+      {node.isDockerContainer && node.containerPorts && node.containerPorts.length > 0 && (
+        <div className="node-detail-section">
+          <h3 className="node-detail-section-title">
+            Container Ports <span className="node-detail-count">{node.containerPorts.length}</span>
+          </h3>
+          <div className="node-detail-docker-ports">
+            {node.containerPorts.map((port, idx) => (
+              <div key={idx} className="docker-port-item">
+                {port.type === "mapped" ? (
+                  <>
+                    <span className="docker-port-host">
+                      {port.hostIp}:{port.hostPort}
                     </span>
-                  )}
-                </div>
-              ))}
-            </div>
+                    <span className="docker-port-arrow">→</span>
+                    <span className="docker-port-container">
+                      {port.containerPort}/{port.protocol}
+                    </span>
+                  </>
+                ) : (
+                  <span className="docker-port-exposed">
+                    {port.containerPort}/{port.protocol} (exposed)
+                  </span>
+                )}
+              </div>
+            ))}
           </div>
-        )}
+        </div>
+      )}
 
       <div className="node-detail-section">
         <h3 className="node-detail-section-title">Command</h3>
@@ -721,9 +635,7 @@ export function NodeDetailContent({
             {node.projectPath && (
               <div className="node-detail-item full-width">
                 <span className="node-detail-label">Path</span>
-                <span className="node-detail-value mono small">
-                  {node.projectPath}
-                </span>
+                <span className="node-detail-value mono small">{node.projectPath}</span>
               </div>
             )}
           </div>
@@ -738,17 +650,12 @@ export function NodeDetailContent({
           <div className="node-detail-ports">
             {node.ports.map((port, idx) => (
               <div key={idx} className="node-detail-port">
-                <span
-                  className="node-detail-port-number"
-                  style={{ color: accentColor }}
-                >
+                <span className="node-detail-port-number" style={{ color: accentColor }}>
                   :{port.port}
                 </span>
                 <span className="node-detail-port-host">{port.host}</span>
                 {port.description && (
-                  <span className="node-detail-port-desc">
-                    {port.description}
-                  </span>
+                  <span className="node-detail-port-desc">{port.description}</span>
                 )}
               </div>
             ))}
@@ -760,16 +667,13 @@ export function NodeDetailContent({
         <div className="node-detail-section">
           <div className="node-detail-section-title-row">
             <h3 className="node-detail-section-title">
-              API Routes{" "}
-              <span className="node-detail-count">{routes.length}</span>
+              API Routes <span className="node-detail-count">{routes.length}</span>
             </h3>
           </div>
           <div className="node-detail-routes">
             {routes.map((route, idx) => (
               <div key={idx} className="node-detail-route">
-                <span
-                  className={`route-method route-${route.method.toLowerCase()}`}
-                >
+                <span className={`route-method route-${route.method.toLowerCase()}`}>
                   {route.method}
                 </span>
                 <span className="node-detail-route-path">{route.path}</span>
@@ -784,12 +688,9 @@ export function NodeDetailContent({
           <div className="node-detail-section">
             <div className="node-detail-section-title-row">
               <h3 className="node-detail-section-title">
-                External APIs{" "}
-                <span className="node-detail-count">{externalApis.length}</span>
+                External APIs <span className="node-detail-count">{externalApis.length}</span>
               </h3>
-              {externalApiLoading && (
-                <span className="node-detail-loading">Scanning...</span>
-              )}
+              {externalApiLoading && <span className="node-detail-loading">Scanning...</span>}
             </div>
             {externalApiError ? (
               <div className="node-detail-error">{externalApiError}</div>
@@ -820,63 +721,70 @@ export function NodeDetailContent({
           </div>
         )}
 
-      {(incomingEdges.length > 0 || outgoingEdges.length > 0) && (() => {
-        const isDockerNet = (e: typeof incomingEdges[0]) =>
-          e.sourcePort === 0 && e.targetPort === 0;
-        const realIncoming = incomingEdges.filter(e => !isDockerNet(e));
-        const realOutgoing = outgoingEdges.filter(e => !isDockerNet(e));
-        const networkPeerIds = new Set<string>();
-        const networkPeers: string[] = [];
-        [...incomingEdges.filter(isDockerNet), ...outgoingEdges.filter(isDockerNet)].forEach(e => {
-          const peerId = e.source === node.id ? e.target : e.source;
-          if (!networkPeerIds.has(peerId)) {
-            networkPeerIds.add(peerId);
-            networkPeers.push(getNodeName(peerId));
-          }
-        });
-        return (
-          <div className="node-detail-section">
-            <h3 className="node-detail-section-title">Connections</h3>
-            <div className="node-detail-connections">
-              {realIncoming.length > 0 && (
-                <div className="node-detail-connection-group">
-                  <span className="node-detail-connection-label">Incoming</span>
-                  {realIncoming.map((edge, idx) => (
-                    <div key={idx} className="node-detail-connection">
-                      <span className="connection-arrow">←</span>
-                      <span className="connection-node">{getNodeName(edge.source)}</span>
-                      <span className="connection-port">:{edge.sourcePort} → :{edge.targetPort}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-              {realOutgoing.length > 0 && (
-                <div className="node-detail-connection-group">
-                  <span className="node-detail-connection-label">Outgoing</span>
-                  {realOutgoing.map((edge, idx) => (
-                    <div key={idx} className="node-detail-connection">
-                      <span className="connection-arrow">→</span>
-                      <span className="connection-node">{getNodeName(edge.target)}</span>
-                      <span className="connection-port">:{edge.sourcePort} → :{edge.targetPort}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-              {networkPeers.length > 0 && (
-                <div className="node-detail-connection-group">
-                  <span className="node-detail-connection-label">Network peers</span>
-                  {networkPeers.map((name, idx) => (
-                    <div key={idx} className="node-detail-connection">
-                      <span className="connection-arrow">↔</span>
-                      <span className="connection-node">{name}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
+      {(incomingEdges.length > 0 || outgoingEdges.length > 0) &&
+        (() => {
+          const isDockerNet = (e: (typeof incomingEdges)[0]) =>
+            e.sourcePort === 0 && e.targetPort === 0;
+          const realIncoming = incomingEdges.filter((e) => !isDockerNet(e));
+          const realOutgoing = outgoingEdges.filter((e) => !isDockerNet(e));
+          const networkPeerIds = new Set<string>();
+          const networkPeers: string[] = [];
+          [...incomingEdges.filter(isDockerNet), ...outgoingEdges.filter(isDockerNet)].forEach(
+            (e) => {
+              const peerId = e.source === node.id ? e.target : e.source;
+              if (!networkPeerIds.has(peerId)) {
+                networkPeerIds.add(peerId);
+                networkPeers.push(getNodeName(peerId));
+              }
+            },
+          );
+          return (
+            <div className="node-detail-section">
+              <h3 className="node-detail-section-title">Connections</h3>
+              <div className="node-detail-connections">
+                {realIncoming.length > 0 && (
+                  <div className="node-detail-connection-group">
+                    <span className="node-detail-connection-label">Incoming</span>
+                    {realIncoming.map((edge, idx) => (
+                      <div key={idx} className="node-detail-connection">
+                        <span className="connection-arrow">←</span>
+                        <span className="connection-node">{getNodeName(edge.source)}</span>
+                        <span className="connection-port">
+                          :{edge.sourcePort} → :{edge.targetPort}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {realOutgoing.length > 0 && (
+                  <div className="node-detail-connection-group">
+                    <span className="node-detail-connection-label">Outgoing</span>
+                    {realOutgoing.map((edge, idx) => (
+                      <div key={idx} className="node-detail-connection">
+                        <span className="connection-arrow">→</span>
+                        <span className="connection-node">{getNodeName(edge.target)}</span>
+                        <span className="connection-port">
+                          :{edge.sourcePort} → :{edge.targetPort}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {networkPeers.length > 0 && (
+                  <div className="node-detail-connection-group">
+                    <span className="node-detail-connection-label">Network peers</span>
+                    {networkPeers.map((name, idx) => (
+                      <div key={idx} className="node-detail-connection">
+                        <span className="connection-arrow">↔</span>
+                        <span className="connection-node">{name}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
-        );
-      })()}
+          );
+        })()}
     </div>
   );
 }

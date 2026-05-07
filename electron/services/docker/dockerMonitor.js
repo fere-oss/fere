@@ -1,44 +1,48 @@
-const fs = require('fs');
-const path = require('path');
-const { runDocker, clearDockerBinCache } = require('../platform/docker');
-const { scanDockerServiceConnections } = require('../discovery/localConnectionScanner');
+const fs = require("fs");
+const path = require("path");
+const { runDocker, clearDockerBinCache } = require("../platform/docker");
+const { scanDockerServiceConnections } = require("../discovery/localConnectionScanner");
 
 const CACHE_TTL_MS = 2000; // 2 second cache for Docker data (Docker commands are slower)
 const containersCache = { timestamp: 0, data: [], promise: null };
 const networksCache = { timestamp: 0, data: [], promise: null };
-const RUNNING_STATES = new Set(['running', 'paused', 'restarting']);
-const DEFAULT_NETWORKS = new Set(['bridge', 'host', 'none']);
-let lastDockerStatus = { code: 'ok' };
+const RUNNING_STATES = new Set(["running", "paused", "restarting"]);
+const DEFAULT_NETWORKS = new Set(["bridge", "host", "none"]);
+let lastDockerStatus = { code: "ok" };
 
 /**
  * Check if Docker is available and running
  */
 async function isDockerAvailable() {
   try {
-    await runDocker(['info'], { allowFailure: true });
-    lastDockerStatus = { code: 'ok' };
+    await runDocker(["info"], { allowFailure: true });
+    lastDockerStatus = { code: "ok" };
     return true;
   } catch (error) {
-    const msg = String(error?.message || error?.stderr || '');
-    if (/cannot connect|connection refused|daemon.*not running|is the docker daemon running/i.test(msg)) {
+    const msg = String(error?.message || error?.stderr || "");
+    if (
+      /cannot connect|connection refused|daemon.*not running|is the docker daemon running/i.test(
+        msg,
+      )
+    ) {
       lastDockerStatus = {
-        code: 'unavailable',
-        message: 'Docker Desktop is not running',
+        code: "unavailable",
+        message: "Docker Desktop is not running",
       };
     } else if (/permission denied|access denied/i.test(msg)) {
       lastDockerStatus = {
-        code: 'permission_denied',
-        message: 'Cannot access Docker',
+        code: "permission_denied",
+        message: "Cannot access Docker",
       };
     } else if (/not found|enoent/i.test(msg)) {
       lastDockerStatus = {
-        code: 'unavailable',
-        message: 'Docker Desktop is not installed',
+        code: "unavailable",
+        message: "Docker Desktop is not installed",
       };
     } else {
       lastDockerStatus = {
-        code: 'degraded',
-        message: 'Docker check failed',
+        code: "degraded",
+        message: "Docker check failed",
       };
     }
     return false;
@@ -68,7 +72,7 @@ function getServiceNamesFromCompose(configFilePath) {
     const cached = composeServicesCache.get(configFilePath);
     if (cached && cached.mtime === mtime) return cached.services;
 
-    const content = fs.readFileSync(configFilePath, 'utf8');
+    const content = fs.readFileSync(configFilePath, "utf8");
     // Extract top-level keys under the `services:` block (2-space-indented names).
     const servicesBlockMatch = content.match(/^services:\s*\n([\s\S]*?)(?=\n\S|$)/m);
     const services = new Set();
@@ -89,10 +93,10 @@ function getServiceNamesFromCompose(configFilePath) {
  * Orphaned containers (from renamed/removed services) return false.
  */
 function isCurrentComposeService(labels) {
-  const configFiles = labels?.['com.docker.compose.project.config_files'];
-  const serviceName = labels?.['com.docker.compose.service'];
+  const configFiles = labels?.["com.docker.compose.project.config_files"];
+  const serviceName = labels?.["com.docker.compose.service"];
   if (!configFiles || !serviceName) return true; // not a compose container, keep it
-  const composePath = configFiles.split(',')[0].trim();
+  const composePath = configFiles.split(",")[0].trim();
   const services = getServiceNamesFromCompose(composePath);
   if (!services) return true; // can't read file, keep it to be safe
   return services.has(serviceName);
@@ -103,20 +107,24 @@ function isCurrentComposeService(labels) {
  * the container's labels.  Returns { composePath, composeDir, serviceBlock } or null.
  */
 function resolveComposeServiceBlock(labels) {
-  const configFiles = labels?.['com.docker.compose.project.config_files'];
-  const serviceName = labels?.['com.docker.compose.service'];
+  const configFiles = labels?.["com.docker.compose.project.config_files"];
+  const serviceName = labels?.["com.docker.compose.service"];
   if (!configFiles || !serviceName) return null;
   try {
-    const composePath = configFiles.split(',')[0].trim();
+    const composePath = configFiles.split(",")[0].trim();
     const composeDir = path.dirname(composePath);
-    const composeContent = fs.readFileSync(composePath, 'utf8');
-    const serviceNameEscaped = serviceName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const composeContent = fs.readFileSync(composePath, "utf8");
+    const serviceNameEscaped = serviceName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const serviceBlockMatch = composeContent.match(
-      new RegExp(`(?:^|\\n)  ${serviceNameEscaped}[ \\t]*:[ \\t]*\\n([\\s\\S]*?)(?=\\n[ \\t]*\\n  \\S|\\n  \\S|$)`)
+      new RegExp(
+        `(?:^|\\n)  ${serviceNameEscaped}[ \\t]*:[ \\t]*\\n([\\s\\S]*?)(?=\\n[ \\t]*\\n  \\S|\\n  \\S|$)`,
+      ),
     );
     if (!serviceBlockMatch) return null;
     return { composePath, composeDir, serviceBlock: serviceBlockMatch[1] };
-  } catch { return null; }
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -161,12 +169,14 @@ function getBaseImageFromCompose(labels) {
   const contextPath = resolveServiceBuildContext(parsed.composeDir, parsed.serviceBlock);
   if (!contextPath) return null;
   try {
-    const dockerfilePath = path.join(contextPath, 'Dockerfile');
+    const dockerfilePath = path.join(contextPath, "Dockerfile");
     if (!fs.existsSync(dockerfilePath)) return null;
-    const dockerfileContent = fs.readFileSync(dockerfilePath, 'utf8');
+    const dockerfileContent = fs.readFileSync(dockerfilePath, "utf8");
     const fromMatch = dockerfileContent.match(/^FROM\s+([^\s\n]+)/im);
     return fromMatch ? fromMatch[1] : null;
-  } catch { return null; }
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -193,7 +203,7 @@ async function getDockerContainers() {
       }
 
       // Get container list with JSON output for reliable parsing
-      const stdout = await runDocker(['ps', '-a', '--format', '{{json .}}']);
+      const stdout = await runDocker(["ps", "-a", "--format", "{{json .}}"]);
 
       if (!stdout.trim()) {
         containersCache.data = [];
@@ -203,7 +213,7 @@ async function getDockerContainers() {
       }
 
       const containers = [];
-      const lines = stdout.trim().split('\n');
+      const lines = stdout.trim().split("\n");
 
       // Parse all container listings first
       const psEntries = [];
@@ -211,7 +221,7 @@ async function getDockerContainers() {
         try {
           psEntries.push(JSON.parse(line));
         } catch (parseError) {
-          console.error('Error parsing container JSON:', parseError);
+          console.error("Error parsing container JSON:", parseError);
         }
       }
 
@@ -219,8 +229,8 @@ async function getDockerContainers() {
       const inspectMap = new Map();
       if (psEntries.length > 0) {
         try {
-          const ids = psEntries.map(c => c.ID);
-          const inspectStdout = await runDocker(['inspect', ...ids]);
+          const ids = psEntries.map((c) => c.ID);
+          const inspectStdout = await runDocker(["inspect", ...ids]);
           const inspectArray = JSON.parse(inspectStdout);
           for (const entry of inspectArray) {
             if (entry?.Id) inspectMap.set(entry.Id, entry);
@@ -237,8 +247,9 @@ async function getDockerContainers() {
       for (const container of psEntries) {
         try {
           // Match by full ID or prefix
-          const inspectData = inspectMap.get(container.ID) ||
-            [...inspectMap.values()].find(d => d.Id?.startsWith(container.ID)) ||
+          const inspectData =
+            inspectMap.get(container.ID) ||
+            [...inspectMap.values()].find((d) => d.Id?.startsWith(container.ID)) ||
             null;
 
           const containerLabels = inspectData?.Config?.Labels || {};
@@ -273,7 +284,7 @@ async function getDockerContainers() {
             memory: 0,
           });
         } catch (parseError) {
-          console.error('Error processing container:', parseError);
+          console.error("Error processing container:", parseError);
         }
       }
 
@@ -282,19 +293,19 @@ async function getDockerContainers() {
       // recreated and the old stopped instance hasn't been pruned yet.
       const composeServiceWinner = new Map();
       for (const c of containers) {
-        const project = c.labels?.['com.docker.compose.project'];
-        const service = c.labels?.['com.docker.compose.service'];
+        const project = c.labels?.["com.docker.compose.project"];
+        const service = c.labels?.["com.docker.compose.service"];
         if (!project || !service) continue;
         const key = `${project}:${service}`;
         const prev = composeServiceWinner.get(key);
-        if (!prev || (c.state === 'running' && prev.state !== 'running')) {
+        if (!prev || (c.state === "running" && prev.state !== "running")) {
           composeServiceWinner.set(key, c);
         }
       }
       const winnersSet = new Set(composeServiceWinner.values());
-      const dedupedContainers = containers.filter(c => {
-        const project = c.labels?.['com.docker.compose.project'];
-        const service = c.labels?.['com.docker.compose.service'];
+      const dedupedContainers = containers.filter((c) => {
+        const project = c.labels?.["com.docker.compose.project"];
+        const service = c.labels?.["com.docker.compose.service"];
         if (!project || !service) return true; // non-compose: always keep
         return winnersSet.has(c);
       });
@@ -309,7 +320,7 @@ async function getDockerContainers() {
       containersCache.promise = null;
       return containers;
     } catch (error) {
-      console.error('Error getting Docker containers:', error);
+      console.error("Error getting Docker containers:", error);
       containersCache.promise = null;
       return [];
     }
@@ -323,7 +334,7 @@ async function getDockerContainers() {
  */
 async function inspectContainer(containerId) {
   try {
-    const stdout = await runDocker(['inspect', containerId]);
+    const stdout = await runDocker(["inspect", containerId]);
     const data = JSON.parse(stdout);
     return data[0] || null;
   } catch (error) {
@@ -342,7 +353,7 @@ function parsePorts(portsString) {
   if (!portsString) return [];
 
   const ports = [];
-  const portEntries = portsString.split(', ');
+  const portEntries = portsString.split(", ");
 
   for (const entry of portEntries) {
     // Match format: host:hostPort->containerPort/protocol
@@ -351,11 +362,11 @@ function parsePorts(portsString) {
     if (mappedMatch) {
       const [, host, hostPort, containerPort, protocol] = mappedMatch;
       ports.push({
-        hostIp: host || '0.0.0.0',
+        hostIp: host || "0.0.0.0",
         hostPort: parseInt(hostPort, 10),
         containerPort: parseInt(containerPort, 10),
-        protocol: protocol || 'tcp',
-        type: 'mapped',
+        protocol: protocol || "tcp",
+        type: "mapped",
       });
     } else {
       // Exposed but not mapped: just "80/tcp"
@@ -366,8 +377,8 @@ function parsePorts(portsString) {
           hostIp: null,
           hostPort: null,
           containerPort: parseInt(containerPort, 10),
-          protocol: protocol || 'tcp',
-          type: 'exposed',
+          protocol: protocol || "tcp",
+          type: "exposed",
         });
       }
     }
@@ -376,18 +387,18 @@ function parsePorts(portsString) {
   return ports;
 }
 
-function buildFullCommand(inspectData, fallbackCommand = '') {
+function buildFullCommand(inspectData, fallbackCommand = "") {
   try {
     const entrypoint = Array.isArray(inspectData?.Config?.Entrypoint)
-      ? inspectData.Config.Entrypoint.join(' ')
-      : (inspectData?.Config?.Entrypoint || '');
+      ? inspectData.Config.Entrypoint.join(" ")
+      : inspectData?.Config?.Entrypoint || "";
     const cmd = Array.isArray(inspectData?.Config?.Cmd)
-      ? inspectData.Config.Cmd.join(' ')
-      : (inspectData?.Config?.Cmd || '');
+      ? inspectData.Config.Cmd.join(" ")
+      : inspectData?.Config?.Cmd || "";
     const full = `${entrypoint} ${cmd}`.trim();
-    return full || fallbackCommand || '';
+    return full || fallbackCommand || "";
   } catch {
-    return fallbackCommand || '';
+    return fallbackCommand || "";
   }
 }
 
@@ -418,7 +429,7 @@ function parseNetworks(inspectData) {
 function parseMounts(inspectData) {
   if (!inspectData?.Mounts) return [];
 
-  return inspectData.Mounts.map(mount => ({
+  return inspectData.Mounts.map((mount) => ({
     type: mount.Type, // bind, volume, tmpfs
     source: mount.Source,
     destination: mount.Destination,
@@ -433,7 +444,7 @@ function parseMounts(inspectData) {
  */
 function parseHealth(inspectData) {
   if (!inspectData?.State) {
-    return { status: 'unknown', checks: [] };
+    return { status: "unknown", checks: [] };
   }
 
   const state = inspectData.State;
@@ -443,7 +454,7 @@ function parseHealth(inspectData) {
     return {
       status: state.Health.Status, // healthy, unhealthy, starting
       failingStreak: state.Health.FailingStreak || 0,
-      checks: (state.Health.Log || []).slice(-3).map(log => ({
+      checks: (state.Health.Log || []).slice(-3).map((log) => ({
         start: log.Start,
         end: log.End,
         exitCode: log.ExitCode,
@@ -454,18 +465,18 @@ function parseHealth(inspectData) {
 
   // No health check, derive from container state
   if (state.Running) {
-    return { status: 'running', checks: [] };
+    return { status: "running", checks: [] };
   } else if (state.Paused) {
-    return { status: 'paused', checks: [] };
+    return { status: "paused", checks: [] };
   } else if (state.Restarting) {
-    return { status: 'restarting', checks: [] };
+    return { status: "restarting", checks: [] };
   } else if (state.Dead) {
-    return { status: 'dead', checks: [] };
+    return { status: "dead", checks: [] };
   } else {
     return {
-      status: 'exited',
+      status: "exited",
       exitCode: state.ExitCode,
-      checks: []
+      checks: [],
     };
   }
 }
@@ -474,17 +485,17 @@ function parseHealth(inspectData) {
  * Attach CPU and memory stats to containers
  */
 async function attachContainerStats(containers) {
-  const runningContainers = containers.filter(c => c.state === 'running');
+  const runningContainers = containers.filter((c) => c.state === "running");
   if (runningContainers.length === 0) return;
 
   try {
     // Get stats for all running containers at once
-    const stdout = await runDocker(['stats', '--no-stream', '--format', '{{json .}}']);
+    const stdout = await runDocker(["stats", "--no-stream", "--format", "{{json .}}"]);
 
     if (!stdout.trim()) return;
 
     const statsMap = new Map();
-    for (const line of stdout.trim().split('\n')) {
+    for (const line of stdout.trim().split("\n")) {
       try {
         const stats = JSON.parse(line);
         statsMap.set(stats.ID, stats);
@@ -497,15 +508,14 @@ async function attachContainerStats(containers) {
 
     for (const container of containers) {
       // Try to find stats by ID prefix or name
-      const stats = statsMap.get(container.id.substring(0, 12)) ||
-                    statsMap.get(container.name);
+      const stats = statsMap.get(container.id.substring(0, 12)) || statsMap.get(container.name);
       if (stats) {
         // Parse CPU percentage (format: "0.50%")
-        container.cpu = parseFloat(stats.CPUPerc?.replace('%', '') || '0');
+        container.cpu = parseFloat(stats.CPUPerc?.replace("%", "") || "0");
         // Parse memory percentage (format: "0.50%")
-        container.memory = parseFloat(stats.MemPerc?.replace('%', '') || '0');
+        container.memory = parseFloat(stats.MemPerc?.replace("%", "") || "0");
         // Store raw memory usage string for display
-        container.memoryUsage = stats.MemUsage || '';
+        container.memoryUsage = stats.MemUsage || "";
       }
     }
   } catch (error) {
@@ -535,7 +545,7 @@ async function getDockerNetworks() {
       }
 
       // Get network list
-      const stdout = await runDocker(['network', 'ls', '--format', '{{json .}}']);
+      const stdout = await runDocker(["network", "ls", "--format", "{{json .}}"]);
 
       if (!stdout.trim()) {
         networksCache.data = [];
@@ -545,7 +555,7 @@ async function getDockerNetworks() {
       }
 
       const networks = [];
-      const lines = stdout.trim().split('\n');
+      const lines = stdout.trim().split("\n");
 
       // Parse all network listings first
       const netEntries = [];
@@ -553,7 +563,7 @@ async function getDockerNetworks() {
         try {
           netEntries.push(JSON.parse(line));
         } catch (parseError) {
-          console.error('Error parsing network JSON:', parseError);
+          console.error("Error parsing network JSON:", parseError);
         }
       }
 
@@ -561,8 +571,8 @@ async function getDockerNetworks() {
       const netInspectMap = new Map();
       if (netEntries.length > 0) {
         try {
-          const ids = netEntries.map(n => n.ID);
-          const inspectStdout = await runDocker(['network', 'inspect', ...ids]);
+          const ids = netEntries.map((n) => n.ID);
+          const inspectStdout = await runDocker(["network", "inspect", ...ids]);
           const inspectArray = JSON.parse(inspectStdout);
           for (const entry of inspectArray) {
             if (entry?.Id) netInspectMap.set(entry.Id, entry);
@@ -578,8 +588,9 @@ async function getDockerNetworks() {
 
       for (const network of netEntries) {
         try {
-          const inspectData = netInspectMap.get(network.ID) ||
-            [...netInspectMap.values()].find(d => d.Id?.startsWith(network.ID)) ||
+          const inspectData =
+            netInspectMap.get(network.ID) ||
+            [...netInspectMap.values()].find((d) => d.Id?.startsWith(network.ID)) ||
             null;
 
           networks.push({
@@ -593,7 +604,7 @@ async function getDockerNetworks() {
             attachable: inspectData?.Attachable || false,
           });
         } catch (parseError) {
-          console.error('Error processing network:', parseError);
+          console.error("Error processing network:", parseError);
         }
       }
 
@@ -602,7 +613,7 @@ async function getDockerNetworks() {
       networksCache.promise = null;
       return networks;
     } catch (error) {
-      console.error('Error getting Docker networks:', error);
+      console.error("Error getting Docker networks:", error);
       networksCache.promise = null;
       return [];
     }
@@ -616,7 +627,7 @@ async function getDockerNetworks() {
  */
 async function inspectNetwork(networkId) {
   try {
-    const stdout = await runDocker(['network', 'inspect', networkId]);
+    const stdout = await runDocker(["network", "inspect", networkId]);
     const data = JSON.parse(stdout);
     return data[0] || null;
   } catch (error) {
@@ -652,8 +663,8 @@ function parseNetworkContainers(inspectData) {
 function parseComposeBuildContexts(composePath) {
   try {
     const composeDir = path.dirname(composePath);
-    const content = fs.readFileSync(composePath, 'utf8');
-    const lines = content.split('\n');
+    const content = fs.readFileSync(composePath, "utf8");
+    const lines = content.split("\n");
     const contexts = new Map();
 
     let inServices = false;
@@ -662,7 +673,7 @@ function parseComposeBuildContexts(composePath) {
 
     for (const rawLine of lines) {
       if (/^\S/.test(rawLine)) {
-        inServices = rawLine.trimEnd() === 'services:';
+        inServices = rawLine.trimEnd() === "services:";
         currentService = null;
         inBuild = false;
         continue;
@@ -680,8 +691,8 @@ function parseComposeBuildContexts(composePath) {
 
       const buildStringMatch = rawLine.match(/^    build:\s+(.+)\s*$/);
       if (buildStringMatch) {
-        const val = buildStringMatch[1].trim().replace(/['"]/g, '');
-        if (!val.startsWith('{')) {
+        const val = buildStringMatch[1].trim().replace(/['"]/g, "");
+        if (!val.startsWith("{")) {
           contexts.set(currentService, path.resolve(composeDir, val));
           inBuild = false;
         } else {
@@ -702,7 +713,7 @@ function parseComposeBuildContexts(composePath) {
         }
         const ctxMatch = rawLine.match(/^      context:\s+(.+)\s*$/);
         if (ctxMatch) {
-          const ctx = ctxMatch[1].trim().replace(/['"]/g, '');
+          const ctx = ctxMatch[1].trim().replace(/['"]/g, "");
           contexts.set(currentService, path.resolve(composeDir, ctx));
           inBuild = false;
         }
@@ -717,9 +728,9 @@ function parseComposeBuildContexts(composePath) {
 
 function parseComposeDependsOn(composePath) {
   try {
-    const content = fs.readFileSync(composePath, 'utf8');
+    const content = fs.readFileSync(composePath, "utf8");
     const result = new Map();
-    const lines = content.split('\n');
+    const lines = content.split("\n");
 
     let inServices = false;
     let currentService = null;
@@ -727,7 +738,7 @@ function parseComposeDependsOn(composePath) {
 
     for (const rawLine of lines) {
       if (/^\S/.test(rawLine)) {
-        inServices = rawLine.trimEnd() === 'services:';
+        inServices = rawLine.trimEnd() === "services:";
         currentService = null;
         inDependsOn = false;
         continue;
@@ -748,8 +759,8 @@ function parseComposeDependsOn(composePath) {
         const inlineMatch = rawLine.match(/depends_on:\s*\[([^\]]*)\]/);
         if (inlineMatch) {
           const deps = result.get(currentService) || new Set();
-          for (const dep of inlineMatch[1].split(',')) {
-            const d = dep.trim().replace(/['"]/g, '');
+          for (const dep of inlineMatch[1].split(",")) {
+            const d = dep.trim().replace(/['"]/g, "");
             if (d) deps.add(d);
           }
           if (deps.size > 0) result.set(currentService, deps);
@@ -802,7 +813,7 @@ function buildContainerConnections(containers, networks) {
   // still resolve when services are started from separate compose projects.
   const globalServiceToContainer = new Map();
   for (const container of containers) {
-    const svc = container.labels?.['com.docker.compose.service'];
+    const svc = container.labels?.["com.docker.compose.service"];
     if (svc) globalServiceToContainer.set(svc, container);
   }
   const globalServiceNames = new Set(globalServiceToContainer.keys());
@@ -810,7 +821,7 @@ function buildContainerConnections(containers, networks) {
   // Group containers by Docker Compose project
   const containersByProject = new Map();
   for (const container of containers) {
-    const project = container.labels?.['com.docker.compose.project'];
+    const project = container.labels?.["com.docker.compose.project"];
     if (project) {
       if (!containersByProject.has(project)) {
         containersByProject.set(project, []);
@@ -823,9 +834,9 @@ function buildContainerConnections(containers, networks) {
   for (const [project, projectContainers] of containersByProject) {
     let composePath = null;
     for (const c of projectContainers) {
-      const configFiles = c.labels?.['com.docker.compose.project.config_files'];
+      const configFiles = c.labels?.["com.docker.compose.project.config_files"];
       if (configFiles) {
-        composePath = configFiles.split(',')[0].trim();
+        composePath = configFiles.split(",")[0].trim();
         break;
       }
     }
@@ -836,7 +847,7 @@ function buildContainerConnections(containers, networks) {
 
     const serviceToContainer = new Map();
     for (const c of projectContainers) {
-      const svc = c.labels?.['com.docker.compose.service'];
+      const svc = c.labels?.["com.docker.compose.service"];
       if (svc) serviceToContainer.set(svc, c);
     }
 
@@ -845,16 +856,12 @@ function buildContainerConnections(containers, networks) {
     if (buildContexts.size > 0) {
       for (const [serviceName, sourceDir] of buildContexts) {
         const sourceContainer =
-          serviceToContainer.get(serviceName) ||
-          globalServiceToContainer.get(serviceName);
+          serviceToContainer.get(serviceName) || globalServiceToContainer.get(serviceName);
         if (!sourceContainer) continue;
 
         const otherServices = new Set(globalServiceNames);
         otherServices.delete(serviceName);
-        const referencedServices = scanDockerServiceConnections(
-          sourceDir,
-          otherServices,
-        );
+        const referencedServices = scanDockerServiceConnections(sourceDir, otherServices);
 
         for (const dep of referencedServices) {
           const targetContainer = globalServiceToContainer.get(dep);
@@ -876,8 +883,7 @@ function buildContainerConnections(containers, networks) {
         const sourceContainer = serviceToContainer.get(serviceName);
         if (!sourceContainer) continue;
         for (const dep of deps) {
-          const targetContainer =
-            globalServiceToContainer.get(dep) || serviceToContainer.get(dep);
+          const targetContainer = globalServiceToContainer.get(dep) || serviceToContainer.get(dep);
           if (!targetContainer) continue;
           const edgeKey = `${sourceContainer.id}->${targetContainer.id}`;
           if (connectionSet.has(edgeKey)) continue;
@@ -904,26 +910,26 @@ function containerHealthToGraphHealth(container) {
   const state = container.state;
 
   // Running but unhealthy = degraded (yellow), not down
-  if (state === 'running' && healthStatus === 'unhealthy') {
-    return 'yellow';
+  if (state === "running" && healthStatus === "unhealthy") {
+    return "yellow";
   }
 
   const status = healthStatus || state;
 
   switch (status) {
-    case 'running':
-    case 'healthy':
-      return 'green';
-    case 'starting':
-    case 'paused':
-    case 'restarting':
-      return 'yellow';
-    case 'exited':
-    case 'dead':
-    case 'unhealthy':
-      return 'red';
+    case "running":
+    case "healthy":
+      return "green";
+    case "starting":
+    case "paused":
+    case "restarting":
+      return "yellow";
+    case "exited":
+    case "dead":
+    case "unhealthy":
+      return "red";
     default:
-      return 'yellow';
+      return "yellow";
   }
 }
 
@@ -931,10 +937,7 @@ function containerHealthToGraphHealth(container) {
  * Get a combined snapshot of Docker state for the graph
  */
 async function getDockerSnapshot() {
-  const [containers, networks] = await Promise.all([
-    getDockerContainers(),
-    getDockerNetworks(),
-  ]);
+  const [containers, networks] = await Promise.all([getDockerContainers(), getDockerNetworks()]);
 
   const containerConnections = buildContainerConnections(containers, networks);
 
@@ -942,7 +945,7 @@ async function getDockerSnapshot() {
     containers,
     networks,
     containerConnections,
-    isAvailable: containers.length > 0 || await isDockerAvailable(),
+    isAvailable: containers.length > 0 || (await isDockerAvailable()),
   };
 }
 
@@ -960,16 +963,16 @@ function clearDockerCache() {
 }
 
 function sanitizeContainerId(containerId) {
-  return typeof containerId === 'string' && /^[a-zA-Z0-9_.-]+$/.test(containerId);
+  return typeof containerId === "string" && /^[a-zA-Z0-9_.-]+$/.test(containerId);
 }
 
 async function stopContainer(containerId, timeoutSeconds = 5) {
   if (!sanitizeContainerId(containerId)) {
-    return { success: false, error: 'Invalid container ID' };
+    return { success: false, error: "Invalid container ID" };
   }
 
   try {
-    await runDocker(['stop', '-t', String(timeoutSeconds), containerId]);
+    await runDocker(["stop", "-t", String(timeoutSeconds), containerId]);
     clearDockerCache();
     return { success: true };
   } catch (error) {
@@ -979,11 +982,11 @@ async function stopContainer(containerId, timeoutSeconds = 5) {
 
 async function startContainer(containerId) {
   if (!sanitizeContainerId(containerId)) {
-    return { success: false, error: 'Invalid container ID' };
+    return { success: false, error: "Invalid container ID" };
   }
 
   try {
-    await runDocker(['start', containerId]);
+    await runDocker(["start", containerId]);
     clearDockerCache();
     return { success: true };
   } catch (error) {
@@ -993,11 +996,11 @@ async function startContainer(containerId) {
 
 async function restartContainer(containerId) {
   if (!sanitizeContainerId(containerId)) {
-    return { success: false, error: 'Invalid container ID' };
+    return { success: false, error: "Invalid container ID" };
   }
 
   try {
-    await runDocker(['restart', containerId]);
+    await runDocker(["restart", containerId]);
     clearDockerCache();
     return { success: true };
   } catch (error) {
@@ -1009,7 +1012,12 @@ async function restartContainer(containerId) {
 // Compose File Parsing — Ghost Node Support
 // ============================================
 
-const COMPOSE_FILENAMES = ['docker-compose.yml', 'docker-compose.yaml', 'compose.yml', 'compose.yaml'];
+const COMPOSE_FILENAMES = [
+  "docker-compose.yml",
+  "docker-compose.yaml",
+  "compose.yml",
+  "compose.yaml",
+];
 
 /**
  * Scan project directories for compose files.
@@ -1025,7 +1033,9 @@ function findComposeFiles(projectPaths) {
           found.push(candidate);
           break; // first match wins per project
         }
-      } catch { /* skip inaccessible dirs */ }
+      } catch {
+        /* skip inaccessible dirs */
+      }
     }
   }
   return found;
@@ -1044,7 +1054,7 @@ function parseComposeServices(composePath) {
     const cached = composeMetadataCache.get(composePath);
     if (cached && cached.mtime === mtime) return cached.services;
 
-    const content = fs.readFileSync(composePath, 'utf8');
+    const content = fs.readFileSync(composePath, "utf8");
     const composeDir = path.dirname(composePath);
 
     const servicesBlockMatch = content.match(/^services:\s*\n([\s\S]*?)(?=\n\S|$)/m);
@@ -1057,15 +1067,17 @@ function parseComposeServices(composePath) {
     const services = [];
 
     // Find each service name (2-space-indented top-level key under services:)
-    const serviceNames = [...servicesBlock.matchAll(/^  ([A-Za-z0-9][A-Za-z0-9_-]*):/gm)].map(m => m[1]);
+    const serviceNames = [...servicesBlock.matchAll(/^  ([A-Za-z0-9][A-Za-z0-9_-]*):/gm)].map(
+      (m) => m[1],
+    );
 
     for (const name of serviceNames) {
       // Extract this service's block (everything until next service or end)
-      const nameEscaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const nameEscaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       const blockMatch = servicesBlock.match(
-        new RegExp(`^  ${nameEscaped}[ \\t]*:[ \\t]*\\n([\\s\\S]*?)(?=\\n  [A-Za-z0-9]|$)`, 'm')
+        new RegExp(`^  ${nameEscaped}[ \\t]*:[ \\t]*\\n([\\s\\S]*?)(?=\\n  [A-Za-z0-9]|$)`, "m"),
       );
-      const block = blockMatch ? blockMatch[1] : '';
+      const block = blockMatch ? blockMatch[1] : "";
 
       // Parse image
       const imageMatch = block.match(/image:[ \t]*([^\n\r]+)/);
@@ -1085,7 +1097,9 @@ function parseComposeServices(composePath) {
 
       // Parse depends_on (list format)
       const dependsOn = [];
-      const dependsMatch = block.match(/depends_on:\s*\n((?:[ \t]*-[^\n]*\n?|[ \t]+[A-Za-z0-9][^\n]*\n?)*)/);
+      const dependsMatch = block.match(
+        /depends_on:\s*\n((?:[ \t]*-[^\n]*\n?|[ \t]+[A-Za-z0-9][^\n]*\n?)*)/,
+      );
       if (dependsMatch) {
         // List format: - service_name
         for (const dm of dependsMatch[1].matchAll(/- [ \t]*([A-Za-z0-9][A-Za-z0-9_-]*)/g)) {
@@ -1119,12 +1133,12 @@ function getComposeDefinedServices(containers, projectPaths) {
 
   // 1. From running container labels
   for (const container of containers) {
-    const configFiles = container.labels?.['com.docker.compose.project.config_files'];
-    const projectName = container.labels?.['com.docker.compose.project'];
-    const workingDir = container.labels?.['com.docker.compose.project.working_dir'];
+    const configFiles = container.labels?.["com.docker.compose.project.config_files"];
+    const projectName = container.labels?.["com.docker.compose.project"];
+    const workingDir = container.labels?.["com.docker.compose.project.working_dir"];
     if (!configFiles) continue;
 
-    const filePath = configFiles.split(',')[0].trim();
+    const filePath = configFiles.split(",")[0].trim();
     if (composeFiles.has(filePath)) continue;
 
     const services = parseComposeServices(filePath);
@@ -1155,11 +1169,11 @@ function getComposeDefinedServices(containers, projectPaths) {
   // 3. Deduplicate: remove compose files whose directory is a subdirectory
   // of another compose project. e.g. robot-shop/payment/docker-compose.yaml
   // is redundant when robot-shop/docker-compose.yaml exists.
-  const projectDirs = [...composeFiles.values()].map(f => f.projectPath);
+  const projectDirs = [...composeFiles.values()].map((f) => f.projectPath);
   for (const [filePath, info] of composeFiles) {
     const dir = info.projectPath;
     const isSubdir = projectDirs.some(
-      parentDir => dir !== parentDir && dir.startsWith(parentDir + '/')
+      (parentDir) => dir !== parentDir && dir.startsWith(parentDir + "/"),
     );
     if (isSubdir) composeFiles.delete(filePath);
   }
@@ -1175,11 +1189,11 @@ async function startComposeProject(composeFilePath, services = []) {
   // Validate file path
   const resolved = path.resolve(composeFilePath);
   if (!fs.existsSync(resolved)) {
-    return { success: false, error: 'Compose file not found' };
+    return { success: false, error: "Compose file not found" };
   }
   const ext = path.extname(resolved).toLowerCase();
-  if (ext !== '.yml' && ext !== '.yaml') {
-    return { success: false, error: 'Invalid compose file extension' };
+  if (ext !== ".yml" && ext !== ".yaml") {
+    return { success: false, error: "Invalid compose file extension" };
   }
 
   // Validate service names against actual compose file to prevent injection
@@ -1195,7 +1209,7 @@ async function startComposeProject(composeFilePath, services = []) {
   }
 
   try {
-    const args = ['compose', '-f', resolved, 'up', '-d'];
+    const args = ["compose", "-f", resolved, "up", "-d"];
     if (services.length > 0) args.push(...services);
     await runDocker(args);
     clearDockerCache();

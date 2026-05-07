@@ -1,4 +1,4 @@
-import React from 'react';
+import React from "react";
 
 interface HeaderProps {
   serviceCount: number;
@@ -24,7 +24,7 @@ export function Header({ serviceCount, connectionCount, onRefresh }: HeaderProps
         </div>
         <button className="refresh-btn" onClick={onRefresh} title="Refresh">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-            <path d="M13.65 2.35A8 8 0 1 0 16 8h-2a6 6 0 1 1-1.76-4.24L10 6h6V0l-2.35 2.35z"/>
+            <path d="M13.65 2.35A8 8 0 1 0 16 8h-2a6 6 0 1 1-1.76-4.24L10 6h6V0l-2.35 2.35z" />
           </svg>
         </button>
       </div>

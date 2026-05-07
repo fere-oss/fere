@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import type { QueryResult } from '../../types/electron';
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { QueryResult } from "../../types/electron";
 
 interface DatabaseQueryLayoutProps {
   dbType: string;
@@ -28,16 +28,18 @@ export function DatabaseQueryLayout({
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const previewRef = useRef<HTMLPreElement | null>(null);
   const gutterRef = useRef<HTMLPreElement | null>(null);
-  const [queryTabs, setQueryTabs] = useState([{ id: 'query-tab-1', title: 'Query 1', content: query }]);
-  const [activeTabId, setActiveTabId] = useState('query-tab-1');
+  const [queryTabs, setQueryTabs] = useState([
+    { id: "query-tab-1", title: "Query 1", content: query },
+  ]);
+  const [activeTabId, setActiveTabId] = useState("query-tab-1");
 
   const activeTab = useMemo(
     () => queryTabs.find((tab) => tab.id === activeTabId) ?? queryTabs[0],
     [queryTabs, activeTabId],
   );
   const lineNumbersText = useMemo(() => {
-    const lineCount = Math.max(1, activeTab.content.split('\n').length);
-    return Array.from({ length: lineCount }, (_, i) => `${i + 1}`).join('\n');
+    const lineCount = Math.max(1, activeTab.content.split("\n").length);
+    return Array.from({ length: lineCount }, (_, i) => `${i + 1}`).join("\n");
   }, [activeTab.content]);
 
   useEffect(() => {
@@ -56,10 +58,10 @@ export function DatabaseQueryLayout({
   const handleAddTab = () => {
     const nextId = `query-tab-${tabCounterRef.current++}`;
     const nextTitle = `Query ${queryTabs.length + 1}`;
-    const nextTabs = [...queryTabs, { id: nextId, title: nextTitle, content: '' }];
+    const nextTabs = [...queryTabs, { id: nextId, title: nextTitle, content: "" }];
     setQueryTabs(nextTabs);
     setActiveTabId(nextId);
-    onChangeQuery('');
+    onChangeQuery("");
   };
 
   const handleSwitchTab = (tabId: string) => {
@@ -101,7 +103,7 @@ export function DatabaseQueryLayout({
           <span className="db-query-editor-title">Query</span>
           <div className="db-query-actions">
             <span className="db-query-shortcut">
-              <kbd>{navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}</kbd>
+              <kbd>{navigator.platform.includes("Mac") ? "⌘" : "Ctrl"}</kbd>
               <kbd>Enter</kbd>
               <span>to run</span>
             </span>
@@ -133,7 +135,7 @@ export function DatabaseQueryLayout({
               type="button"
               role="tab"
               aria-selected={tab.id === activeTab.id}
-              className={`db-query-tab ${tab.id === activeTab.id ? 'active' : ''}`}
+              className={`db-query-tab ${tab.id === activeTab.id ? "active" : ""}`}
               onClick={() => handleSwitchTab(tab.id)}
             >
               <span className="db-query-tab-title">{tab.title}</span>
@@ -186,7 +188,7 @@ export function DatabaseQueryLayout({
           <span className="db-query-results-title">Results</span>
           {queryResult && queryResult.rowCount !== undefined && (
             <span className="db-query-results-count">
-              {queryResult.rowCount} {queryResult.rowCount === 1 ? 'row' : 'rows'} returned
+              {queryResult.rowCount} {queryResult.rowCount === 1 ? "row" : "rows"} returned
             </span>
           )}
         </div>
@@ -194,7 +196,14 @@ export function DatabaseQueryLayout({
           {queryResult?.error ? (
             <div className="db-query-error">
               <div className="db-query-error-header">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
                   <circle cx="12" cy="12" r="10" />
                   <line x1="15" y1="9" x2="9" y2="15" />
                   <line x1="9" y1="9" x2="15" y2="15" />
@@ -220,7 +229,9 @@ export function DatabaseQueryLayout({
                       <td className="db-row-num">{idx + 1}</td>
                       {queryResult.columns?.map((col, colIdx) => (
                         <td key={`${colIdx}-${col}`} title={formatCellValue(row[col])}>
-                          <span className={`db-cell-value ${row[col] === null || row[col] === undefined ? 'null' : ''}`}>
+                          <span
+                            className={`db-cell-value ${row[col] === null || row[col] === undefined ? "null" : ""}`}
+                          >
                             {formatCellValue(row[col])}
                           </span>
                         </td>
@@ -236,7 +247,14 @@ export function DatabaseQueryLayout({
             </pre>
           ) : (
             <div className="db-query-empty">
-              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1">
+              <svg
+                width="48"
+                height="48"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1"
+              >
                 <polyline points="16,18 22,12 16,6" />
                 <polyline points="8,6 2,12 8,18" />
               </svg>
@@ -250,30 +268,106 @@ export function DatabaseQueryLayout({
 }
 
 const SQL_KEYWORDS = new Set([
-  'select', 'from', 'where', 'and', 'or', 'not', 'insert', 'into', 'values', 'update', 'set', 'delete',
-  'join', 'left', 'right', 'inner', 'outer', 'on', 'group', 'by', 'order', 'limit', 'having', 'as',
-  'distinct', 'count', 'sum', 'avg', 'min', 'max', 'create', 'table', 'drop', 'alter', 'index', 'primary',
-  'key', 'foreign', 'constraint', 'is', 'null', 'true', 'false',
+  "select",
+  "from",
+  "where",
+  "and",
+  "or",
+  "not",
+  "insert",
+  "into",
+  "values",
+  "update",
+  "set",
+  "delete",
+  "join",
+  "left",
+  "right",
+  "inner",
+  "outer",
+  "on",
+  "group",
+  "by",
+  "order",
+  "limit",
+  "having",
+  "as",
+  "distinct",
+  "count",
+  "sum",
+  "avg",
+  "min",
+  "max",
+  "create",
+  "table",
+  "drop",
+  "alter",
+  "index",
+  "primary",
+  "key",
+  "foreign",
+  "constraint",
+  "is",
+  "null",
+  "true",
+  "false",
 ]);
 
 const MONGO_KEYWORDS = new Set([
-  'db', 'find', 'findone', 'aggregate', 'insertone', 'insertmany', 'updateone', 'updatemany', 'replaceone',
-  'deleteone', 'deletemany', 'countdocuments', 'distinct', 'createcollection', 'getsiblingdb', 'getcollection',
-  '$match', '$group', '$project', '$sort', '$limit', '$lookup', '$unwind', '$set', '$ifnull', '$sum',
+  "db",
+  "find",
+  "findone",
+  "aggregate",
+  "insertone",
+  "insertmany",
+  "updateone",
+  "updatemany",
+  "replaceone",
+  "deleteone",
+  "deletemany",
+  "countdocuments",
+  "distinct",
+  "createcollection",
+  "getsiblingdb",
+  "getcollection",
+  "$match",
+  "$group",
+  "$project",
+  "$sort",
+  "$limit",
+  "$lookup",
+  "$unwind",
+  "$set",
+  "$ifnull",
+  "$sum",
 ]);
 
-const COMMON_FUNCTIONS = new Set([
-  'json', 'stringify', 'date', 'isodate', 'objectid', 'print',
-]);
+const COMMON_FUNCTIONS = new Set(["json", "stringify", "date", "isodate", "objectid", "print"]);
 const SQL_BUILTIN_FUNCTIONS = new Set([
-  'now', 'date_trunc', 'split_part', 'percentile_cont', 'jsonb_build_object', 'jsonb_agg',
-  'to_char', 'coalesce', 'nullif', 'cast', 'date_part', 'extract', 'lower', 'upper', 'trim',
-  'substring', 'regexp_replace', 'array_agg',
+  "now",
+  "date_trunc",
+  "split_part",
+  "percentile_cont",
+  "jsonb_build_object",
+  "jsonb_agg",
+  "to_char",
+  "coalesce",
+  "nullif",
+  "cast",
+  "date_part",
+  "extract",
+  "lower",
+  "upper",
+  "trim",
+  "substring",
+  "regexp_replace",
+  "array_agg",
 ]);
 
 function highlightQuery(query: string, dbType: string): React.ReactNode {
-  const tokenPattern = /(--.*$|\/\/.*$|\/\*[\s\S]*?\*\/|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`|\$[a-zA-Z_][a-zA-Z0-9_]*|\b\d+(?:\.\d+)?\b|\b[a-zA-Z_][a-zA-Z0-9_]*\b|[()[\]{}.,;:+\-*/%<>=!?|&]+)/gm;
-  const syntax = dbType === 'mongodb' ? MONGO_KEYWORDS : SQL_KEYWORDS;
+  const tokenPattern =
+    /(--.*$|\/\/.*$|\/\*[\s\S]*?\*\/|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`|\$[a-zA-Z_][a-zA-Z0-9_]*|\b\d+(?:\.\d+)?\b|\b[a-zA-Z_][a-zA-Z0-9_]*\b|[()[\]{}.,;:+\-*/%<>=!?|&]+)/gm;
+  const syntax = dbType === "mongodb" ? MONGO_KEYWORDS : SQL_KEYWORDS;
   const parts: React.ReactNode[] = [];
   let lastIndex = 0;
   let match: RegExpExecArray | null;
@@ -287,43 +381,47 @@ function highlightQuery(query: string, dbType: string): React.ReactNode {
       parts.push(query.slice(lastIndex, start));
     }
 
-    let className = '';
+    let className = "";
     const lower = token.toLowerCase();
-    const prevChar = start > 0 ? query[start - 1] : '';
-    const nextChar = end < query.length ? query[end] : '';
+    const prevChar = start > 0 ? query[start - 1] : "";
+    const nextChar = end < query.length ? query[end] : "";
     const looksLikeFunction = /^\s*\(/.test(query.slice(end));
-    if (token.startsWith('--') || token.startsWith('//') || token.startsWith('/*')) {
-      className = 'db-hl-comment';
-    } else if (token.startsWith('"') || token.startsWith("'") || token.startsWith('`')) {
-      className = 'db-hl-string';
+    if (token.startsWith("--") || token.startsWith("//") || token.startsWith("/*")) {
+      className = "db-hl-comment";
+    } else if (token.startsWith('"') || token.startsWith("'") || token.startsWith("`")) {
+      className = "db-hl-string";
     } else if (/^\$[a-zA-Z_]/.test(token)) {
-      className = 'db-hl-parameter';
-    } else if (lower === 'true' || lower === 'false') {
-      className = 'db-hl-boolean';
-    } else if (lower === 'null') {
-      className = 'db-hl-null';
+      className = "db-hl-parameter";
+    } else if (lower === "true" || lower === "false") {
+      className = "db-hl-boolean";
+    } else if (lower === "null") {
+      className = "db-hl-null";
     } else if (/^\$[a-zA-Z_]/.test(token) || syntax.has(lower)) {
-      className = 'db-hl-keyword';
+      className = "db-hl-keyword";
     } else if (/^\d/.test(token)) {
-      className = 'db-hl-number';
+      className = "db-hl-number";
     } else if (/^[.,;()[\]{}]+$/.test(token)) {
-      className = 'db-hl-punctuation';
+      className = "db-hl-punctuation";
     } else if (/^[()[\]{}.,;:+\-*/%<>=!?|&]+$/.test(token)) {
-      className = 'db-hl-operator';
+      className = "db-hl-operator";
     } else if (
-      COMMON_FUNCTIONS.has(lower)
-      || (dbType !== 'mongodb' && SQL_BUILTIN_FUNCTIONS.has(lower))
-      || looksLikeFunction
+      COMMON_FUNCTIONS.has(lower) ||
+      (dbType !== "mongodb" && SQL_BUILTIN_FUNCTIONS.has(lower)) ||
+      looksLikeFunction
     ) {
-      className = 'db-hl-function';
-    } else if (prevChar === '.' || nextChar === '.') {
-      className = 'db-hl-qualified';
+      className = "db-hl-function";
+    } else if (prevChar === "." || nextChar === ".") {
+      className = "db-hl-qualified";
     } else if (/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(token)) {
-      className = 'db-hl-identifier';
+      className = "db-hl-identifier";
     }
 
     if (className) {
-      parts.push(<span key={start} className={className}>{token}</span>);
+      parts.push(
+        <span key={start} className={className}>
+          {token}
+        </span>,
+      );
     } else {
       parts.push(token);
     }
@@ -344,29 +442,41 @@ function highlightQueryOutput(output: string): React.ReactNode {
   return parts.map((part, index) => {
     if (!part) return null;
     if (/^\(\d+\s+rows?\)$/.test(part)) {
-      return <span key={index} className="db-out-meta">{part}</span>;
+      return (
+        <span key={index} className="db-out-meta">
+          {part}
+        </span>
+      );
     }
     if (/^\d+$/.test(part)) {
-      return <span key={index} className="db-out-number">{part}</span>;
+      return (
+        <span key={index} className="db-out-number">
+          {part}
+        </span>
+      );
     }
     if (/^[|+]+$/.test(part) || /^[-=]{2,}$/.test(part)) {
-      return <span key={index} className="db-out-pipe">{part}</span>;
+      return (
+        <span key={index} className="db-out-pipe">
+          {part}
+        </span>
+      );
     }
     return part;
   });
 }
 
 function normalizeQueryOutput(output: string): string {
-  const lines = String(output || '')
-    .split('\n')
-    .map((line) => line.replace(/\s+$/, ''));
+  const lines = String(output || "")
+    .split("\n")
+    .map((line) => line.replace(/\s+$/, ""));
 
   const promptOnly = /^[a-z0-9_-]+>\s*$/i;
   const promptDotsOnly = /^[a-z0-9_-]+>\s*(?:\.\.\.\s*)+$/i;
   const dotsOnly = /^(?:\.\.\.\s*)+$/;
 
   const cleanedLines = lines
-    .map((line) => line.replace(/^[a-z0-9_-]+>\s*(?:\.\.\.\s*)*/i, ''))
+    .map((line) => line.replace(/^[a-z0-9_-]+>\s*(?:\.\.\.\s*)*/i, ""))
     .filter((line) => {
       const trimmed = line.trim();
       if (!trimmed) return false;
@@ -376,8 +486,8 @@ function normalizeQueryOutput(output: string): string {
       return true;
     });
 
-  const cleaned = cleanedLines.join('\n').trim();
-  if (!cleaned) return '';
+  const cleaned = cleanedLines.join("\n").trim();
+  if (!cleaned) return "";
 
   const jsonCandidate = extractJsonCandidate(cleaned);
   if (jsonCandidate) {
@@ -394,19 +504,25 @@ function normalizeQueryOutput(output: string): string {
 
 function extractJsonCandidate(text: string): string | null {
   const lines = text
-    .split('\n')
+    .split("\n")
     .map((line) => line.trim())
     .filter(Boolean);
 
   for (let i = lines.length - 1; i >= 0; i -= 1) {
     const line = lines[i];
-    if ((line.startsWith('{') && line.endsWith('}')) || (line.startsWith('[') && line.endsWith(']'))) {
+    if (
+      (line.startsWith("{") && line.endsWith("}")) ||
+      (line.startsWith("[") && line.endsWith("]"))
+    ) {
       return line;
     }
   }
 
   const trimmed = text.trim();
-  if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+  if (
+    (trimmed.startsWith("{") && trimmed.endsWith("}")) ||
+    (trimmed.startsWith("[") && trimmed.endsWith("]"))
+  ) {
     return trimmed;
   }
 

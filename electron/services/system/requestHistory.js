@@ -1,49 +1,49 @@
-const fs = require('fs');
-const path = require('path');
-const os = require('os');
+const fs = require("fs");
+const path = require("path");
+const os = require("os");
 
-const HISTORY_FILE_PATH = path.join(os.homedir(), '.fere', 'request-history.json');
+const HISTORY_FILE_PATH = path.join(os.homedir(), ".fere", "request-history.json");
 const MAX_HISTORY_ENTRIES = 100;
 const MAX_HISTORY_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
-const REDACTED = '[REDACTED]';
+const REDACTED = "[REDACTED]";
 
 // Headers whose values must never be persisted to disk
 const SENSITIVE_HEADERS = new Set([
-  'authorization',
-  'proxy-authorization',
-  'cookie',
-  'set-cookie',
-  'x-api-key',
-  'x-auth-token',
-  'x-csrf-token',
-  'x-xsrf-token',
+  "authorization",
+  "proxy-authorization",
+  "cookie",
+  "set-cookie",
+  "x-api-key",
+  "x-auth-token",
+  "x-csrf-token",
+  "x-xsrf-token",
 ]);
 
 // Body field names (case-insensitive) that should be redacted
 const SENSITIVE_BODY_FIELDS = new Set([
-  'password',
-  'passwd',
-  'secret',
-  'token',
-  'access_token',
-  'refresh_token',
-  'api_key',
-  'apikey',
-  'api_secret',
-  'client_secret',
-  'private_key',
-  'credentials',
-  'ssn',
-  'credit_card',
-  'card_number',
+  "password",
+  "passwd",
+  "secret",
+  "token",
+  "access_token",
+  "refresh_token",
+  "api_key",
+  "apikey",
+  "api_secret",
+  "client_secret",
+  "private_key",
+  "credentials",
+  "ssn",
+  "credit_card",
+  "card_number",
 ]);
 
 /**
  * Redact sensitive values from an object/array tree (case-insensitive key match).
  */
 function redactObject(obj, sensitiveKeys) {
-  if (!obj || typeof obj !== 'object') return obj;
+  if (!obj || typeof obj !== "object") return obj;
 
   if (Array.isArray(obj)) {
     return obj.map((item) => redactObject(item, sensitiveKeys));
@@ -53,7 +53,7 @@ function redactObject(obj, sensitiveKeys) {
   for (const [key, value] of Object.entries(obj)) {
     if (sensitiveKeys.has(key.toLowerCase())) {
       result[key] = REDACTED;
-    } else if (value && typeof value === 'object') {
+    } else if (value && typeof value === "object") {
       result[key] = redactObject(value, sensitiveKeys);
     } else {
       result[key] = value;
@@ -67,9 +67,9 @@ function redactObject(obj, sensitiveKeys) {
  * Handles both `key=value&` (form-encoded) and `key=value\n` (multipart-like) patterns.
  */
 function buildFormRedactPattern(sensitiveKeys) {
-  const escaped = [...sensitiveKeys].map((k) => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  const escaped = [...sensitiveKeys].map((k) => k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   // Match: key=<value> where value runs until & or end-of-string
-  return new RegExp(`((?:^|&)(?:${escaped.join('|')})=)([^&]*)`, 'gi');
+  return new RegExp(`((?:^|&)(?:${escaped.join("|")})=)([^&]*)`, "gi");
 }
 
 const FORM_REDACT_RE = buildFormRedactPattern(SENSITIVE_BODY_FIELDS);
@@ -104,10 +104,10 @@ function redactEntry(entry) {
   }
 
   // Redact sensitive fields inside request bodies
-  if (redacted.body && typeof redacted.body === 'string') {
+  if (redacted.body && typeof redacted.body === "string") {
     try {
       const parsed = JSON.parse(redacted.body);
-      if (parsed && typeof parsed === 'object') {
+      if (parsed && typeof parsed === "object") {
         redacted.body = JSON.stringify(redactObject(parsed, SENSITIVE_BODY_FIELDS));
         return redacted;
       }
@@ -139,7 +139,7 @@ let writeQueue = Promise.resolve();
  * Ensure the .fere directory exists
  */
 function ensureConfigDir() {
-  const configDir = path.join(os.homedir(), '.fere');
+  const configDir = path.join(os.homedir(), ".fere");
   if (!fs.existsSync(configDir)) {
     fs.mkdirSync(configDir, { recursive: true });
   }
@@ -152,7 +152,7 @@ function ensureConfigDir() {
 function readHistoryFile() {
   if (!fs.existsSync(HISTORY_FILE_PATH)) return [];
   try {
-    const raw = fs.readFileSync(HISTORY_FILE_PATH, 'utf-8');
+    const raw = fs.readFileSync(HISTORY_FILE_PATH, "utf-8");
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? parsed : [];
   } catch {
@@ -164,8 +164,8 @@ function readHistoryFile() {
  * Write history array to disk atomically using rename.
  */
 function writeHistoryFile(history) {
-  const tmp = HISTORY_FILE_PATH + '.tmp';
-  fs.writeFileSync(tmp, JSON.stringify(history, null, 2), 'utf-8');
+  const tmp = HISTORY_FILE_PATH + ".tmp";
+  fs.writeFileSync(tmp, JSON.stringify(history, null, 2), "utf-8");
   fs.renameSync(tmp, HISTORY_FILE_PATH);
 }
 
@@ -178,7 +178,7 @@ function loadHistory() {
     const history = pruneExpired(readHistoryFile());
     return { success: true, history };
   } catch (error) {
-    console.error('Error loading request history:', error);
+    console.error("Error loading request history:", error);
     return { success: false, error: error.message };
   }
 }
@@ -204,10 +204,12 @@ function saveHistoryEntry(entry) {
     writeHistoryFile(history);
   });
 
-  return writeQueue.then(() => ({ success: true })).catch((error) => {
-    console.error('Error saving history entry:', error);
-    return { success: false, error: error.message };
-  });
+  return writeQueue
+    .then(() => ({ success: true }))
+    .catch((error) => {
+      console.error("Error saving history entry:", error);
+      return { success: false, error: error.message };
+    });
 }
 
 /**
@@ -221,10 +223,12 @@ function clearHistory() {
     }
   });
 
-  return writeQueue.then(() => ({ success: true })).catch((error) => {
-    console.error('Error clearing history:', error);
-    return { success: false, error: error.message };
-  });
+  return writeQueue
+    .then(() => ({ success: true }))
+    .catch((error) => {
+      console.error("Error clearing history:", error);
+      return { success: false, error: error.message };
+    });
 }
 
 module.exports = {

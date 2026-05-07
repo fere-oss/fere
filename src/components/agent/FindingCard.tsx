@@ -1,6 +1,6 @@
 import React from "react";
 import type { AgentFixAction } from "../../types/electron";
-import type { FeedFinding, IncidentStage } from "./types";
+import type { FeedFinding } from "./types";
 
 export function FindingCard({
   item,
@@ -18,9 +18,7 @@ export function FindingCard({
   isStreaming: boolean;
 }) {
   const canDismiss: boolean =
-    item.stage === "detected" ||
-    item.stage === "verified" ||
-    item.stage === "escalated";
+    item.stage === "detected" || item.stage === "verified" || item.stage === "escalated";
 
   return (
     <div className={`agp-finding-card agp-finding-stage-${item.stage}`}>
@@ -41,19 +39,17 @@ export function FindingCard({
 
       {item.stage === "detected" && (
         <div className="agp-finding-actions">
-          {item.fix &&
-            (item.fix.type === "restart-container" ||
-              item.fix.type === "kill-port") && (
-              <button
-                className="agp-finding-fix-btn"
-                onClick={() => onFix(item.id)}
-                disabled={isStreaming}
-              >
-                {item.fix.type === "restart-container"
-                  ? "Restart container"
-                  : `Kill :${(item.fix as AgentFixAction & { port: number }).port}`}
-              </button>
-            )}
+          {item.fix && (item.fix.type === "restart-container" || item.fix.type === "kill-port") && (
+            <button
+              className="agp-finding-fix-btn"
+              onClick={() => onFix(item.id)}
+              disabled={isStreaming}
+            >
+              {item.fix.type === "restart-container"
+                ? "Restart container"
+                : `Kill :${(item.fix as AgentFixAction & { port: number }).port}`}
+            </button>
+          )}
           <button
             className="agp-finding-explain-btn"
             onClick={() => onExplain(item)}
@@ -80,9 +76,7 @@ export function FindingCard({
       )}
 
       {item.stage === "verified" && (
-        <div className="agp-finding-status agp-finding-status-verified">
-          Fixed
-        </div>
+        <div className="agp-finding-status agp-finding-status-verified">Fixed</div>
       )}
 
       {item.stage === "escalated" && (

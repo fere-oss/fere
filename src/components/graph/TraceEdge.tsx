@@ -1,8 +1,4 @@
-import {
-  getBezierPath,
-  getSmoothStepPath,
-  type EdgeProps,
-} from "reactflow";
+import { getBezierPath, getSmoothStepPath, type EdgeProps } from "reactflow";
 import type { ArrowEdgeData } from "./ArrowEdge";
 
 export type TraceEdgeData = ArrowEdgeData & {
@@ -39,9 +35,15 @@ function TraceEdgePath({
   isDrawn?: boolean;
   inferred?: boolean;
 }) {
-  const showBadge = (isDrawn || isActiveHop) && latency !== undefined && latency >= 0 && labelX !== undefined && labelY !== undefined;
+  const showBadge =
+    (isDrawn || isActiveHop) &&
+    latency !== undefined &&
+    latency >= 0 &&
+    labelX !== undefined &&
+    labelY !== undefined;
   const badgeColor = "#171717";
-  const badgeText = latency !== undefined && latency >= 0 ? `${inferred ? "~" : ""}${formatLatency(latency)}` : "";
+  const badgeText =
+    latency !== undefined && latency >= 0 ? `${inferred ? "~" : ""}${formatLatency(latency)}` : "";
   const badgeWidth = Math.max(40, badgeText.length * 8 + 16);
 
   return (
@@ -100,10 +102,7 @@ function TraceEdgePath({
   );
 }
 
-export function TraceBezierEdge({
-  id,
-  data,
-}: EdgeProps<TraceEdgeData>) {
+export function TraceBezierEdge({ id, data }: EdgeProps<TraceEdgeData>) {
   if (!data) return null;
   const [edgePath, labelX, labelY] = getBezierPath({
     sourceX: data.sx,
@@ -127,10 +126,7 @@ export function TraceBezierEdge({
   );
 }
 
-export function TraceStepEdge({
-  id,
-  data,
-}: EdgeProps<TraceEdgeData>) {
+export function TraceStepEdge({ id, data }: EdgeProps<TraceEdgeData>) {
   if (!data) return null;
   const [edgePath, labelX, labelY] = getSmoothStepPath({
     sourceX: data.sx,

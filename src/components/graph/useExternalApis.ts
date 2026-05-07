@@ -36,23 +36,26 @@ export function useExternalApis(projectPathsKey: string) {
 
     const runWithConcurrency = async (maxConcurrent = 3) => {
       let index = 0;
-      const workers = Array.from({ length: Math.min(maxConcurrent, uncachedPaths.length) }, async () => {
-        while (!cancelled) {
-          const currentIndex = index;
-          index += 1;
-          if (currentIndex >= uncachedPaths.length) break;
-          const projectPath = uncachedPaths[currentIndex];
-          try {
-            const apis = await window.electronAPI.getExternalApis(projectPath);
-            if (cancelled) return;
-            setExternalApiCacheEntry(projectPath, apis);
-          } catch {
-            // Scan failed for this project — skip
-          } finally {
-            externalApiInFlight.delete(projectPath);
+      const workers = Array.from(
+        { length: Math.min(maxConcurrent, uncachedPaths.length) },
+        async () => {
+          while (!cancelled) {
+            const currentIndex = index;
+            index += 1;
+            if (currentIndex >= uncachedPaths.length) break;
+            const projectPath = uncachedPaths[currentIndex];
+            try {
+              const apis = await window.electronAPI.getExternalApis(projectPath);
+              if (cancelled) return;
+              setExternalApiCacheEntry(projectPath, apis);
+            } catch {
+              // Scan failed for this project — skip
+            } finally {
+              externalApiInFlight.delete(projectPath);
+            }
           }
-        }
-      });
+        },
+      );
       await Promise.all(workers);
     };
 

@@ -23,7 +23,10 @@ export function MinimalServiceNode({
     <div
       className="service-node-minimal"
       style={{ "--node-color": accentColor } as React.CSSProperties}
-      onClick={(e) => { e.stopPropagation(); onClick(node); }}
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick(node);
+      }}
       onContextMenu={(e) => onContextMenu(e, node)}
     >
       <div

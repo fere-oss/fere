@@ -11,17 +11,17 @@ const platform = process.platform;
 
 let impl;
 switch (platform) {
-  case 'darwin':
-    impl = require('./darwin');
+  case "darwin":
+    impl = require("./darwin");
     break;
-  case 'win32':
-    impl = require('./win32');
+  case "win32":
+    impl = require("./win32");
     break;
   default:
     throw new Error(
       `Unsupported platform: ${platform}. ` +
-      `Fere currently supports: darwin (macOS). ` +
-      `See electron/services/platform/ to add support for your OS.`
+        `Fere currently supports: darwin (macOS). ` +
+        `See electron/services/platform/ to add support for your OS.`,
     );
 }
 

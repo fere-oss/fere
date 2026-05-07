@@ -1,17 +1,11 @@
-'use strict';
+"use strict";
 
-const crypto = require('crypto');
-const fs = require('fs');
-const path = require('path');
+const crypto = require("crypto");
+const fs = require("fs");
+const path = require("path");
 
 // Env file names to scan (mirrors externalApiScanner.js)
-const ENV_FILE_NAMES = [
-  '.env',
-  '.env.local',
-  '.env.development',
-  '.env.production',
-  '.env.test',
-];
+const ENV_FILE_NAMES = [".env", ".env.local", ".env.development", ".env.production", ".env.test"];
 
 /**
  * Collect .env* file paths that exist under a given directory.
@@ -49,14 +43,14 @@ function extractEnvKeys(filePaths) {
   for (const filePath of filePaths) {
     let content;
     try {
-      content = fs.readFileSync(filePath, 'utf-8');
+      content = fs.readFileSync(filePath, "utf-8");
     } catch {
       continue;
     }
-    for (const line of content.split('\n')) {
+    for (const line of content.split("\n")) {
       const trimmed = line.trim();
       // skip comments and blank lines fast
-      if (!trimmed || trimmed.startsWith('#')) continue;
+      if (!trimmed || trimmed.startsWith("#")) continue;
       const match = KEY_REGEX.exec(trimmed);
       if (match) {
         keys.add(match[1]);
@@ -100,34 +94,36 @@ async function buildFingerprint(snapshot, projectPath, label) {
   // 1. Extract services from graph nodes
   const rawNodes = snapshot?.graph?.nodes ?? [];
   const services = rawNodes
-    .filter((node) => node.type !== 'external' && !node.isGhost)
+    .filter((node) => node.type !== "external" && !node.isGhost)
     .map((node) => ({
       name: node.name,
       type: node.type,
       ports: (node.ports ?? []).map((p) => p.port).sort((a, b) => a - b),
-      health: node.healthStatus ?? 'unknown',
+      health: node.healthStatus ?? "unknown",
     }))
     .sort((a, b) => a.name.localeCompare(b.name));
 
   // 2. Extract containers
   const rawContainers = snapshot?.docker?.containers ?? [];
-  const containers = rawContainers.map((c) => {
-    const fullImage = c.image ?? '';
-    // strip registry prefix, keep repo/name portion
-    const imageName = fullImage.split(':')[0].split('/').pop() ?? fullImage;
-    const imageTag = fullImage.includes(':') ? fullImage.split(':').slice(1).join(':') : 'latest';
-    const ports = (c.ports ?? [])
-      .map((p) => p.hostPort || p.containerPort)
-      .filter(Boolean)
-      .sort((a, b) => a - b);
-    return {
-      name: c.name ?? c.id ?? 'unknown',
-      image: imageName,
-      imageTag,
-      state: c.state ?? 'unknown',
-      ports,
-    };
-  }).sort((a, b) => a.name.localeCompare(b.name));
+  const containers = rawContainers
+    .map((c) => {
+      const fullImage = c.image ?? "";
+      // strip registry prefix, keep repo/name portion
+      const imageName = fullImage.split(":")[0].split("/").pop() ?? fullImage;
+      const imageTag = fullImage.includes(":") ? fullImage.split(":").slice(1).join(":") : "latest";
+      const ports = (c.ports ?? [])
+        .map((p) => p.hostPort || p.containerPort)
+        .filter(Boolean)
+        .sort((a, b) => a - b);
+      return {
+        name: c.name ?? c.id ?? "unknown",
+        image: imageName,
+        imageTag,
+        state: c.state ?? "unknown",
+        ports,
+      };
+    })
+    .sort((a, b) => a.name.localeCompare(b.name));
 
   // 3. Collect env keys
   let envKeys = [];
@@ -141,7 +137,7 @@ async function buildFingerprint(snapshot, projectPath, label) {
   const fingerprint = {
     version: 1,
     generatedAt: Date.now(),
-    label: label || 'My Stack',
+    label: label || "My Stack",
     services,
     containers,
     envKeys,
@@ -149,9 +145,9 @@ async function buildFingerprint(snapshot, projectPath, label) {
 
   // 5. Compute checksum over content fields only
   const checksum = crypto
-    .createHash('sha256')
+    .createHash("sha256")
     .update(JSON.stringify({ services, containers, envKeys }))
-    .digest('hex')
+    .digest("hex")
     .slice(0, 8);
 
   return { ...fingerprint, checksum };

@@ -95,7 +95,9 @@ export function ContextBlock({
     <div className="agp-context-block">
       <div className="agp-context-header">
         <span className="agp-context-title">Runtime Context</span>
-        <span className="agp-context-meta">{snapshot.scope} · {snapshot.timestamp}</span>
+        <span className="agp-context-meta">
+          {snapshot.scope} · {snapshot.timestamp}
+        </span>
       </div>
 
       <div className="agp-context-scrollable">
@@ -121,7 +123,10 @@ export function ContextBlock({
                       {svc.type}
                     </span>
                     <span className="agp-context-service-name">{svc.name}</span>
-                    <span className="agp-context-service-health" style={{ background: healthColor }} />
+                    <span
+                      className="agp-context-service-health"
+                      style={{ background: healthColor }}
+                    />
                     <span className="agp-context-service-meta">:{ports}</span>
                     {cpu && <span className="agp-context-service-meta">{cpu}</span>}
                     {mem && <span className="agp-context-service-meta">{mem}</span>}
@@ -134,7 +139,11 @@ export function ContextBlock({
                   )}
                   {svc.routes && svc.routes.length > 0 && (
                     <div className="agp-context-service-detail">
-                      routes: {svc.routes.slice(0, 4).map((r) => `${r.method ?? "?"} ${r.path}`).join(", ")}
+                      routes:{" "}
+                      {svc.routes
+                        .slice(0, 4)
+                        .map((r) => `${r.method ?? "?"} ${r.path}`)
+                        .join(", ")}
                       {svc.routes.length > 4 ? ` +${svc.routes.length - 4} more` : ""}
                     </div>
                   )}
@@ -146,13 +155,17 @@ export function ContextBlock({
 
         {(snapshot.connections ?? []).length > 0 && (
           <div className="agp-context-section">
-            <div className="agp-context-section-label">Connections ({snapshot.connections.length})</div>
+            <div className="agp-context-section-label">
+              Connections ({snapshot.connections.length})
+            </div>
             {snapshot.connections.map((c, i) => (
               <div key={i} className="agp-context-service-detail" style={{ padding: "2px 0" }}>
                 <span style={{ fontWeight: 600, color: "var(--text-primary)" }}>{c.from}</span>
                 <span style={{ margin: "0 4px", color: "var(--text-muted)" }}>→</span>
                 <span style={{ fontWeight: 600, color: "var(--text-primary)" }}>{c.to}</span>
-                <span className="agp-context-service-meta" style={{ marginLeft: 4 }}>:{c.port}</span>
+                <span className="agp-context-service-meta" style={{ marginLeft: 4 }}>
+                  :{c.port}
+                </span>
               </div>
             ))}
           </div>
@@ -164,7 +177,13 @@ export function ContextBlock({
             {snapshot.findings.map((f, i) => {
               const sev = f.severity.toLowerCase();
               const sevColor =
-                sev === "critical" ? "#EF4444" : sev === "high" ? "#F97316" : sev === "medium" ? "#EAB308" : "#6B7280";
+                sev === "critical"
+                  ? "#EF4444"
+                  : sev === "high"
+                    ? "#F97316"
+                    : sev === "medium"
+                      ? "#EAB308"
+                      : "#6B7280";
               return (
                 <div key={i} className="agp-context-finding">
                   <span className="agp-context-finding-sev" style={{ color: sevColor }}>

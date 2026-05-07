@@ -31,10 +31,10 @@ function loadCustomRules() {
 function runCustomRules(snapshot, rules) {
   if (!rules || rules.length === 0) return [];
   const findings = [];
-  const activePorts = new Set(
-    (snapshot.ports ?? []).map((p) => p.port),
+  const activePorts = new Set((snapshot.ports ?? []).map((p) => p.port));
+  const allCommands = (snapshot.processes ?? []).map(
+    (p) => (p.command ?? "") + " " + (p.name ?? ""),
   );
-  const allCommands = (snapshot.processes ?? []).map((p) => (p.command ?? "") + " " + (p.name ?? ""));
 
   for (const rule of rules) {
     if (!rule.id || !rule.check?.type) continue;
@@ -68,7 +68,8 @@ function runCustomRules(snapshot, rules) {
             category: cat,
             service: svc,
             summary: rule.name ?? `Process not found: ${rule.check.pattern}`,
-            detail: rule.detail ?? `Custom rule: no running process matched "${rule.check.pattern}".`,
+            detail:
+              rule.detail ?? `Custom rule: no running process matched "${rule.check.pattern}".`,
             impact: rule.impact ?? null,
             affectedServices: rule.affectedServices ?? [],
             fix: rule.fix ?? null,
@@ -87,8 +88,13 @@ function runCustomRules(snapshot, rules) {
           for (const envFile of envFiles) {
             try {
               const content = fs.readFileSync(envFile, "utf8");
-              if (new RegExp(`^${key}\\s*=`, "m").test(content)) { found = true; break; }
-            } catch { /* skip */ }
+              if (new RegExp(`^${key}\\s*=`, "m").test(content)) {
+                found = true;
+                break;
+              }
+            } catch {
+              /* skip */
+            }
           }
           if (found) break;
         }
@@ -106,7 +112,9 @@ function runCustomRules(snapshot, rules) {
           });
         }
       }
-    } catch { /* malformed rule — skip */ }
+    } catch {
+      /* malformed rule — skip */
+    }
   }
   return findings;
 }
@@ -130,9 +138,7 @@ const DEP_PORT_MAP = {
 
 async function runScan(snapshot, nodeIds) {
   const allNodes = snapshot.graph?.nodes ?? [];
-  const nodes = nodeIds?.length > 0
-    ? allNodes.filter((n) => nodeIds.includes(n.id))
-    : allNodes;
+  const nodes = nodeIds?.length > 0 ? allNodes.filter((n) => nodeIds.includes(n.id)) : allNodes;
   const edges = snapshot.graph?.edges ?? [];
   const ports = snapshot.ports ?? [];
   const docker = snapshot.docker ?? null;
@@ -152,10 +158,14 @@ async function runScan(snapshot, nodeIds) {
 
   // Deduplicate by id
   const seen = new Set();
-  return findings.filter((f) => { if (seen.has(f.id)) return false; seen.add(f.id); return true; });
+  return findings.filter((f) => {
+    if (seen.has(f.id)) return false;
+    seen.add(f.id);
+    return true;
+  });
 }
 
-const CPU_WARN_THRESHOLD = 80;   // %
+const CPU_WARN_THRESHOLD = 80; // %
 const MEM_WARN_THRESHOLD_MB = 512; // MB
 
 function detectHighResourceUsage(nodes) {
@@ -191,7 +201,11 @@ function detectHighResourceUsage(nodes) {
         detail: `${n.name} (PID ${n.pid}) is using ${memMB.toFixed(0)} MB of memory${memMB >= 2048 ? " — above critical threshold" : ""}. This may indicate a memory leak or an unusually large in-memory dataset.`,
         impact: memMB >= 2048 ? `Risk of OOM kill on this machine` : null,
         affectedServices: [],
-        fix: { type: "copy-only", preview: `vmmap -summary ${n.pid}`, label: `Inspect ${n.name} memory` },
+        fix: {
+          type: "copy-only",
+          preview: `vmmap -summary ${n.pid}`,
+          label: `Inspect ${n.name} memory`,
+        },
       });
     }
   }
@@ -244,7 +258,13 @@ function detectPortConflicts(ports, nodes) {
         detail: `Port ${portNum} is already held by PID ${pid} (${proc}). ${node.name} cannot bind to this port until the conflicting process is killed. Run \`lsof -i :${portNum}\` to investigate.`,
         impact: `${node.name} will fail to start`,
         affectedServices: [node.name],
-        fix: { type: "kill-port", port: portNum, pid, preview: `lsof -ti:${portNum} | xargs kill`, label: `Kill PID ${pid} on port ${portNum}` },
+        fix: {
+          type: "kill-port",
+          port: portNum,
+          pid,
+          preview: `lsof -ti:${portNum} | xargs kill`,
+          label: `Kill PID ${pid} on port ${portNum}`,
+        },
       });
     }
   }
@@ -254,7 +274,13 @@ function detectPortConflicts(ports, nodes) {
 function detectDownServices(nodes, edges) {
   const nodeById = new Map(nodes.map((n) => [n.id, n.name]));
   return nodes
-    .filter((n) => n.healthStatus === "red" && !(n.pid === -1 && !n.pids?.length) && !n.isContainer && !n.isDockerContainer)
+    .filter(
+      (n) =>
+        n.healthStatus === "red" &&
+        !(n.pid === -1 && !n.pids?.length) &&
+        !n.isContainer &&
+        !n.isDockerContainer,
+    )
     .map((n) => {
       // Find dependents
       const dependents = edges
@@ -268,7 +294,10 @@ function detectDownServices(nodes, edges) {
         service: n.name,
         summary: `${n.name} is not responding`,
         detail: `${n.name} was last seen active but is no longer responding to health checks. The process may have crashed, run out of resources, or been stopped externally. Check logs or restart the service.`,
-        impact: dependents.length > 0 ? `${dependents.length} service${dependents.length !== 1 ? "s" : ""} depend on it: ${dependents.join(", ")}` : null,
+        impact:
+          dependents.length > 0
+            ? `${dependents.length} service${dependents.length !== 1 ? "s" : ""} depend on it: ${dependents.join(", ")}`
+            : null,
         affectedServices: dependents,
         fix: null,
       };
@@ -357,7 +386,12 @@ function detectStoppedContainers(docker) {
       detail: `Container ${c.name} (image: ${c.image}) has exited. This is usually caused by a startup error or an OOM kill. Run \`docker logs ${c.name}\` to find the root cause.`,
       impact: null,
       affectedServices: [],
-      fix: { type: "restart-container", containerId: c.id, preview: `docker logs --tail 50 ${c.name}\ndocker start ${c.name}`, label: `Restart ${c.name}` },
+      fix: {
+        type: "restart-container",
+        containerId: c.id,
+        preview: `docker logs --tail 50 ${c.name}\ndocker start ${c.name}`,
+        label: `Restart ${c.name}`,
+      },
     }));
 }
 
@@ -378,7 +412,12 @@ function detectUnhealthyContainers(docker) {
         detail: `Container is running but Docker health checks are failing (${streak} consecutive failure${streak !== 1 ? "s" : ""}).${lastOutput ? ` Last health check output: "${lastOutput}"` : " No output captured — check if the healthcheck command is correct."}`,
         impact: `Container may be accepting traffic but not functioning correctly`,
         affectedServices: [],
-        fix: { type: "restart-container", containerId: c.id, preview: `docker inspect --format='{{json .State.Health}}' ${c.name} | jq\ndocker restart ${c.name}`, label: `Restart ${c.name}` },
+        fix: {
+          type: "restart-container",
+          containerId: c.id,
+          preview: `docker inspect --format='{{json .State.Health}}' ${c.name} | jq\ndocker restart ${c.name}`,
+          label: `Restart ${c.name}`,
+        },
       };
     });
 }
@@ -396,7 +435,11 @@ function detectRestartingContainers(docker) {
       detail: `${c.name} (${c.image}) is in a restart loop — it keeps crashing on startup. This is usually caused by a missing environment variable, misconfigured entrypoint, or dependency that isn't ready yet. Check logs immediately.`,
       impact: `Service is unavailable while crash-looping`,
       affectedServices: [],
-      fix: { type: "copy-only", preview: `docker logs --tail 50 ${c.name}`, label: `View crash logs` },
+      fix: {
+        type: "copy-only",
+        preview: `docker logs --tail 50 ${c.name}`,
+        label: `View crash logs`,
+      },
     }));
 }
 
@@ -428,19 +471,33 @@ async function detectEnvMismatches(nodes) {
   const projectPaths = new Set(nodes.map((n) => n.projectPath).filter(Boolean));
 
   const PORT_VARS = [
-    { keys: ["DATABASE_URL", "DB_URL", "POSTGRES_URL", "POSTGRESQL_URL", "PG_URI"], port: 5432, label: "PostgreSQL" },
+    {
+      keys: ["DATABASE_URL", "DB_URL", "POSTGRES_URL", "POSTGRESQL_URL", "PG_URI"],
+      port: 5432,
+      label: "PostgreSQL",
+    },
     { keys: ["REDIS_URL", "REDIS_URI", "CACHE_URL"], port: 6379, label: "Redis" },
-    { keys: ["MONGODB_URI", "MONGO_URI", "MONGODB_URL", "MONGO_URL"], port: 27017, label: "MongoDB" },
+    {
+      keys: ["MONGODB_URI", "MONGO_URI", "MONGODB_URL", "MONGO_URL"],
+      port: 27017,
+      label: "MongoDB",
+    },
     { keys: ["RABBITMQ_URL", "AMQP_URL", "BROKER_URL"], port: 5672, label: "RabbitMQ" },
     { keys: ["KAFKA_BROKERS", "KAFKA_URL", "KAFKA_BOOTSTRAP_SERVERS"], port: 9092, label: "Kafka" },
     { keys: ["ELASTICSEARCH_URL", "ES_URL"], port: 9200, label: "Elasticsearch" },
   ];
 
   for (const projectPath of projectPaths) {
-    const envFiles = [".env", ".env.local", ".env.development"].map((f) => path.join(projectPath, f)).filter(fs.existsSync);
+    const envFiles = [".env", ".env.local", ".env.development"]
+      .map((f) => path.join(projectPath, f))
+      .filter(fs.existsSync);
     for (const envFile of envFiles) {
       let content;
-      try { content = fs.readFileSync(envFile, "utf8"); } catch { continue; }
+      try {
+        content = fs.readFileSync(envFile, "utf8");
+      } catch {
+        continue;
+      }
       const vars = {};
       for (const line of content.split("\n")) {
         const m = line.match(/^([A-Z_][A-Z0-9_]*)=(.+)$/);
@@ -466,7 +523,11 @@ async function detectEnvMismatches(nodes) {
                 detail: `${path.basename(envFile)} sets ${key}=${val.slice(0, 80)} but no process is bound to port ${usedPort}. ${label} is likely not running. This will cause connection errors at runtime.`,
                 impact: `Runtime connection failures for ${label}`,
                 affectedServices: [],
-                fix: { type: "copy-only", preview: `docker run -d -p ${usedPort}:${usedPort} ${label.toLowerCase()}:latest`, label: `Start ${label}` },
+                fix: {
+                  type: "copy-only",
+                  preview: `docker run -d -p ${usedPort}:${usedPort} ${label.toLowerCase()}:latest`,
+                  label: `Start ${label}`,
+                },
               });
             }
           }
@@ -486,7 +547,11 @@ async function detectAdvisory(nodes) {
     const pkgPath = path.join(projectPath, "package.json");
     if (!fs.existsSync(pkgPath)) continue;
     let pkg;
-    try { pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8")); } catch { continue; }
+    try {
+      pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
+    } catch {
+      continue;
+    }
     const allDeps = { ...pkg.dependencies, ...pkg.devDependencies };
     for (const [dep, mapping] of Object.entries(DEP_PORT_MAP)) {
       if (!mapping || !allDeps[dep] || activePorts.has(mapping.port)) continue;
@@ -502,7 +567,11 @@ async function detectAdvisory(nodes) {
         detail: `package.json includes "${dep}" but no process is listening on port ${mapping.port} (${mapping.label}'s default port). Calls to ${mapping.label} will fail until it's started.`,
         impact: `${dep} calls will throw connection errors`,
         affectedServices: [],
-        fix: { type: "copy-only", preview: `docker run -d -p ${mapping.port}:${mapping.port} ${mapping.label.toLowerCase()}`, label: `Start ${mapping.label}` },
+        fix: {
+          type: "copy-only",
+          preview: `docker run -d -p ${mapping.port}:${mapping.port} ${mapping.label.toLowerCase()}`,
+          label: `Start ${mapping.label}`,
+        },
       });
     }
 
@@ -529,29 +598,40 @@ function findComposePath(startPath) {
 
 function checkHealthChecks(composePath) {
   let content;
-  try { content = fs.readFileSync(composePath, "utf8"); } catch { return []; }
+  try {
+    content = fs.readFileSync(composePath, "utf8");
+  } catch {
+    return [];
+  }
   const serviceNames = [];
   for (const m of content.matchAll(/^  (\w[\w-]+):\s*$/gm)) serviceNames.push(m[1]);
   const missing = serviceNames.filter((name) => {
     const idx = content.indexOf(`  ${name}:`);
     if (idx === -1) return false;
     const next = content.slice(idx + name.length + 3).search(/^  \w[\w-]+:/m);
-    const block = next === -1 ? content.slice(idx) : content.slice(idx, idx + name.length + 3 + next);
+    const block =
+      next === -1 ? content.slice(idx) : content.slice(idx, idx + name.length + 3 + next);
     return !block.includes("healthcheck:");
   });
   if (!missing.length) return [];
   const id = `compose-missing-healthcheck-${path.basename(path.dirname(composePath))}`;
-  return [{
-    id,
-    severity: "suggestion",
-    category: "config",
-    service: path.basename(path.dirname(composePath)),
-    summary: `${missing.length} container${missing.length !== 1 ? "s" : ""} missing Docker health checks`,
-    detail: `${missing.join(", ")} ${missing.length === 1 ? "has" : "have"} no healthcheck in docker-compose.yml. Without health checks, Docker can't detect when a container starts but isn't ready, and dependent services may connect too early.`,
-    impact: `Dependent services may connect before ${missing.join(", ")} ${missing.length === 1 ? "is" : "are"} ready`,
-    affectedServices: [],
-    fix: { type: "copy-only", preview: `healthcheck:\n  test: ["CMD", "curl", "-f", "http://localhost:PORT/health"]\n  interval: 10s\n  timeout: 5s\n  retries: 3\n  start_period: 20s`, label: "Copy healthcheck template" },
-  }];
+  return [
+    {
+      id,
+      severity: "suggestion",
+      category: "config",
+      service: path.basename(path.dirname(composePath)),
+      summary: `${missing.length} container${missing.length !== 1 ? "s" : ""} missing Docker health checks`,
+      detail: `${missing.join(", ")} ${missing.length === 1 ? "has" : "have"} no healthcheck in docker-compose.yml. Without health checks, Docker can't detect when a container starts but isn't ready, and dependent services may connect too early.`,
+      impact: `Dependent services may connect before ${missing.join(", ")} ${missing.length === 1 ? "is" : "are"} ready`,
+      affectedServices: [],
+      fix: {
+        type: "copy-only",
+        preview: `healthcheck:\n  test: ["CMD", "curl", "-f", "http://localhost:PORT/health"]\n  interval: 10s\n  timeout: 5s\n  retries: 3\n  start_period: 20s`,
+        label: "Copy healthcheck template",
+      },
+    },
+  ];
 }
 
 // ── Apply Fix ─────────────────────────────────────────────────────────────────
@@ -576,19 +656,24 @@ async function executeAction(action) {
     if (!targetPid) {
       throw new Error(`No listening PID found on port ${port}`);
     }
-    try { execSync(`kill ${targetPid}`, { timeout: 5000 }); } catch {}
+    try {
+      execSync(`kill ${targetPid}`, { timeout: 5000 });
+    } catch {}
     return { success: true };
   }
   if (action.type === "restart-container") {
     const { containerId } = action;
-    if (typeof containerId !== "string" || containerId.length < 4) throw new Error("Invalid restart-container payload");
+    if (typeof containerId !== "string" || containerId.length < 4)
+      throw new Error("Invalid restart-container payload");
     execSync(`docker restart ${containerId.slice(0, 64)}`, { timeout: 20000 });
     return { success: true };
   }
   if (action.type === "write-file") {
     const { filePath, content } = action;
-    if (typeof filePath !== "string" || !filePath.startsWith("/")) throw new Error("Invalid filePath");
-    if (!filePath.startsWith("/Users/") && !filePath.startsWith("/home/")) throw new Error("Access denied");
+    if (typeof filePath !== "string" || !filePath.startsWith("/"))
+      throw new Error("Invalid filePath");
+    if (!filePath.startsWith("/Users/") && !filePath.startsWith("/home/"))
+      throw new Error("Access denied");
     if (typeof content !== "string") throw new Error("Invalid content");
     const fs = require("fs");
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
@@ -631,9 +716,13 @@ async function readCodebaseContext(nodes) {
       if (fs.existsSync(pkgPath)) {
         try {
           const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
-          if (pkg.name) lines.push(`  Package: ${pkg.name}${pkg.version ? ` v${pkg.version}` : ""}`);
+          if (pkg.name)
+            lines.push(`  Package: ${pkg.name}${pkg.version ? ` v${pkg.version}` : ""}`);
           if (pkg.description) lines.push(`  Description: ${pkg.description}`);
-          const deps = Object.keys({ ...(pkg.dependencies ?? {}), ...(pkg.devDependencies ?? {}) }).slice(0, 20);
+          const deps = Object.keys({
+            ...(pkg.dependencies ?? {}),
+            ...(pkg.devDependencies ?? {}),
+          }).slice(0, 20);
           if (deps.length) lines.push(`  Dependencies: ${deps.join(", ")}`);
           const scripts = Object.keys(pkg.scripts ?? {}).slice(0, 10);
           if (scripts.length) lines.push(`  Scripts: ${scripts.join(", ")}`);
@@ -644,7 +733,9 @@ async function readCodebaseContext(nodes) {
       const reqPath = path.join(projectPath, "requirements.txt");
       if (fs.existsSync(reqPath)) {
         try {
-          const reqs = fs.readFileSync(reqPath, "utf8").split("\n")
+          const reqs = fs
+            .readFileSync(reqPath, "utf8")
+            .split("\n")
             .map((l) => l.trim().split(/[>=<!]/)[0])
             .filter(Boolean)
             .slice(0, 16);
@@ -670,7 +761,8 @@ async function readCodebaseContext(nodes) {
       const envPath = path.join(projectPath, ".env");
       if (fs.existsSync(envPath)) {
         try {
-          const keys = fs.readFileSync(envPath, "utf8")
+          const keys = fs
+            .readFileSync(envPath, "utf8")
             .split("\n")
             .map((l) => l.split("=")[0].trim())
             .filter((k) => /^[A-Z_][A-Z0-9_]*$/.test(k))
@@ -695,36 +787,32 @@ async function buildChatContext(snapshot, findings, tabLabel = null, nodeIds = n
     ? allEdges.filter((e) => scopedIds.has(e.source) || scopedIds.has(e.target))
     : allEdges;
   // Collect PIDs and container names from scoped nodes for port/container filtering
-  const scopedPids = new Set(
-    nodes.flatMap((n) => [n.pid, ...(n.pids ?? [])]).filter((p) => p > 0),
-  );
-  const scopedContainerNames = new Set(
-    nodes.filter((n) => n.isDockerContainer).map((n) => n.name),
-  );
+  const scopedPids = new Set(nodes.flatMap((n) => [n.pid, ...(n.pids ?? [])]).filter((p) => p > 0));
+  const scopedContainerNames = new Set(nodes.filter((n) => n.isDockerContainer).map((n) => n.name));
 
   const allPorts = snapshot.ports ?? [];
-  const ports = scopedIds && scopedPids.size > 0
-    ? allPorts.filter((p) => scopedPids.has(p.pid))
-    : allPorts;
+  const ports =
+    scopedIds && scopedPids.size > 0 ? allPorts.filter((p) => scopedPids.has(p.pid)) : allPorts;
 
   const allContainers = snapshot.docker?.containers ?? [];
-  const containers = scopedIds && scopedContainerNames.size > 0
-    ? allContainers.filter((c) => scopedContainerNames.has(c.name))
-    : allContainers;
+  const containers =
+    scopedIds && scopedContainerNames.size > 0
+      ? allContainers.filter((c) => scopedContainerNames.has(c.name))
+      : allContainers;
 
   const serviceLines = nodes
     .filter((n) => n.type !== "external")
     .map((n) => {
       const portList = (n.ports ?? []).map((p) => p.port).join(", ") || "none";
       const pid =
-        n.pid > 0
-          ? `PID ${n.pid}`
-          : n.pids?.length
-            ? `PIDs ${n.pids.join(",")}`
-            : "no PID";
+        n.pid > 0 ? `PID ${n.pid}` : n.pids?.length ? `PIDs ${n.pids.join(",")}` : "no PID";
       const health = n.healthStatus ?? "unknown";
       const cpu = n.cpu != null ? ` | cpu: ${n.cpu.toFixed(1)}%` : "";
-      const mem = n.memoryUsage ? ` | mem: ${n.memoryUsage}` : n.memory != null ? ` | mem: ${n.memory.toFixed(1)}MB` : "";
+      const mem = n.memoryUsage
+        ? ` | mem: ${n.memoryUsage}`
+        : n.memory != null
+          ? ` | mem: ${n.memory.toFixed(1)}MB`
+          : "";
       const typeTag = n.type ? ` | type: ${n.type}` : "";
       const cmd = n.command ? ` | cmd: ${n.command.slice(0, 80)}` : "";
       const projectTag = n.projectPath ? ` | path: ${n.projectPath}` : "";
@@ -809,9 +897,7 @@ async function buildChatContext(snapshot, findings, tabLabel = null, nodeIds = n
     : "  (none)";
 
   const findingLines = findings.length
-    ? findings
-        .map((f) => `  - [${f.severity.toUpperCase()}] ${f.service}: ${f.summary}`)
-        .join("\n")
+    ? findings.map((f) => `  - [${f.severity.toUpperCase()}] ${f.service}: ${f.summary}`).join("\n")
     : "  (no issues detected)";
 
   const codebaseContext = await readCodebaseContext(nodes);
@@ -884,12 +970,16 @@ function buildNodeDetails(node, allNodes, edges) {
   if (node.description) lines.push(`Description: ${node.description}`);
 
   const ports = node.ports ?? [];
-  if (ports.length) lines.push(`Ports: ${ports.map((p) => `:${p.port}${p.description ? ` (${p.description})` : ""}`).join(", ")}`);
+  if (ports.length)
+    lines.push(
+      `Ports: ${ports.map((p) => `:${p.port}${p.description ? ` (${p.description})` : ""}`).join(", ")}`,
+    );
 
   const routes = node.routes ?? [];
   if (routes.length) {
     lines.push(`\nAPI Routes (${routes.length}):`);
-    for (const r of routes) lines.push(`  ${r.method} ${r.path}${r.framework ? ` [${r.framework}]` : ""}`);
+    for (const r of routes)
+      lines.push(`  ${r.method} ${r.path}${r.framework ? ` [${r.framework}]` : ""}`);
   }
 
   const apis = node.externalApis ?? [];
@@ -911,11 +1001,19 @@ function buildNodeDetails(node, allNodes, edges) {
       if (last?.output) lines.push(`  Last health output: ${last.output.slice(0, 200)}`);
     }
     const nets = node.containerNetworks ?? [];
-    if (nets.length) lines.push(`  Networks: ${nets.map((n) => `${n.name} (${n.ipAddress})`).join(", ")}`);
+    if (nets.length)
+      lines.push(`  Networks: ${nets.map((n) => `${n.name} (${n.ipAddress})`).join(", ")}`);
     const mounts = node.containerMounts ?? [];
-    if (mounts.length) lines.push(`  Mounts: ${mounts.map((m) => `${m.source}→${m.destination}`).join(", ")}`);
+    if (mounts.length)
+      lines.push(`  Mounts: ${mounts.map((m) => `${m.source}→${m.destination}`).join(", ")}`);
     const cPorts = node.containerPorts ?? [];
-    if (cPorts.length) lines.push(`  Mapped ports: ${cPorts.filter((p) => p.hostPort).map((p) => `${p.hostPort}→${p.containerPort}`).join(", ")}`);
+    if (cPorts.length)
+      lines.push(
+        `  Mapped ports: ${cPorts
+          .filter((p) => p.hostPort)
+          .map((p) => `${p.hostPort}→${p.containerPort}`)
+          .join(", ")}`,
+      );
   }
 
   const isDockerNet = (e) => e.sourcePort === 0 && e.targetPort === 0;
@@ -923,30 +1021,48 @@ function buildNodeDetails(node, allNodes, edges) {
   const outbound = edges.filter((e) => e.source === node.id && !isDockerNet(e));
   const inbound = edges.filter((e) => e.target === node.id && !isDockerNet(e));
   if (inbound.length) {
-    lines.push(`\nInbound connections from: ${inbound.map((e) => {
-      const peerName = allNodes.find((n) => n.id === e.source)?.name ?? e.source;
-      return `${peerName} (:${e.sourcePort} → :${e.targetPort})`;
-    }).join(", ")}`);
+    lines.push(
+      `\nInbound connections from: ${inbound
+        .map((e) => {
+          const peerName = allNodes.find((n) => n.id === e.source)?.name ?? e.source;
+          return `${peerName} (:${e.sourcePort} → :${e.targetPort})`;
+        })
+        .join(", ")}`,
+    );
   }
   if (outbound.length) {
-    lines.push(`Outbound connections to: ${outbound.map((e) => {
-      const peerName = allNodes.find((n) => n.id === e.target)?.name ?? e.target;
-      return `${peerName} (:${e.sourcePort} → :${e.targetPort})`;
-    }).join(", ")}`);
+    lines.push(
+      `Outbound connections to: ${outbound
+        .map((e) => {
+          const peerName = allNodes.find((n) => n.id === e.target)?.name ?? e.target;
+          return `${peerName} (:${e.sourcePort} → :${e.targetPort})`;
+        })
+        .join(", ")}`,
+    );
   }
 
   const networkPeers = new Map();
-  for (const e of edges.filter(isDockerNet).filter((e) => e.source === node.id || e.target === node.id)) {
+  for (const e of edges
+    .filter(isDockerNet)
+    .filter((e) => e.source === node.id || e.target === node.id)) {
     const peerId = e.source === node.id ? e.target : e.source;
     if (!networkPeers.has(peerId)) {
       networkPeers.set(peerId, allNodes.find((n) => n.id === peerId)?.name ?? peerId);
     }
   }
   if (networkPeers.size) {
-    lines.push(`Shares docker network with: ${[...networkPeers.values()].join(", ")} (direction unknown — no live TCP observed)`);
+    lines.push(
+      `Shares docker network with: ${[...networkPeers.values()].join(", ")} (direction unknown — no live TCP observed)`,
+    );
   }
 
   return lines.join("\n");
 }
 
-module.exports = { runScan, executeAction, buildChatContext, readCodebaseContext, buildNodeDetails };
+module.exports = {
+  runScan,
+  executeAction,
+  buildChatContext,
+  readCodebaseContext,
+  buildNodeDetails,
+};

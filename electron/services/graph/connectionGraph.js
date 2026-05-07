@@ -9,17 +9,14 @@
  *   - Batched CWD collection (batchGetProcessCwds)
  */
 
-const path = require('path');
-const platform = require('../platform');
-const { getDevProcesses } = require('../monitoring/processMonitor');
-const { getListeningPorts, getEstablishedConnections } = require('../monitoring/portMonitor');
-const { scanRoutes, matchRoutesToService } = require('../discovery/routeScanner');
-const { scanLocalConnections } = require('../discovery/localConnectionScanner');
-const { updateHealthTracking, getHealthStatus } = require('../monitoring/healthTracker');
-const {
-  getDockerSnapshot,
-  containerHealthToGraphHealth,
-} = require('../docker/dockerMonitor');
+const path = require("path");
+const platform = require("../platform");
+const { getDevProcesses } = require("../monitoring/processMonitor");
+const { getListeningPorts, getEstablishedConnections } = require("../monitoring/portMonitor");
+const { scanRoutes, matchRoutesToService } = require("../discovery/routeScanner");
+const { scanLocalConnections } = require("../discovery/localConnectionScanner");
+const { updateHealthTracking, getHealthStatus } = require("../monitoring/healthTracker");
+const { getDockerSnapshot, containerHealthToGraphHealth } = require("../docker/dockerMonitor");
 const {
   categorizeProcess,
   inferProjectFromCommand,
@@ -31,10 +28,10 @@ const {
   buildGraphStructure,
   overlayMetrics,
   hasTopologyChanged,
-} = require('./graphFunctions');
+} = require("./graphFunctions");
 
 // Performance timing
-const PERF_LOGGING = process.env.FERE_PERF_LOG === '1';
+const PERF_LOGGING = process.env.FERE_PERF_LOG === "1";
 const perfLog = (label, duration) => {
   if (PERF_LOGGING) {
     console.log(`[PERF] ${label}: ${duration.toFixed(2)}ms`);
@@ -81,7 +78,10 @@ async function batchGetProcessCwds(pids) {
       result.set(pid, cwd);
       persistentCwdCache.set(pid, { cwd, timestamp: now });
     }
-    perfLog(`Batched CWD lookups (${uncached.length} uncached of ${pids.length} total)`, Date.now() - startCwd);
+    perfLog(
+      `Batched CWD lookups (${uncached.length} uncached of ${pids.length} total)`,
+      Date.now() - startCwd,
+    );
   }
 
   return result;
@@ -151,8 +151,7 @@ async function collectLocalConnections(projectPaths) {
   await Promise.all(
     Array.from(projectPaths).map(async (projectPath) => {
       try {
-        localConnectionsByProject[projectPath] =
-          await scanLocalConnections(projectPath);
+        localConnectionsByProject[projectPath] = await scanLocalConnections(projectPath);
       } catch {
         localConnectionsByProject[projectPath] = [];
       }
@@ -181,7 +180,7 @@ function collectHealthByPid(processes, ports, connections) {
     pidsWithConnections.add(conn.pid);
   }
 
-  const listeningPids = new Set(ports.map(p => p.pid));
+  const listeningPids = new Set(ports.map((p) => p.pid));
   const healthByPid = {};
 
   // Compute health for all processes
@@ -267,7 +266,7 @@ async function attachRoutesToNodes(nodes) {
     }
   }
 
-  perfLog('Total route attachment', Date.now() - startRoutes);
+  perfLog("Total route attachment", Date.now() - startRoutes);
 }
 
 // ============================================
@@ -284,9 +283,9 @@ async function attachRoutesToNodes(nodes) {
 async function buildConnectionGraph(snapshot = null) {
   const startTotal = Date.now();
 
-  const processes = snapshot?.processes || await getDevProcesses();
-  const ports = snapshot?.ports || await getListeningPorts();
-  const connections = snapshot?.connections || await getEstablishedConnections();
+  const processes = snapshot?.processes || (await getDevProcesses());
+  const ports = snapshot?.ports || (await getListeningPorts());
+  const connections = snapshot?.connections || (await getEstablishedConnections());
 
   // Collect health on main thread
   const healthByPid = collectHealthByPid(processes, ports, connections);
@@ -297,7 +296,9 @@ async function buildConnectionGraph(snapshot = null) {
   // system state into a caller-controlled snapshot.
   if (snapshot) {
     const result = buildGraphStructure({
-      processes, ports, connections,
+      processes,
+      ports,
+      connections,
       cwdMap: {},
       dockerSnapshot: null,
       routesByProject: {},
@@ -306,12 +307,12 @@ async function buildConnectionGraph(snapshot = null) {
       containerHealthToGraphHealth,
       projectPaths: [],
     });
-    perfLog('Total buildConnectionGraph (snapshot-only)', Date.now() - startTotal);
+    perfLog("Total buildConnectionGraph (snapshot-only)", Date.now() - startTotal);
     return result;
   }
 
   // Batch CWD lookups
-  const pids = processes.filter(p => p.pid > 0).map(p => p.pid);
+  const pids = processes.filter((p) => p.pid > 0).map((p) => p.pid);
   const cwdMap = await batchGetProcessCwds(pids);
 
   const cwdMapObj = Object.fromEntries(cwdMap);
@@ -320,17 +321,22 @@ async function buildConnectionGraph(snapshot = null) {
   const startParallel = Date.now();
   const dockerSnapshot = await getDockerSnapshot();
   const projectPaths = collectProjectPaths({
-    processes, ports, cwdMap: cwdMapObj, dockerSnapshot,
+    processes,
+    ports,
+    cwdMap: cwdMapObj,
+    dockerSnapshot,
   });
   const [routesByProject, localConnectionsByProject] = await Promise.all([
     collectRoutes(projectPaths),
     collectLocalConnections(projectPaths),
   ]);
-  perfLog('Parallel operations (docker + routes + local connections)', Date.now() - startParallel);
+  perfLog("Parallel operations (docker + routes + local connections)", Date.now() - startParallel);
 
   // Single graph build with all data
   const result = buildGraphStructure({
-    processes, ports, connections,
+    processes,
+    ports,
+    connections,
     cwdMap: cwdMapObj,
     dockerSnapshot,
     routesByProject,
@@ -340,7 +346,7 @@ async function buildConnectionGraph(snapshot = null) {
     projectPaths: [...projectPaths],
   });
 
-  perfLog('Total buildConnectionGraph', Date.now() - startTotal);
+  perfLog("Total buildConnectionGraph", Date.now() - startTotal);
   return result;
 }
 
@@ -353,13 +359,13 @@ async function getEnvironmentSummary() {
   return {
     totalServices: nodes.length,
     totalConnections: edges.length,
-    services: nodes.map(n => ({
+    services: nodes.map((n) => ({
       name: n.name,
-      ports: n.ports.map(p => p.port),
+      ports: n.ports.map((p) => p.port),
       type: n.type,
     })),
     portRange: (() => {
-      const allPorts = nodes.flatMap(n => n.ports.map(p => p.port));
+      const allPorts = nodes.flatMap((n) => n.ports.map((p) => p.port));
       if (allPorts.length === 0) return null;
       return { min: Math.min(...allPorts), max: Math.max(...allPorts) };
     })(),

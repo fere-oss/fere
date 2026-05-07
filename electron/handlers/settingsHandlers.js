@@ -4,19 +4,22 @@
  * @param {Electron.IpcMain} ipcMain
  * @param {object} deps
  */
-function registerSettingsHandlers(ipcMain, {
-  app,
-  nativeTheme,
-  getNetworkPolicy,
-  setNetworkPolicy,
-  getAlertPreferences,
-  setAlertPreferences,
-  getAlertHistory,
-  clearAlertHistory,
-  analytics,
-  getActivityLog,
-  getMetricHistory,
-}) {
+function registerSettingsHandlers(
+  ipcMain,
+  {
+    app,
+    nativeTheme,
+    getNetworkPolicy,
+    setNetworkPolicy,
+    getAlertPreferences,
+    setAlertPreferences,
+    getAlertHistory,
+    clearAlertHistory,
+    analytics,
+    getActivityLog,
+    getMetricHistory,
+  },
+) {
   ipcMain.handle("get-network-policy", async () => {
     try {
       return { success: true, policy: getNetworkPolicy() };

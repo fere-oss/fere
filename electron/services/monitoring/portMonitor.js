@@ -1,4 +1,4 @@
-const platform = require('../platform');
+const platform = require("../platform");
 
 const CACHE_TTL_MS = 5000;
 const listeningCache = { timestamp: 0, data: [], promise: null };
@@ -52,21 +52,21 @@ async function getProcessOnPort(port) {
  * Common dev ports and their typical services
  */
 const COMMON_DEV_PORTS = {
-  22: 'SSH',
-  3000: 'React/Node Dev Server',
-  3001: 'React Dev Server (alt)',
-  4000: 'GraphQL/API Server',
-  5000: 'Flask/Python Dev Server',
-  5173: 'Vite Dev Server',
-  5432: 'PostgreSQL',
-  6379: 'Redis',
-  8000: 'Django/Python Server',
-  8080: 'HTTP Alt / Java',
-  8081: 'HTTP Alt',
-  8443: 'HTTPS Alt',
-  9000: 'PHP-FPM / SonarQube',
-  27017: 'MongoDB',
-  3306: 'MySQL',
+  22: "SSH",
+  3000: "React/Node Dev Server",
+  3001: "React Dev Server (alt)",
+  4000: "GraphQL/API Server",
+  5000: "Flask/Python Dev Server",
+  5173: "Vite Dev Server",
+  5432: "PostgreSQL",
+  6379: "Redis",
+  8000: "Django/Python Server",
+  8080: "HTTP Alt / Java",
+  8081: "HTTP Alt",
+  8443: "HTTPS Alt",
+  9000: "PHP-FPM / SonarQube",
+  27017: "MongoDB",
+  3306: "MySQL",
 };
 
 /**
@@ -85,7 +85,7 @@ async function getListeningPortNumbers() {
   } catch (error) {
     // Fallback: extract from cached listening ports if available
     if (listeningCache.data.length) {
-      return new Set(listeningCache.data.map(p => p.port));
+      return new Set(listeningCache.data.map((p) => p.port));
     }
     return new Set();
   }

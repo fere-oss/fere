@@ -1,4 +1,4 @@
-import type { GraphNode, ApiRoute, HttpResponse, HistoryEntry } from '../../types/electron';
+import type { GraphNode, ApiRoute, HttpResponse, HistoryEntry } from "../../types/electron";
 
 export interface CurlBuilderProps {
   nodes: GraphNode[];
@@ -10,16 +10,9 @@ export interface Header {
   enabled: boolean;
 }
 
-export type HttpMethod =
-  | 'GET'
-  | 'POST'
-  | 'PUT'
-  | 'PATCH'
-  | 'DELETE'
-  | 'HEAD'
-  | 'OPTIONS';
+export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS";
 
-export type OutputTab = 'curl' | 'response' | 'history';
+export type OutputTab = "curl" | "response" | "history";
 
 export interface CurlState {
   selectedNodeId: string;

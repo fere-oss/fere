@@ -1,12 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { List } from "react-window";
 import type { RowComponentProps } from "react-window";
-import type {
-  ActivityEvent,
-  ActivityCategory,
-  GraphNode,
-  MetricHistory,
-} from "../types/electron";
+import type { ActivityEvent, ActivityCategory, GraphNode, MetricHistory } from "../types/electron";
 import { getServiceColor, getTypeBadge } from "./graph/constants";
 import { BrandIcon, inferServiceBrand } from "./graph/brandIcons";
 
@@ -16,18 +11,6 @@ const POLL_INTERVAL = 5000;
 const FIFTEEN_MINUTES = 15 * 60 * 1000;
 const ALL_REPOS = "__all__";
 
-const CATEGORY_ICONS: Record<ActivityCategory, string> = {
-  crash: "\u25CF",
-  recovery: "\u25B2",
-  anomaly: "\u26A0",
-  sentinel: "\u2699",
-  discovery: "\u002B",
-  removal: "\u2212",
-  topology: "\u21C4",
-  "user-action": "\u270E",
-};
-
-
 const SEVERITY_COLORS: Record<string, string> = {
   critical: "#dc2626",
   warning: "#d97706",
@@ -35,8 +18,14 @@ const SEVERITY_COLORS: Record<string, string> = {
 };
 
 const ALL_CATEGORIES: ActivityCategory[] = [
-  "crash", "recovery", "anomaly", "sentinel",
-  "discovery", "removal", "topology", "user-action",
+  "crash",
+  "recovery",
+  "anomaly",
+  "sentinel",
+  "discovery",
+  "removal",
+  "topology",
+  "user-action",
 ];
 
 const CATEGORY_LABELS: Record<ActivityCategory, string> = {
@@ -81,9 +70,13 @@ function relativeTime(ts: number): string {
 
 function hexToRgba(hex: string, alpha: number): string {
   const normalized = hex.replace("#", "");
-  const value = normalized.length === 3
-    ? normalized.split("").map((part) => part + part).join("")
-    : normalized;
+  const value =
+    normalized.length === 3
+      ? normalized
+          .split("")
+          .map((part) => part + part)
+          .join("")
+      : normalized;
   const r = parseInt(value.slice(0, 2), 16);
   const g = parseInt(value.slice(2, 4), 16);
   const b = parseInt(value.slice(4, 6), 16);
@@ -130,7 +123,6 @@ function getServiceCompositionLabel(type: string): string {
   if (type === "other") return "Other";
   return getTypeBadge(type);
 }
-
 
 // System total RAM in MB — navigator.deviceMemory gives GB (capped at 8 in some browsers).
 // Falls back to 8GB if unavailable.
@@ -208,12 +200,8 @@ function RepoSelector({ tabs, selectedRepo, onSelectRepo, serviceCounts }: RepoS
           onClick={() => onSelectRepo(tab.label)}
         >
           {tab.label}
-          {tab.stackLabel && (
-            <span className="analytics-repo-chip-count">{tab.stackLabel}</span>
-          )}
-          <span className="analytics-repo-chip-count">
-            ({serviceCounts.get(tab.label) || 0})
-          </span>
+          {tab.stackLabel && <span className="analytics-repo-chip-count">{tab.stackLabel}</span>}
+          <span className="analytics-repo-chip-count">({serviceCounts.get(tab.label) || 0})</span>
         </button>
       ))}
     </div>
@@ -258,28 +246,10 @@ function describeArc(
   const start = polarToCartesian(centerX, centerY, radius, endAngle);
   const end = polarToCartesian(centerX, centerY, radius, startAngle);
   const largeArcFlag = endAngle - startAngle <= 180 ? "0" : "1";
-  return [
-    "M",
-    start.x,
-    start.y,
-    "A",
-    radius,
-    radius,
-    0,
-    largeArcFlag,
-    0,
-    end.x,
-    end.y,
-  ].join(" ");
+  return ["M", start.x, start.y, "A", radius, radius, 0, largeArcFlag, 0, end.x, end.y].join(" ");
 }
 
-function StackHealthDonut({
-  total,
-  segments,
-}: {
-  total: number;
-  segments: DonutSegment[];
-}) {
+function StackHealthDonut({ total, segments }: { total: number; segments: DonutSegment[] }) {
   const size = 176;
   const strokeWidth = 28;
   const radius = (size - strokeWidth) / 2;
@@ -347,9 +317,7 @@ function StackHealthDonut({
       </svg>
       <div className="activity-donut-center">
         <span className={totalClassName}>{total}</span>
-        <span className="activity-donut-label">
-          {total === 1 ? "service" : "services"}
-        </span>
+        <span className="activity-donut-label">{total === 1 ? "service" : "services"}</span>
       </div>
     </div>
   );
@@ -382,9 +350,7 @@ function StackOverview({ graphNodes, events, metricHistory }: StackOverviewProps
     const now = Date.now();
     const cutoff = now - FIFTEEN_MINUTES;
     const issueCats = new Set(["crash", "anomaly", "sentinel"]);
-    const recentIssues = events.filter(
-      (e) => issueCats.has(e.category) && e.timestamp >= cutoff
-    );
+    const recentIssues = events.filter((e) => issueCats.has(e.category) && e.timestamp >= cutoff);
     const recoveredServices = new Set<string>();
     for (const e of events) {
       if (e.category === "recovery" && e.timestamp >= cutoff && e.serviceName) {
@@ -392,7 +358,7 @@ function StackOverview({ graphNodes, events, metricHistory }: StackOverviewProps
       }
     }
     const active = recentIssues.filter(
-      (e) => !e.serviceName || !recoveredServices.has(e.serviceName)
+      (e) => !e.serviceName || !recoveredServices.has(e.serviceName),
     );
     const critical = active.filter((e) => e.severity === "critical").length;
     const warning = active.filter((e) => e.severity === "warning").length;
@@ -415,7 +381,7 @@ function StackOverview({ graphNodes, events, metricHistory }: StackOverviewProps
     const now = new Date();
     const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
     const count = events.filter(
-      (e) => e.category === "sentinel" && e.timestamp >= startOfDay
+      (e) => e.category === "sentinel" && e.timestamp >= startOfDay,
     ).length;
     return { count };
   }, [events]);
@@ -426,9 +392,7 @@ function StackOverview({ graphNodes, events, metricHistory }: StackOverviewProps
         <div className="activity-stack-health-header">
           <div>
             <div className="activity-stack-section-title">Service Mix</div>
-            <div className="activity-stack-section-subtitle">
-              Live breakdown by service type
-            </div>
+            <div className="activity-stack-section-subtitle">Live breakdown by service type</div>
           </div>
           <div className="activity-stack-summary-grid activity-stack-summary-grid-compact">
             <div className="activity-stack-summary-card activity-stack-summary-card-compact">
@@ -463,10 +427,7 @@ function StackOverview({ graphNodes, events, metricHistory }: StackOverviewProps
           </div>
         </div>
         <div className="activity-stack-health-body">
-          <StackHealthDonut
-            total={serviceStats.total}
-            segments={serviceStats.segments}
-          />
+          <StackHealthDonut total={serviceStats.total} segments={serviceStats.segments} />
           <div className="activity-stack-health-legend">
             {serviceStats.segments.map((segment) => (
               <div key={segment.key} className="activity-stack-health-legend-item">
@@ -475,9 +436,7 @@ function StackOverview({ graphNodes, events, metricHistory }: StackOverviewProps
                   style={{ backgroundColor: segment.color }}
                 />
                 <div className="activity-stack-health-legend-copy">
-                  <span className="activity-stack-health-legend-label">
-                    {segment.label}
-                  </span>
+                  <span className="activity-stack-health-legend-label">{segment.label}</span>
                   <span className="activity-stack-health-legend-value">
                     {segment.value}
                     {serviceStats.total > 0
@@ -552,12 +511,14 @@ function ResourceBreakdown({ graphNodes, metricHistory, singleProject }: Resourc
       if (node.isGhost) continue;
 
       const projectName = singleProject
-        ? (node.name || "__ungrouped__")
-        : (node.project || (node.projectPath ? node.projectPath.split("/").pop()! : null));
+        ? node.name || "__ungrouped__"
+        : node.project || (node.projectPath ? node.projectPath.split("/").pop()! : null);
       // Separate macOS system/app processes from truly ungrouped dev services
       const key = projectName
         ? projectName
-        : (!node.isDockerContainer ? "__macos__" : "__ungrouped__");
+        : !node.isDockerContainer
+          ? "__macos__"
+          : "__ungrouped__";
       if (!groupMap.has(key)) groupMap.set(key, []);
       groupMap.get(key)!.push(node);
     }
@@ -588,7 +549,7 @@ function ResourceBreakdown({ graphNodes, metricHistory, singleProject }: Resourc
         }
       }
 
-      const isIdle = latestActiveTs === 0 || (now - latestActiveTs) > FIVE_MINUTES;
+      const isIdle = latestActiveTs === 0 || now - latestActiveTs > FIVE_MINUTES;
       let lastActiveAgo: string;
       let idleSince: number | null = null;
       if (!isIdle) {
@@ -602,11 +563,13 @@ function ResourceBreakdown({ graphNodes, metricHistory, singleProject }: Resourc
       }
 
       // Sort nodes within group by memory desc
-      nodes.sort((a: GraphNode, b: GraphNode) => getServiceMemMb(b, metricHistory) - getServiceMemMb(a, metricHistory));
+      nodes.sort(
+        (a: GraphNode, b: GraphNode) =>
+          getServiceMemMb(b, metricHistory) - getServiceMemMb(a, metricHistory),
+      );
 
-      const displayName = key === "__macos__" ? "macOS Apps"
-        : key === "__ungrouped__" ? "Ungrouped"
-        : key;
+      const displayName =
+        key === "__macos__" ? "macOS Apps" : key === "__ungrouped__" ? "Ungrouped" : key;
       groups.push({
         name: displayName,
         nodes,
@@ -629,7 +592,7 @@ function ResourceBreakdown({ graphNodes, metricHistory, singleProject }: Resourc
     });
 
     return groups;
-  }, [graphNodes, metricHistory]);
+  }, [graphNodes, metricHistory, singleProject]);
 
   const toggleExpand = useCallback((name: string) => {
     setExpanded((prev) => {
@@ -665,9 +628,9 @@ function ResourceBreakdown({ graphNodes, metricHistory, singleProject }: Resourc
     <div className="activity-breakdown">
       {projectGroups.map((group) => {
         const isExpanded = expanded.has(group.name);
-        const groupPorts = Array.from(new Set(
-          group.nodes.flatMap((n) => (n.ports || []).map((p) => p.port)).filter(Boolean)
-        ));
+        const groupPorts = Array.from(
+          new Set(group.nodes.flatMap((n) => (n.ports || []).map((p) => p.port)).filter(Boolean)),
+        );
 
         // Single-project view: render each service as a flat row (no collapsible group)
         if (singleProject && group.serviceCount === 1) {
@@ -676,20 +639,28 @@ function ResourceBreakdown({ graphNodes, metricHistory, singleProject }: Resourc
           const cpu = getServiceCpu(node);
           const port = node.ports?.[0]?.port;
           const stateClass =
-            node.healthStatus === "green" ? "activity-breakdown-state-running" :
-            node.healthStatus === "yellow" ? "activity-breakdown-state-idle" :
-            "activity-breakdown-state-down";
+            node.healthStatus === "green"
+              ? "activity-breakdown-state-running"
+              : node.healthStatus === "yellow"
+                ? "activity-breakdown-state-idle"
+                : "activity-breakdown-state-down";
           const stateLabel =
-            node.healthStatus === "green" ? "running" :
-            node.healthStatus === "yellow" ? "idle" :
-            "down";
+            node.healthStatus === "green"
+              ? "running"
+              : node.healthStatus === "yellow"
+                ? "idle"
+                : "down";
           return (
             <div key={node.id} className="activity-breakdown-group">
               <div className="activity-breakdown-row activity-breakdown-row-service activity-breakdown-row-flat">
                 <BrandIcon value={inferServiceBrand(node)} size={16} />
                 <span className="activity-breakdown-service-name">{node.name}</span>
-                <span className="activity-breakdown-meta activity-breakdown-mono">{Math.round(mem)} MB</span>
-                <span className="activity-breakdown-meta activity-breakdown-mono">{cpu.toFixed(1)}% CPU</span>
+                <span className="activity-breakdown-meta activity-breakdown-mono">
+                  {Math.round(mem)} MB
+                </span>
+                <span className="activity-breakdown-meta activity-breakdown-mono">
+                  {cpu.toFixed(1)}% CPU
+                </span>
                 <span className="activity-breakdown-meta activity-breakdown-mono">
                   {port ? `:${port}` : ""}
                 </span>
@@ -705,7 +676,9 @@ function ResourceBreakdown({ graphNodes, metricHistory, singleProject }: Resourc
               className="activity-breakdown-row activity-breakdown-row-project"
               onClick={() => toggleExpand(group.name)}
             >
-              <span className={`activity-breakdown-arrow ${isExpanded ? "activity-breakdown-arrow-expanded" : ""}`}>
+              <span
+                className={`activity-breakdown-arrow ${isExpanded ? "activity-breakdown-arrow-expanded" : ""}`}
+              >
                 {"\u25B8"}
               </span>
               <span className="activity-breakdown-project-name">{group.name}</span>
@@ -717,28 +690,42 @@ function ResourceBreakdown({ graphNodes, metricHistory, singleProject }: Resourc
               </span>
               {groupPorts.length > 0 && (
                 <span className="activity-breakdown-meta activity-breakdown-mono activity-breakdown-ports">
-                  {groupPorts.slice(0, 3).map((p) => `:${p}`).join(", ")}
+                  {groupPorts
+                    .slice(0, 3)
+                    .map((p) => `:${p}`)
+                    .join(", ")}
                   {groupPorts.length > 3 && ` +${groupPorts.length - 3}`}
                 </span>
               )}
-              <span className={`activity-breakdown-status ${group.isIdle ? "activity-breakdown-status-idle" : ""}`}>
+              <span
+                className={`activity-breakdown-status ${group.isIdle ? "activity-breakdown-status-idle" : ""}`}
+              >
                 {group.lastActiveAgo}
               </span>
               {group.isIdle ? (
                 confirmStop === group.name ? (
                   <span className="activity-breakdown-confirm" onClick={(e) => e.stopPropagation()}>
                     Stop {group.serviceCount} {group.serviceCount === 1 ? "service" : "services"}?
-                    <button className="activity-breakdown-confirm-btn activity-breakdown-confirm-yes" onClick={() => handleStopGroup(group)}>
+                    <button
+                      className="activity-breakdown-confirm-btn activity-breakdown-confirm-yes"
+                      onClick={() => handleStopGroup(group)}
+                    >
                       Confirm
                     </button>
-                    <button className="activity-breakdown-confirm-btn" onClick={() => setConfirmStop(null)}>
+                    <button
+                      className="activity-breakdown-confirm-btn"
+                      onClick={() => setConfirmStop(null)}
+                    >
                       Cancel
                     </button>
                   </span>
                 ) : (
                   <button
                     className="activity-breakdown-stop-btn"
-                    onClick={(e) => { e.stopPropagation(); setConfirmStop(group.name); }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setConfirmStop(group.name);
+                    }}
                   >
                     Stop
                   </button>
@@ -752,19 +739,30 @@ function ResourceBreakdown({ graphNodes, metricHistory, singleProject }: Resourc
                   const cpu = getServiceCpu(node);
                   const port = node.ports?.[0]?.port;
                   const stateClass =
-                    node.healthStatus === "green" ? "activity-breakdown-state-running" :
-                    node.healthStatus === "yellow" ? "activity-breakdown-state-idle" :
-                    "activity-breakdown-state-down";
+                    node.healthStatus === "green"
+                      ? "activity-breakdown-state-running"
+                      : node.healthStatus === "yellow"
+                        ? "activity-breakdown-state-idle"
+                        : "activity-breakdown-state-down";
                   const stateLabel =
-                    node.healthStatus === "green" ? "running" :
-                    node.healthStatus === "yellow" ? "idle" :
-                    "down";
+                    node.healthStatus === "green"
+                      ? "running"
+                      : node.healthStatus === "yellow"
+                        ? "idle"
+                        : "down";
                   return (
-                    <div key={node.id} className="activity-breakdown-row activity-breakdown-row-service">
+                    <div
+                      key={node.id}
+                      className="activity-breakdown-row activity-breakdown-row-service"
+                    >
                       <BrandIcon value={inferServiceBrand(node)} size={16} />
                       <span className="activity-breakdown-service-name">{node.name}</span>
-                      <span className="activity-breakdown-meta activity-breakdown-mono">{Math.round(mem)} MB</span>
-                      <span className="activity-breakdown-meta activity-breakdown-mono">{cpu.toFixed(1)}% CPU</span>
+                      <span className="activity-breakdown-meta activity-breakdown-mono">
+                        {Math.round(mem)} MB
+                      </span>
+                      <span className="activity-breakdown-meta activity-breakdown-mono">
+                        {cpu.toFixed(1)}% CPU
+                      </span>
                       <span className="activity-breakdown-meta activity-breakdown-mono">
                         {port ? `:${port}` : ""}
                       </span>
@@ -777,7 +775,6 @@ function ResourceBreakdown({ graphNodes, metricHistory, singleProject }: Resourc
           </div>
         );
       })}
-
     </div>
   );
 }
@@ -823,7 +820,11 @@ function batchEvents(events: ActivityEvent[]): DisplayItem[] {
     const batchCat = e.category;
     const batch = [e];
     let j = i + 1;
-    while (j < events.length && events[j].category === batchCat && Math.abs(events[j].timestamp - e.timestamp) <= BATCH_WINDOW_MS) {
+    while (
+      j < events.length &&
+      events[j].category === batchCat &&
+      Math.abs(events[j].timestamp - e.timestamp) <= BATCH_WINDOW_MS
+    ) {
       batch.push(events[j]);
       j++;
     }
@@ -877,13 +878,20 @@ function EventRow({
     const hasRelated = event.relatedEvents && event.relatedEvents.length > 0;
 
     const brandValue = event.serviceName
-      ? inferServiceBrand(nodeByName.get(event.serviceName) || { name: event.serviceName, command: "", containerImage: "" })
+      ? inferServiceBrand(
+          nodeByName.get(event.serviceName) || {
+            name: event.serviceName,
+            command: "",
+            containerImage: "",
+          },
+        )
       : null;
 
     // Replace service name in title with branded badge inline
-    const titleParts = event.serviceName && event.title.includes(event.serviceName)
-      ? event.title.split(event.serviceName)
-      : null;
+    const titleParts =
+      event.serviceName && event.title.includes(event.serviceName)
+        ? event.title.split(event.serviceName)
+        : null;
 
     return (
       <div {...ariaAttributes} style={style} className="analytics-event-row">
@@ -894,11 +902,11 @@ function EventRow({
                 className="analytics-event-category-chip-surface"
                 style={getCategoryAccentStyles(catColor)}
               >
-              <span
-                className="analytics-event-category-dot"
-                style={{ backgroundColor: catColor }}
-              />
-              {CATEGORY_LABELS[event.category]}
+                <span
+                  className="analytics-event-category-dot"
+                  style={{ backgroundColor: catColor }}
+                />
+                {CATEGORY_LABELS[event.category]}
               </span>
             </span>
             <span className="analytics-event-title">
@@ -913,12 +921,20 @@ function EventRow({
                 </>
               ) : (
                 <>
-                  {event.serviceName && <span className="analytics-event-service-inline"><BrandIcon value={brandValue} size={14} />{event.serviceName}{" "}</span>}
+                  {event.serviceName && (
+                    <span className="analytics-event-service-inline">
+                      <BrandIcon value={brandValue} size={14} />
+                      {event.serviceName}{" "}
+                    </span>
+                  )}
                   {event.title}
                 </>
               )}
             </span>
-            <span className="analytics-event-time" title={new Date(event.timestamp).toLocaleString()}>
+            <span
+              className="analytics-event-time"
+              title={new Date(event.timestamp).toLocaleString()}
+            >
               {relativeTime(event.timestamp)}
             </span>
           </div>
@@ -926,7 +942,9 @@ function EventRow({
             <div className="analytics-event-detail">
               {event.detail && <span className="analytics-event-detail-text">{event.detail}</span>}
               {hasRelated && (
-                <span className="analytics-event-correlated">+{event.relatedEvents.length} related</span>
+                <span className="analytics-event-correlated">
+                  +{event.relatedEvents.length} related
+                </span>
               )}
             </div>
           )}
@@ -960,15 +978,18 @@ function EventRow({
                 className="analytics-event-category-chip-surface"
                 style={getCategoryAccentStyles(batchColor)}
               >
-              <span
-                className="analytics-event-category-dot"
-                style={{ backgroundColor: batchColor }}
-              />
-              {CATEGORY_LABELS[batch.category]}
+                <span
+                  className="analytics-event-category-dot"
+                  style={{ backgroundColor: batchColor }}
+                />
+                {CATEGORY_LABELS[batch.category]}
               </span>
             </span>
             <span className="analytics-event-title">{batch.title}</span>
-            <span className="analytics-event-time" title={new Date(batch.timestamp).toLocaleString()}>
+            <span
+              className="analytics-event-time"
+              title={new Date(batch.timestamp).toLocaleString()}
+            >
               {relativeTime(batch.timestamp)}
             </span>
           </div>
@@ -983,23 +1004,28 @@ function EventRow({
   if (item.type === "sub-event") {
     const event = item.event;
     return (
-      <div {...ariaAttributes} style={style} className="analytics-event-row analytics-event-row-sub">
+      <div
+        {...ariaAttributes}
+        style={style}
+        className="analytics-event-row analytics-event-row-sub"
+      >
         <div className="analytics-event-content">
           <div className="analytics-event-header">
-            <span
-              className="analytics-event-category-chip"
-            >
+            <span className="analytics-event-category-chip">
               <span
                 className="analytics-event-category-chip-surface"
                 style={getCategoryAccentStyles(
                   CATEGORY_COLORS[event.category] || SEVERITY_COLORS.info,
                 )}
               >
-              {CATEGORY_LABELS[event.category]}
+                {CATEGORY_LABELS[event.category]}
               </span>
             </span>
             <span className="analytics-event-title">{event.title}</span>
-            <span className="analytics-event-time" title={new Date(event.timestamp).toLocaleString()}>
+            <span
+              className="analytics-event-time"
+              title={new Date(event.timestamp).toLocaleString()}
+            >
               {relativeTime(event.timestamp)}
             </span>
           </div>
@@ -1024,10 +1050,9 @@ export function AnalyticsView({ tabs, graphNodes }: AnalyticsViewProps) {
   const [selectedRepo, setSelectedRepo] = useState<string>(ALL_REPOS);
   const [expandedBatches, setExpandedBatches] = useState<Set<string>>(() => new Set());
   const [enabledCategories, setEnabledCategories] = useState<Set<ActivityCategory>>(
-    () => new Set(ALL_CATEGORIES)
+    () => new Set(ALL_CATEGORIES),
   );
   const listRef = useRef<HTMLDivElement>(null);
-  const [listHeight, setListHeight] = useState(400);
 
   // Fetch data
   const fetchData = useCallback(async () => {
@@ -1057,24 +1082,8 @@ export function AnalyticsView({ tabs, graphNodes }: AnalyticsViewProps) {
     return () => unsub?.();
   }, []);
 
-  // Resize observer for list height
-  useEffect(() => {
-    const el = listRef.current;
-    if (!el) return;
-    const obs = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        setListHeight(entry.contentRect.height);
-      }
-    });
-    obs.observe(el);
-    return () => obs.disconnect();
-  }, []);
-
   // Build service name → repo label map (each node maps to exactly one repo)
-  const serviceRepoMap = useMemo(
-    () => buildServiceRepoMap(graphNodes, tabs),
-    [graphNodes, tabs]
-  );
+  const serviceRepoMap = useMemo(() => buildServiceRepoMap(graphNodes, tabs), [graphNodes, tabs]);
 
   // Build project path/name → tab label lookup for events whose service left the graph
   const projectToRepo = useMemo(() => {
@@ -1130,7 +1139,9 @@ export function AnalyticsView({ tabs, graphNodes }: AnalyticsViewProps) {
         if (names) {
           const text = `${e.title} ${e.detail || ""}`;
           let found = false;
-          names.forEach((name) => { if (text.includes(name)) found = true; });
+          names.forEach((name) => {
+            if (text.includes(name)) found = true;
+          });
           if (found) return true;
         }
         // Or if the title/detail contains the repo label itself (e.g. "robot-shop" in "Stopped container robot-shop-cart-1")
@@ -1142,7 +1153,7 @@ export function AnalyticsView({ tabs, graphNodes }: AnalyticsViewProps) {
       result = result.filter((e) => enabledCategories.has(e.category));
     }
     return result;
-  }, [events, selectedRepo, serviceRepoMap, enabledCategories]);
+  }, [events, selectedRepo, serviceRepoMap, enabledCategories, projectToRepo, repoServiceNames]);
 
   const toggleCategory = useCallback((cat: ActivityCategory) => {
     setEnabledCategories((prev) => {
@@ -1189,8 +1200,13 @@ export function AnalyticsView({ tabs, graphNodes }: AnalyticsViewProps) {
   }, [graphNodes]);
 
   const rowProps = useMemo(
-    (): EventRowProps => ({ items: flatItems, expandedBatches, onToggleBatch: toggleBatch, nodeByName }),
-    [flatItems, expandedBatches, toggleBatch, nodeByName]
+    (): EventRowProps => ({
+      items: flatItems,
+      expandedBatches,
+      onToggleBatch: toggleBatch,
+      nodeByName,
+    }),
+    [flatItems, expandedBatches, toggleBatch, nodeByName],
   );
 
   return (
@@ -1241,13 +1257,21 @@ export function AnalyticsView({ tabs, graphNodes }: AnalyticsViewProps) {
           <div className="analytics-event-list" ref={listRef}>
             {flatItems.length === 0 ? (
               <div className="analytics-empty-state">
-                <svg width="40" height="40" viewBox="0 0 24 24" fill="none"
-                  stroke="currentColor" strokeWidth="1.2" opacity="0.3">
+                <svg
+                  width="40"
+                  height="40"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.2"
+                  opacity="0.3"
+                >
                   <circle cx="12" cy="12" r="10" />
                   <polyline points="12 6 12 12 16 14" />
                 </svg>
                 <p>
-                  Fere is watching your stack. Events will appear here as services start, stop, crash, or change.
+                  Fere is watching your stack. Events will appear here as services start, stop,
+                  crash, or change.
                 </p>
               </div>
             ) : (
@@ -1256,7 +1280,7 @@ export function AnalyticsView({ tabs, graphNodes }: AnalyticsViewProps) {
                 rowProps={rowProps}
                 rowCount={flatItems.length}
                 rowHeight={EVENT_ROW_HEIGHT}
-                style={{ height: '100%' }}
+                style={{ height: "100%" }}
               />
             )}
           </div>

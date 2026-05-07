@@ -25,11 +25,7 @@ export function TraceOverlay({ result, phase }: TraceOverlayProps) {
   return (
     <div className="trace-overlay-pill">
       <span className="trace-overlay-icon">
-        {phase === "capturing" ? (
-          <span className="trace-overlay-spinner" />
-        ) : (
-          "▶"
-        )}
+        {phase === "capturing" ? <span className="trace-overlay-spinner" /> : "▶"}
       </span>
       <span className="trace-overlay-method" style={{ color: methodColor }}>
         {result.request.method}
@@ -40,9 +36,7 @@ export function TraceOverlay({ result, phase }: TraceOverlayProps) {
           — {result.timedOut ? "Timed out" : formatLatency(result.totalTime)}
         </span>
       )}
-      {phase === "capturing" && (
-        <span className="trace-overlay-time">Tracing...</span>
-      )}
+      {phase === "capturing" && <span className="trace-overlay-time">Tracing...</span>}
     </div>
   );
 }

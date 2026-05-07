@@ -25,11 +25,7 @@ Module.prototype.require = function (id) {
 };
 
 // Now require security module
-const {
-  validateExternalUrl,
-  validateHttpRequestUrl,
-  isPrivateHost,
-} = require("./security");
+const { validateExternalUrl, validateHttpRequestUrl, isPrivateHost } = require("./security");
 
 // Restore original require after importing
 Module.prototype.require = originalRequire;

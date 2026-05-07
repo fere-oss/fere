@@ -1,5 +1,5 @@
-const { spawn } = require('child_process');
-const { resolveDockerBinary, getDockerBinaries } = require('../platform/docker');
+const { spawn } = require("child_process");
+const { resolveDockerBinary, getDockerBinaries } = require("../platform/docker");
 
 const TIMESTAMP_RE = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z)\s+(.*)$/;
 
@@ -24,25 +24,21 @@ function generateStreamId() {
  * @returns {string} streamId - Unique identifier for this stream
  */
 async function startLogStream(containerId, options = {}, onData, onError, onClose) {
-  const {
-    tail = 100,
-    timestamps = false,
-    follow = true,
-  } = options;
+  const { tail = 100, timestamps = false, follow = true } = options;
 
   // Build docker logs command arguments
-  const args = ['logs'];
+  const args = ["logs"];
 
   if (follow) {
-    args.push('--follow');
+    args.push("--follow");
   }
 
   if (tail > 0) {
-    args.push('--tail', tail.toString());
+    args.push("--tail", tail.toString());
   }
 
   if (timestamps) {
-    args.push('--timestamps');
+    args.push("--timestamps");
   }
 
   // Add container ID
@@ -50,29 +46,27 @@ async function startLogStream(containerId, options = {}, onData, onError, onClos
 
   const dockerBin = await resolveDockerBinary();
   if (!dockerBin) {
-    throw new Error(
-      'Docker CLI not found. Tried: ' + getDockerBinaries().join(', ')
-    );
+    throw new Error("Docker CLI not found. Tried: " + getDockerBinaries().join(", "));
   }
 
   // Spawn docker logs process
   const dockerProcess = spawn(dockerBin, args, {
-    stdio: ['ignore', 'pipe', 'pipe'],
+    stdio: ["ignore", "pipe", "pipe"],
   });
 
   const streamId = generateStreamId();
 
   // Buffer for partial lines
-  let stdoutBuffer = '';
-  let stderrBuffer = '';
+  let stdoutBuffer = "";
+  let stderrBuffer = "";
   const MAX_BUFFER_SIZE = 1024 * 1024; // 1 MB — prevent unbounded growth (Bug 26)
 
   // Helper to process buffered data
   const processBuffer = (buffer, stream) => {
-    const lines = buffer.split('\n');
+    const lines = buffer.split("\n");
 
     // Keep the last incomplete line in the buffer
-    const incompleteLine = lines.pop() || '';
+    const incompleteLine = lines.pop() || "";
 
     // Emit each complete line
     for (let i = 0; i < lines.length; i++) {
@@ -104,49 +98,51 @@ async function startLogStream(containerId, options = {}, onData, onError, onClos
   };
 
   // Handle stdout data — cap buffer to prevent memory exhaustion (Bug 26)
-  dockerProcess.stdout.on('data', (data) => {
+  dockerProcess.stdout.on("data", (data) => {
     stdoutBuffer += data.toString();
     if (stdoutBuffer.length > MAX_BUFFER_SIZE) {
       // Flush complete lines and keep the trailing incomplete fragment.
       // The old code discarded the incomplete line on overflow.
-      const remaining = processBuffer(stdoutBuffer, 'stdout');
+      const remaining = processBuffer(stdoutBuffer, "stdout");
       // If a single line exceeds the cap (no newlines at all), force-emit it
       // truncated rather than letting it grow forever.
-      stdoutBuffer = remaining.length > MAX_BUFFER_SIZE
-        ? (processBuffer(remaining + '\n', 'stdout'), '')
-        : remaining;
+      stdoutBuffer =
+        remaining.length > MAX_BUFFER_SIZE
+          ? (processBuffer(remaining + "\n", "stdout"), "")
+          : remaining;
     } else {
-      stdoutBuffer = processBuffer(stdoutBuffer, 'stdout');
+      stdoutBuffer = processBuffer(stdoutBuffer, "stdout");
     }
   });
 
   // Handle stderr data — same overflow strategy as stdout (Bug 26)
-  dockerProcess.stderr.on('data', (data) => {
+  dockerProcess.stderr.on("data", (data) => {
     stderrBuffer += data.toString();
     if (stderrBuffer.length > MAX_BUFFER_SIZE) {
-      const remaining = processBuffer(stderrBuffer, 'stderr');
-      stderrBuffer = remaining.length > MAX_BUFFER_SIZE
-        ? (processBuffer(remaining + '\n', 'stderr'), '')
-        : remaining;
+      const remaining = processBuffer(stderrBuffer, "stderr");
+      stderrBuffer =
+        remaining.length > MAX_BUFFER_SIZE
+          ? (processBuffer(remaining + "\n", "stderr"), "")
+          : remaining;
     } else {
-      stderrBuffer = processBuffer(stderrBuffer, 'stderr');
+      stderrBuffer = processBuffer(stderrBuffer, "stderr");
     }
   });
 
   // Handle process errors — pass streamId so callers don't rely on a closure
   // that may not yet be assigned (Bug 24).
-  dockerProcess.on('error', (error) => {
+  dockerProcess.on("error", (error) => {
     onError(new Error(`Docker logs process error: ${error.message}`), streamId);
   });
 
   // Handle process close
-  dockerProcess.on('close', (code) => {
+  dockerProcess.on("close", (code) => {
     // Process any remaining buffered data
     if (stdoutBuffer.trim()) {
-      processBuffer(stdoutBuffer + '\n', 'stdout');
+      processBuffer(stdoutBuffer + "\n", "stdout");
     }
     if (stderrBuffer.trim()) {
-      processBuffer(stderrBuffer + '\n', 'stderr');
+      processBuffer(stderrBuffer + "\n", "stderr");
     }
 
     activeStreams.delete(streamId);
@@ -180,13 +176,13 @@ function stopLogStream(streamId) {
 
   try {
     // Kill the docker logs process
-    stream.process.kill('SIGTERM');
+    stream.process.kill("SIGTERM");
 
     // Give it a moment to close gracefully
     setTimeout(() => {
       try {
         if (!stream.process.killed) {
-          stream.process.kill('SIGKILL');
+          stream.process.kill("SIGKILL");
         }
       } catch {
         // Process already exited

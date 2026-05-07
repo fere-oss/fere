@@ -47,8 +47,7 @@ export function FirstDetectionToast({
 
   return (
     <div className={`first-detection-toast${visible ? " visible" : ""}`}>
-      There it is. Fere found <strong>{serviceName}</strong> on port{" "}
-      <strong>{port}</strong>.
+      There it is. Fere found <strong>{serviceName}</strong> on port <strong>{port}</strong>.
     </div>
   );
 }

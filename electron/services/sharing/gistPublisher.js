@@ -3,10 +3,10 @@
  * Creates and updates secret GitHub Gists to host shared graph snapshots.
  */
 
-const https = require('https');
+const https = require("https");
 
-const GITHUB_API_HOST = 'api.github.com';
-const GIST_FILENAME = 'index.html';
+const GITHUB_API_HOST = "api.github.com";
+const GIST_FILENAME = "index.html";
 
 /**
  * Make a GitHub API request.
@@ -25,18 +25,20 @@ function githubRequest(method, path, token, body = null) {
       path,
       method,
       headers: {
-        'Authorization': `token ${token}`,
-        'Accept': 'application/vnd.github.v3+json',
-        'User-Agent': 'Fere-App/1.0',
-        'Content-Type': 'application/json',
-        ...(bodyStr ? { 'Content-Length': Buffer.byteLength(bodyStr) } : {}),
+        Authorization: `token ${token}`,
+        Accept: "application/vnd.github.v3+json",
+        "User-Agent": "Fere-App/1.0",
+        "Content-Type": "application/json",
+        ...(bodyStr ? { "Content-Length": Buffer.byteLength(bodyStr) } : {}),
       },
     };
 
     const req = https.request(options, (res) => {
-      let data = '';
-      res.on('data', (chunk) => { data += chunk; });
-      res.on('end', () => {
+      let data = "";
+      res.on("data", (chunk) => {
+        data += chunk;
+      });
+      res.on("end", () => {
         try {
           const parsed = JSON.parse(data);
           if (res.statusCode >= 200 && res.statusCode < 300) {
@@ -51,10 +53,10 @@ function githubRequest(method, path, token, body = null) {
       });
     });
 
-    req.on('error', (err) => reject(new Error(`Network error: ${err.message}`)));
+    req.on("error", (err) => reject(new Error(`Network error: ${err.message}`)));
     req.setTimeout(30000, () => {
       req.destroy();
-      reject(new Error('Request timed out after 30 seconds'));
+      reject(new Error("Request timed out after 30 seconds"));
     });
 
     if (bodyStr) req.write(bodyStr);
@@ -70,17 +72,17 @@ function githubRequest(method, path, token, body = null) {
  */
 async function createGist(htmlContent, token) {
   const body = {
-    description: 'Fere — Service Map Snapshot',
+    description: "Fere — Service Map Snapshot",
     public: false,
     files: {
       [GIST_FILENAME]: { content: htmlContent },
     },
   };
 
-  const gist = await githubRequest('POST', '/gists', token, body);
+  const gist = await githubRequest("POST", "/gists", token, body);
 
   const rawUrl = gist.files?.[GIST_FILENAME]?.raw_url;
-  if (!rawUrl) throw new Error('GitHub did not return a raw URL for the file');
+  if (!rawUrl) throw new Error("GitHub did not return a raw URL for the file");
 
   return {
     gistId: gist.id,
@@ -98,17 +100,17 @@ async function createGist(htmlContent, token) {
  */
 async function updateGist(gistId, htmlContent, token) {
   const body = {
-    description: 'Fere — Service Map Snapshot (updated)',
+    description: "Fere — Service Map Snapshot (updated)",
     files: {
       [GIST_FILENAME]: { content: htmlContent },
     },
   };
 
-  const gist = await githubRequest('PATCH', `/gists/${gistId}`, token, body);
+  const gist = await githubRequest("PATCH", `/gists/${gistId}`, token, body);
 
   // GitHub rotates raw_url on each update — use the fresh one
   const rawUrl = gist.files?.[GIST_FILENAME]?.raw_url;
-  if (!rawUrl) throw new Error('GitHub did not return a raw URL for the file');
+  if (!rawUrl) throw new Error("GitHub did not return a raw URL for the file");
 
   return {
     gistId: gist.id,

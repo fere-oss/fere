@@ -10,11 +10,11 @@
  *   - Shell ops: cmd.exe, wt.exe, where.exe
  */
 
-const { exec, execFile, spawn, execFileSync } = require('child_process');
-const { promisify } = require('util');
-const fs = require('fs');
-const path = require('path');
-const os = require('os');
+const { exec, execFile, spawn, execFileSync } = require("child_process");
+const { promisify } = require("util");
+const fs = require("fs");
+const path = require("path");
+const os = require("os");
 
 const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
@@ -45,7 +45,7 @@ async function getProcessList() {
     try {
       return await getProcessListViaPowerShell();
     } catch (psError) {
-      console.error('Error getting process list:', psError);
+      console.error("Error getting process list:", psError);
       return [];
     }
   }
@@ -60,24 +60,27 @@ async function getProcessList() {
  */
 async function getProcessListViaWmic() {
   const { stdout } = await execAsync(
-    'wmic process get ProcessId,Name,CommandLine,WorkingSetSize,VirtualSize /format:csv',
-    { maxBuffer: 10 * 1024 * 1024, timeout: 10000 }
+    "wmic process get ProcessId,Name,CommandLine,WorkingSetSize,VirtualSize /format:csv",
+    { maxBuffer: 10 * 1024 * 1024, timeout: 10000 },
   );
   return parseWmicCsv(stdout);
 }
 
 function parseWmicCsv(stdout) {
   const totalMemBytes = os.totalmem();
-  const lines = stdout.trim().split('\r\n').filter(l => l.trim());
+  const lines = stdout
+    .trim()
+    .split("\r\n")
+    .filter((l) => l.trim());
   if (lines.length < 2) return [];
 
   // First non-empty line is the header
-  const header = lines[0].split(',').map(h => h.trim());
-  const idxPid = header.indexOf('ProcessId');
-  const idxName = header.indexOf('Name');
-  const idxCmd = header.indexOf('CommandLine');
-  const idxWs = header.indexOf('WorkingSetSize');
-  const idxVs = header.indexOf('VirtualSize');
+  const header = lines[0].split(",").map((h) => h.trim());
+  const idxPid = header.indexOf("ProcessId");
+  const idxName = header.indexOf("Name");
+  const idxCmd = header.indexOf("CommandLine");
+  const idxWs = header.indexOf("WorkingSetSize");
+  const idxVs = header.indexOf("VirtualSize");
 
   if (idxPid === -1 || idxName === -1) return [];
 
@@ -91,19 +94,19 @@ function parseWmicCsv(stdout) {
 
     const ws = parseInt(cols[idxWs], 10) || 0;
     const vs = parseInt(cols[idxVs], 10) || 0;
-    const command = (cols[idxCmd] || cols[idxName] || '').trim();
+    const command = (cols[idxCmd] || cols[idxName] || "").trim();
 
     processes.push({
       pid,
-      user: '', // wmic doesn't include owner without a slow sub-query
-      cpu: 0,   // requires sampling; not available from single snapshot
+      user: "", // wmic doesn't include owner without a slow sub-query
+      cpu: 0, // requires sampling; not available from single snapshot
       memory: totalMemBytes > 0 ? parseFloat(((ws / totalMemBytes) * 100).toFixed(1)) : 0,
-      vsz: Math.round(vs / 1024),     // KB, matching ps aux convention
-      rss: Math.round(ws / 1024),     // KB
-      tty: '',
-      status: 'running',
-      startTime: '',
-      cpuTime: '',
+      vsz: Math.round(vs / 1024), // KB, matching ps aux convention
+      rss: Math.round(ws / 1024), // KB
+      tty: "",
+      status: "running",
+      startTime: "",
+      cpuTime: "",
       command,
     });
   }
@@ -131,7 +134,7 @@ function parseWmicCsvLine(line, expectedCols) {
   // Since CommandLine can have commas, split from the right for known-simple columns,
   // then the remainder is CommandLine.
 
-  const parts = line.split(',');
+  const parts = line.split(",");
   if (parts.length < expectedCols) return null;
 
   if (parts.length === expectedCols) {
@@ -146,7 +149,7 @@ function parseWmicCsvLine(line, expectedCols) {
   result.push(parts[0]); // Node
   // CommandLine = everything from index 1 to (parts.length - simpleTrailingCount - 1)
   const cmdEnd = parts.length - simpleTrailingCount;
-  result.push(parts.slice(1, cmdEnd).join(','));
+  result.push(parts.slice(1, cmdEnd).join(","));
   // Remaining simple columns
   for (let j = cmdEnd; j < parts.length; j++) {
     result.push(parts[j]);
@@ -159,15 +162,15 @@ function parseWmicCsvLine(line, expectedCols) {
  */
 async function getProcessListViaPowerShell() {
   const psCmd = [
-    'Get-CimInstance Win32_Process',
-    '| Select-Object ProcessId,Name,CommandLine,WorkingSetSize,VirtualSize',
-    '| ConvertTo-Json -Compress',
-  ].join(' ');
+    "Get-CimInstance Win32_Process",
+    "| Select-Object ProcessId,Name,CommandLine,WorkingSetSize,VirtualSize",
+    "| ConvertTo-Json -Compress",
+  ].join(" ");
 
-  const { stdout } = await execAsync(
-    `powershell -NoProfile -NoLogo -Command "${psCmd}"`,
-    { maxBuffer: 10 * 1024 * 1024, timeout: 15000 }
-  );
+  const { stdout } = await execAsync(`powershell -NoProfile -NoLogo -Command "${psCmd}"`, {
+    maxBuffer: 10 * 1024 * 1024,
+    timeout: 15000,
+  });
 
   const totalMemBytes = os.totalmem();
   let raw;
@@ -181,22 +184,22 @@ async function getProcessListViaPowerShell() {
   if (!Array.isArray(raw)) raw = [raw];
 
   return raw
-    .filter(p => p.ProcessId > 0)
-    .map(p => {
+    .filter((p) => p.ProcessId > 0)
+    .map((p) => {
       const ws = p.WorkingSetSize || 0;
       const vs = p.VirtualSize || 0;
-      const command = (p.CommandLine || p.Name || '').trim();
+      const command = (p.CommandLine || p.Name || "").trim();
       return {
         pid: p.ProcessId,
-        user: '',
+        user: "",
         cpu: 0,
         memory: totalMemBytes > 0 ? parseFloat(((ws / totalMemBytes) * 100).toFixed(1)) : 0,
         vsz: Math.round(vs / 1024),
         rss: Math.round(ws / 1024),
-        tty: '',
-        status: 'running',
-        startTime: '',
-        cpuTime: '',
+        tty: "",
+        status: "running",
+        startTime: "",
+        cpuTime: "",
         command,
       };
     });
@@ -214,19 +217,22 @@ function parseProcessList(rawOutput) {
     const arr = Array.isArray(data) ? data : [data];
     const totalMemBytes = os.totalmem();
     return arr
-      .filter(p => p.ProcessId > 0)
-      .map(p => ({
+      .filter((p) => p.ProcessId > 0)
+      .map((p) => ({
         pid: p.ProcessId,
-        user: '',
+        user: "",
         cpu: 0,
-        memory: totalMemBytes > 0 ? parseFloat((((p.WorkingSetSize || 0) / totalMemBytes) * 100).toFixed(1)) : 0,
+        memory:
+          totalMemBytes > 0
+            ? parseFloat((((p.WorkingSetSize || 0) / totalMemBytes) * 100).toFixed(1))
+            : 0,
         vsz: Math.round((p.VirtualSize || 0) / 1024),
         rss: Math.round((p.WorkingSetSize || 0) / 1024),
-        tty: '',
-        status: 'running',
-        startTime: '',
-        cpuTime: '',
-        command: (p.CommandLine || p.Name || '').trim(),
+        tty: "",
+        status: "running",
+        startTime: "",
+        cpuTime: "",
+        command: (p.CommandLine || p.Name || "").trim(),
       }));
   } catch {
     // Fall back to wmic CSV parsing
@@ -241,17 +247,16 @@ async function getProcessInfoByPid(pid) {
   try {
     const { stdout } = await execAsync(
       `wmic process where ProcessId=${parseInt(pid, 10)} get ProcessId,Name,CommandLine,WorkingSetSize,VirtualSize /format:csv`,
-      { timeout: 5000 }
+      { timeout: 5000 },
     );
     const processes = parseWmicCsv(stdout);
     return processes[0] || null;
   } catch {
     // Fallback to tasklist for basic info
     try {
-      const { stdout } = await execAsync(
-        `tasklist /fi "PID eq ${parseInt(pid, 10)}" /fo csv /v`,
-        { timeout: 5000 }
-      );
+      const { stdout } = await execAsync(`tasklist /fi "PID eq ${parseInt(pid, 10)}" /fo csv /v`, {
+        timeout: 5000,
+      });
       return parseTasklistForPid(stdout, pid);
     } catch {
       return null;
@@ -265,7 +270,10 @@ async function getProcessInfoByPid(pid) {
  *   "Image Name","PID","Session Name","Session#","Mem Usage","Status","User Name","CPU Time","Window Title"
  */
 function parseTasklistForPid(stdout, targetPid) {
-  const lines = stdout.trim().split('\r\n').filter(l => l.trim());
+  const lines = stdout
+    .trim()
+    .split("\r\n")
+    .filter((l) => l.trim());
   if (lines.length < 2) return null;
 
   const totalMemBytes = os.totalmem();
@@ -278,21 +286,22 @@ function parseTasklistForPid(stdout, targetPid) {
     if (pid !== parseInt(targetPid, 10)) continue;
 
     // Mem Usage is like "12,345 K" — extract number
-    const memStr = cols[4].replace(/[^0-9]/g, '');
+    const memStr = cols[4].replace(/[^0-9]/g, "");
     const memKb = parseInt(memStr, 10) || 0;
 
     return {
       pid,
-      user: cols[6] || '',
+      user: cols[6] || "",
       cpu: 0,
-      memory: totalMemBytes > 0 ? parseFloat(((memKb * 1024 / totalMemBytes) * 100).toFixed(1)) : 0,
+      memory:
+        totalMemBytes > 0 ? parseFloat((((memKb * 1024) / totalMemBytes) * 100).toFixed(1)) : 0,
       vsz: 0,
       rss: memKb,
-      tty: '',
-      status: cols[5] || 'running',
-      startTime: '',
-      cpuTime: cols[7] || '',
-      command: cols[0] || '',
+      tty: "",
+      status: cols[5] || "running",
+      startTime: "",
+      cpuTime: cols[7] || "",
+      command: cols[0] || "",
     };
   }
 
@@ -304,7 +313,7 @@ function parseTasklistForPid(stdout, targetPid) {
  */
 function parseCsvLine(line) {
   const result = [];
-  let current = '';
+  let current = "";
   let inQuotes = false;
 
   for (let i = 0; i < line.length; i++) {
@@ -316,9 +325,9 @@ function parseCsvLine(line) {
       } else {
         inQuotes = !inQuotes;
       }
-    } else if (ch === ',' && !inQuotes) {
+    } else if (ch === "," && !inQuotes) {
       result.push(current);
-      current = '';
+      current = "";
     } else {
       current += ch;
     }
@@ -336,11 +345,11 @@ function parseCsvLine(line) {
  *
  * Strategy: try graceful first (WM_CLOSE), wait briefly, then force kill.
  */
-async function killProcess(pid, signal = 'TERM') {
+async function killProcess(pid, signal = "TERM") {
   const pidStr = String(parseInt(pid, 10));
 
   try {
-    if (signal === 'KILL') {
+    if (signal === "KILL") {
       // Immediate force kill
       await execAsync(`taskkill /PID ${pidStr} /F /T`);
       return { success: true };
@@ -354,7 +363,7 @@ async function killProcess(pid, signal = 'TERM') {
     }
 
     // Wait briefly, then check if still alive
-    await new Promise(resolve => setTimeout(resolve, 300));
+    await new Promise((resolve) => setTimeout(resolve, 300));
 
     try {
       // Check if process still exists
@@ -381,9 +390,9 @@ async function killProcess(pid, signal = 'TERM') {
  */
 async function enumeratePids() {
   try {
-    const { stdout } = await execAsync('tasklist /fo csv /nh', { timeout: 10000 });
+    const { stdout } = await execAsync("tasklist /fo csv /nh", { timeout: 10000 });
     const pids = new Set();
-    const lines = stdout.trim().split('\r\n');
+    const lines = stdout.trim().split("\r\n");
     for (const line of lines) {
       if (line.startsWith('"INFO:')) continue;
       const cols = parseCsvLine(line);
@@ -394,7 +403,7 @@ async function enumeratePids() {
     }
     return pids;
   } catch (error) {
-    console.error('Error enumerating PIDs:', error);
+    console.error("Error enumerating PIDs:", error);
     return new Set();
   }
 }
@@ -435,14 +444,14 @@ function parseNetstatAddr(addr) {
   // IPv6: [::]:port or [::1]:port
   const ipv6Match = addr.match(/^\[([^\]]*)\]:(\d+)$/);
   if (ipv6Match) {
-    return { host: ipv6Match[1] || '::', port: parseInt(ipv6Match[2], 10) };
+    return { host: ipv6Match[1] || "::", port: parseInt(ipv6Match[2], 10) };
   }
 
   // IPv4: host:port — split on last colon
-  const lastColon = addr.lastIndexOf(':');
+  const lastColon = addr.lastIndexOf(":");
   if (lastColon === -1) return null;
 
-  const host = addr.slice(0, lastColon) || '*';
+  const host = addr.slice(0, lastColon) || "*";
   const port = parseInt(addr.slice(lastColon + 1), 10);
   if (isNaN(port)) return null;
 
@@ -456,11 +465,11 @@ function parseNetstatAddr(addr) {
 async function buildPidNameMap() {
   const pidMap = new Map();
   try {
-    const { stdout } = await execAsync('tasklist /fo csv /nh', {
+    const { stdout } = await execAsync("tasklist /fo csv /nh", {
       timeout: 5000,
       maxBuffer: 5 * 1024 * 1024,
     });
-    for (const line of stdout.trim().split('\r\n')) {
+    for (const line of stdout.trim().split("\r\n")) {
       if (line.startsWith('"INFO:')) continue;
       const cols = parseCsvLine(line);
       if (cols && cols.length >= 2) {
@@ -492,7 +501,7 @@ async function parseNetstatOutput(rawOutput) {
 
     const [, proto, localAddr, foreignAddr, state, pidStr] = match;
     // We only handle TCP (UDP has no state column in the same format)
-    if (proto.toUpperCase() !== 'TCP') continue;
+    if (proto.toUpperCase() !== "TCP") continue;
 
     const pid = parseInt(pidStr, 10);
     const local = parseNetstatAddr(localAddr);
@@ -500,9 +509,9 @@ async function parseNetstatOutput(rawOutput) {
 
     const stateUpper = state.toUpperCase();
 
-    if (stateUpper === 'LISTENING') {
+    if (stateUpper === "LISTENING") {
       listening.push({ local, pid });
-    } else if (stateUpper === 'ESTABLISHED') {
+    } else if (stateUpper === "ESTABLISHED") {
       const remote = parseNetstatAddr(foreignAddr);
       if (!remote) continue;
       established.push({ local, remote, pid });
@@ -519,7 +528,7 @@ async function parseNetstatOutput(rawOutput) {
 async function fetchListeningPorts() {
   try {
     const [{ stdout }, pidMap] = await Promise.all([
-      execAsync('netstat -ano -p tcp', { timeout: 10000, maxBuffer: 5 * 1024 * 1024 }),
+      execAsync("netstat -ano -p tcp", { timeout: 10000, maxBuffer: 5 * 1024 * 1024 }),
       buildPidNameMap(),
     ]);
 
@@ -535,16 +544,16 @@ async function fetchListeningPorts() {
         port: entry.local.port,
         host: entry.local.host,
         pid: entry.pid,
-        process: pidMap.get(entry.pid) || '',
-        user: '',      // netstat doesn't provide user; would need Get-Process
-        protocol: 'tcp',
-        fd: '',        // no FD concept in netstat
+        process: pidMap.get(entry.pid) || "",
+        user: "", // netstat doesn't provide user; would need Get-Process
+        protocol: "tcp",
+        fd: "", // no FD concept in netstat
       });
     }
 
     return Array.from(uniquePorts.values());
   } catch (error) {
-    console.error('Error getting listening ports:', error);
+    console.error("Error getting listening ports:", error);
     return [];
   }
 }
@@ -564,8 +573,8 @@ function parseListeningPorts(rawOutput) {
     if (!match) continue;
 
     const [, proto, localAddr, , state, pidStr] = match;
-    if (proto.toUpperCase() !== 'TCP') continue;
-    if (state.toUpperCase() !== 'LISTENING') continue;
+    if (proto.toUpperCase() !== "TCP") continue;
+    if (state.toUpperCase() !== "LISTENING") continue;
 
     const local = parseNetstatAddr(localAddr);
     if (!local) continue;
@@ -576,10 +585,10 @@ function parseListeningPorts(rawOutput) {
       port: local.port,
       host: local.host,
       pid,
-      process: '',
-      user: '',
-      protocol: 'tcp',
-      fd: '',
+      process: "",
+      user: "",
+      protocol: "tcp",
+      fd: "",
     });
   }
 
@@ -599,24 +608,24 @@ function parseListeningPorts(rawOutput) {
 async function fetchEstablishedConnections() {
   try {
     const [{ stdout }, pidMap] = await Promise.all([
-      execAsync('netstat -ano -p tcp', { timeout: 10000, maxBuffer: 5 * 1024 * 1024 }),
+      execAsync("netstat -ano -p tcp", { timeout: 10000, maxBuffer: 5 * 1024 * 1024 }),
       buildPidNameMap(),
     ]);
 
     const { established } = await parseNetstatOutput(stdout);
 
-    return established.map(entry => ({
+    return established.map((entry) => ({
       pid: entry.pid,
-      process: pidMap.get(entry.pid) || '',
-      user: '',
+      process: pidMap.get(entry.pid) || "",
+      user: "",
       localHost: entry.local.host,
       localPort: entry.local.port,
       remoteHost: entry.remote.host,
       remotePort: entry.remote.port,
-      protocol: 'tcp',
+      protocol: "tcp",
     }));
   } catch (error) {
-    console.error('Error getting connections:', error);
+    console.error("Error getting connections:", error);
     return [];
   }
 }
@@ -636,8 +645,8 @@ function parseEstablishedConnections(rawOutput) {
     if (!match) continue;
 
     const [, proto, localAddr, foreignAddr, state, pidStr] = match;
-    if (proto.toUpperCase() !== 'TCP') continue;
-    if (state.toUpperCase() !== 'ESTABLISHED') continue;
+    if (proto.toUpperCase() !== "TCP") continue;
+    if (state.toUpperCase() !== "ESTABLISHED") continue;
 
     const local = parseNetstatAddr(localAddr);
     const remote = parseNetstatAddr(foreignAddr);
@@ -645,13 +654,13 @@ function parseEstablishedConnections(rawOutput) {
 
     connections.push({
       pid: parseInt(pidStr, 10),
-      process: '',
-      user: '',
+      process: "",
+      user: "",
       localHost: local.host,
       localPort: local.port,
       remoteHost: remote.host,
       remotePort: remote.port,
-      protocol: 'tcp',
+      protocol: "tcp",
     });
   }
 
@@ -664,7 +673,7 @@ function parseEstablishedConnections(rawOutput) {
 async function fetchProcessOnPort(port) {
   try {
     const results = await fetchListeningPorts();
-    return results.find(p => p.port === port) || null;
+    return results.find((p) => p.port === port) || null;
   } catch {
     return null;
   }
@@ -676,7 +685,7 @@ async function fetchProcessOnPort(port) {
  */
 async function fetchListeningPortNumbers() {
   try {
-    const { stdout } = await execAsync('netstat -ano -p tcp', {
+    const { stdout } = await execAsync("netstat -ano -p tcp", {
       timeout: 10000,
       maxBuffer: 5 * 1024 * 1024,
     });
@@ -687,8 +696,8 @@ async function fetchListeningPortNumbers() {
       if (!match) continue;
 
       const [, proto, localAddr, , state] = match;
-      if (proto.toUpperCase() !== 'TCP') continue;
-      if (state.toUpperCase() !== 'LISTENING') continue;
+      if (proto.toUpperCase() !== "TCP") continue;
+      if (state.toUpperCase() !== "LISTENING") continue;
 
       const local = parseNetstatAddr(localAddr);
       if (local) ports.add(local.port);
@@ -749,17 +758,34 @@ const WIN_UNQUOTED_PATH_RE = /(?:^|\s|=)([A-Za-z]:[/\\][^\s"';<>|*?]+)/g;
  * The value indicates the typical argument position pattern.
  */
 const SCRIPT_RUNTIMES = new Set([
-  'node', 'node.exe',
-  'python', 'python.exe', 'python3', 'python3.exe',
-  'ruby', 'ruby.exe',
-  'php', 'php.exe',
-  'go', 'go.exe',
-  'deno', 'deno.exe',
-  'bun', 'bun.exe',
-  'java', 'java.exe', 'javaw.exe',
-  'ts-node', 'ts-node.exe',
-  'npx', 'npx.exe', 'npx.cmd',
-  'uvicorn', 'gunicorn', 'flask', 'django-admin',
+  "node",
+  "node.exe",
+  "python",
+  "python.exe",
+  "python3",
+  "python3.exe",
+  "ruby",
+  "ruby.exe",
+  "php",
+  "php.exe",
+  "go",
+  "go.exe",
+  "deno",
+  "deno.exe",
+  "bun",
+  "bun.exe",
+  "java",
+  "java.exe",
+  "javaw.exe",
+  "ts-node",
+  "ts-node.exe",
+  "npx",
+  "npx.exe",
+  "npx.cmd",
+  "uvicorn",
+  "gunicorn",
+  "flask",
+  "django-admin",
 ]);
 
 /**
@@ -796,9 +822,9 @@ function extractCwdFromCommandLine(commandLine) {
   // Prefer argument paths that look like source files (not the exe itself)
   for (const p of argPaths) {
     const lower = p.toLowerCase();
-    if (lower.startsWith('c:\\windows\\')) continue;
-    if (lower.startsWith('c:\\program files')) continue;
-    if (lower.includes('\\node_modules\\.bin\\')) continue;
+    if (lower.startsWith("c:\\windows\\")) continue;
+    if (lower.startsWith("c:\\program files")) continue;
+    if (lower.includes("\\node_modules\\.bin\\")) continue;
 
     // If it has a file extension, use its parent directory
     const ext = win32Path.extname(p).toLowerCase();
@@ -822,8 +848,8 @@ function extractCwdFromCommandLine(commandLine) {
  * Normalize forward slashes to backslashes and strip trailing backslash.
  */
 function normalizeToBs(p) {
-  let out = p.replace(/\//g, '\\');
-  if (out.length > 3 && out.endsWith('\\')) out = out.slice(0, -1);
+  let out = p.replace(/\//g, "\\");
+  if (out.length > 3 && out.endsWith("\\")) out = out.slice(0, -1);
   return out;
 }
 
@@ -832,15 +858,15 @@ function normalizeToBs(p) {
  */
 function exeDirOrNull(exePath) {
   const lower = exePath.toLowerCase();
-  if (lower.startsWith('c:\\windows\\')) return null;
-  if (lower.includes('\\program files\\')) return null;
-  if (lower.includes('\\program files (x86)\\')) return null;
-  if (lower.includes('\\appdata\\local\\programs\\python')) return null;
+  if (lower.startsWith("c:\\windows\\")) return null;
+  if (lower.includes("\\program files\\")) return null;
+  if (lower.includes("\\program files (x86)\\")) return null;
+  if (lower.includes("\\appdata\\local\\programs\\python")) return null;
   // Unquoted "C:\Program" from split at space in "Program Files"
   if (/^[a-z]:\\program$/i.test(lower)) return null;
 
   // node_modules/.bin scripts live inside the project — go up past node_modules
-  const nmIdx = lower.indexOf('\\node_modules\\');
+  const nmIdx = lower.indexOf("\\node_modules\\");
   if (nmIdx !== -1) {
     return exePath.slice(0, nmIdx);
   }
@@ -909,19 +935,22 @@ async function fetchProcessPathDataViaWmic(pids) {
 
   for (let i = 0; i < pids.length; i += CHUNK_SIZE) {
     const chunk = pids.slice(i, i + CHUNK_SIZE);
-    const pidFilter = chunk.map(p => `ProcessId=${p}`).join(' OR ');
+    const pidFilter = chunk.map((p) => `ProcessId=${p}`).join(" OR ");
     const { stdout } = await execAsync(
       `wmic process where "${pidFilter}" get ProcessId,CommandLine,ExecutablePath /format:csv`,
-      { timeout: 15000, maxBuffer: 10 * 1024 * 1024 }
+      { timeout: 15000, maxBuffer: 10 * 1024 * 1024 },
     );
 
-    const lines = stdout.trim().split('\r\n').filter(l => l.trim());
+    const lines = stdout
+      .trim()
+      .split("\r\n")
+      .filter((l) => l.trim());
     if (lines.length < 2) continue;
 
-    const header = lines[0].split(',').map(h => h.trim());
-    const idxPid = header.indexOf('ProcessId');
-    const idxCmd = header.indexOf('CommandLine');
-    const idxExe = header.indexOf('ExecutablePath');
+    const header = lines[0].split(",").map((h) => h.trim());
+    const idxPid = header.indexOf("ProcessId");
+    const idxCmd = header.indexOf("CommandLine");
+    const idxExe = header.indexOf("ExecutablePath");
 
     for (let j = 1; j < lines.length; j++) {
       // CommandLine can contain commas — use the same right-split strategy
@@ -933,8 +962,8 @@ async function fetchProcessPathDataViaWmic(pids) {
 
       allResults.push({
         pid,
-        commandLine: (cols[idxCmd] || '').trim(),
-        executablePath: (cols[idxExe] || '').trim(),
+        commandLine: (cols[idxCmd] || "").trim(),
+        executablePath: (cols[idxExe] || "").trim(),
       });
     }
   }
@@ -943,17 +972,17 @@ async function fetchProcessPathDataViaWmic(pids) {
 }
 
 async function fetchProcessPathDataViaPowerShell(pids) {
-  const pidList = pids.join(',');
+  const pidList = pids.join(",");
   const psCmd = [
     `Get-CimInstance Win32_Process -Filter "ProcessId IN (${pidList})"`,
-    '| Select-Object ProcessId,CommandLine,ExecutablePath',
-    '| ConvertTo-Json -Compress',
-  ].join(' ');
+    "| Select-Object ProcessId,CommandLine,ExecutablePath",
+    "| ConvertTo-Json -Compress",
+  ].join(" ");
 
-  const { stdout } = await execAsync(
-    `powershell -NoProfile -NoLogo -Command "${psCmd}"`,
-    { timeout: 15000, maxBuffer: 10 * 1024 * 1024 }
-  );
+  const { stdout } = await execAsync(`powershell -NoProfile -NoLogo -Command "${psCmd}"`, {
+    timeout: 15000,
+    maxBuffer: 10 * 1024 * 1024,
+  });
 
   let raw;
   try {
@@ -964,10 +993,10 @@ async function fetchProcessPathDataViaPowerShell(pids) {
 
   if (!Array.isArray(raw)) raw = [raw];
 
-  return raw.map(p => ({
+  return raw.map((p) => ({
     pid: p.ProcessId,
-    commandLine: (p.CommandLine || '').trim(),
-    executablePath: (p.ExecutablePath || '').trim(),
+    commandLine: (p.CommandLine || "").trim(),
+    executablePath: (p.ExecutablePath || "").trim(),
   }));
 }
 
@@ -985,10 +1014,10 @@ async function resolveCwd(pid) {
 
 const DOCKER_BIN_CANDIDATES = [
   process.env.FERE_DOCKER_BIN,
-  'C:\\Program Files\\Docker\\Docker\\resources\\bin\\docker.exe',
-  'C:\\Program Files\\Docker\\Docker\\Docker.exe',
-  path.join(os.homedir(), 'AppData', 'Local', 'Docker', 'resources', 'bin', 'docker.exe'),
-  'docker',
+  "C:\\Program Files\\Docker\\Docker\\resources\\bin\\docker.exe",
+  "C:\\Program Files\\Docker\\Docker\\Docker.exe",
+  path.join(os.homedir(), "AppData", "Local", "Docker", "resources", "bin", "docker.exe"),
+  "docker",
 ].filter(Boolean);
 
 // ============================================
@@ -996,45 +1025,203 @@ const DOCKER_BIN_CANDIDATES = [
 // ============================================
 
 const PLATFORM_KNOWN_SERVICES = {
-  'svchost.exe': { description: 'Windows Service Host - hosts multiple Windows services in shared processes.', category: 'system', displayName: 'Service Host' },
-  'svchost': { description: 'Windows Service Host - hosts multiple Windows services in shared processes.', category: 'system', displayName: 'Service Host' },
-  'explorer.exe': { description: 'Windows Explorer - provides the desktop, taskbar, and file browsing experience.', category: 'system', displayName: 'Explorer' },
-  'explorer': { description: 'Windows Explorer - provides the desktop, taskbar, and file browsing experience.', category: 'system', displayName: 'Explorer' },
-  'dwm.exe': { description: 'Desktop Window Manager - composites windows and handles visual effects.', category: 'system', displayName: 'Desktop Window Manager' },
-  'dwm': { description: 'Desktop Window Manager - composites windows and handles visual effects.', category: 'system', displayName: 'Desktop Window Manager' },
-  'csrss.exe': { description: 'Client/Server Runtime - manages console windows and thread creation.', category: 'system', displayName: 'Client Server Runtime' },
-  'csrss': { description: 'Client/Server Runtime - manages console windows and thread creation.', category: 'system', displayName: 'Client Server Runtime' },
-  'lsass.exe': { description: 'Local Security Authority - handles authentication and security policy enforcement.', category: 'system', displayName: 'Local Security Authority' },
-  'lsass': { description: 'Local Security Authority - handles authentication and security policy enforcement.', category: 'system', displayName: 'Local Security Authority' },
-  'services.exe': { description: 'Service Control Manager - starts and manages Windows services.', category: 'system', displayName: 'Service Control Manager' },
-  'services': { description: 'Service Control Manager - starts and manages Windows services.', category: 'system', displayName: 'Service Control Manager' },
-  'wininit.exe': { description: 'Windows Initialization - starts critical system services during boot.', category: 'system', displayName: 'Windows Init' },
-  'winlogon.exe': { description: 'Windows Logon - handles user login, logout, and secure attention sequence.', category: 'system', displayName: 'Windows Logon' },
-  'taskhostw.exe': { description: 'Task Host Window - runs scheduled tasks and background work items.', category: 'system', displayName: 'Task Host' },
-  'taskhostw': { description: 'Task Host Window - runs scheduled tasks and background work items.', category: 'system', displayName: 'Task Host' },
-  'RuntimeBroker.exe': { description: 'Runtime Broker - manages permissions for UWP/Store apps.', category: 'system', displayName: 'Runtime Broker' },
-  'RuntimeBrok': { description: 'Runtime Broker - manages permissions for UWP/Store apps.', category: 'system', displayName: 'Runtime Broker' },
-  'SearchHost.exe': { description: 'Windows Search - provides Start menu search and file indexing.', category: 'system', displayName: 'Windows Search' },
-  'SearchHost': { description: 'Windows Search - provides Start menu search and file indexing.', category: 'system', displayName: 'Windows Search' },
-  'SearchIndexer.exe': { description: 'Windows Search Indexer - indexes files for fast searching.', category: 'system', displayName: 'Search Indexer' },
-  'ShellExperienceHost.exe': { description: 'Shell Experience Host - renders Start menu, Action Center, and taskbar.', category: 'system', displayName: 'Shell Experience' },
-  'StartMenuExperienceHost.exe': { description: 'Start Menu - renders the Windows Start menu.', category: 'system', displayName: 'Start Menu' },
-  'TextInputHost.exe': { description: 'Text Input Host - handles touch keyboard and handwriting input.', category: 'system', displayName: 'Text Input' },
-  'spoolsv.exe': { description: 'Print Spooler - manages print jobs and printer communication.', category: 'system', displayName: 'Print Spooler' },
-  'WmiPrvSE.exe': { description: 'WMI Provider Host - handles Windows Management Instrumentation queries.', category: 'system', displayName: 'WMI Provider' },
-  'wlanext.exe': { description: 'Windows WLAN Extension - manages Wi-Fi connections and configuration.', category: 'network', displayName: 'WLAN Extension' },
-  'conhost.exe': { description: 'Console Window Host - hosts command prompt and PowerShell windows.', category: 'system', displayName: 'Console Host' },
-  'conhost': { description: 'Console Window Host - hosts command prompt and PowerShell windows.', category: 'system', displayName: 'Console Host' },
-  'SecurityHealthService.exe': { description: 'Windows Security Health - monitors antivirus, firewall, and security status.', category: 'system', displayName: 'Security Health' },
-  'MsMpEng.exe': { description: 'Microsoft Defender Antimalware - real-time antivirus scanning engine.', category: 'system', displayName: 'Defender Antimalware' },
-  'wsl.exe': { description: 'Windows Subsystem for Linux - runs Linux distributions on Windows.', category: 'development', displayName: 'WSL' },
-  'wsl': { description: 'Windows Subsystem for Linux - runs Linux distributions on Windows.', category: 'development', displayName: 'WSL' },
-  'wslhost.exe': { description: 'WSL Host - manages WSL2 virtual machine and Linux interop.', category: 'development', displayName: 'WSL Host' },
-  'WindowsTerminal.exe': { description: 'Windows Terminal - modern terminal emulator for PowerShell, CMD, and WSL.', category: 'development', displayName: 'Windows Terminal' },
-  'WindowsTerm': { description: 'Windows Terminal - modern terminal emulator for PowerShell, CMD, and WSL.', category: 'development', displayName: 'Windows Terminal' },
-  'powershell.exe': { description: 'PowerShell - task automation and configuration management shell.', category: 'development', displayName: 'PowerShell' },
-  'pwsh.exe': { description: 'PowerShell Core - cross-platform PowerShell.', category: 'development', displayName: 'PowerShell Core' },
-  'cmd.exe': { description: 'Command Prompt - Windows command-line interpreter.', category: 'development', displayName: 'Command Prompt' },
+  "svchost.exe": {
+    description: "Windows Service Host - hosts multiple Windows services in shared processes.",
+    category: "system",
+    displayName: "Service Host",
+  },
+  svchost: {
+    description: "Windows Service Host - hosts multiple Windows services in shared processes.",
+    category: "system",
+    displayName: "Service Host",
+  },
+  "explorer.exe": {
+    description: "Windows Explorer - provides the desktop, taskbar, and file browsing experience.",
+    category: "system",
+    displayName: "Explorer",
+  },
+  explorer: {
+    description: "Windows Explorer - provides the desktop, taskbar, and file browsing experience.",
+    category: "system",
+    displayName: "Explorer",
+  },
+  "dwm.exe": {
+    description: "Desktop Window Manager - composites windows and handles visual effects.",
+    category: "system",
+    displayName: "Desktop Window Manager",
+  },
+  dwm: {
+    description: "Desktop Window Manager - composites windows and handles visual effects.",
+    category: "system",
+    displayName: "Desktop Window Manager",
+  },
+  "csrss.exe": {
+    description: "Client/Server Runtime - manages console windows and thread creation.",
+    category: "system",
+    displayName: "Client Server Runtime",
+  },
+  csrss: {
+    description: "Client/Server Runtime - manages console windows and thread creation.",
+    category: "system",
+    displayName: "Client Server Runtime",
+  },
+  "lsass.exe": {
+    description:
+      "Local Security Authority - handles authentication and security policy enforcement.",
+    category: "system",
+    displayName: "Local Security Authority",
+  },
+  lsass: {
+    description:
+      "Local Security Authority - handles authentication and security policy enforcement.",
+    category: "system",
+    displayName: "Local Security Authority",
+  },
+  "services.exe": {
+    description: "Service Control Manager - starts and manages Windows services.",
+    category: "system",
+    displayName: "Service Control Manager",
+  },
+  services: {
+    description: "Service Control Manager - starts and manages Windows services.",
+    category: "system",
+    displayName: "Service Control Manager",
+  },
+  "wininit.exe": {
+    description: "Windows Initialization - starts critical system services during boot.",
+    category: "system",
+    displayName: "Windows Init",
+  },
+  "winlogon.exe": {
+    description: "Windows Logon - handles user login, logout, and secure attention sequence.",
+    category: "system",
+    displayName: "Windows Logon",
+  },
+  "taskhostw.exe": {
+    description: "Task Host Window - runs scheduled tasks and background work items.",
+    category: "system",
+    displayName: "Task Host",
+  },
+  taskhostw: {
+    description: "Task Host Window - runs scheduled tasks and background work items.",
+    category: "system",
+    displayName: "Task Host",
+  },
+  "RuntimeBroker.exe": {
+    description: "Runtime Broker - manages permissions for UWP/Store apps.",
+    category: "system",
+    displayName: "Runtime Broker",
+  },
+  RuntimeBrok: {
+    description: "Runtime Broker - manages permissions for UWP/Store apps.",
+    category: "system",
+    displayName: "Runtime Broker",
+  },
+  "SearchHost.exe": {
+    description: "Windows Search - provides Start menu search and file indexing.",
+    category: "system",
+    displayName: "Windows Search",
+  },
+  SearchHost: {
+    description: "Windows Search - provides Start menu search and file indexing.",
+    category: "system",
+    displayName: "Windows Search",
+  },
+  "SearchIndexer.exe": {
+    description: "Windows Search Indexer - indexes files for fast searching.",
+    category: "system",
+    displayName: "Search Indexer",
+  },
+  "ShellExperienceHost.exe": {
+    description: "Shell Experience Host - renders Start menu, Action Center, and taskbar.",
+    category: "system",
+    displayName: "Shell Experience",
+  },
+  "StartMenuExperienceHost.exe": {
+    description: "Start Menu - renders the Windows Start menu.",
+    category: "system",
+    displayName: "Start Menu",
+  },
+  "TextInputHost.exe": {
+    description: "Text Input Host - handles touch keyboard and handwriting input.",
+    category: "system",
+    displayName: "Text Input",
+  },
+  "spoolsv.exe": {
+    description: "Print Spooler - manages print jobs and printer communication.",
+    category: "system",
+    displayName: "Print Spooler",
+  },
+  "WmiPrvSE.exe": {
+    description: "WMI Provider Host - handles Windows Management Instrumentation queries.",
+    category: "system",
+    displayName: "WMI Provider",
+  },
+  "wlanext.exe": {
+    description: "Windows WLAN Extension - manages Wi-Fi connections and configuration.",
+    category: "network",
+    displayName: "WLAN Extension",
+  },
+  "conhost.exe": {
+    description: "Console Window Host - hosts command prompt and PowerShell windows.",
+    category: "system",
+    displayName: "Console Host",
+  },
+  conhost: {
+    description: "Console Window Host - hosts command prompt and PowerShell windows.",
+    category: "system",
+    displayName: "Console Host",
+  },
+  "SecurityHealthService.exe": {
+    description: "Windows Security Health - monitors antivirus, firewall, and security status.",
+    category: "system",
+    displayName: "Security Health",
+  },
+  "MsMpEng.exe": {
+    description: "Microsoft Defender Antimalware - real-time antivirus scanning engine.",
+    category: "system",
+    displayName: "Defender Antimalware",
+  },
+  "wsl.exe": {
+    description: "Windows Subsystem for Linux - runs Linux distributions on Windows.",
+    category: "development",
+    displayName: "WSL",
+  },
+  wsl: {
+    description: "Windows Subsystem for Linux - runs Linux distributions on Windows.",
+    category: "development",
+    displayName: "WSL",
+  },
+  "wslhost.exe": {
+    description: "WSL Host - manages WSL2 virtual machine and Linux interop.",
+    category: "development",
+    displayName: "WSL Host",
+  },
+  "WindowsTerminal.exe": {
+    description: "Windows Terminal - modern terminal emulator for PowerShell, CMD, and WSL.",
+    category: "development",
+    displayName: "Windows Terminal",
+  },
+  WindowsTerm: {
+    description: "Windows Terminal - modern terminal emulator for PowerShell, CMD, and WSL.",
+    category: "development",
+    displayName: "Windows Terminal",
+  },
+  "powershell.exe": {
+    description: "PowerShell - task automation and configuration management shell.",
+    category: "development",
+    displayName: "PowerShell",
+  },
+  "pwsh.exe": {
+    description: "PowerShell Core - cross-platform PowerShell.",
+    category: "development",
+    displayName: "PowerShell Core",
+  },
+  "cmd.exe": {
+    description: "Command Prompt - Windows command-line interpreter.",
+    category: "development",
+    displayName: "Command Prompt",
+  },
 };
 
 // ============================================
@@ -1045,13 +1232,14 @@ const PLATFORM_KNOWN_SERVICES = {
  * Extract app name from Windows executable paths in a command string.
  * e.g. "C:\Program Files\Slack\slack.exe" → "Slack"
  */
-function extractAppNameFromCommand(command = '') {
+function extractAppNameFromCommand(command = "") {
   if (!command) return null;
 
   // Match Program Files paths
-  const pfMatch = command.match(/[A-Za-z]:\\Program Files(?:\s*\(x86\))?\\([^\\]+)\\/i)
-    || command.match(/[A-Za-z]:\\Users\\[^\\]+\\AppData\\Local\\Programs\\([^\\]+)\\/i)
-    || command.match(/[A-Za-z]:\\Users\\[^\\]+\\AppData\\Local\\([^\\]+)\\/i);
+  const pfMatch =
+    command.match(/[A-Za-z]:\\Program Files(?:\s*\(x86\))?\\([^\\]+)\\/i) ||
+    command.match(/[A-Za-z]:\\Users\\[^\\]+\\AppData\\Local\\Programs\\([^\\]+)\\/i) ||
+    command.match(/[A-Za-z]:\\Users\\[^\\]+\\AppData\\Local\\([^\\]+)\\/i);
   if (pfMatch && pfMatch[1]) {
     return pfMatch[1];
   }
@@ -1067,17 +1255,17 @@ function extractAppNameFromCommand(command = '') {
  * Prefixes that indicate a user home directory path on Windows.
  * Used by inferProjectPathFromCommand in graphFunctions.js.
  */
-const HOME_DIR_PATH_PREFIXES = ['C:\\Users\\', 'C:/Users/'];
+const HOME_DIR_PATH_PREFIXES = ["C:\\Users\\", "C:/Users/"];
 
 /**
  * System-installed paths to exclude from project scanning.
  */
 const SYSTEM_PROJECT_ROOTS = [
-  'C:\\Program Files',
-  'C:\\Program Files (x86)',
-  'C:\\Windows',
-  'C:\\ProgramData',
-].map(p => path.resolve(p).toLowerCase());
+  "C:\\Program Files",
+  "C:\\Program Files (x86)",
+  "C:\\Windows",
+  "C:\\ProgramData",
+].map((p) => path.resolve(p).toLowerCase());
 
 // ============================================
 // Shell Operations
@@ -1091,27 +1279,27 @@ function openTerminalAtPath(dirPath) {
     // Try Windows Terminal first (wt.exe), fall back to cmd.exe
     let child;
     try {
-      child = spawn('wt.exe', ['-d', dirPath], {
+      child = spawn("wt.exe", ["-d", dirPath], {
         detached: true,
-        stdio: 'ignore',
+        stdio: "ignore",
       });
     } catch {
-      child = spawn('cmd.exe', ['/c', 'start', 'cmd', '/K', `cd /d "${dirPath}"`], {
+      child = spawn("cmd.exe", ["/c", "start", "cmd", "/K", `cd /d "${dirPath}"`], {
         detached: true,
-        stdio: 'ignore',
+        stdio: "ignore",
         shell: true,
       });
     }
 
-    child.on('error', (err) => {
+    child.on("error", (err) => {
       // wt.exe not found — fall back to cmd.exe
-      const fallback = spawn('cmd.exe', ['/c', 'start', 'cmd', '/K', `cd /d "${dirPath}"`], {
+      const fallback = spawn("cmd.exe", ["/c", "start", "cmd", "/K", `cd /d "${dirPath}"`], {
         detached: true,
-        stdio: 'ignore',
+        stdio: "ignore",
         shell: true,
       });
-      fallback.on('error', (fallbackErr) => {
-        console.error('Error opening terminal:', fallbackErr);
+      fallback.on("error", (fallbackErr) => {
+        console.error("Error opening terminal:", fallbackErr);
         resolve({ success: false, error: fallbackErr.message });
       });
       fallback.unref();
@@ -1127,13 +1315,13 @@ function openTerminalAtPath(dirPath) {
  * Open a file in the default system application.
  */
 function openFileInDefaultApp(filePath) {
-  const child = spawn('cmd.exe', ['/c', 'start', '""', filePath], {
+  const child = spawn("cmd.exe", ["/c", "start", '""', filePath], {
     detached: true,
-    stdio: 'ignore',
+    stdio: "ignore",
     shell: true,
   });
   child.unref();
-  return { success: true, editor: 'default' };
+  return { success: true, editor: "default" };
 }
 
 /**
@@ -1141,7 +1329,7 @@ function openFileInDefaultApp(filePath) {
  */
 function hasCodeEditor() {
   try {
-    execFileSync('where', ['code'], { timeout: 2000, stdio: 'ignore' });
+    execFileSync("where", ["code"], { timeout: 2000, stdio: "ignore" });
     return true;
   } catch {
     return false;

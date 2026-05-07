@@ -26,10 +26,10 @@ export function NodeDetailPanel({ node, edges, allNodes, onClose }: NodeDetailPa
 
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === "Escape") onClose();
     };
-    window.addEventListener('keydown', handleEscape);
-    return () => window.removeEventListener('keydown', handleEscape);
+    window.addEventListener("keydown", handleEscape);
+    return () => window.removeEventListener("keydown", handleEscape);
   }, [onClose]);
 
   const handleAssessService = useCallback(() => {
@@ -39,8 +39,10 @@ export function NodeDetailPanel({ node, edges, allNodes, onClose }: NodeDetailPa
     const outbound = edges.filter((e) => e.source === node.id && !isDockerNet(e));
     const networkPeerIds = new Set<string>();
     const networkPeers: string[] = [];
-    [...edges.filter((e) => e.target === node.id && isDockerNet(e)),
-     ...edges.filter((e) => e.source === node.id && isDockerNet(e))].forEach((e) => {
+    [
+      ...edges.filter((e) => e.target === node.id && isDockerNet(e)),
+      ...edges.filter((e) => e.source === node.id && isDockerNet(e)),
+    ].forEach((e) => {
       const peerId = e.source === node.id ? e.target : e.source;
       if (!networkPeerIds.has(peerId)) {
         networkPeerIds.add(peerId);
@@ -75,10 +77,10 @@ export function NodeDetailPanel({ node, edges, allNodes, onClose }: NodeDetailPa
     <div className="node-detail-backdrop" onClick={handleBackdropClick} onWheel={handleWheel}>
       <div
         className="node-detail-panel"
-        onMouseDown={e => e.stopPropagation()}
-        onWheel={e => e.stopPropagation()}
-        onMouseDownCapture={e => e.stopPropagation()}
-        onWheelCapture={e => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
+        onWheel={(e) => e.stopPropagation()}
+        onMouseDownCapture={(e) => e.stopPropagation()}
+        onWheelCapture={(e) => e.stopPropagation()}
       >
         <div className="node-detail-header">
           <div className="node-detail-header-main">
@@ -104,7 +106,9 @@ export function NodeDetailPanel({ node, edges, allNodes, onClose }: NodeDetailPa
               </div>
             </div>
           </div>
-          <button className="node-detail-close" onClick={onClose}>×</button>
+          <button className="node-detail-close" onClick={onClose}>
+            ×
+          </button>
         </div>
         <div className="node-detail-header-actions">
           <button

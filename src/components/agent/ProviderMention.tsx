@@ -41,11 +41,7 @@ export function renderProviderMentionsInText(
     const logoUrl = getLogoUrl(hit.text, providerDomains);
     if (logoUrl) {
       nodes.push(
-        <ProviderMention
-          key={`provider-${idx}-${hit.start}`}
-          text={hit.text}
-          logoUrl={logoUrl}
-        />,
+        <ProviderMention key={`provider-${idx}-${hit.start}`} text={hit.text} logoUrl={logoUrl} />,
       );
     } else {
       nodes.push(hit.text);

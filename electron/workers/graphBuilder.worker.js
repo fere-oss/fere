@@ -12,11 +12,8 @@
  *   OUT: { type: 'metrics-result', seq, data: { nodes, edges, dockerSnapshot } }
  */
 
-const { parentPort } = require('worker_threads');
-const {
-  buildGraphStructure,
-  overlayMetrics,
-} = require('../services/graph/graphFunctions');
+const { parentPort } = require("worker_threads");
+const { buildGraphStructure, overlayMetrics } = require("../services/graph/graphFunctions");
 
 // Persistent cached structure for metrics-only updates
 let cachedStructure = null;
@@ -26,18 +23,36 @@ let cachedStructure = null;
 const containerHealthToGraphHealth = (container) => {
   const status = container.health?.status || container.state;
   switch (status) {
-    case 'running': case 'healthy': return 'green';
-    case 'starting': case 'paused': case 'restarting': return 'yellow';
-    case 'exited': case 'dead': case 'unhealthy': return 'red';
-    default: return 'yellow';
+    case "running":
+    case "healthy":
+      return "green";
+    case "starting":
+    case "paused":
+    case "restarting":
+      return "yellow";
+    case "exited":
+    case "dead":
+    case "unhealthy":
+      return "red";
+    default:
+      return "yellow";
   }
 };
 
-parentPort.on('message', (msg) => {
+parentPort.on("message", (msg) => {
   try {
     switch (msg.type) {
-      case 'build-structure': {
-        const { processes, ports, connections, cwdMap, dockerSnapshot, routesByProject, localConnectionsByProject, healthByPid } = msg.data;
+      case "build-structure": {
+        const {
+          processes,
+          ports,
+          connections,
+          cwdMap,
+          dockerSnapshot,
+          routesByProject,
+          localConnectionsByProject,
+          healthByPid,
+        } = msg.data;
 
         cachedStructure = buildGraphStructure({
           processes,
@@ -52,18 +67,18 @@ parentPort.on('message', (msg) => {
         });
 
         parentPort.postMessage({
-          type: 'structure-result',
+          type: "structure-result",
           seq: msg.seq,
           data: cachedStructure,
         });
         break;
       }
 
-      case 'overlay-metrics': {
+      case "overlay-metrics": {
         if (!cachedStructure) {
           // No cached structure yet — request a full build
           parentPort.postMessage({
-            type: 'needs-structure',
+            type: "needs-structure",
             seq: msg.seq,
           });
           break;
@@ -73,7 +88,7 @@ parentPort.on('message', (msg) => {
         const updatedNodes = overlayMetrics(cachedStructure.nodes, processes, healthByPid || {});
 
         parentPort.postMessage({
-          type: 'metrics-result',
+          type: "metrics-result",
           seq: msg.seq,
           data: {
             nodes: updatedNodes,
@@ -89,7 +104,7 @@ parentPort.on('message', (msg) => {
     }
   } catch (error) {
     parentPort.postMessage({
-      type: 'error',
+      type: "error",
       seq: msg.seq,
       error: error.message,
     });

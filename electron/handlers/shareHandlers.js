@@ -29,15 +29,10 @@ function writeShareSettings(patch) {
   fs.renameSync(tmp, SHARE_SETTINGS_FILE);
 }
 
-function registerShareHandlers(ipcMain, {
-  generateHTML,
-  createGist,
-  updateGist,
-  buildPreviewUrl,
-  dialog,
-  getMainWindow,
-}) {
-
+function registerShareHandlers(
+  ipcMain,
+  { generateHTML, createGist, updateGist, buildPreviewUrl, dialog, getMainWindow },
+) {
   function readLogoDevToken() {
     // REACT_APP_ vars aren't loaded into Electron main by CRA — read .env directly
     let logoDevToken = process.env.REACT_APP_LOGO_DEV_TOKEN || "";

@@ -1,78 +1,78 @@
-const test = require('node:test');
-const assert = require('node:assert/strict');
+const test = require("node:test");
+const assert = require("node:assert/strict");
 
 // Import the win32 module directly (works on any platform for unit testing
 // since the parsers are pure functions with no OS calls).
-const win32 = require('./win32');
+const win32 = require("./win32");
 
 // ============================================
 // netstat parser tests
 // ============================================
 
-test('parseListeningPorts handles basic netstat -ano output', () => {
+test("parseListeningPorts handles basic netstat -ano output", () => {
   const output = [
-    '',
-    'Active Connections',
-    '',
-    '  Proto  Local Address          Foreign Address        State           PID',
-    '  TCP    0.0.0.0:135            0.0.0.0:0              LISTENING       1120',
-    '  TCP    127.0.0.1:3000         0.0.0.0:0              LISTENING       5678',
-    '  TCP    192.168.1.5:49876      52.114.128.40:443      ESTABLISHED     9012',
-    '  TCP    0.0.0.0:8080           0.0.0.0:0              LISTENING       5678',
-  ].join('\r\n');
+    "",
+    "Active Connections",
+    "",
+    "  Proto  Local Address          Foreign Address        State           PID",
+    "  TCP    0.0.0.0:135            0.0.0.0:0              LISTENING       1120",
+    "  TCP    127.0.0.1:3000         0.0.0.0:0              LISTENING       5678",
+    "  TCP    192.168.1.5:49876      52.114.128.40:443      ESTABLISHED     9012",
+    "  TCP    0.0.0.0:8080           0.0.0.0:0              LISTENING       5678",
+  ].join("\r\n");
 
   const ports = win32.parseListeningPorts(output);
   assert.equal(ports.length, 3);
 
-  const port135 = ports.find(p => p.port === 135);
+  const port135 = ports.find((p) => p.port === 135);
   assert.ok(port135);
   assert.equal(port135.pid, 1120);
-  assert.equal(port135.host, '0.0.0.0');
-  assert.equal(port135.protocol, 'tcp');
+  assert.equal(port135.host, "0.0.0.0");
+  assert.equal(port135.protocol, "tcp");
 
-  const port3000 = ports.find(p => p.port === 3000);
+  const port3000 = ports.find((p) => p.port === 3000);
   assert.ok(port3000);
   assert.equal(port3000.pid, 5678);
-  assert.equal(port3000.host, '127.0.0.1');
+  assert.equal(port3000.host, "127.0.0.1");
 
   // ESTABLISHED line should NOT appear in listening ports
-  const port49876 = ports.find(p => p.port === 49876);
+  const port49876 = ports.find((p) => p.port === 49876);
   assert.equal(port49876, undefined);
 });
 
-test('parseListeningPorts handles IPv6 addresses', () => {
+test("parseListeningPorts handles IPv6 addresses", () => {
   const output = [
-    '  Proto  Local Address          Foreign Address        State           PID',
-    '  TCP    [::]:445               [::]:0                 LISTENING       4',
-    '  TCP    [::1]:3000             [::]:0                 LISTENING       9999',
-    '  TCP    [fe80::1%12]:1234      [::]:0                 LISTENING       8888',
-  ].join('\r\n');
+    "  Proto  Local Address          Foreign Address        State           PID",
+    "  TCP    [::]:445               [::]:0                 LISTENING       4",
+    "  TCP    [::1]:3000             [::]:0                 LISTENING       9999",
+    "  TCP    [fe80::1%12]:1234      [::]:0                 LISTENING       8888",
+  ].join("\r\n");
 
   const ports = win32.parseListeningPorts(output);
   assert.equal(ports.length, 3);
 
-  const port445 = ports.find(p => p.port === 445);
+  const port445 = ports.find((p) => p.port === 445);
   assert.ok(port445);
-  assert.equal(port445.host, '::');
+  assert.equal(port445.host, "::");
   assert.equal(port445.pid, 4);
 
-  const port3000 = ports.find(p => p.port === 3000);
+  const port3000 = ports.find((p) => p.port === 3000);
   assert.ok(port3000);
-  assert.equal(port3000.host, '::1');
+  assert.equal(port3000.host, "::1");
   assert.equal(port3000.pid, 9999);
 
-  const port1234 = ports.find(p => p.port === 1234);
+  const port1234 = ports.find((p) => p.port === 1234);
   assert.ok(port1234);
-  assert.equal(port1234.host, 'fe80::1%12');
+  assert.equal(port1234.host, "fe80::1%12");
 });
 
-test('parseListeningPorts deduplicates by port+pid', () => {
+test("parseListeningPorts deduplicates by port+pid", () => {
   const output = [
-    '  Proto  Local Address          Foreign Address        State           PID',
-    '  TCP    0.0.0.0:3000           0.0.0.0:0              LISTENING       5678',
-    '  TCP    127.0.0.1:3000         0.0.0.0:0              LISTENING       5678',
-    '  TCP    [::]:3000              [::]:0                 LISTENING       5678',
-  ].join('\r\n');
+    "  Proto  Local Address          Foreign Address        State           PID",
+    "  TCP    0.0.0.0:3000           0.0.0.0:0              LISTENING       5678",
+    "  TCP    127.0.0.1:3000         0.0.0.0:0              LISTENING       5678",
+    "  TCP    [::]:3000              [::]:0                 LISTENING       5678",
+  ].join("\r\n");
 
   const ports = win32.parseListeningPorts(output);
   // All three are same port+pid, should deduplicate to 1
@@ -81,58 +81,61 @@ test('parseListeningPorts deduplicates by port+pid', () => {
   assert.equal(ports[0].pid, 5678);
 });
 
-test('parseEstablishedConnections handles basic output', () => {
+test("parseEstablishedConnections handles basic output", () => {
   const output = [
-    '  Proto  Local Address          Foreign Address        State           PID',
-    '  TCP    192.168.1.5:49876      52.114.128.40:443      ESTABLISHED     9012',
-    '  TCP    127.0.0.1:52341        127.0.0.1:5001         ESTABLISHED     1234',
-    '  TCP    0.0.0.0:3000           0.0.0.0:0              LISTENING       5678',
-  ].join('\r\n');
+    "  Proto  Local Address          Foreign Address        State           PID",
+    "  TCP    192.168.1.5:49876      52.114.128.40:443      ESTABLISHED     9012",
+    "  TCP    127.0.0.1:52341        127.0.0.1:5001         ESTABLISHED     1234",
+    "  TCP    0.0.0.0:3000           0.0.0.0:0              LISTENING       5678",
+  ].join("\r\n");
 
   const conns = win32.parseEstablishedConnections(output);
   assert.equal(conns.length, 2);
 
-  const ext = conns.find(c => c.remotePort === 443);
+  const ext = conns.find((c) => c.remotePort === 443);
   assert.ok(ext);
   assert.equal(ext.pid, 9012);
-  assert.equal(ext.localHost, '192.168.1.5');
+  assert.equal(ext.localHost, "192.168.1.5");
   assert.equal(ext.localPort, 49876);
-  assert.equal(ext.remoteHost, '52.114.128.40');
-  assert.equal(ext.protocol, 'tcp');
+  assert.equal(ext.remoteHost, "52.114.128.40");
+  assert.equal(ext.protocol, "tcp");
 
-  const local = conns.find(c => c.remotePort === 5001);
+  const local = conns.find((c) => c.remotePort === 5001);
   assert.ok(local);
   assert.equal(local.pid, 1234);
   assert.equal(local.localPort, 52341);
-  assert.equal(local.remoteHost, '127.0.0.1');
+  assert.equal(local.remoteHost, "127.0.0.1");
 
   // LISTENING line should NOT appear in established connections
-  assert.equal(conns.find(c => c.localPort === 3000), undefined);
+  assert.equal(
+    conns.find((c) => c.localPort === 3000),
+    undefined,
+  );
 });
 
-test('parseEstablishedConnections handles IPv6', () => {
+test("parseEstablishedConnections handles IPv6", () => {
   const output = [
-    '  Proto  Local Address          Foreign Address        State           PID',
-    '  TCP    [::1]:52000            [::1]:3000             ESTABLISHED     7777',
-  ].join('\r\n');
+    "  Proto  Local Address          Foreign Address        State           PID",
+    "  TCP    [::1]:52000            [::1]:3000             ESTABLISHED     7777",
+  ].join("\r\n");
 
   const conns = win32.parseEstablishedConnections(output);
   assert.equal(conns.length, 1);
-  assert.equal(conns[0].localHost, '::1');
+  assert.equal(conns[0].localHost, "::1");
   assert.equal(conns[0].localPort, 52000);
-  assert.equal(conns[0].remoteHost, '::1');
+  assert.equal(conns[0].remoteHost, "::1");
   assert.equal(conns[0].remotePort, 3000);
   assert.equal(conns[0].pid, 7777);
 });
 
-test('parseListeningPorts returns empty for empty input', () => {
-  assert.deepEqual(win32.parseListeningPorts(''), []);
+test("parseListeningPorts returns empty for empty input", () => {
+  assert.deepEqual(win32.parseListeningPorts(""), []);
   assert.deepEqual(win32.parseListeningPorts(null), []);
   assert.deepEqual(win32.parseListeningPorts(undefined), []);
 });
 
-test('parseEstablishedConnections returns empty for empty input', () => {
-  assert.deepEqual(win32.parseEstablishedConnections(''), []);
+test("parseEstablishedConnections returns empty for empty input", () => {
+  assert.deepEqual(win32.parseEstablishedConnections(""), []);
   assert.deepEqual(win32.parseEstablishedConnections(null), []);
   assert.deepEqual(win32.parseEstablishedConnections(undefined), []);
 });
@@ -141,43 +144,61 @@ test('parseEstablishedConnections returns empty for empty input', () => {
 // Process list parser tests
 // ============================================
 
-test('parseProcessList handles wmic CSV output', () => {
+test("parseProcessList handles wmic CSV output", () => {
   // wmic alphabetizes columns and prepends Node (hostname)
   const output = [
-    'Node,CommandLine,Name,ProcessId,VirtualSize,WorkingSetSize',
-    'DESKTOP-ABC,node server.js,node.exe,1234,1234567890,65536000',
-    'DESKTOP-ABC,python app.py,python.exe,5678,987654321,32768000',
-  ].join('\r\n');
+    "Node,CommandLine,Name,ProcessId,VirtualSize,WorkingSetSize",
+    "DESKTOP-ABC,node server.js,node.exe,1234,1234567890,65536000",
+    "DESKTOP-ABC,python app.py,python.exe,5678,987654321,32768000",
+  ].join("\r\n");
 
   const procs = win32.parseProcessList(output);
   assert.equal(procs.length, 2);
 
-  const nodeProc = procs.find(p => p.pid === 1234);
+  const nodeProc = procs.find((p) => p.pid === 1234);
   assert.ok(nodeProc);
-  assert.equal(nodeProc.command, 'node server.js');
+  assert.equal(nodeProc.command, "node server.js");
   assert.ok(nodeProc.rss > 0); // WorkingSetSize / 1024
 
-  const pyProc = procs.find(p => p.pid === 5678);
+  const pyProc = procs.find((p) => p.pid === 5678);
   assert.ok(pyProc);
-  assert.equal(pyProc.command, 'python app.py');
+  assert.equal(pyProc.command, "python app.py");
 });
 
-test('parseProcessList handles PowerShell JSON output', () => {
+test("parseProcessList handles PowerShell JSON output", () => {
   const output = JSON.stringify([
-    { ProcessId: 1234, Name: 'node.exe', CommandLine: 'node server.js', WorkingSetSize: 65536000, VirtualSize: 1234567890 },
-    { ProcessId: 5678, Name: 'python.exe', CommandLine: 'python app.py', WorkingSetSize: 32768000, VirtualSize: 987654321 },
+    {
+      ProcessId: 1234,
+      Name: "node.exe",
+      CommandLine: "node server.js",
+      WorkingSetSize: 65536000,
+      VirtualSize: 1234567890,
+    },
+    {
+      ProcessId: 5678,
+      Name: "python.exe",
+      CommandLine: "python app.py",
+      WorkingSetSize: 32768000,
+      VirtualSize: 987654321,
+    },
   ]);
 
   const procs = win32.parseProcessList(output);
   assert.equal(procs.length, 2);
   assert.equal(procs[0].pid, 1234);
-  assert.equal(procs[0].command, 'node server.js');
+  assert.equal(procs[0].command, "node server.js");
 });
 
-test('parseProcessList skips PID 0', () => {
+test("parseProcessList skips PID 0", () => {
   const output = JSON.stringify([
-    { ProcessId: 0, Name: 'System Idle Process', CommandLine: '', WorkingSetSize: 0, VirtualSize: 0 },
-    { ProcessId: 4, Name: 'System', CommandLine: '', WorkingSetSize: 100000, VirtualSize: 200000 },
+    {
+      ProcessId: 0,
+      Name: "System Idle Process",
+      CommandLine: "",
+      WorkingSetSize: 0,
+      VirtualSize: 0,
+    },
+    { ProcessId: 4, Name: "System", CommandLine: "", WorkingSetSize: 100000, VirtualSize: 200000 },
   ]);
 
   const procs = win32.parseProcessList(output);
@@ -189,31 +210,33 @@ test('parseProcessList skips PID 0', () => {
 // App name extraction tests
 // ============================================
 
-test('extractAppNameFromCommand handles Program Files paths', () => {
+test("extractAppNameFromCommand handles Program Files paths", () => {
   assert.equal(
-    win32.extractAppNameFromCommand('C:\\Program Files\\Slack\\slack.exe --startup'),
-    'Slack'
+    win32.extractAppNameFromCommand("C:\\Program Files\\Slack\\slack.exe --startup"),
+    "Slack",
   );
   assert.equal(
-    win32.extractAppNameFromCommand('C:\\Program Files (x86)\\Steam\\steam.exe'),
-    'Steam'
-  );
-});
-
-test('extractAppNameFromCommand handles AppData paths', () => {
-  assert.equal(
-    win32.extractAppNameFromCommand('C:\\Users\\dev\\AppData\\Local\\Programs\\Discord\\Discord.exe'),
-    'Discord'
-  );
-  assert.equal(
-    win32.extractAppNameFromCommand('C:\\Users\\dev\\AppData\\Local\\Slack\\slack.exe'),
-    'Slack'
+    win32.extractAppNameFromCommand("C:\\Program Files (x86)\\Steam\\steam.exe"),
+    "Steam",
   );
 });
 
-test('extractAppNameFromCommand returns null for unrecognized paths', () => {
-  assert.equal(win32.extractAppNameFromCommand('node server.js'), null);
-  assert.equal(win32.extractAppNameFromCommand(''), null);
+test("extractAppNameFromCommand handles AppData paths", () => {
+  assert.equal(
+    win32.extractAppNameFromCommand(
+      "C:\\Users\\dev\\AppData\\Local\\Programs\\Discord\\Discord.exe",
+    ),
+    "Discord",
+  );
+  assert.equal(
+    win32.extractAppNameFromCommand("C:\\Users\\dev\\AppData\\Local\\Slack\\slack.exe"),
+    "Slack",
+  );
+});
+
+test("extractAppNameFromCommand returns null for unrecognized paths", () => {
+  assert.equal(win32.extractAppNameFromCommand("node server.js"), null);
+  assert.equal(win32.extractAppNameFromCommand(""), null);
   assert.equal(win32.extractAppNameFromCommand(undefined), null);
 });
 
@@ -221,106 +244,104 @@ test('extractAppNameFromCommand returns null for unrecognized paths', () => {
 // CWD resolution tests
 // ============================================
 
-test('extractCwdFromCommandLine finds script path from node command', () => {
+test("extractCwdFromCommandLine finds script path from node command", () => {
   const cwd = win32.extractCwdFromCommandLine(
-    'C:\\Program Files\\nodejs\\node.exe C:\\Users\\dev\\myapp\\server.js'
+    "C:\\Program Files\\nodejs\\node.exe C:\\Users\\dev\\myapp\\server.js",
   );
-  assert.equal(cwd, 'C:\\Users\\dev\\myapp');
+  assert.equal(cwd, "C:\\Users\\dev\\myapp");
 });
 
-test('extractCwdFromCommandLine finds script path from python command', () => {
+test("extractCwdFromCommandLine finds script path from python command", () => {
   const cwd = win32.extractCwdFromCommandLine(
-    '"C:\\Users\\dev\\AppData\\Local\\Programs\\Python\\Python311\\python.exe" C:\\Users\\dev\\backend\\manage.py runserver'
+    '"C:\\Users\\dev\\AppData\\Local\\Programs\\Python\\Python311\\python.exe" C:\\Users\\dev\\backend\\manage.py runserver',
   );
-  assert.equal(cwd, 'C:\\Users\\dev\\backend');
+  assert.equal(cwd, "C:\\Users\\dev\\backend");
 });
 
-test('extractCwdFromCommandLine handles forward slashes', () => {
+test("extractCwdFromCommandLine handles forward slashes", () => {
   const cwd = win32.extractCwdFromCommandLine(
-    'C:/Program Files/nodejs/node.exe C:/Users/dev/project/index.js'
+    "C:/Program Files/nodejs/node.exe C:/Users/dev/project/index.js",
   );
-  assert.equal(cwd, 'C:\\Users\\dev\\project');
+  assert.equal(cwd, "C:\\Users\\dev\\project");
 });
 
-test('extractCwdFromCommandLine strips node_modules from exe path', () => {
+test("extractCwdFromCommandLine strips node_modules from exe path", () => {
   // npx/node_modules/.bin scripts are inside the project
   const cwd = win32.extractCwdFromCommandLine(
-    'C:\\Users\\dev\\webapp\\node_modules\\.bin\\next.cmd start'
+    "C:\\Users\\dev\\webapp\\node_modules\\.bin\\next.cmd start",
   );
-  assert.equal(cwd, 'C:\\Users\\dev\\webapp');
+  assert.equal(cwd, "C:\\Users\\dev\\webapp");
 });
 
-test('extractCwdFromCommandLine skips system runtime directories', () => {
+test("extractCwdFromCommandLine skips system runtime directories", () => {
   // Only exe path, and it's in Program Files/nodejs → skip
-  const cwd = win32.extractCwdFromCommandLine(
-    'C:\\Program Files\\nodejs\\node.exe'
-  );
+  const cwd = win32.extractCwdFromCommandLine("C:\\Program Files\\nodejs\\node.exe");
   assert.equal(cwd, null);
 });
 
-test('extractCwdFromCommandLine uses exe dir for non-system paths', () => {
+test("extractCwdFromCommandLine uses exe dir for non-system paths", () => {
   const cwd = win32.extractCwdFromCommandLine(
-    'C:\\Users\\dev\\myapp\\dist\\server.exe --port 3000'
+    "C:\\Users\\dev\\myapp\\dist\\server.exe --port 3000",
   );
-  assert.equal(cwd, 'C:\\Users\\dev\\myapp\\dist');
+  assert.equal(cwd, "C:\\Users\\dev\\myapp\\dist");
 });
 
-test('extractCwdFromCommandLine prefers arg paths over exe path', () => {
+test("extractCwdFromCommandLine prefers arg paths over exe path", () => {
   // Exe is in system dir, arg has the project path → prefer arg
   const cwd = win32.extractCwdFromCommandLine(
-    'C:\\Windows\\System32\\cmd.exe /c C:\\Users\\dev\\project\\start.bat'
+    "C:\\Windows\\System32\\cmd.exe /c C:\\Users\\dev\\project\\start.bat",
   );
-  assert.equal(cwd, 'C:\\Users\\dev\\project');
+  assert.equal(cwd, "C:\\Users\\dev\\project");
 });
 
-test('extractCwdFromCommandLine returns null for empty/null input', () => {
-  assert.equal(win32.extractCwdFromCommandLine(''), null);
+test("extractCwdFromCommandLine returns null for empty/null input", () => {
+  assert.equal(win32.extractCwdFromCommandLine(""), null);
   assert.equal(win32.extractCwdFromCommandLine(null), null);
   assert.equal(win32.extractCwdFromCommandLine(undefined), null);
 });
 
-test('extractCwdFromCommandLine returns null for relative-only commands', () => {
+test("extractCwdFromCommandLine returns null for relative-only commands", () => {
   // No absolute paths at all
-  assert.equal(win32.extractCwdFromCommandLine('node server.js'), null);
-  assert.equal(win32.extractCwdFromCommandLine('python -m flask run'), null);
+  assert.equal(win32.extractCwdFromCommandLine("node server.js"), null);
+  assert.equal(win32.extractCwdFromCommandLine("python -m flask run"), null);
 });
 
-test('extractCwdFromCommandLine handles path with spaces', () => {
+test("extractCwdFromCommandLine handles path with spaces", () => {
   const cwd = win32.extractCwdFromCommandLine(
-    '"C:\\Program Files\\nodejs\\node.exe" "C:\\Users\\dev\\my project\\app.js"'
+    '"C:\\Program Files\\nodejs\\node.exe" "C:\\Users\\dev\\my project\\app.js"',
   );
   // Should extract the script's directory despite spaces
-  assert.equal(cwd, 'C:\\Users\\dev\\my project');
+  assert.equal(cwd, "C:\\Users\\dev\\my project");
 });
 
 // ============================================
 // Constant exports tests
 // ============================================
 
-test('DOCKER_BIN_CANDIDATES includes Windows paths', () => {
+test("DOCKER_BIN_CANDIDATES includes Windows paths", () => {
   assert.ok(win32.DOCKER_BIN_CANDIDATES.length > 0);
   // Should include the docker fallback
-  assert.ok(win32.DOCKER_BIN_CANDIDATES.includes('docker'));
+  assert.ok(win32.DOCKER_BIN_CANDIDATES.includes("docker"));
   // Should include a Program Files path
-  assert.ok(win32.DOCKER_BIN_CANDIDATES.some(p => p.includes('Program Files')));
+  assert.ok(win32.DOCKER_BIN_CANDIDATES.some((p) => p.includes("Program Files")));
 });
 
-test('PLATFORM_KNOWN_SERVICES includes Windows system services', () => {
-  assert.ok(win32.PLATFORM_KNOWN_SERVICES['svchost.exe']);
-  assert.ok(win32.PLATFORM_KNOWN_SERVICES['explorer.exe']);
-  assert.ok(win32.PLATFORM_KNOWN_SERVICES['dwm.exe']);
-  assert.ok(win32.PLATFORM_KNOWN_SERVICES['wsl.exe']);
+test("PLATFORM_KNOWN_SERVICES includes Windows system services", () => {
+  assert.ok(win32.PLATFORM_KNOWN_SERVICES["svchost.exe"]);
+  assert.ok(win32.PLATFORM_KNOWN_SERVICES["explorer.exe"]);
+  assert.ok(win32.PLATFORM_KNOWN_SERVICES["dwm.exe"]);
+  assert.ok(win32.PLATFORM_KNOWN_SERVICES["wsl.exe"]);
 });
 
-test('HOME_DIR_PATH_PREFIXES are Windows-style', () => {
-  assert.ok(win32.HOME_DIR_PATH_PREFIXES.some(p => p.includes('C:\\')));
+test("HOME_DIR_PATH_PREFIXES are Windows-style", () => {
+  assert.ok(win32.HOME_DIR_PATH_PREFIXES.some((p) => p.includes("C:\\")));
 });
 
-test('shouldQuitOnAllWindowsClosed returns true on Windows', () => {
+test("shouldQuitOnAllWindowsClosed returns true on Windows", () => {
   assert.equal(win32.shouldQuitOnAllWindowsClosed(), true);
 });
 
-test('getWindowOptions returns empty object for default Windows title bar', () => {
+test("getWindowOptions returns empty object for default Windows title bar", () => {
   const opts = win32.getWindowOptions();
   assert.equal(opts.titleBarStyle, undefined);
   assert.equal(opts.trafficLightPosition, undefined);

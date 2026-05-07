@@ -20,10 +20,7 @@ import { ShareModal } from "./components/ShareModal";
 import { StackDiffModal } from "./components/StackDiffModal";
 import { BlueprintPanel } from "./components/BlueprintPanel";
 import { ErrorBoundary } from "./components/ErrorBoundary";
-import {
-  CommandPalette,
-  CommandPaletteHandle,
-} from "./components/CommandPalette";
+import { CommandPalette, CommandPaletteHandle } from "./components/CommandPalette";
 import {
   useKnownServices,
   serviceKey,
@@ -33,11 +30,7 @@ import {
 import { ServiceDropdown } from "./components/checklist/ServiceDropdown";
 import { HEALTH_COLORS } from "./components/graph/constants";
 import { initAnalytics, capture, identifyWithMainProcess } from "./analytics";
-import {
-  TraceContext,
-  TraceDispatchContext,
-  traceReducer,
-} from "./components/graph/traceContext";
+import { TraceContext, TraceDispatchContext, traceReducer } from "./components/graph/traceContext";
 import { DockerEmptyState } from "./components/DockerEmptyState";
 import {
   SYSTEM_TAB_LABEL,
@@ -52,27 +45,15 @@ import {
 } from "./constants/tabs";
 import { formatRelativeTime, getAuthAvatarFallback } from "./utils/formatting";
 import { detectProjectStack, getNodeTabPath } from "./utils/stackDetection";
-import type {
-  AlertEvent,
-  AuthSession,
-  GraphEdge,
-  GraphNode,
-  ServiceStatus,
-} from "./types/electron";
+import type { AlertEvent, AuthSession, GraphEdge, GraphNode } from "./types/electron";
 import "./App.css";
 
 // View modes
-type ViewMode =
-  | "graph"
-  | "containers"
-  | "api-tester"
-  | "database"
-  | "analytics";
+type ViewMode = "graph" | "containers" | "api-tester" | "database" | "analytics";
 type ContainerSubTab = "overview" | "logs";
 
 function App() {
-  const { snapshot, loading, error, serviceStatus, monitoringStartedAt } =
-    useSystemSnapshot(2000);
+  const { snapshot, loading, error, serviceStatus, monitoringStartedAt } = useSystemSnapshot(2000);
   const { graph, ports } = snapshot;
 
   // Welcome modal state — initialize synchronously to avoid showing toast before modal
@@ -87,9 +68,7 @@ function App() {
   // Theme state — persisted to localStorage, applied via data-theme attribute on <html>
   const [theme, setTheme] = useState<Theme>(() => {
     try {
-      return window.localStorage.getItem(THEME_KEY) === "dark"
-        ? "dark"
-        : "light";
+      return window.localStorage.getItem(THEME_KEY) === "dark" ? "dark" : "light";
     } catch {
       return "light";
     }
@@ -154,13 +133,10 @@ function App() {
   const [databaseNode, setDatabaseNode] = useState<GraphNode | null>(null);
 
   // Sub-tab for containers view
-  const [containerSubTab, setContainerSubTab] =
-    useState<ContainerSubTab>("overview");
+  const [containerSubTab, setContainerSubTab] = useState<ContainerSubTab>("overview");
 
   // Initial container ID to select in logs view (when navigating from context menu)
-  const [initialLogContainerId, setInitialLogContainerId] = useState<
-    string | undefined
-  >();
+  const [initialLogContainerId, setInitialLogContainerId] = useState<string | undefined>();
 
   // Alert preferences state
   const [alertsEnabled, setAlertsEnabled] = useState(true);
@@ -174,12 +150,10 @@ function App() {
   const [alertHistory, setAlertHistory] = useState<AlertEvent[]>([]);
   const [blueprintPanelOpen, setBlueprintPanelOpen] = useState(false);
   const alertPanelRef = useRef<HTMLDivElement>(null);
-  const [optimisticDownNodes, setOptimisticDownNodes] = useState<
-    Map<string, GraphNode>
-  >(() => new Map());
-  const optimisticDownTimersRef = useRef<
-    Map<string, ReturnType<typeof setTimeout>>
-  >(new Map());
+  const [optimisticDownNodes, setOptimisticDownNodes] = useState<Map<string, GraphNode>>(
+    () => new Map(),
+  );
+  const optimisticDownTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const lastNodeIdByServiceRef = useRef<Map<string, string>>(new Map());
 
   // Tab button refs for dropdown positioning
@@ -197,9 +171,7 @@ function App() {
   useLayoutEffect(() => {
     const container = viewModeTabsRef.current;
     if (!container) return;
-    const activeBtn = container.querySelector<HTMLButtonElement>(
-      ".view-mode-tab-active",
-    );
+    const activeBtn = container.querySelector<HTMLButtonElement>(".view-mode-tab-active");
     if (!activeBtn) return;
     setIndicatorStyle({
       left: activeBtn.offsetLeft,
@@ -213,25 +185,20 @@ function App() {
   const [authSession, setAuthSession] = useState<AuthSession | null>(null);
 
   const setIsAgentOpen = useCallback((open: boolean) => {
-    window.dispatchEvent(
-      new CustomEvent("fere:set-agent-open", { detail: { open } }),
-    );
+    window.dispatchEvent(new CustomEvent("fere:set-agent-open", { detail: { open } }));
   }, []);
 
-  const handleHeaderDoubleClick = useCallback(
-    (event: ReactMouseEvent<HTMLDivElement>) => {
-      const target = event.target as HTMLElement | null;
-      if (
-        target?.closest(
-          'button, a, input, textarea, select, [role="button"], [data-no-window-drag-zoom="true"]',
-        )
-      ) {
-        return;
-      }
-      window.electronAPI?.toggleWindowMaximize?.();
-    },
-    [],
-  );
+  const handleHeaderDoubleClick = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
+    const target = event.target as HTMLElement | null;
+    if (
+      target?.closest(
+        'button, a, input, textarea, select, [role="button"], [data-no-window-drag-zoom="true"]',
+      )
+    ) {
+      return;
+    }
+    window.electronAPI?.toggleWindowMaximize?.();
+  }, []);
 
   useEffect(() => {
     if (window.electronAPI?.getAlertPreferences) {
@@ -243,9 +210,7 @@ function App() {
             setCategoryToggles(prefs.categoryToggles);
           }
         })
-        .catch((err) =>
-          console.error("Failed to load alert preferences:", err),
-        );
+        .catch((err) => console.error("Failed to load alert preferences:", err));
     }
   }, []);
 
@@ -290,8 +255,7 @@ function App() {
         lastSeen: Date.now(),
         isGhost: true,
         startCommand: node.startCommand || node.command || undefined,
-        startProjectPath:
-          node.startProjectPath || node.projectPath || undefined,
+        startProjectPath: node.startProjectPath || node.projectPath || undefined,
       };
 
       setOptimisticDownNodes((current) => {
@@ -316,10 +280,7 @@ function App() {
       optimisticDownTimersRef.current.set(node.id, timer);
     };
 
-    window.addEventListener(
-      "fere:optimistic-mark-down",
-      handleOptimisticDown as EventListener,
-    );
+    window.addEventListener("fere:optimistic-mark-down", handleOptimisticDown as EventListener);
     const timersRef = optimisticDownTimersRef.current;
     return () => {
       window.removeEventListener(
@@ -340,8 +301,7 @@ function App() {
       setInitialLogContainerId(containerId);
     };
     window.addEventListener("fere:view-container-logs", handleViewLogs);
-    return () =>
-      window.removeEventListener("fere:view-container-logs", handleViewLogs);
+    return () => window.removeEventListener("fere:view-container-logs", handleViewLogs);
   }, []);
 
   // Navigate to service map when Fere chat focuses a node
@@ -382,15 +342,12 @@ function App() {
       const next = new Map(current);
       current.forEach((optimisticNode, id) => {
         const liveNode = liveNodeById.get(id);
-        const serviceRecovered = runningServiceKeys.has(
-          nodeServiceKey(optimisticNode),
-        );
+        const serviceRecovered = runningServiceKeys.has(nodeServiceKey(optimisticNode));
         const idRecovered =
           !!liveNode &&
           !liveNode.isGhost &&
           liveNode.healthStatus !== "red" &&
-          (!liveNode.isDockerContainer ||
-            liveNode.containerState === "running");
+          (!liveNode.isDockerContainer || liveNode.containerState === "running");
         if (serviceRecovered || idRecovered) {
           next.delete(id);
           changed = true;
@@ -404,9 +361,7 @@ function App() {
   }, [graph.nodes, optimisticDownNodes.size]);
 
   const visibleGraphNodes = useMemo(() => {
-    const merged = graph.nodes.map(
-      (node) => optimisticDownNodes.get(node.id) || node,
-    );
+    const merged = graph.nodes.map((node) => optimisticDownNodes.get(node.id) || node);
     const mergedIds = new Set(merged.map((node) => node.id));
     optimisticDownNodes.forEach((node, id) => {
       if (!mergedIds.has(id)) {
@@ -515,18 +470,15 @@ function App() {
     });
   }, []);
 
-  const handleToggleCategory = useCallback(
-    async (category: keyof typeof categoryToggles) => {
-      setCategoryToggles((prev) => {
-        const newToggles = { ...prev, [category]: !prev[category] };
-        window.electronAPI?.setAlertPreferences?.({
-          categoryToggles: newToggles,
-        });
-        return newToggles;
+  const handleToggleCategory = useCallback(async (category: keyof typeof categoryToggles) => {
+    setCategoryToggles((prev) => {
+      const newToggles = { ...prev, [category]: !prev[category] };
+      window.electronAPI?.setAlertPreferences?.({
+        categoryToggles: newToggles,
       });
-    },
-    [],
-  );
+      return newToggles;
+    });
+  }, []);
 
   const loadAlertHistory = useCallback(async () => {
     if (window.electronAPI?.getAlertHistory) {
@@ -555,10 +507,7 @@ function App() {
   useEffect(() => {
     if (!alertPanelOpen) return;
     function handleClick(e: MouseEvent) {
-      if (
-        alertPanelRef.current &&
-        !alertPanelRef.current.contains(e.target as Node)
-      ) {
+      if (alertPanelRef.current && !alertPanelRef.current.contains(e.target as Node)) {
         const target = e.target as HTMLElement;
         if (target.closest(".alert-toggle")) return;
         setAlertPanelOpen(false);
@@ -595,9 +544,7 @@ function App() {
       let targetPort: number | null = null;
       try {
         const parsed = new URL(options.url);
-        targetPort =
-          parseInt(parsed.port, 10) ||
-          (parsed.protocol === "https:" ? 443 : 80);
+        targetPort = parseInt(parsed.port, 10) || (parsed.protocol === "https:" ? 443 : 80);
       } catch {
         /* ignore */
       }
@@ -654,21 +601,14 @@ function App() {
         traceDispatch({ type: "dismiss" });
       }
     },
-    [
-      graph.nodes,
-      graph.edges,
-      graphIndex.nodesByTabPath,
-      graphIndex.systemNodes,
-    ],
+    [graph.nodes, graph.edges, graphIndex.nodesByTabPath, graphIndex.systemNodes],
   );
 
   // Reconcile databaseNode with live data when containers change
   // (e.g., container restarts get a new containerId)
   useEffect(() => {
     if (!databaseNode || databaseNode.id.startsWith("__saved_")) return;
-    const live = graphIndex.nonExternalNodes.find(
-      (n) => n.id === databaseNode.id,
-    );
+    const live = graphIndex.nonExternalNodes.find((n) => n.id === databaseNode.id);
     if (live) {
       // Update with fresh data (new containerId, ports, state, etc.)
       if (
@@ -751,12 +691,8 @@ function App() {
     addService,
     removeService,
   } = useKnownServices(tabs, visibleGraphNodes, tabGrouping);
-  const [serviceDropdownTab, setServiceDropdownTab] = useState<string | null>(
-    null,
-  );
-  const [serviceActionError, setServiceActionError] = useState<string | null>(
-    null,
-  );
+  const [serviceDropdownTab, setServiceDropdownTab] = useState<string | null>(null);
+  const [serviceActionError, setServiceActionError] = useState<string | null>(null);
   const nodesForTab = useCallback(
     (tabId: string) => {
       if (tabId === SYSTEM_TAB_ID) return graphIndex.systemNodes;
@@ -796,10 +732,8 @@ function App() {
         const sourceNode = graphIndex.nodeById.get(edge.source);
         const targetNode = graphIndex.nodeById.get(edge.target);
 
-        if (sourceNode?.type === "external")
-          connectedExternalIds.add(sourceNode.id);
-        if (targetNode?.type === "external")
-          connectedExternalIds.add(targetNode.id);
+        if (sourceNode?.type === "external") connectedExternalIds.add(sourceNode.id);
+        if (targetNode?.type === "external") connectedExternalIds.add(targetNode.id);
       });
     });
 
@@ -816,9 +750,7 @@ function App() {
     const trackedExtra: GraphNode[] = [];
     if (!isSystemTab) {
       const status = getProjectStatus(selectedTab);
-      const primaryKeysExact = new Set(
-        primaryNodes.map((n) => nodeServiceKey(n)),
-      );
+      const primaryKeysExact = new Set(primaryNodes.map((n) => nodeServiceKey(n)));
       const primaryKeysLoose = new Set(
         primaryNodes.map((n) =>
           looseServiceIdentity({
@@ -834,8 +766,7 @@ function App() {
 
         // Look for a live node anywhere in the system — try exact then loose
         const liveNode =
-          graphIndex.nodeByService.get(key) ||
-          graphIndex.nodeByServiceLoose.get(loose);
+          graphIndex.nodeByService.get(key) || graphIndex.nodeByServiceLoose.get(loose);
         if (liveNode) {
           trackedExtra.push(liveNode);
         } else {
@@ -879,11 +810,7 @@ function App() {
       if (!connectedEdges) return;
       connectedEdges.forEach((edge) => {
         if (seenEdgeIds.has(edge.id)) return;
-        if (
-          !filteredNodeIds.has(edge.source) ||
-          !filteredNodeIds.has(edge.target)
-        )
-          return;
+        if (!filteredNodeIds.has(edge.source) || !filteredNodeIds.has(edge.target)) return;
         seenEdgeIds.add(edge.id);
         filteredEdges.push(edge);
       });
@@ -919,11 +846,7 @@ function App() {
       if (!connectedEdges) return;
       connectedEdges.forEach((edge) => {
         if (edgeIds.has(edge.id)) return;
-        if (
-          !containerNodeIds.has(edge.source) ||
-          !containerNodeIds.has(edge.target)
-        )
-          return;
+        if (!containerNodeIds.has(edge.source) || !containerNodeIds.has(edge.target)) return;
         edgeIds.add(edge.id);
         containerEdges.push(edge);
       });
@@ -947,20 +870,13 @@ function App() {
   const databaseNodes = useMemo(() => {
     return graphIndex.nonExternalNodes.filter(
       (node) =>
-        node.isDockerContainer &&
-        node.type === "database" &&
-        node.containerState === "running",
+        node.isDockerContainer && node.type === "database" && node.containerState === "running",
     );
   }, [graphIndex.nonExternalNodes]);
 
   return (
-    <div
-      className={`app${blueprintPanelOpen ? " blueprint-panel-active" : ""}`}
-    >
-      <div
-        className="app-window-top-hitbox"
-        onDoubleClick={handleHeaderDoubleClick}
-      />
+    <div className={`app${blueprintPanelOpen ? " blueprint-panel-active" : ""}`}>
+      <div className="app-window-top-hitbox" onDoubleClick={handleHeaderDoubleClick} />
       {/* Title bar — command palette centered at top, VSCode-style */}
       <div className="app-titlebar" onDoubleClick={handleHeaderDoubleClick}>
         <CommandPalette
@@ -982,13 +898,8 @@ function App() {
                 referrerPolicy="no-referrer"
               />
             ) : (
-              <div
-                className="app-profile-avatar app-profile-avatar-fallback"
-                aria-hidden="true"
-              >
-                {getAuthAvatarFallback(
-                  authSession.displayName || authSession.email,
-                )}
+              <div className="app-profile-avatar app-profile-avatar-fallback" aria-hidden="true">
+                {getAuthAvatarFallback(authSession.displayName || authSession.email)}
               </div>
             )}
             <div className="app-profile-copy">
@@ -997,9 +908,7 @@ function App() {
               </span>
               <span className="app-profile-meta">
                 Signed in with{" "}
-                {authSession.provider === "google"
-                  ? "Google"
-                  : authSession.provider || "account"}
+                {authSession.provider === "google" ? "Google" : authSession.provider || "account"}
               </span>
             </div>
             <button
@@ -1042,11 +951,7 @@ function App() {
                 <circle cx="3" cy="8" r="2" fill="currentColor" />
                 <circle cx="13" cy="4" r="2" fill="currentColor" />
                 <circle cx="13" cy="12" r="2" fill="currentColor" />
-                <path
-                  d="M5 8L11 5M5 8L11 11"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                />
+                <path d="M5 8L11 5M5 8L11 11" stroke="currentColor" strokeWidth="1.5" />
               </svg>
             </span>
             Localhost Map
@@ -1096,12 +1001,7 @@ function App() {
                   strokeLinecap="round"
                   strokeLinejoin="round"
                 />
-                <path
-                  d="M8 12H14"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                  strokeLinecap="round"
-                />
+                <path d="M8 12H14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
               </svg>
             </span>
             Requests
@@ -1258,12 +1158,8 @@ function App() {
           <button
             className="alert-toggle"
             onClick={handleToggleTheme}
-            title={
-              theme === "dark" ? "Switch to light mode" : "Switch to dark mode"
-            }
-            aria-label={
-              theme === "dark" ? "Switch to light mode" : "Switch to dark mode"
-            }
+            title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+            aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
           >
             {theme === "dark" ? (
               <svg
@@ -1348,12 +1244,8 @@ function App() {
                         className="alert-panel-checkbox"
                       />
                       <div className="alert-panel-category-text">
-                        <span className="alert-panel-category-label">
-                          {cat.label}
-                        </span>
-                        <span className="alert-panel-category-desc">
-                          {cat.desc}
-                        </span>
+                        <span className="alert-panel-category-label">{cat.label}</span>
+                        <span className="alert-panel-category-desc">{cat.desc}</span>
                       </div>
                     </label>
                   ))}
@@ -1365,19 +1257,14 @@ function App() {
                 <div className="alert-panel-history-header">
                   <span className="alert-panel-label">Recent Events</span>
                   {alertHistory.length > 0 && (
-                    <button
-                      className="alert-panel-clear"
-                      onClick={handleClearHistory}
-                    >
+                    <button className="alert-panel-clear" onClick={handleClearHistory}>
                       Clear
                     </button>
                   )}
                 </div>
                 <div className="alert-panel-history">
                   {alertHistory.length === 0 ? (
-                    <div className="alert-panel-history-empty">
-                      No events yet
-                    </div>
+                    <div className="alert-panel-history-empty">No events yet</div>
                   ) : (
                     alertHistory.slice(0, 50).map((event) => (
                       <div className="alert-panel-event" key={event.id}>
@@ -1387,13 +1274,9 @@ function App() {
                         <div className="alert-panel-event-content">
                           <span className="alert-panel-event-title">
                             {event.serviceName}
-                            {!event.notified &&
-                              event.category !== "discovery" && (
-                                <span className="alert-panel-event-muted">
-                                  {" "}
-                                  (muted)
-                                </span>
-                              )}
+                            {!event.notified && event.category !== "discovery" && (
+                              <span className="alert-panel-event-muted"> (muted)</span>
+                            )}
                           </span>
                           <span className="alert-panel-event-desc">
                             {event.type === "container-stopped" && event.details
@@ -1452,9 +1335,7 @@ function App() {
                     className={`app-tab ${selectedTab === tab.id ? "app-tab-active" : ""}`}
                     onClick={() => {
                       if (selectedTab === tab.id) {
-                        setServiceDropdownTab(
-                          serviceDropdownTab === tab.id ? null : tab.id,
-                        );
+                        setServiceDropdownTab(serviceDropdownTab === tab.id ? null : tab.id);
                       } else {
                         setSelectedTab(tab.id);
                         setServiceDropdownTab(null);
@@ -1462,9 +1343,7 @@ function App() {
                     }}
                   >
                     {tab.label}
-                    {tab.stackLabel && (
-                      <span className="app-tab-stack">{tab.stackLabel}</span>
-                    )}
+                    {tab.stackLabel && <span className="app-tab-stack">{tab.stackLabel}</span>}
                     {hasServices && (
                       <span className="app-tab-services">
                         <span
@@ -1524,8 +1403,7 @@ function App() {
                         let failureReason: string | undefined;
                         if (service.isDockerContainer) {
                           const id = service.containerId || service.name;
-                          const result =
-                            await window.electronAPI.startContainer(id);
+                          const result = await window.electronAPI.startContainer(id);
                           started = !!result?.success;
                           failureReason = result?.error;
                         } else if (service.lastCommand && service.projectPath) {
@@ -1536,22 +1414,17 @@ function App() {
                           started = !!result?.success;
                           failureReason = result?.error;
                         } else {
-                          failureReason =
-                            "Missing start command or project path";
+                          failureReason = "Missing start command or project path";
                         }
                         if (started) {
                           setServiceActionError(null);
-                          window.dispatchEvent(
-                            new CustomEvent("fere:refresh-snapshot"),
-                          );
+                          window.dispatchEvent(new CustomEvent("fere:refresh-snapshot"));
                         } else if (failureReason) {
                           setServiceActionError(failureReason);
                         }
                       } catch (err) {
                         setServiceActionError(
-                          err instanceof Error
-                            ? err.message
-                            : "Failed to start service",
+                          err instanceof Error ? err.message : "Failed to start service",
                         );
                       }
                     }}
@@ -1562,11 +1435,7 @@ function App() {
               );
             })()}
           <div className="app-tabs-controls">
-            <div
-              className="tab-grouping-toggle"
-              role="group"
-              aria-label="Tab grouping mode"
-            >
+            <div className="tab-grouping-toggle" role="group" aria-label="Tab grouping mode">
               <button
                 className={`tab-grouping-btn ${tabGrouping === "repo" ? "tab-grouping-btn-active" : ""}`}
                 onClick={() => setTabGrouping("repo")}
@@ -1590,9 +1459,7 @@ function App() {
           <TraceContext.Provider value={traceState}>
             <TraceDispatchContext.Provider value={traceDispatch}>
               <ErrorBoundary>
-                <div
-                  className={`main-view ${viewMode === "graph" ? "main-view-active" : ""}`}
-                >
+                <div className={`main-view ${viewMode === "graph" ? "main-view-active" : ""}`}>
                   <div className="graph-container">
                     {loading ? (
                       <div className="loading">Scanning localhost...</div>
@@ -1607,9 +1474,7 @@ function App() {
                   </div>
                 </div>
 
-                <div
-                  className={`main-view ${viewMode === "containers" ? "main-view-active" : ""}`}
-                >
+                <div className={`main-view ${viewMode === "containers" ? "main-view-active" : ""}`}>
                   <div className="containers-view">
                     <div className="app-tabs app-tabs-inline">
                       <button
@@ -1659,13 +1524,9 @@ function App() {
                         className={`graph-container${!loading && dockerContainerData.nodes.length === 0 ? " graph-container-empty" : ""}`}
                       >
                         {loading ? (
-                          <div className="loading">
-                            Scanning Docker containers...
-                          </div>
+                          <div className="loading">Scanning Docker containers...</div>
                         ) : dockerContainerData.nodes.length === 0 ? (
-                          <DockerEmptyState
-                            dockerStatus={serviceStatus.docker}
-                          />
+                          <DockerEmptyState dockerStatus={serviceStatus.docker} />
                         ) : (
                           <GraphView
                             nodes={dockerContainerData.nodes}
@@ -1706,10 +1567,7 @@ function App() {
                     {loading ? (
                       <div className="loading">Scanning localhost...</div>
                     ) : (
-                      <CurlBuilder
-                        nodes={visibleGraphNodes}
-                        onTraceRequest={handleTraceRequest}
-                      />
+                      <CurlBuilder nodes={visibleGraphNodes} onTraceRequest={handleTraceRequest} />
                     )}
                   </div>
                 </div>
@@ -1734,25 +1592,19 @@ function App() {
           onClose={() => setShowShare(false)}
           graphNodes={filteredData.nodes}
           graphEdges={filteredData.edges}
-          activeTabLabel={
-            tabs.find((t) => t.id === selectedTab)?.label ?? SYSTEM_TAB_LABEL
-          }
+          activeTabLabel={tabs.find((t) => t.id === selectedTab)?.label ?? SYSTEM_TAB_LABEL}
         />
       )}
 
       {/* Stack Diff Modal */}
-      {showStackDiff && (
-        <StackDiffModal onClose={() => setShowStackDiff(false)} />
-      )}
+      {showStackDiff && <StackDiffModal onClose={() => setShowStackDiff(false)} />}
       {/* Blueprint Panel */}
       {blueprintPanelOpen && (
         <BlueprintPanel
           onClose={() => setBlueprintPanelOpen(false)}
           snapshot={snapshot}
           projectPath={selectedTab === SYSTEM_TAB_ID ? null : selectedTab}
-          label={
-            tabs.find((t) => t.id === selectedTab)?.label ?? SYSTEM_TAB_LABEL
-          }
+          label={tabs.find((t) => t.id === selectedTab)?.label ?? SYSTEM_TAB_LABEL}
         />
       )}
     </div>

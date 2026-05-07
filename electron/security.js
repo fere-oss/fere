@@ -18,13 +18,7 @@ const SETTINGS_FILE_PATH = path.join(os.homedir(), ".fere", "settings.json");
 const ALLOWED_EXTERNAL_PROTOCOLS = ["http:", "https:"];
 
 // Dangerous protocols that should never be allowed
-const DANGEROUS_PROTOCOLS = [
-  "file:",
-  "javascript:",
-  "data:",
-  "vbscript:",
-  "about:",
-];
+const DANGEROUS_PROTOCOLS = ["file:", "javascript:", "data:", "vbscript:", "about:"];
 
 /**
  * Validates a URL for safe external opening.
@@ -172,10 +166,7 @@ function setupNavigationBlocking(webContents, allowedOrigins) {
       parsed = new URL(navigationUrl);
     } catch (e) {
       event.preventDefault();
-      console.warn(
-        "[Security] Blocked navigation to invalid URL:",
-        navigationUrl,
-      );
+      console.warn("[Security] Blocked navigation to invalid URL:", navigationUrl);
       return;
     }
 
@@ -186,10 +177,7 @@ function setupNavigationBlocking(webContents, allowedOrigins) {
       (parsed.protocol === "file:" && allowedOrigins.includes("file://"));
     if (!isAllowed) {
       event.preventDefault();
-      console.warn(
-        "[Security] Blocked navigation to disallowed origin:",
-        origin,
-      );
+      console.warn("[Security] Blocked navigation to disallowed origin:", origin);
     }
   });
 }
@@ -207,12 +195,7 @@ function setupWindowOpenHandler(webContents) {
         console.error("[Security] Failed to open external URL:", err);
       });
     } else {
-      console.warn(
-        "[Security] Blocked window open for:",
-        url,
-        "-",
-        validation.reason,
-      );
+      console.warn("[Security] Blocked window open for:", url, "-", validation.reason);
     }
 
     // Always deny creating new Electron windows
@@ -240,10 +223,7 @@ function setupPermissionHandlers() {
   // Also handle permission checks (for APIs that check without requesting)
   ses.setPermissionCheckHandler((webContents, permission) => {
     // Allow clipboard-read and clipboard-write for app functionality
-    if (
-      permission === "clipboard-read" ||
-      permission === "clipboard-sanitized-write"
-    ) {
+    if (permission === "clipboard-read" || permission === "clipboard-sanitized-write") {
       return true;
     }
     return false;
@@ -326,8 +306,7 @@ function getNetworkPolicy() {
     if (fs.existsSync(SETTINGS_FILE_PATH)) {
       const raw = fs.readFileSync(SETTINGS_FILE_PATH, "utf-8");
       const parsed = JSON.parse(raw);
-      _cachedNetworkPolicy =
-        parsed.networkPolicy === "public" ? "public" : "local";
+      _cachedNetworkPolicy = parsed.networkPolicy === "public" ? "public" : "local";
       return _cachedNetworkPolicy;
     }
   } catch {

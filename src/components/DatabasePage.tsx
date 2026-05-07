@@ -1,13 +1,13 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import type { GraphNode } from '../types/electron';
-import { CreateTableModal } from './CreateTableModal';
-import { DatabaseHeader } from './database/DatabaseHeader';
-import { DatabaseErrorState } from './database/DatabaseErrorState';
-import { DatabaseDataLayout } from './database/DatabaseDataLayout';
-import { DatabaseQueryLayout } from './database/DatabaseQueryLayout';
-import { DeleteConfirmDialog } from './database/DeleteConfirmDialog';
-import { DeleteTableConfirmDialog } from './database/DeleteTableConfirmDialog';
-import { useDatabasePage } from './database/useDatabasePage';
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { GraphNode } from "../types/electron";
+import { CreateTableModal } from "./CreateTableModal";
+import { DatabaseHeader } from "./database/DatabaseHeader";
+import { DatabaseErrorState } from "./database/DatabaseErrorState";
+import { DatabaseDataLayout } from "./database/DatabaseDataLayout";
+import { DatabaseQueryLayout } from "./database/DatabaseQueryLayout";
+import { DeleteConfirmDialog } from "./database/DeleteConfirmDialog";
+import { DeleteTableConfirmDialog } from "./database/DeleteTableConfirmDialog";
+import { useDatabasePage } from "./database/useDatabasePage";
 
 interface DatabasePageProps {
   node: GraphNode;
@@ -32,11 +32,11 @@ function UriPicker({ label, value, options, onChange }: UriPickerProps) {
         setOpen(false);
       }
     };
-    document.addEventListener('mousedown', onDocumentClick);
-    return () => document.removeEventListener('mousedown', onDocumentClick);
+    document.addEventListener("mousedown", onDocumentClick);
+    return () => document.removeEventListener("mousedown", onDocumentClick);
   }, []);
 
-  const selectedLabel = value || (options[0] ?? '—');
+  const selectedLabel = value || (options[0] ?? "—");
 
   return (
     <div className="db-uri-picker" ref={containerRef}>
@@ -48,7 +48,14 @@ function UriPicker({ label, value, options, onChange }: UriPickerProps) {
         disabled={options.length === 0}
       >
         <span className="db-uri-picker-trigger-value">{selectedLabel}</span>
-        <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8">
+        <svg
+          width="12"
+          height="12"
+          viewBox="0 0 16 16"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+        >
           <path d="M3.5 6l4.5 4 4.5-4" />
         </svg>
       </button>
@@ -58,7 +65,7 @@ function UriPicker({ label, value, options, onChange }: UriPickerProps) {
             <button
               key={option}
               type="button"
-              className={`db-uri-picker-option ${option === value ? 'selected' : ''}`}
+              className={`db-uri-picker-option ${option === value ? "selected" : ""}`}
               onClick={() => {
                 onChange(option);
                 setOpen(false);
@@ -133,9 +140,7 @@ export function DatabasePage({ node, onBack }: DatabasePageProps) {
   const filteredRecentUris = useMemo(() => {
     const query = mongoUriInput.trim().toLowerCase();
     if (!query) return recentMongoUris.slice(0, 6);
-    return recentMongoUris
-      .filter((entry) => entry.toLowerCase().includes(query))
-      .slice(0, 6);
+    return recentMongoUris.filter((entry) => entry.toLowerCase().includes(query)).slice(0, 6);
   }, [mongoUriInput, recentMongoUris]);
 
   useEffect(() => {
@@ -145,8 +150,8 @@ export function DatabasePage({ node, onBack }: DatabasePageProps) {
         setShowUriSuggestions(false);
       }
     };
-    document.addEventListener('mousedown', onDocumentClick);
-    return () => document.removeEventListener('mousedown', onDocumentClick);
+    document.addEventListener("mousedown", onDocumentClick);
+    return () => document.removeEventListener("mousedown", onDocumentClick);
   }, []);
 
   if (loading) {
@@ -173,23 +178,23 @@ export function DatabasePage({ node, onBack }: DatabasePageProps) {
         onTabChange={setActiveTab}
       />
 
-      {(dbType === 'mongodb'
-        || dbType === 'postgresql'
-        || node.containerImage?.toLowerCase().includes('mongo')
-        || node.containerImage?.toLowerCase().includes('postgres')) && (
+      {(dbType === "mongodb" ||
+        dbType === "postgresql" ||
+        node.containerImage?.toLowerCase().includes("mongo") ||
+        node.containerImage?.toLowerCase().includes("postgres")) && (
         <div className="db-uri-connect-bar">
           <div className="db-uri-connect-label">
             <span>Database URI</span>
             {remoteMongoMode && (
               <span className="db-uri-connect-badge">
-                {remoteUriDbType === 'postgresql' ? 'postgres connected' : 'mongo connected'}
+                {remoteUriDbType === "postgresql" ? "postgres connected" : "mongo connected"}
               </span>
             )}
           </div>
           <div className="db-uri-connect-input-wrap" ref={uriInputRef}>
             <input
               className="db-uri-connect-input"
-              type={showMongoUri ? 'text' : 'password'}
+              type={showMongoUri ? "text" : "password"}
               placeholder="mongodb+srv://... or postgresql://..."
               value={mongoUriInput}
               onFocus={() => setShowUriSuggestions(filteredRecentUris.length > 0)}
@@ -198,7 +203,7 @@ export function DatabasePage({ node, onBack }: DatabasePageProps) {
                 setShowUriSuggestions(true);
               }}
               onKeyDown={(e) => {
-                if (e.key === 'Escape') {
+                if (e.key === "Escape") {
                   setShowUriSuggestions(false);
                 }
               }}
@@ -209,7 +214,7 @@ export function DatabasePage({ node, onBack }: DatabasePageProps) {
                   <button
                     key={entry}
                     type="button"
-                    className={`db-uri-suggest-option ${entry === mongoUriInput ? 'selected' : ''}`}
+                    className={`db-uri-suggest-option ${entry === mongoUriInput ? "selected" : ""}`}
                     onClick={() => {
                       setMongoUriInput(entry);
                       setShowUriSuggestions(false);
@@ -225,9 +230,9 @@ export function DatabasePage({ node, onBack }: DatabasePageProps) {
             type="button"
             className="db-uri-visibility-btn"
             onClick={() => setShowMongoUri((prev) => !prev)}
-            title={showMongoUri ? 'Hide URI' : 'Show URI'}
+            title={showMongoUri ? "Hide URI" : "Show URI"}
           >
-            {showMongoUri ? 'Hide' : 'Show'}
+            {showMongoUri ? "Hide" : "Show"}
           </button>
           <button
             className="db-uri-connect-btn secondary"
@@ -246,16 +251,16 @@ export function DatabasePage({ node, onBack }: DatabasePageProps) {
               onClick={connectMongoUriMode}
               disabled={remoteMongoConnecting || !mongoUriInput.trim()}
             >
-              {remoteMongoConnecting ? 'Connecting...' : 'Connect URI'}
+              {remoteMongoConnecting ? "Connecting..." : "Connect URI"}
             </button>
           )}
           <span className={`db-uri-status db-uri-status-${mongoUriStatus}`}>
-            {mongoUriStatusMessage || (mongoUriStatus === 'idle' ? 'Not tested' : '')}
+            {mongoUriStatusMessage || (mongoUriStatus === "idle" ? "Not tested" : "")}
           </span>
         </div>
       )}
 
-      {remoteMongoMode && remoteUriDbType === 'mongodb' && remoteDbOptions.length > 0 && (
+      {remoteMongoMode && remoteUriDbType === "mongodb" && remoteDbOptions.length > 0 && (
         <div className="db-uri-picker-row">
           <UriPicker
             label="Database"
@@ -283,7 +288,7 @@ export function DatabasePage({ node, onBack }: DatabasePageProps) {
         <DatabaseErrorState error={error} onRetry={refreshTables} />
       ) : (
         <div className="db-content">
-          {activeTab === 'data' ? (
+          {activeTab === "data" ? (
             <DatabaseDataLayout
               dbType={dbType}
               tables={tables}
@@ -338,13 +343,14 @@ export function DatabasePage({ node, onBack }: DatabasePageProps) {
         />
       )}
 
-      {showCreateModal && (dbType === 'postgresql' || dbType === 'mysql' || dbType === 'mongodb') && (
-        <CreateTableModal
-          dbType={dbType}
-          onClose={() => setShowCreateModal(false)}
-          onSubmit={handleCreateTable}
-        />
-      )}
+      {showCreateModal &&
+        (dbType === "postgresql" || dbType === "mysql" || dbType === "mongodb") && (
+          <CreateTableModal
+            dbType={dbType}
+            onClose={() => setShowCreateModal(false)}
+            onSubmit={handleCreateTable}
+          />
+        )}
     </div>
   );
 }

@@ -5,24 +5,59 @@ const { spawn } = require("child_process");
 // Allowlisted binaries for start-process (prevents arbitrary command execution)
 const ALLOWED_BINARIES = new Set([
   // Node.js / JavaScript
-  "node", "npm", "npx", "yarn", "pnpm", "bun", "deno", "tsx", "ts-node",
+  "node",
+  "npm",
+  "npx",
+  "yarn",
+  "pnpm",
+  "bun",
+  "deno",
+  "tsx",
+  "ts-node",
   // Python
-  "python", "python3", "pip", "pip3", "uvicorn", "gunicorn", "flask",
-  "django-admin", "poetry", "pipenv", "uv",
+  "python",
+  "python3",
+  "pip",
+  "pip3",
+  "uvicorn",
+  "gunicorn",
+  "flask",
+  "django-admin",
+  "poetry",
+  "pipenv",
+  "uv",
   // Ruby
-  "ruby", "rails", "bundle", "bundler", "rake", "puma",
+  "ruby",
+  "rails",
+  "bundle",
+  "bundler",
+  "rake",
+  "puma",
   // Java / JVM
-  "java", "javac", "mvn", "mvnw", "gradle", "gradlew", "./gradlew", "./mvnw",
+  "java",
+  "javac",
+  "mvn",
+  "mvnw",
+  "gradle",
+  "gradlew",
+  "./gradlew",
+  "./mvnw",
   // Go
-  "go", "air",
+  "go",
+  "air",
   // Rust
-  "cargo", "rustc",
+  "cargo",
+  "rustc",
   // PHP
-  "php", "composer", "artisan",
+  "php",
+  "composer",
+  "artisan",
   // .NET
   "dotnet",
   // Elixir / Erlang
-  "mix", "elixir", "iex",
+  "mix",
+  "elixir",
+  "iex",
   // Docker (compose only)
   "docker-compose",
   // General
@@ -91,22 +126,25 @@ function parseCommand(command) {
  * @param {Electron.IpcMain} ipcMain
  * @param {object} deps
  */
-function registerProcessControlHandlers(ipcMain, {
-  getProcessByPid,
-  killProcess,
-  markIntentionalStopForPid,
-  stopContainer,
-  startContainer,
-  restartContainer,
-  startComposeProject,
-  markIntentionalStopForContainer,
-  logActivityEvent,
-  getAlertNodeMap,
-  clearProcessCache,
-  clearPortCache,
-  getSnapshotScheduler,
-  analytics,
-}) {
+function registerProcessControlHandlers(
+  ipcMain,
+  {
+    getProcessByPid,
+    killProcess,
+    markIntentionalStopForPid,
+    stopContainer,
+    startContainer,
+    restartContainer,
+    startComposeProject,
+    markIntentionalStopForContainer,
+    logActivityEvent,
+    getAlertNodeMap,
+    clearProcessCache,
+    clearPortCache,
+    getSnapshotScheduler,
+    analytics,
+  },
+) {
   ipcMain.handle("kill-process", async (event, pid) => {
     try {
       if (!Number.isInteger(pid) || pid <= 0) {
@@ -272,8 +310,7 @@ function registerProcessControlHandlers(ipcMain, {
       const binary = path.basename(requestedBinary);
 
       const usesPath = requestedBinary.includes("/") || requestedBinary.includes("\\");
-      const isAllowedWrapper =
-        requestedBinary === "./gradlew" || requestedBinary === "./mvnw";
+      const isAllowedWrapper = requestedBinary === "./gradlew" || requestedBinary === "./mvnw";
       if (usesPath && !isAllowedWrapper) {
         return { success: false, error: "Binary path must be a known wrapper or bare command" };
       }
@@ -305,8 +342,14 @@ function registerProcessControlHandlers(ipcMain, {
 
       // Wait briefly to catch early spawn failures (ENOENT, EACCES) before reporting success.
       const launched = await new Promise((resolve) => {
-        const onError = (err) => { cleanup(); resolve({ ok: false, error: err.message }); };
-        const onSpawn = () => { cleanup(); resolve({ ok: true }); };
+        const onError = (err) => {
+          cleanup();
+          resolve({ ok: false, error: err.message });
+        };
+        const onSpawn = () => {
+          cleanup();
+          resolve({ ok: true });
+        };
         const timeout = setTimeout(() => {
           cleanup();
           resolve({ ok: true });

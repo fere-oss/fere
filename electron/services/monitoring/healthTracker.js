@@ -89,7 +89,7 @@ function getHealthStatus(pid, isListening, hasConnections, process = null) {
 
   // External nodes (pid = -1) are always yellow (we can't track their health)
   if (pid === -1) {
-    return { healthStatus: 'yellow', lastSeen: now };
+    return { healthStatus: "yellow", lastSeen: now };
   }
 
   // Check if the process is still being seen
@@ -97,29 +97,28 @@ function getHealthStatus(pid, isListening, hasConnections, process = null) {
 
   // Red: was seen recently but no longer in process list
   if (timeSinceLastSeen > STALE_THRESHOLD) {
-    return { healthStatus: 'red', lastSeen };
+    return { healthStatus: "red", lastSeen };
   }
 
   // If listening and has recent activity -> green
   if (isListening) {
     const timeSinceLastActivity = now - lastActivity;
     if (hasConnections || timeSinceLastActivity < ACTIVITY_THRESHOLD) {
-      return { healthStatus: 'green', lastSeen };
+      return { healthStatus: "green", lastSeen };
     }
     // Listening but no recent activity -> yellow
-    return { healthStatus: 'yellow', lastSeen };
+    return { healthStatus: "yellow", lastSeen };
   }
 
   // Non-listening processes: use CPU bursts as "active" signal.
   const timeSinceLastCpuActive = now - lastCpuActive;
   const hasRecentCpuActivity =
-    timeSinceLastCpuActive < ACTIVITY_THRESHOLD ||
-    (process && process.cpu >= 0.3);
+    timeSinceLastCpuActive < ACTIVITY_THRESHOLD || (process && process.cpu >= 0.3);
   if (hasConnections || hasRecentCpuActivity) {
-    return { healthStatus: 'green', lastSeen };
+    return { healthStatus: "green", lastSeen };
   }
 
-  return { healthStatus: 'yellow', lastSeen };
+  return { healthStatus: "yellow", lastSeen };
 }
 
 /**
@@ -145,7 +144,8 @@ function getStaleServices(currentPids) {
       const lastSeen = lastSeenByPid.get(pid) || 0;
       const timeSinceLastSeen = now - lastSeen;
       // Only include if within stale window (not too old)
-      if (timeSinceLastSeen < 60000) { // 1 minute window
+      if (timeSinceLastSeen < 60000) {
+        // 1 minute window
         stale.push({ pid, lastSeen });
       }
     }

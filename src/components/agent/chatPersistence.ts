@@ -1,7 +1,6 @@
 import type {
   ChatThread,
   ContextSnapshot,
-  FeedFinding,
   FeedItem,
   FeedMessage,
   PersistedChatState,
@@ -42,11 +41,7 @@ export function sanitizeFeed(input: unknown): FeedItem[] {
     if (!raw || typeof raw !== "object") continue;
     const m = raw as Record<string, unknown>;
     // Old format: { role, content } without kind — migrate
-    if (
-      !m.kind &&
-      (m.role === "user" || m.role === "assistant") &&
-      typeof m.content === "string"
-    ) {
+    if (!m.kind && (m.role === "user" || m.role === "assistant") && typeof m.content === "string") {
       items.push({ kind: "message", role: m.role as "user" | "assistant", content: m.content });
       continue;
     }
@@ -70,7 +65,11 @@ export function sanitizeFeed(input: unknown): FeedItem[] {
       typeof m.snapshot === "object" &&
       typeof m.copyText === "string"
     ) {
-      items.push({ kind: "context", snapshot: m.snapshot as ContextSnapshot, copyText: m.copyText });
+      items.push({
+        kind: "context",
+        snapshot: m.snapshot as ContextSnapshot,
+        copyText: m.copyText,
+      });
       continue;
     }
     if (
@@ -103,10 +102,7 @@ export function sanitizeThreads(input: unknown): ChatThread[] {
         ? maybe.updatedAt
         : Date.now();
     threads.push({
-      id:
-        typeof maybe.id === "string" && maybe.id.trim()
-          ? maybe.id
-          : createThreadId(),
+      id: typeof maybe.id === "string" && maybe.id.trim() ? maybe.id : createThreadId(),
       title:
         typeof maybe.title === "string" && maybe.title.trim()
           ? maybe.title.trim()

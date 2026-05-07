@@ -1,5 +1,15 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
-import type { ConnectionGraph, EnvironmentSummary, Port, Process, SystemSnapshot, SnapshotDelta, GraphNode, GraphEdge, ServiceStatuses } from '../types/electron';
+import { useState, useEffect, useCallback, useRef } from "react";
+import type {
+  ConnectionGraph,
+  EnvironmentSummary,
+  Port,
+  Process,
+  SystemSnapshot,
+  SnapshotDelta,
+  GraphNode,
+  GraphEdge,
+  ServiceStatuses,
+} from "../types/electron";
 
 // Helper to create a stable key for comparing snapshots.
 // Uses count + sorted IDs for fast comparison without full string join.
@@ -13,23 +23,23 @@ const createSnapshotKey = (snapshot: SystemSnapshot): string => {
 
   // Fast path: if counts differ, topology definitely changed
   // Build key from sorted IDs only (skip type — topology = presence, not type changes)
-  let nodeKey = '';
+  let nodeKey = "";
   if (nodeCount <= 50) {
     // Small graphs: full sorted key
-    const ids = nodes.map(n => n.id).sort();
-    nodeKey = ids.join(',');
+    const ids = nodes.map((n) => n.id).sort();
+    nodeKey = ids.join(",");
   } else {
     // Large graphs: hash-like approach with count + first/last sorted IDs
-    const ids = nodes.map(n => n.id).sort();
+    const ids = nodes.map((n) => n.id).sort();
     nodeKey = `${nodeCount}:${ids[0]}..${ids[nodeCount - 1]}`;
   }
 
-  let edgeKey = '';
+  let edgeKey = "";
   if (edgeCount <= 50) {
-    const ids = edges.map(e => e.id).sort();
-    edgeKey = ids.join(',');
+    const ids = edges.map((e) => e.id).sort();
+    edgeKey = ids.join(",");
   } else {
-    const ids = edges.map(e => e.id).sort();
+    const ids = edges.map((e) => e.id).sort();
     edgeKey = `${edgeCount}:${ids[0]}..${ids[edgeCount - 1]}`;
   }
 
@@ -38,7 +48,7 @@ const createSnapshotKey = (snapshot: SystemSnapshot): string => {
 
 // Check if we're running in Electron
 const isElectron = () => {
-  return typeof window !== 'undefined' && window.electronAPI !== undefined;
+  return typeof window !== "undefined" && window.electronAPI !== undefined;
 };
 
 /**
@@ -47,7 +57,7 @@ const isElectron = () => {
  * For 'delta' deltas, applies incremental changes.
  */
 function applyDelta(current: SystemSnapshot, delta: SnapshotDelta): SystemSnapshot {
-  if (delta.type === 'full') {
+  if (delta.type === "full") {
     return {
       processes: (delta.processes as Process[]) ?? current.processes,
       ports: (delta.ports as Port[]) ?? current.ports,
@@ -67,19 +77,19 @@ function applyDelta(current: SystemSnapshot, delta: SnapshotDelta): SystemSnapsh
   let edges = current.graph.edges;
 
   // Apply process delta
-  if (delta.processes && 'added' in delta.processes) {
+  if (delta.processes && "added" in delta.processes) {
     const pd = delta.processes;
     if (pd.removed?.length > 0) {
       const removedSet = new Set(pd.removed);
-      processes = processes.filter(p => !removedSet.has(p.pid));
+      processes = processes.filter((p) => !removedSet.has(p.pid));
     }
     if (pd.added?.length > 0) {
       if (processes === current.processes) processes = [...processes];
       processes.push(...pd.added);
     }
     if (pd.modified?.length > 0) {
-      const modMap = new Map(pd.modified.map(p => [p.pid, p]));
-      processes = processes.map(p => {
+      const modMap = new Map(pd.modified.map((p) => [p.pid, p]));
+      processes = processes.map((p) => {
         const mod = modMap.get(p.pid);
         return mod ? { ...p, ...mod } : p;
       });
@@ -87,11 +97,11 @@ function applyDelta(current: SystemSnapshot, delta: SnapshotDelta): SystemSnapsh
   }
 
   // Apply port delta
-  if (delta.ports && 'added' in delta.ports) {
+  if (delta.ports && "added" in delta.ports) {
     const portd = delta.ports;
     if (portd.removed?.length > 0) {
       const removedSet = new Set(portd.removed);
-      ports = ports.filter(p => !removedSet.has(`${p.port}-${p.pid}`));
+      ports = ports.filter((p) => !removedSet.has(`${p.port}-${p.pid}`));
     }
     if (portd.added?.length > 0) {
       if (ports === current.ports) ports = [...ports];
@@ -100,12 +110,12 @@ function applyDelta(current: SystemSnapshot, delta: SnapshotDelta): SystemSnapsh
   }
 
   // Apply connection delta
-  if (delta.connections && 'added' in delta.connections) {
+  if (delta.connections && "added" in delta.connections) {
     const cd = delta.connections;
     if (cd.removed?.length > 0) {
       const removedSet = new Set(cd.removed);
-      connections = connections.filter(c =>
-        !removedSet.has(`${c.pid}-${c.localPort}-${c.remoteHost}-${c.remotePort}`)
+      connections = connections.filter(
+        (c) => !removedSet.has(`${c.pid}-${c.localPort}-${c.remoteHost}-${c.remotePort}`),
       );
     }
     if (cd.added?.length > 0) {
@@ -115,31 +125,35 @@ function applyDelta(current: SystemSnapshot, delta: SnapshotDelta): SystemSnapsh
   }
 
   // Apply graph node delta
-  if (delta.graph && 'nodes' in delta.graph && delta.graph.nodes) {
-    const nd = delta.graph.nodes as { added: GraphNode[]; removed: string[]; modified: (Partial<GraphNode> & { id: string })[] };
+  if (delta.graph && "nodes" in delta.graph && delta.graph.nodes) {
+    const nd = delta.graph.nodes as {
+      added: GraphNode[];
+      removed: string[];
+      modified: (Partial<GraphNode> & { id: string })[];
+    };
     if (nd.removed?.length > 0) {
       const removedSet = new Set(nd.removed);
-      nodes = nodes.filter(n => !removedSet.has(n.id));
+      nodes = nodes.filter((n) => !removedSet.has(n.id));
     }
     if (nd.added?.length > 0) {
       if (nodes === current.graph.nodes) nodes = [...nodes];
       nodes.push(...nd.added);
     }
     if (nd.modified?.length > 0) {
-      const modMap = new Map(nd.modified.map(n => [n.id, n]));
-      nodes = nodes.map(n => {
+      const modMap = new Map(nd.modified.map((n) => [n.id, n]));
+      nodes = nodes.map((n) => {
         const mod = modMap.get(n.id);
-        return mod ? { ...n, ...mod } as GraphNode : n;
+        return mod ? ({ ...n, ...mod } as GraphNode) : n;
       });
     }
   }
 
   // Apply graph edge delta
-  if (delta.graph && 'edges' in delta.graph && delta.graph.edges) {
+  if (delta.graph && "edges" in delta.graph && delta.graph.edges) {
     const ed = delta.graph.edges as { added: GraphEdge[]; removed: string[] };
     if (ed.removed?.length > 0) {
       const removedSet = new Set(ed.removed);
-      edges = edges.filter(e => !removedSet.has(e.id));
+      edges = edges.filter((e) => !removedSet.has(e.id));
     }
     if (ed.added?.length > 0) {
       if (edges === current.graph.edges) edges = [...edges];
@@ -161,7 +175,7 @@ function applyDelta(current: SystemSnapshot, delta: SnapshotDelta): SystemSnapsh
   };
 }
 
-type Connection = import('../types/electron').Connection;
+type Connection = import("../types/electron").Connection;
 
 /**
  * Hook to poll the connection graph at regular intervals
@@ -173,7 +187,7 @@ export function useConnectionGraph(pollInterval = 2000) {
 
   const refresh = useCallback(async () => {
     if (!isElectron()) {
-      setError('Not running in Electron');
+      setError("Not running in Electron");
       setLoading(false);
       return;
     }
@@ -183,7 +197,7 @@ export function useConnectionGraph(pollInterval = 2000) {
       setGraph(data);
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch connection graph');
+      setError(err instanceof Error ? err.message : "Failed to fetch connection graph");
     } finally {
       setLoading(false);
     }
@@ -213,14 +227,14 @@ export function useSystemSnapshot(pollInterval = 2000) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const defaultStatus: ServiceStatuses = {
-    ports: { code: 'ok' },
-    processes: { code: 'ok' },
-    docker: { code: 'ok' },
+    ports: { code: "ok" },
+    processes: { code: "ok" },
+    docker: { code: "ok" },
   };
   const [serviceStatus, setServiceStatus] = useState<ServiceStatuses>(defaultStatus);
   const [monitoringStartedAt] = useState(() => Date.now());
   const snapshotRef = useRef<SystemSnapshot>(snapshot);
-  const snapshotKeyRef = useRef<string>('');
+  const snapshotKeyRef = useRef<string>("");
   const lastSeqRef = useRef<number>(-1);
   const lastMetricsFlushRef = useRef<number>(0);
   const pendingMetricsRef = useRef<SystemSnapshot | null>(null);
@@ -234,18 +248,18 @@ export function useSystemSnapshot(pollInterval = 2000) {
   const nodeHealthRef = useRef<Map<string, string>>(new Map());
 
   const getAdaptivePollInterval = useCallback(() => {
-    if (typeof document === 'undefined') return pollInterval;
-    const hidden = document.visibilityState === 'hidden';
+    if (typeof document === "undefined") return pollInterval;
+    const hidden = document.visibilityState === "hidden";
     if (hidden) return Math.min(10000, Math.max(3000, pollInterval * 3));
     return pollInterval;
   }, [pollInterval]);
 
   const updateMetricsThrottle = useCallback(() => {
-    if (typeof document === 'undefined') {
+    if (typeof document === "undefined") {
       metricsThrottleMsRef.current = 1200;
       return;
     }
-    const hidden = document.visibilityState === 'hidden';
+    const hidden = document.visibilityState === "hidden";
     // Slower metric flush in background to reduce unnecessary re-renders.
     metricsThrottleMsRef.current = hidden ? 3000 : 900;
   }, []);
@@ -258,7 +272,7 @@ export function useSystemSnapshot(pollInterval = 2000) {
     }
 
     if (!isElectron()) {
-      setError('Not running in Electron');
+      setError("Not running in Electron");
       setLoading(false);
       return;
     }
@@ -276,7 +290,7 @@ export function useSystemSnapshot(pollInterval = 2000) {
       setError(null);
     } catch (err) {
       if (unmountedRef.current) return;
-      setError(err instanceof Error ? err.message : 'Failed to fetch system snapshot');
+      setError(err instanceof Error ? err.message : "Failed to fetch system snapshot");
     } finally {
       if (!unmountedRef.current) {
         setLoading(false);
@@ -293,7 +307,7 @@ export function useSystemSnapshot(pollInterval = 2000) {
     unmountedRef.current = false;
 
     if (!isElectron()) {
-      setError('Not running in Electron');
+      setError("Not running in Electron");
       setLoading(false);
       return;
     }
@@ -308,7 +322,11 @@ export function useSystemSnapshot(pollInterval = 2000) {
       const unsubscribe = window.electronAPI.onSnapshotDelta((delta: SnapshotDelta) => {
         streamReceivedDeltaRef.current = true;
         // Sequence gap detection — request full resync if we missed deltas
-        if (delta.type !== 'full' && lastSeqRef.current >= 0 && delta.seq !== lastSeqRef.current + 1) {
+        if (
+          delta.type !== "full" &&
+          lastSeqRef.current >= 0 &&
+          delta.seq !== lastSeqRef.current + 1
+        ) {
           void refresh();
           return;
         }
@@ -317,16 +335,18 @@ export function useSystemSnapshot(pollInterval = 2000) {
         const patched = applyDelta(snapshotRef.current, delta);
 
         // Detect health degradations: fire fere:health-degraded when a node transitions to 'red'
-        if (delta.graph && 'nodes' in (delta.graph as object)) {
-          const nd = (delta.graph as { nodes?: { modified?: Array<Partial<GraphNode> & { id: string }> } }).nodes;
+        if (delta.graph && "nodes" in (delta.graph as object)) {
+          const nd = (
+            delta.graph as { nodes?: { modified?: Array<Partial<GraphNode> & { id: string }> } }
+          ).nodes;
           if (nd?.modified?.length) {
             for (const mod of nd.modified) {
-              if (mod.healthStatus !== 'red') continue;
+              if (mod.healthStatus !== "red") continue;
               const prevHealth = nodeHealthRef.current.get(mod.id);
-              if (prevHealth === 'red') continue; // already red — not a new transition
-              const node = patched.graph.nodes.find(n => n.id === mod.id);
+              if (prevHealth === "red") continue; // already red — not a new transition
+              const node = patched.graph.nodes.find((n) => n.id === mod.id);
               if (node) {
-                window.dispatchEvent(new CustomEvent('fere:health-degraded', { detail: { node } }));
+                window.dispatchEvent(new CustomEvent("fere:health-degraded", { detail: { node } }));
               }
             }
           }
@@ -411,9 +431,9 @@ export function useSystemSnapshot(pollInterval = 2000) {
       void refresh();
     };
 
-    window.addEventListener('fere:refresh-snapshot', handleForceRefresh);
+    window.addEventListener("fere:refresh-snapshot", handleForceRefresh);
     return () => {
-      window.removeEventListener('fere:refresh-snapshot', handleForceRefresh);
+      window.removeEventListener("fere:refresh-snapshot", handleForceRefresh);
     };
   }, [refresh]);
 
@@ -421,18 +441,18 @@ export function useSystemSnapshot(pollInterval = 2000) {
     const handleVisibilityOrFocus = () => {
       updateMetricsThrottle();
       // When returning to the app, fetch a fresh snapshot immediately.
-      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+      if (typeof document !== "undefined" && document.visibilityState === "visible") {
         pendingMetricsRef.current = null;
         cancelAnimationFrame(metricsRafRef.current);
         void refresh();
       }
     };
 
-    document.addEventListener('visibilitychange', handleVisibilityOrFocus);
-    window.addEventListener('focus', handleVisibilityOrFocus);
+    document.addEventListener("visibilitychange", handleVisibilityOrFocus);
+    window.addEventListener("focus", handleVisibilityOrFocus);
     return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
-      window.removeEventListener('focus', handleVisibilityOrFocus);
+      document.removeEventListener("visibilitychange", handleVisibilityOrFocus);
+      window.removeEventListener("focus", handleVisibilityOrFocus);
     };
   }, [refresh, updateMetricsThrottle]);
 
@@ -449,7 +469,7 @@ export function useListeningPorts(pollInterval = 2000) {
 
   const refresh = useCallback(async () => {
     if (!isElectron()) {
-      setError('Not running in Electron');
+      setError("Not running in Electron");
       setLoading(false);
       return;
     }
@@ -459,7 +479,7 @@ export function useListeningPorts(pollInterval = 2000) {
       setPorts(data);
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch ports');
+      setError(err instanceof Error ? err.message : "Failed to fetch ports");
     } finally {
       setLoading(false);
     }
@@ -484,7 +504,7 @@ export function useDevProcesses(pollInterval = 2000) {
 
   const refresh = useCallback(async () => {
     if (!isElectron()) {
-      setError('Not running in Electron');
+      setError("Not running in Electron");
       setLoading(false);
       return;
     }
@@ -494,7 +514,7 @@ export function useDevProcesses(pollInterval = 2000) {
       setProcesses(data);
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch processes');
+      setError(err instanceof Error ? err.message : "Failed to fetch processes");
     } finally {
       setLoading(false);
     }
@@ -524,7 +544,7 @@ export function useEnvironmentSummary(pollInterval = 2000) {
 
   const refresh = useCallback(async () => {
     if (!isElectron()) {
-      setError('Not running in Electron');
+      setError("Not running in Electron");
       setLoading(false);
       return;
     }
@@ -534,7 +554,7 @@ export function useEnvironmentSummary(pollInterval = 2000) {
       setSummary(data);
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch summary');
+      setError(err instanceof Error ? err.message : "Failed to fetch summary");
     } finally {
       setLoading(false);
     }
@@ -558,7 +578,7 @@ export function useKillProcess() {
 
   const kill = useCallback(async (pid: number) => {
     if (!isElectron()) {
-      setError('Not running in Electron');
+      setError("Not running in Electron");
       return false;
     }
 
@@ -568,12 +588,12 @@ export function useKillProcess() {
     try {
       const result = await window.electronAPI.killProcess(pid);
       if (!result.success) {
-        setError(result.error || 'Failed to kill process');
+        setError(result.error || "Failed to kill process");
         return false;
       }
       return true;
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to kill process');
+      setError(err instanceof Error ? err.message : "Failed to kill process");
       return false;
     } finally {
       setKilling(false);

@@ -87,9 +87,7 @@ const BRAND_DOMAIN_BY_KEY: Record<string, string> = {
 };
 
 const RAW_LOGO_DEV_TOKEN = (process.env.REACT_APP_LOGO_DEV_TOKEN || "").trim();
-const LOGO_DEV_TOKEN = RAW_LOGO_DEV_TOKEN.startsWith("pk_")
-  ? RAW_LOGO_DEV_TOKEN
-  : "";
+const LOGO_DEV_TOKEN = RAW_LOGO_DEV_TOKEN.startsWith("pk_") ? RAW_LOGO_DEV_TOKEN : "";
 
 if (
   process.env.NODE_ENV !== "production" &&
@@ -99,9 +97,7 @@ if (
   // Logo.dev image CDN expects publishable keys in query param.
   // Secret keys should stay server-side only and are ignored here.
   // eslint-disable-next-line no-console
-  console.warn(
-    "[BrandIcon] REACT_APP_LOGO_DEV_TOKEN should be a publishable key (pk_...).",
-  );
+  console.warn("[BrandIcon] REACT_APP_LOGO_DEV_TOKEN should be a publishable key (pk_...).");
 }
 
 function normalize(value: string): string {
@@ -188,9 +184,7 @@ function isHostLike(value: string): boolean {
 }
 
 function isReverseDnsBundleId(value: string): boolean {
-  return /^(com|org|net|io|dev|app|ai)\.[a-z0-9-]+(\.[a-z0-9-]+)+$/i.test(
-    value,
-  );
+  return /^(com|org|net|io|dev|app|ai)\.[a-z0-9-]+(\.[a-z0-9-]+)+$/i.test(value);
 }
 
 function extractDomainLike(value: string): string | null {

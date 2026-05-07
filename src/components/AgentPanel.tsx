@@ -1,19 +1,11 @@
-import React, {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import type {
   AgentFinding,
   AgentFixAction,
-  AgentSeverity,
   AuthSession,
   ChatStep,
-  ExternalApiProvider,
   FixProposal,
   GraphEdge,
   GraphNode,
@@ -21,7 +13,6 @@ import type {
 import { getServiceColor } from "./graph/constants";
 import { ApiKeySetup } from "./ApiKeySetup";
 import sentinelLogo from "../assets/sentinel.png";
-import { AuthAvatar } from "./agent/AuthAvatar";
 import { StepIcon } from "./agent/StepIcon";
 import { MentionDropdown } from "./agent/MentionDropdown";
 import {
@@ -38,22 +29,17 @@ import { ProviderMention } from "./agent/ProviderMention";
 import {
   loadPersistedChatState,
   createThread,
-  createThreadId,
   deriveThreadTitle,
-  sanitizeFeed,
-  sanitizeThreads,
   CHAT_STORAGE_KEY,
   MAX_CHAT_THREADS,
 } from "./agent/chatPersistence";
 import type {
   FeedMessage,
-  FeedContext,
   FeedFinding,
   FeedItem,
   IncidentStage,
   ChatThread,
   PersistedChatState,
-  ContextSnapshot,
   ContextService,
   ContextConnection,
   ContextFinding,
@@ -79,9 +65,7 @@ export function AgentPanel({
   const persistedState = useMemo(() => loadPersistedChatState(), []);
   const [open, setOpen] = useState(persistedState.open);
   const [threads, setThreads] = useState<ChatThread[]>(persistedState.threads);
-  const [activeThreadId, setActiveThreadId] = useState(
-    persistedState.activeThreadId,
-  );
+  const [activeThreadId, setActiveThreadId] = useState(persistedState.activeThreadId);
   const [streamingText, setStreamingText] = useState("");
   const [steps, setSteps] = useState<ChatStep[]>([]);
   const [pendingFixes, setPendingFixes] = useState<
@@ -98,12 +82,15 @@ export function AgentPanel({
   } | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [aiUsage, setAiUsage] = useState<{ used: number; limit: number; remaining: number; mode?: string } | null>(null);
+  const [aiUsage, setAiUsage] = useState<{
+    used: number;
+    limit: number;
+    remaining: number;
+    mode?: string;
+  } | null>(null);
   const [hasApiKey, setHasApiKey] = useState<boolean | null>(null);
   const [authSession, setAuthSession] = useState<AuthSession | null>(null);
-  const [providerDomains, setProviderDomains] = useState<
-    Record<string, string>
-  >({});
+  const [providerDomains, setProviderDomains] = useState<Record<string, string>>({});
   const [historyOpen, setHistoryOpen] = useState(false);
   const [detectionEnabled, setDetectionEnabled] = useState(false);
   const [autopilotEnabled, setAutopilotEnabled] = useState(false);
@@ -134,18 +121,13 @@ export function AgentPanel({
     [nodeIdsForScan],
   );
 
-  const serviceCount = useMemo(
-    () => nodes.filter((n) => n.type !== "external").length,
-    [nodes],
-  );
+  const serviceCount = useMemo(() => nodes.filter((n) => n.type !== "external").length, [nodes]);
   const activeIncidentCount = useMemo(
     () =>
       feed.filter(
         (item): item is FeedFinding =>
           item.kind === "finding" &&
-          (item.stage === "detected" ||
-            item.stage === "fixing" ||
-            item.stage === "fixed"),
+          (item.stage === "detected" || item.stage === "fixing" || item.stage === "fixed"),
       ).length,
     [feed],
   );
@@ -179,10 +161,20 @@ export function AgentPanel({
 
   // Fetch Sentinel AI usage, key status, and auth session on mount + window focus
   useEffect(() => {
-    const refreshUsage = () => window.electronAPI.agentUsage().then(setAiUsage).catch(() => {});
+    const refreshUsage = () =>
+      window.electronAPI
+        .agentUsage()
+        .then(setAiUsage)
+        .catch(() => {});
     refreshUsage();
-    window.electronAPI.getApiKeyStatus().then((s) => setHasApiKey(s.hasKey)).catch(() => {});
-    window.electronAPI.authGetSession().then(setAuthSession).catch(() => {});
+    window.electronAPI
+      .getApiKeyStatus()
+      .then((s) => setHasApiKey(s.hasKey))
+      .catch(() => {});
+    window.electronAPI
+      .authGetSession()
+      .then(setAuthSession)
+      .catch(() => {});
     const cleanup = window.electronAPI.onAuthSessionChanged((session) => {
       setAuthSession(session);
       refreshUsage();
@@ -227,10 +219,7 @@ export function AgentPanel({
 
     const updateTopOffset = () => {
       const { top } = appBody.getBoundingClientRect();
-      root.style.setProperty(
-        "--agp-top-offset",
-        `${Math.max(0, Math.round(top))}px`,
-      );
+      root.style.setProperty("--agp-top-offset", `${Math.max(0, Math.round(top))}px`);
     };
 
     updateTopOffset();
@@ -305,9 +294,7 @@ export function AgentPanel({
         <li>{renderProviderMentionsInChildren(children, providerDomains)}</li>
       ),
       blockquote: ({ children }: { children?: React.ReactNode }) => (
-        <blockquote>
-          {renderProviderMentionsInChildren(children, providerDomains)}
-        </blockquote>
+        <blockquote>{renderProviderMentionsInChildren(children, providerDomains)}</blockquote>
       ),
       h1: ({ children }: { children?: React.ReactNode }) => (
         <h1>{renderProviderMentionsInChildren(children, providerDomains)}</h1>
@@ -395,9 +382,7 @@ export function AgentPanel({
 
       window.electronAPI.onChatStep((step: ChatStep) => {
         setSteps((prev) => {
-          const idx = prev.findIndex(
-            (s) => s.path === step.path && s.type === step.type,
-          );
+          const idx = prev.findIndex((s) => s.path === step.path && s.type === step.type);
           if (idx !== -1) {
             const next = [...prev];
             next[idx] = { ...next[idx], done: true };
@@ -459,11 +444,15 @@ export function AgentPanel({
         setIsStreaming(false);
         setTimeout(() => scrollToEnd(true), 100);
         // Refresh usage counter after each chat call
-        window.electronAPI.agentUsage().then(setAiUsage).catch(() => {});
+        window.electronAPI
+          .agentUsage()
+          .then(setAiUsage)
+          .catch(() => {});
       }
     },
     [
       activeThread,
+      aiUsage,
       appendActiveThreadItems,
       autopilotEnabled,
       isStreaming,
@@ -506,9 +495,7 @@ export function AgentPanel({
       })
       .filter((c): c is ContextConnection => c !== null);
 
-    const activeFindings = feed.filter(
-      (item): item is FeedFinding => item.kind === "finding",
-    );
+    const activeFindings = feed.filter((item): item is FeedFinding => item.kind === "finding");
     const findings: ContextFinding[] = activeFindings.map((f) => ({
       severity: f.severity,
       service: f.service,
@@ -531,7 +518,9 @@ export function AgentPanel({
       .map((s) => `- ${s.name} calls: ${s.externalApis!.join(", ")}`);
     const routeLines = services
       .filter((s) => s.routes && s.routes.length > 0)
-      .map((s) => `- ${s.name}: ${s.routes!.map((r) => `${r.method ?? "?"} ${r.path}`).join(", ")}`);
+      .map(
+        (s) => `- ${s.name}: ${s.routes!.map((r) => `${r.method ?? "?"} ${r.path}`).join(", ")}`,
+      );
     const findLines = findings.map(
       (f) => `- [${f.severity.toUpperCase()}] ${f.service}: ${f.summary}`,
     );
@@ -602,25 +591,36 @@ export function AgentPanel({
   // Feature: click a node → Sentinel auto-investigates
   useEffect(() => {
     const handler = (e: Event) => {
-      const { nodeName, healthStatus, ports, command, inboundConnections, outboundConnections, networkPeers } =
-        (e as CustomEvent).detail ?? {};
+      const {
+        nodeName,
+        healthStatus,
+        ports,
+        command,
+        inboundConnections,
+        outboundConnections,
+        networkPeers,
+      } = (e as CustomEvent).detail ?? {};
       if (!nodeName) return;
 
-      const portStr = ports?.length
-        ? ` on port ${(ports as number[]).join(", ")}`
-        : "";
+      const portStr = ports?.length ? ` on port ${(ports as number[]).join(", ")}` : "";
       const cmdStr = command ? ` (${String(command).slice(0, 60)})` : "";
 
       // Build connection context from panel data so the agent uses what the UI already shows
       const connLines: string[] = [];
       if (Array.isArray(inboundConnections) && inboundConnections.length > 0) {
-        connLines.push(`Inbound (live TCP): ${(inboundConnections as Array<{name:string;sourcePort:number;targetPort:number}>).map((c) => `${c.name} (:${c.sourcePort}→:${c.targetPort})`).join(", ")}`);
+        connLines.push(
+          `Inbound (live TCP): ${(inboundConnections as Array<{ name: string; sourcePort: number; targetPort: number }>).map((c) => `${c.name} (:${c.sourcePort}→:${c.targetPort})`).join(", ")}`,
+        );
       }
       if (Array.isArray(outboundConnections) && outboundConnections.length > 0) {
-        connLines.push(`Outbound (live TCP): ${(outboundConnections as Array<{name:string;sourcePort:number;targetPort:number}>).map((c) => `${c.name} (:${c.sourcePort}→:${c.targetPort})`).join(", ")}`);
+        connLines.push(
+          `Outbound (live TCP): ${(outboundConnections as Array<{ name: string; sourcePort: number; targetPort: number }>).map((c) => `${c.name} (:${c.sourcePort}→:${c.targetPort})`).join(", ")}`,
+        );
       }
       if (Array.isArray(networkPeers) && networkPeers.length > 0) {
-        connLines.push(`Docker network peers (direction unknown): ${(networkPeers as string[]).join(", ")}`);
+        connLines.push(
+          `Docker network peers (direction unknown): ${(networkPeers as string[]).join(", ")}`,
+        );
       }
       if (connLines.length === 0) connLines.push("No connections observed.");
       const connContext = `\n\nConnections (from live UI data):\n${connLines.map((l) => `- ${l}`).join("\n")}`;
@@ -658,32 +658,27 @@ export function AgentPanel({
     }
   }, []);
 
-  const handleInputChange = useCallback(
-    (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-      const val = e.target.value;
-      const pos = e.target.selectionStart ?? val.length;
-      const before = val.slice(0, pos);
-      const atMatch = before.match(/@([\w\-.]*)$/);
-      if (atMatch) {
-        setMentionQuery({
-          query: atMatch[1],
-          startIdx: pos - atMatch[0].length,
-        });
-      } else {
-        setMentionQuery(null);
-      }
-      setInput(val);
-    },
-    [],
-  );
+  const handleInputChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const val = e.target.value;
+    const pos = e.target.selectionStart ?? val.length;
+    const before = val.slice(0, pos);
+    const atMatch = before.match(/@([\w\-.]*)$/);
+    if (atMatch) {
+      setMentionQuery({
+        query: atMatch[1],
+        startIdx: pos - atMatch[0].length,
+      });
+    } else {
+      setMentionQuery(null);
+    }
+    setInput(val);
+  }, []);
 
   const handleMentionSelect = useCallback(
     (node: GraphNode) => {
       if (!mentionQuery) return;
       const before = input.slice(0, mentionQuery.startIdx);
-      const after = input.slice(
-        mentionQuery.startIdx + 1 + mentionQuery.query.length,
-      );
+      const after = input.slice(mentionQuery.startIdx + 1 + mentionQuery.query.length);
       setInput(`${before}@${node.name}${after}`);
       setMentionQuery(null);
       setTimeout(() => inputRef.current?.focus(), 10);
@@ -769,19 +764,13 @@ export function AgentPanel({
         if (idx === -1) return prev;
         const current = prev[idx];
         // Don't duplicate
-        if (
-          current.feed.some((f) => f.kind === "finding" && f.id === finding.id)
-        )
-          return prev;
+        if (current.feed.some((f) => f.kind === "finding" && f.id === finding.id)) return prev;
         const updated: ChatThread = {
           ...current,
           feed: [...current.feed, item],
           updatedAt: Date.now(),
         };
-        return [updated, ...prev.slice(0, idx), ...prev.slice(idx + 1)].slice(
-          0,
-          MAX_CHAT_THREADS,
-        );
+        return [updated, ...prev.slice(0, idx), ...prev.slice(idx + 1)].slice(0, MAX_CHAT_THREADS);
       });
     },
     [activeThreadId],
@@ -798,10 +787,7 @@ export function AgentPanel({
 
       if (node.isDockerContainer && node.containerId) {
         try {
-          const result = await window.electronAPI.getContainerLogTail(
-            node.containerId,
-            20,
-          );
+          const result = await window.electronAPI.getContainerLogTail(node.containerId, 20);
           if (result.success && result.logs) {
             const lines = result.logs.split("\n").filter(Boolean).slice(-10);
             logExcerpt = lines.join("\n");
@@ -831,11 +817,7 @@ export function AgentPanel({
     };
 
     window.addEventListener("fere:health-degraded", handler as EventListener);
-    return () =>
-      window.removeEventListener(
-        "fere:health-degraded",
-        handler as EventListener,
-      );
+    return () => window.removeEventListener("fere:health-degraded", handler as EventListener);
   }, [appendFindingToFeed]);
 
   const updateFindingInFeed = useCallback(
@@ -860,10 +842,7 @@ export function AgentPanel({
           feed: newFeed,
           updatedAt: Date.now(),
         };
-        return [updated, ...prev.slice(0, idx), ...prev.slice(idx + 1)].slice(
-          0,
-          MAX_CHAT_THREADS,
-        );
+        return [updated, ...prev.slice(0, idx), ...prev.slice(idx + 1)].slice(0, MAX_CHAT_THREADS);
       });
     },
     [activeThreadId],
@@ -871,50 +850,29 @@ export function AgentPanel({
 
   const toSafeAction = useCallback((fix: AgentFixAction | null) => {
     if (!fix) return null;
-    if (
-      fix.type === "restart-container" &&
-      typeof fix.containerId === "string"
-    ) {
+    if (fix.type === "restart-container" && typeof fix.containerId === "string") {
       return {
         type: "restart-container" as const,
         containerId: fix.containerId,
       };
     }
-    if (
-      fix.type === "kill-port" &&
-      Number.isInteger(fix.port) &&
-      Number.isInteger(fix.pid)
-    ) {
+    if (fix.type === "kill-port" && Number.isInteger(fix.port) && Number.isInteger(fix.pid)) {
       return { type: "kill-port" as const, port: fix.port!, pid: fix.pid! };
     }
     return null;
   }, []);
 
-  const isSafeFixProposal = useCallback(
-    (fix: FixProposal & { status: string }) => {
-      if (
-        fix.fix_type === "restart-container" &&
-        typeof fix.container_id === "string"
-      )
-        return true;
-      if (
-        fix.fix_type === "kill-port" &&
-        Number.isInteger(fix.port) &&
-        Number.isInteger(fix.pid)
-      )
-        return true;
-      return false;
-    },
-    [],
-  );
+  const isSafeFixProposal = useCallback((fix: FixProposal & { status: string }) => {
+    if (fix.fix_type === "restart-container" && typeof fix.container_id === "string") return true;
+    if (fix.fix_type === "kill-port" && Number.isInteger(fix.port) && Number.isInteger(fix.pid))
+      return true;
+    return false;
+  }, []);
 
   const verifyAutopilotFix = useCallback(
-    async (
-      finding: AgentFinding,
-    ): Promise<{ verified: boolean; reason?: string }> => {
+    async (finding: AgentFinding): Promise<{ verified: boolean; reason?: string }> => {
       const scan = await window.electronAPI.agentScan(nodeIdsForScan);
-      if (!scan.success)
-        return { verified: false, reason: scan.error ?? "verify scan failed" };
+      if (!scan.success) return { verified: false, reason: scan.error ?? "verify scan failed" };
       const current = scan.findings.filter(
         (f) => f.severity === "critical" || f.severity === "warning",
       );
@@ -922,8 +880,7 @@ export function AgentPanel({
         (f) =>
           f.id === finding.id ||
           f.service === finding.service ||
-          (Array.isArray(f.affectedServices) &&
-            f.affectedServices.includes(finding.service)),
+          (Array.isArray(f.affectedServices) && f.affectedServices.includes(finding.service)),
       );
       return stillFailing
         ? {
@@ -940,11 +897,7 @@ export function AgentPanel({
       for (const finding of findings) {
         const safeAction = toSafeAction(finding.fix);
         if (!safeAction) {
-          updateFindingInFeed(
-            finding.id,
-            "escalated",
-            "no safe autopilot action available",
-          );
+          updateFindingInFeed(finding.id, "escalated", "no safe autopilot action available");
           continue;
         }
         if (autopilotInFlightRef.current.has(finding.id)) continue;
@@ -955,11 +908,7 @@ export function AgentPanel({
         try {
           const result = await window.electronAPI.agentApplyFix(safeAction);
           if (!result.success) {
-            updateFindingInFeed(
-              finding.id,
-              "escalated",
-              result.error ?? "autopilot apply failed",
-            );
+            updateFindingInFeed(finding.id, "escalated", result.error ?? "autopilot apply failed");
             continue;
           }
 
@@ -993,15 +942,12 @@ export function AgentPanel({
         if (!normalizedTab) return true;
         return f.affectedServices?.some((svc) => {
           const name = svc.toLowerCase();
-          return (
-            nodeMap.has(name) || (normalizedTab && name.includes(normalizedTab))
-          );
+          return nodeMap.has(name) || (normalizedTab && name.includes(normalizedTab));
         });
       });
       if (inScope.length === 0) return;
 
-      const existing =
-        surfacedByTabRef.current.get(tabScopeKey) ?? new Set<string>();
+      const existing = surfacedByTabRef.current.get(tabScopeKey) ?? new Set<string>();
       const unseen = inScope.filter((f) => !existing.has(f.id));
       if (unseen.length === 0) return;
 
@@ -1019,9 +965,7 @@ export function AgentPanel({
 
       // Increment unread badge if panel is closed
       if (!open) {
-        setUnreadFindings(
-          (n) => n + unseen.filter((f) => f.severity === "critical").length,
-        );
+        setUnreadFindings((n) => n + unseen.filter((f) => f.severity === "critical").length);
       }
     },
     [
@@ -1075,14 +1019,9 @@ export function AgentPanel({
         const current = prev[idx];
         const updated = {
           ...current,
-          feed: current.feed.filter(
-            (item) => !(item.kind === "finding" && item.id === id),
-          ),
+          feed: current.feed.filter((item) => !(item.kind === "finding" && item.id === id)),
         };
-        return [updated, ...prev.slice(0, idx), ...prev.slice(idx + 1)].slice(
-          0,
-          MAX_CHAT_THREADS,
-        );
+        return [updated, ...prev.slice(0, idx), ...prev.slice(idx + 1)].slice(0, MAX_CHAT_THREADS);
       });
       const existing = surfacedByTabRef.current.get(tabScopeKey);
       if (existing) existing.delete(id);
@@ -1110,13 +1049,7 @@ export function AgentPanel({
     return () => {
       cancelled = true;
     };
-  }, [
-    detectionEnabled,
-    nodeIdsForScan,
-    nodeIdsScopeSignature,
-    surfaceFindings,
-    tabScopeKey,
-  ]);
+  }, [detectionEnabled, nodeIdsForScan, nodeIdsScopeSignature, surfaceFindings, tabScopeKey]);
 
   // Clear unread badge when panel opens
   useEffect(() => {
@@ -1140,11 +1073,7 @@ export function AgentPanel({
               ? { type: "kill-port", port: fix.port, pid: fix.pid }
               : { type: "kill-port", port: fix.port },
           );
-        } else if (
-          fix.fix_type === "launch-in-terminal" &&
-          fix.command &&
-          fix.cwd
-        ) {
+        } else if (fix.fix_type === "launch-in-terminal" && fix.command && fix.cwd) {
           const chatMessages = feed
             .filter((item): item is FeedMessage => item.kind === "message")
             .map(({ role, content }) => ({ role, content }));
@@ -1166,11 +1095,7 @@ export function AgentPanel({
         );
       } catch (err) {
         setPendingFixes((prev) =>
-          prev.map((f) =>
-            f.id === fix.id
-              ? { ...f, status: "error", errorMsg: String(err) }
-              : f,
-          ),
+          prev.map((f) => (f.id === fix.id ? { ...f, status: "error", errorMsg: String(err) } : f)),
         );
       }
     },
@@ -1179,9 +1104,7 @@ export function AgentPanel({
 
   useEffect(() => {
     if (!autopilotEnabled) return;
-    const next = pendingFixes.find(
-      (f) => f.status === "pending" && isSafeFixProposal(f),
-    );
+    const next = pendingFixes.find((f) => f.status === "pending" && isSafeFixProposal(f));
     if (!next) return;
     void applyFix(next);
   }, [autopilotEnabled, applyFix, isSafeFixProposal, pendingFixes]);
@@ -1192,10 +1115,7 @@ export function AgentPanel({
   useEffect(() => {
     if (!autopilotEnabled) return;
     const detectedFindings = feed
-      .filter(
-        (item): item is FeedFinding =>
-          item.kind === "finding" && item.stage === "detected",
-      )
+      .filter((item): item is FeedFinding => item.kind === "finding" && item.stage === "detected")
       .map((item) => ({
         id: item.id,
         service: item.service,
@@ -1210,8 +1130,8 @@ export function AgentPanel({
     if (detectedFindings.length > 0) {
       void runAutopilotForFindings(detectedFindings);
     }
-  // Only re-run when autopilot flips to enabled — not on every feed change
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Only re-run when autopilot flips to enabled — not on every feed change
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autopilotEnabled]);
 
   const startNewConversation = useCallback(() => {
@@ -1247,8 +1167,7 @@ export function AgentPanel({
   const applyFindingFix = useCallback(
     (findingId: string) => {
       const finding = feed.find(
-        (item): item is FeedFinding =>
-          item.kind === "finding" && item.id === findingId,
+        (item): item is FeedFinding => item.kind === "finding" && item.id === findingId,
       );
       if (!finding) return;
       const safeAction = toSafeAction(finding.fix);
@@ -1257,11 +1176,7 @@ export function AgentPanel({
       updateFindingInFeed(findingId, "fixing");
       void window.electronAPI.agentApplyFix(safeAction).then((result) => {
         if (!result.success) {
-          updateFindingInFeed(
-            findingId,
-            "escalated",
-            result.error ?? "apply failed",
-          );
+          updateFindingInFeed(findingId, "escalated", result.error ?? "apply failed");
           return;
         }
         updateFindingInFeed(findingId, "fixed");
@@ -1288,8 +1203,7 @@ export function AgentPanel({
 
   const explainFinding = useCallback(
     (finding: FeedFinding) => {
-      const isUnhealthy =
-        finding.severity === "critical" || finding.severity === "warning";
+      const isUnhealthy = finding.severity === "critical" || finding.severity === "warning";
       const msg = isUnhealthy
         ? `Investigate **${finding.service}**: ${finding.summary}. What's causing this and how do I fix it?`
         : `Tell me about **${finding.service}**: ${finding.summary}.`;
@@ -1303,8 +1217,7 @@ export function AgentPanel({
       const serviceLines = nodes
         .filter((n) => n.type !== "external")
         .map((n) => {
-          const port =
-            (n.ports ?? []).map((p) => p.port).join(", ") || "no port";
+          const port = (n.ports ?? []).map((p) => p.port).join(", ") || "no port";
           const cpu = n.cpu != null ? `, CPU ${n.cpu.toFixed(1)}%` : "";
           const mem = n.memory != null ? `, ${n.memory.toFixed(0)} MB` : "";
           return `- ${n.name} (port ${port}) — health: ${n.healthStatus ?? "unknown"}${cpu}${mem}`;
@@ -1348,9 +1261,7 @@ export function AgentPanel({
       >
         <img src={sentinelLogo} alt="Sentinel" className="agp-trigger-logo" />
         {unreadFindings > 0 && !open && (
-          <span className="agp-trigger-badge agp-findings-badge">
-            {unreadFindings}
-          </span>
+          <span className="agp-trigger-badge agp-findings-badge">{unreadFindings}</span>
         )}
       </button>
 
@@ -1359,11 +1270,7 @@ export function AgentPanel({
           {/* Header */}
           <div className="agp-header">
             <div className="agp-header-left">
-              <img
-                src={sentinelLogo}
-                alt="Sentinel"
-                className="agp-avatar-logo"
-              />
+              <img src={sentinelLogo} alt="Sentinel" className="agp-avatar-logo" />
               <div className="agp-header-text">
                 <span className="agp-header-title">Sentinel</span>
                 <span className="agp-header-sub">{headerSub}</span>
@@ -1373,11 +1280,7 @@ export function AgentPanel({
               <button
                 className={`agp-detect-btn${detectionEnabled ? " agp-detect-btn-active" : ""}`}
                 onClick={toggleDetection}
-                title={
-                  detectionEnabled
-                    ? "Stop detecting problems"
-                    : "Start detecting problems"
-                }
+                title={detectionEnabled ? "Stop detecting problems" : "Start detecting problems"}
                 disabled={isStreaming}
               >
                 <span
@@ -1388,21 +1291,15 @@ export function AgentPanel({
               <button
                 className={`agp-autopilot-btn${autopilotEnabled ? " agp-autopilot-btn-active" : ""}`}
                 onClick={toggleAutopilot}
-                title={
-                  autopilotEnabled ? "Disable autopilot" : "Enable autopilot"
-                }
+                title={autopilotEnabled ? "Disable autopilot" : "Enable autopilot"}
                 disabled={isStreaming}
               >
                 <span
                   className={`agp-autopilot-dot${autopilotEnabled ? " agp-autopilot-dot-active" : ""}`}
                 />
-                <span>
-                  {autopilotEnabled ? "Autopilot On" : "Autopilot Off"}
-                </span>
+                <span>{autopilotEnabled ? "Autopilot On" : "Autopilot Off"}</span>
                 {activeIncidentCount > 0 && (
-                  <span className="agp-autopilot-count">
-                    {activeIncidentCount}
-                  </span>
+                  <span className="agp-autopilot-count">{activeIncidentCount}</span>
                 )}
               </button>
               <button
@@ -1500,11 +1397,8 @@ export function AgentPanel({
                     <div className="agp-history-item-content">
                       <span className="agp-history-title">{thread.title}</span>
                       <span className="agp-history-meta">
-                        {
-                          thread.feed.filter((item) => item.kind === "message")
-                            .length
-                        }{" "}
-                        msg · {formatThreadTimestamp(thread.updatedAt)}
+                        {thread.feed.filter((item) => item.kind === "message").length} msg ·{" "}
+                        {formatThreadTimestamp(thread.updatedAt)}
                       </span>
                     </div>
                     <button
@@ -1532,12 +1426,18 @@ export function AgentPanel({
 
           {/* Chat body */}
           <div className="agp-chat-body">
-            {hasApiKey !== null && (
-              hasApiKey ? (
+            {hasApiKey !== null &&
+              (hasApiKey ? (
                 <ApiKeySetup
                   onKeyChanged={() => {
-                    window.electronAPI.getApiKeyStatus().then((s) => setHasApiKey(s.hasKey)).catch(() => {});
-                    window.electronAPI.agentUsage().then(setAiUsage).catch(() => {});
+                    window.electronAPI
+                      .getApiKeyStatus()
+                      .then((s) => setHasApiKey(s.hasKey))
+                      .catch(() => {});
+                    window.electronAPI
+                      .agentUsage()
+                      .then(setAiUsage)
+                      .catch(() => {});
                   }}
                 />
               ) : authSession?.signedIn ? (
@@ -1547,8 +1447,14 @@ export function AgentPanel({
                       <span>You've used your {aiUsage.limit} free calls today.</span>
                       <ApiKeySetup
                         onKeyChanged={() => {
-                          window.electronAPI.getApiKeyStatus().then((s) => setHasApiKey(s.hasKey)).catch(() => {});
-                          window.electronAPI.agentUsage().then(setAiUsage).catch(() => {});
+                          window.electronAPI
+                            .getApiKeyStatus()
+                            .then((s) => setHasApiKey(s.hasKey))
+                            .catch(() => {});
+                          window.electronAPI
+                            .agentUsage()
+                            .then(setAiUsage)
+                            .catch(() => {});
                         }}
                       />
                     </div>
@@ -1565,20 +1471,35 @@ export function AgentPanel({
                   <button
                     className="agp-auth-provider-btn"
                     onClick={() => {
-                      window.electronAPI.authSignInGoogle().then((result) => {
-                        if (!result?.success) {
-                          window.alert(result?.error || "Google sign-in failed.");
-                        }
-                      }).catch((err) => {
-                        window.alert(err?.message || "Google sign-in failed.");
-                      });
+                      window.electronAPI
+                        .authSignInGoogle()
+                        .then((result) => {
+                          if (!result?.success) {
+                            window.alert(result?.error || "Google sign-in failed.");
+                          }
+                        })
+                        .catch((err) => {
+                          window.alert(err?.message || "Google sign-in failed.");
+                        });
                     }}
                   >
                     <svg width="16" height="16" viewBox="0 0 48 48">
-                      <path fill="#4285F4" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
-                      <path fill="#34A853" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
-                      <path fill="#FBBC05" d="M10.53 28.59a14.5 14.5 0 0 1 0-9.18l-7.98-6.19a24.0 24.0 0 0 0 0 21.56l7.98-6.19z"/>
-                      <path fill="#EA4335" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+                      <path
+                        fill="#4285F4"
+                        d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"
+                      />
+                      <path
+                        fill="#34A853"
+                        d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"
+                      />
+                      <path
+                        fill="#FBBC05"
+                        d="M10.53 28.59a14.5 14.5 0 0 1 0-9.18l-7.98-6.19a24.0 24.0 0 0 0 0 21.56l7.98-6.19z"
+                      />
+                      <path
+                        fill="#EA4335"
+                        d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"
+                      />
                     </svg>
                     Continue with Google
                   </button>
@@ -1588,35 +1509,30 @@ export function AgentPanel({
                   </div>
                   <ApiKeySetup
                     onKeyChanged={() => {
-                      window.electronAPI.getApiKeyStatus().then((s) => setHasApiKey(s.hasKey)).catch(() => {});
-                      window.electronAPI.agentUsage().then(setAiUsage).catch(() => {});
+                      window.electronAPI
+                        .getApiKeyStatus()
+                        .then((s) => setHasApiKey(s.hasKey))
+                        .catch(() => {});
+                      window.electronAPI
+                        .agentUsage()
+                        .then(setAiUsage)
+                        .catch(() => {});
                     }}
                   />
                 </div>
-              )
-            )}
+              ))}
             {feed.length === 0 && !showStream ? (
               /* Welcome / starter screen */
               <div className="agp-welcome">
-                <img
-                  src={sentinelLogo}
-                  alt="Sentinel"
-                  className="agp-welcome-logo"
-                />
-                <p className="agp-welcome-title">
-                  Ask about your running stack
-                </p>
+                <img src={sentinelLogo} alt="Sentinel" className="agp-welcome-logo" />
+                <p className="agp-welcome-title">Ask about your running stack</p>
                 <p className="agp-welcome-sub">
-                  I can see your live topology, active connections, Docker
-                  containers, and codebase config — things no IDE agent can see.
+                  I can see your live topology, active connections, Docker containers, and codebase
+                  config — things no IDE agent can see.
                 </p>
                 <div className="agp-starters">
                   {STARTER_PROMPTS.map((p) => (
-                    <button
-                      key={p}
-                      className="agp-starter-chip"
-                      onClick={() => void send(p)}
-                    >
+                    <button key={p} className="agp-starter-chip" onClick={() => void send(p)}>
                       {p}
                     </button>
                   ))}
@@ -1641,11 +1557,7 @@ export function AgentPanel({
                   }
                   if (item.kind === "context") {
                     return (
-                      <ContextBlock
-                        key={i}
-                        snapshot={item.snapshot}
-                        copyText={item.copyText}
-                      />
+                      <ContextBlock key={i} snapshot={item.snapshot} copyText={item.copyText} />
                     );
                   }
                   return (
@@ -1677,19 +1589,12 @@ export function AgentPanel({
                       {steps.length > 0 && (
                         <div className="agp-steps">
                           {steps.map((step, i) => (
-                            <div
-                              key={i}
-                              className={`agp-step${step.done ? " agp-step-done" : ""}`}
-                            >
+                            <div key={i} className={`agp-step${step.done ? " agp-step-done" : ""}`}>
                               <span className="agp-step-icon">
                                 <StepIcon stepType={step.type} />
                               </span>
-                              <span className="agp-step-label">
-                                {step.label}
-                              </span>
-                              {!step.done && (
-                                <span className="agp-step-spinner" />
-                              )}
+                              <span className="agp-step-label">{step.label}</span>
+                              {!step.done && <span className="agp-step-spinner" />}
                             </div>
                           ))}
                         </div>
@@ -1723,16 +1628,10 @@ export function AgentPanel({
           {pendingFixes.length > 0 && (
             <div className="agp-fix-panel">
               {pendingFixes.map((fix) => (
-                <div
-                  key={fix.id}
-                  className={`agp-fix-item agp-fix-${fix.status}`}
-                >
+                <div key={fix.id} className={`agp-fix-item agp-fix-${fix.status}`}>
                   <div className="agp-fix-desc">{fix.description}</div>
                   {fix.status === "pending" && (
-                    <button
-                      className="agp-fix-btn"
-                      onClick={() => void applyFix(fix)}
-                    >
+                    <button className="agp-fix-btn" onClick={() => void applyFix(fix)}>
                       <svg
                         width="11"
                         height="11"
@@ -1791,11 +1690,7 @@ export function AgentPanel({
             )}
             <div className="agp-input-row">
               <div className="agp-input-container">
-                <div
-                  ref={mirrorRef}
-                  className="agp-input-mirror"
-                  aria-hidden="true"
-                >
+                <div ref={mirrorRef} className="agp-input-mirror" aria-hidden="true">
                   {renderMirrorContent(input, nodes)}
                   {"\u200b"}
                 </div>

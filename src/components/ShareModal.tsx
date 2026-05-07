@@ -140,17 +140,36 @@ export function ShareModal({ onClose, graphNodes, graphEdges, activeTabLabel }: 
         {/* Header */}
         <div className="modal-header">
           <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="#171717" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 18 18"
+              fill="none"
+              stroke="#171717"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
               <circle cx="14" cy="4" r="2" />
               <circle cx="4" cy="9" r="2" />
               <circle cx="14" cy="14" r="2" />
               <line x1="6" y1="8" x2="12" y2="5" />
               <line x1="6" y1="10" x2="12" y2="13" />
             </svg>
-            <span className="modal-title" id="share-modal-title">Share Localhost Map</span>
+            <span className="modal-title" id="share-modal-title">
+              Share Localhost Map
+            </span>
           </div>
           <button className="modal-close" onClick={onClose} aria-label="Close">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+            >
               <line x1="12" y1="4" x2="4" y2="12" />
               <line x1="4" y1="4" x2="12" y2="12" />
             </svg>
@@ -170,12 +189,17 @@ export function ShareModal({ onClose, graphNodes, graphEdges, activeTabLabel }: 
           </div>
 
           <div className="share-action-row">
-            <button
-              className="share-export-btn"
-              onClick={handleExportFile}
-              disabled={exporting}
-            >
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+            <button className="share-export-btn" onClick={handleExportFile} disabled={exporting}>
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 16 16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.4"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
                 <path d="M2 10v3a1 1 0 001 1h10a1 1 0 001-1v-3" />
                 <path d="M8 2v8M5 7l3 3 3-3" />
               </svg>
@@ -229,7 +253,9 @@ export function ShareModal({ onClose, graphNodes, graphEdges, activeTabLabel }: 
                     className="share-token-link-btn"
                     type="button"
                     onClick={() => {
-                      window.electronAPI?.openUrl("https://github.com/settings/tokens/new?scopes=gist&description=Fere+Share");
+                      window.electronAPI?.openUrl(
+                        "https://github.com/settings/tokens/new?scopes=gist&description=Fere+Share",
+                      );
                     }}
                   >
                     Create a token on GitHub →
@@ -252,13 +278,29 @@ export function ShareModal({ onClose, graphNodes, graphEdges, activeTabLabel }: 
                         aria-label={showToken ? "Hide token" : "Show token"}
                       >
                         {showToken ? (
-                          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
+                          <svg
+                            width="14"
+                            height="14"
+                            viewBox="0 0 14 14"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.4"
+                            strokeLinecap="round"
+                          >
                             <path d="M1 7s2-4 6-4 6 4 6 4-2 4-6 4-6-4-6-4z" />
                             <circle cx="7" cy="7" r="1.5" />
                             <line x1="2" y1="2" x2="12" y2="12" />
                           </svg>
                         ) : (
-                          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
+                          <svg
+                            width="14"
+                            height="14"
+                            viewBox="0 0 14 14"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.4"
+                            strokeLinecap="round"
+                          >
                             <path d="M1 7s2-4 6-4 6 4 6 4-2 4-6 4-6-4-6-4z" />
                             <circle cx="7" cy="7" r="1.5" />
                           </svg>
@@ -295,18 +337,48 @@ export function ShareModal({ onClose, graphNodes, graphEdges, activeTabLabel }: 
                           title="Copy link"
                         >
                           {copied ? (
-                            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                            <svg
+                              width="14"
+                              height="14"
+                              viewBox="0 0 14 14"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="1.5"
+                              strokeLinecap="round"
+                            >
                               <path d="M2 7l3 3 7-7" />
                             </svg>
                           ) : (
-                            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                            <svg
+                              width="14"
+                              height="14"
+                              viewBox="0 0 14 14"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="1.5"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            >
                               <rect x="5" y="5" width="7" height="7" rx="1" />
                               <path d="M9 5V3a1 1 0 00-1-1H3a1 1 0 00-1 1v5a1 1 0 001 1h2" />
                             </svg>
                           )}
                         </button>
-                        <button className="share-copy-btn" onClick={handleOpenUrl} title="Open in browser">
-                          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                        <button
+                          className="share-copy-btn"
+                          onClick={handleOpenUrl}
+                          title="Open in browser"
+                        >
+                          <svg
+                            width="14"
+                            height="14"
+                            viewBox="0 0 14 14"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.4"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
                             <path d="M11 8v3a1 1 0 01-1 1H3a1 1 0 01-1-1V4a1 1 0 011-1h3" />
                             <path d="M8 2h4v4M6 8L12 2" />
                           </svg>
@@ -317,8 +389,20 @@ export function ShareModal({ onClose, graphNodes, graphEdges, activeTabLabel }: 
                       )}
                     </div>
                   )}
-                  <button className="modal-btn modal-btn-primary share-publish-btn" onClick={() => handlePublish()}>
-                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <button
+                    className="modal-btn modal-btn-primary share-publish-btn"
+                    onClick={() => handlePublish()}
+                  >
+                    <svg
+                      width="14"
+                      height="14"
+                      viewBox="0 0 14 14"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
                       <path d="M7 1v8M4 5l3-4 3 4" />
                       <path d="M2 10v2a1 1 0 001 1h8a1 1 0 001-1v-2" />
                     </svg>
@@ -338,7 +422,15 @@ export function ShareModal({ onClose, graphNodes, graphEdges, activeTabLabel }: 
               {/* Error */}
               {gistState === "error" && (
                 <div className="share-error">
-                  <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="#ef4444" strokeWidth="1.5" strokeLinecap="round">
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 20 20"
+                    fill="none"
+                    stroke="#ef4444"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                  >
                     <circle cx="10" cy="10" r="8" />
                     <line x1="10" y1="6" x2="10" y2="10" />
                     <circle cx="10" cy="14" r="0.5" fill="#ef4444" />
@@ -374,7 +466,9 @@ export function ShareModal({ onClose, graphNodes, graphEdges, activeTabLabel }: 
 
         {/* Footer */}
         <div className="modal-actions">
-          <button className="modal-btn modal-btn-secondary" onClick={onClose}>Close</button>
+          <button className="modal-btn modal-btn-secondary" onClick={onClose}>
+            Close
+          </button>
         </div>
       </div>
     </div>

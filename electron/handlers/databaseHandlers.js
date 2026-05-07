@@ -3,23 +3,26 @@
  * @param {Electron.IpcMain} ipcMain
  * @param {object} deps
  */
-function registerDatabaseHandlers(ipcMain, {
-  getDatabaseTables,
-  getTableData,
-  executeQuery,
-  createTable,
-  connectMongoUri,
-  getMongoUriCollectionData,
-  executeMongoUriQuery,
-  connectPostgresUri,
-  getPostgresUriTableData,
-  executePostgresUriQuery,
-  connectElasticsearchUri,
-  getElasticsearchUriIndexData,
-  executeElasticsearchUriQuery,
-  validateRemoteDbUri,
-  analytics,
-}) {
+function registerDatabaseHandlers(
+  ipcMain,
+  {
+    getDatabaseTables,
+    getTableData,
+    executeQuery,
+    createTable,
+    connectMongoUri,
+    getMongoUriCollectionData,
+    executeMongoUriQuery,
+    connectPostgresUri,
+    getPostgresUriTableData,
+    executePostgresUriQuery,
+    connectElasticsearchUri,
+    getElasticsearchUriIndexData,
+    executeElasticsearchUriQuery,
+    validateRemoteDbUri,
+    analytics,
+  },
+) {
   function validateDbParams(containerId, containerImage) {
     if (!containerId || typeof containerId !== "string") return "Invalid container ID";
     if (!containerImage || typeof containerImage !== "string") return "Invalid container image";
@@ -68,25 +71,34 @@ function registerDatabaseHandlers(ipcMain, {
     }
   });
 
-  ipcMain.handle("create-database-table", async (_, containerId, containerImage, tableName, columns) => {
-    const err = validateDbParams(containerId, containerImage);
-    if (err) return { error: err, success: false };
-    if (!tableName || typeof tableName !== "string") return { error: "Invalid table name", success: false };
-    if (!Array.isArray(columns) || columns.length === 0) return { error: "Invalid columns", success: false };
-    try {
-      return await createTable(containerId, containerImage, tableName, columns);
-    } catch (error) {
-      console.error("Error creating database table:", error);
-      return { error: error.message, success: false };
-    }
-  });
+  ipcMain.handle(
+    "create-database-table",
+    async (_, containerId, containerImage, tableName, columns) => {
+      const err = validateDbParams(containerId, containerImage);
+      if (err) return { error: err, success: false };
+      if (!tableName || typeof tableName !== "string")
+        return { error: "Invalid table name", success: false };
+      if (!Array.isArray(columns) || columns.length === 0)
+        return { error: "Invalid columns", success: false };
+      try {
+        return await createTable(containerId, containerImage, tableName, columns);
+      } catch (error) {
+        console.error("Error creating database table:", error);
+        return { error: error.message, success: false };
+      }
+    },
+  );
 
   ipcMain.handle("connect-mongo-uri", async (_, uri) => {
     const check = validateRemoteDbUri(uri);
     if (!check.valid) return { error: check.reason, tables: [], dbType: "mongodb" };
     try {
       const result = await connectMongoUri(uri);
-      analytics.capture("database_connected", { db_type: "mongodb", mode: "remote_uri", success: !result.error });
+      analytics.capture("database_connected", {
+        db_type: "mongodb",
+        mode: "remote_uri",
+        success: !result.error,
+      });
       return result;
     } catch (error) {
       console.error("Error connecting Mongo URI:", error);
@@ -121,7 +133,11 @@ function registerDatabaseHandlers(ipcMain, {
     if (!check.valid) return { error: check.reason, tables: [], dbType: "postgresql" };
     try {
       const result = await connectPostgresUri(uri);
-      analytics.capture("database_connected", { db_type: "postgresql", mode: "remote_uri", success: !result.error });
+      analytics.capture("database_connected", {
+        db_type: "postgresql",
+        mode: "remote_uri",
+        success: !result.error,
+      });
       return result;
     } catch (error) {
       console.error("Error connecting Postgres URI:", error);
@@ -156,7 +172,11 @@ function registerDatabaseHandlers(ipcMain, {
     if (!check.valid) return { error: check.reason, tables: [], dbType: "elasticsearch" };
     try {
       const result = await connectElasticsearchUri(baseUrl);
-      analytics.capture("database_connected", { db_type: "elasticsearch", mode: "remote_uri", success: !result.error });
+      analytics.capture("database_connected", {
+        db_type: "elasticsearch",
+        mode: "remote_uri",
+        success: !result.error,
+      });
       return result;
     } catch (error) {
       console.error("Error connecting Elasticsearch URI:", error);
@@ -166,7 +186,8 @@ function registerDatabaseHandlers(ipcMain, {
 
   ipcMain.handle("get-elasticsearch-uri-index-data", async (_, baseUrl, indexName, limit) => {
     const check = validateRemoteDbUri(baseUrl);
-    if (!check.valid) return { error: check.reason, columns: [], rows: [], dbType: "elasticsearch" };
+    if (!check.valid)
+      return { error: check.reason, columns: [], rows: [], dbType: "elasticsearch" };
     try {
       return await getElasticsearchUriIndexData(baseUrl, indexName, limit || 100);
     } catch (error) {

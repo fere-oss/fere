@@ -21,12 +21,8 @@ export function ScanningEmptyState({
   }, [monitoringStartedAt]);
 
   // State 3: system tools broken
-  const portsBroken =
-    serviceStatus &&
-    serviceStatus.ports.code !== "ok";
-  const processesBroken =
-    serviceStatus &&
-    serviceStatus.processes.code !== "ok";
+  const portsBroken = serviceStatus && serviceStatus.ports.code !== "ok";
+  const processesBroken = serviceStatus && serviceStatus.processes.code !== "ok";
 
   if (portsBroken || processesBroken) {
     return (
@@ -48,12 +44,9 @@ export function ScanningEmptyState({
             <line x1="12" y1="16" x2="12.01" y2="16" />
           </svg>
         </div>
-        <p className="scanning-message">
-          Fere needs access to system tools to detect services
-        </p>
+        <p className="scanning-message">Fere needs access to system tools to detect services</p>
         <p className="scanning-hint">
-          Try restarting the app, or check System Settings &gt; Privacy &amp;
-          Security
+          Try restarting the app, or check System Settings &gt; Privacy &amp; Security
         </p>
       </div>
     );
@@ -70,9 +63,7 @@ export function ScanningEmptyState({
           <div className="scanning-radar-dot" />
         </div>
         <p className="scanning-message">Still scanning...</p>
-        <p className="scanning-hint">
-          Make sure your server is listening on a TCP port
-        </p>
+        <p className="scanning-hint">Make sure your server is listening on a TCP port</p>
       </div>
     );
   }
@@ -86,9 +77,7 @@ export function ScanningEmptyState({
         <div className="scanning-radar-ring scanning-radar-ring-3" />
         <div className="scanning-radar-dot" />
       </div>
-      <p className="scanning-message">
-        Start any local server and Fere will find it automatically
-      </p>
+      <p className="scanning-message">Start any local server and Fere will find it automatically</p>
       <p className="scanning-hint">
         Try running <code>npm start</code>, <code>python app.py</code>, or{" "}
         <code>docker-compose up</code>

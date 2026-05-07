@@ -6,59 +6,112 @@
  * Pure vanilla JS — no CDN dependencies (required for htmlpreview.github.io).
  */
 
-const https = require('https');
-const http = require('http');
+const https = require("https");
+const http = require("http");
 
 // Node-side brand domain map (mirrors BRAND_DOMAIN_BY_KEY in brandIcons.tsx)
 const NODE_BRAND_DOMAIN = {
-  openai:'openai.com', anthropic:'anthropic.com', groq:'groq.com',
-  gemini:'ai.google.dev', 'google gemini':'ai.google.dev',
-  'azure openai':'azure.microsoft.com', 'aws bedrock':'aws.amazon.com',
-  cohere:'cohere.com', mistral:'mistral.ai', together:'together.ai',
-  replicate:'replicate.com', 'hugging face':'huggingface.co',
-  huggingface:'huggingface.co', openrouter:'openrouter.ai',
-  perplexity:'perplexity.ai', deepgram:'deepgram.com',
-  elevenlabs:'elevenlabs.io', pinecone:'pinecone.io',
-  weaviate:'weaviate.io', supabase:'supabase.com',
-  firebase:'firebase.google.com', stripe:'stripe.com',
-  twilio:'twilio.com', sendgrid:'sendgrid.com', mailgun:'mailgun.com',
-  sentry:'sentry.io', posthog:'posthog.com', segment:'segment.com',
-  amplitude:'amplitude.com', mixpanel:'mixpanel.com', algolia:'algolia.com',
-  cloudflare:'cloudflare.com', vercel:'vercel.com',
-  'storefront-web':'vercel.com', 'storefront web':'vercel.com',
-  chrome:'google.com', 'google chrome':'google.com',
-  onedrive:'onedrive.com', raycast:'raycast.com', ollama:'ollama.com',
-  github:'github.com', gitlab:'gitlab.com',
-  vscode:'code.visualstudio.com', 'vs code':'code.visualstudio.com',
-  'visual studio code':'code.visualstudio.com',
-  slack:'slack.com', discord:'discord.com', notion:'notion.so',
-  cartesia:'cartesia.ai', deepseek:'deepseek.com', 'x.ai':'x.ai',
-  mongodb:'mongodb.com', postgres:'postgresql.org', postgresql:'postgresql.org',
-  postman:'postman.com', mysql:'mysql.com', redis:'redis.io',
-  rabbitmq:'rabbitmq.com', kafka:'kafka.apache.org', nats:'nats.io',
-  nginx:'nginx.org', apache:'apache.org', electron:'electronjs.org',
-  docker:'docker.com', podman:'podman.io',
-  'node.js':'nodejs.org', node:'nodejs.org',
-  python:'python.org', uwsgi:'python.org', gunicorn:'python.org',
-  flask:'python.org', django:'djangoproject.com',
-  fastapi:'fastapi.tiangolo.com', go:'go.dev', golang:'go.dev',
-  gin:'gin-gonic.com', fiber:'gofiber.io',
-  java:'java.com', php:'php.net', ruby:'ruby-lang.org',
-  rails:'rubyonrails.org', 'ruby on rails':'rubyonrails.org',
+  openai: "openai.com",
+  anthropic: "anthropic.com",
+  groq: "groq.com",
+  gemini: "ai.google.dev",
+  "google gemini": "ai.google.dev",
+  "azure openai": "azure.microsoft.com",
+  "aws bedrock": "aws.amazon.com",
+  cohere: "cohere.com",
+  mistral: "mistral.ai",
+  together: "together.ai",
+  replicate: "replicate.com",
+  "hugging face": "huggingface.co",
+  huggingface: "huggingface.co",
+  openrouter: "openrouter.ai",
+  perplexity: "perplexity.ai",
+  deepgram: "deepgram.com",
+  elevenlabs: "elevenlabs.io",
+  pinecone: "pinecone.io",
+  weaviate: "weaviate.io",
+  supabase: "supabase.com",
+  firebase: "firebase.google.com",
+  stripe: "stripe.com",
+  twilio: "twilio.com",
+  sendgrid: "sendgrid.com",
+  mailgun: "mailgun.com",
+  sentry: "sentry.io",
+  posthog: "posthog.com",
+  segment: "segment.com",
+  amplitude: "amplitude.com",
+  mixpanel: "mixpanel.com",
+  algolia: "algolia.com",
+  cloudflare: "cloudflare.com",
+  vercel: "vercel.com",
+  "storefront-web": "vercel.com",
+  "storefront web": "vercel.com",
+  chrome: "google.com",
+  "google chrome": "google.com",
+  onedrive: "onedrive.com",
+  raycast: "raycast.com",
+  ollama: "ollama.com",
+  github: "github.com",
+  gitlab: "gitlab.com",
+  vscode: "code.visualstudio.com",
+  "vs code": "code.visualstudio.com",
+  "visual studio code": "code.visualstudio.com",
+  slack: "slack.com",
+  discord: "discord.com",
+  notion: "notion.so",
+  cartesia: "cartesia.ai",
+  deepseek: "deepseek.com",
+  "x.ai": "x.ai",
+  mongodb: "mongodb.com",
+  postgres: "postgresql.org",
+  postgresql: "postgresql.org",
+  postman: "postman.com",
+  mysql: "mysql.com",
+  redis: "redis.io",
+  rabbitmq: "rabbitmq.com",
+  kafka: "kafka.apache.org",
+  nats: "nats.io",
+  nginx: "nginx.org",
+  apache: "apache.org",
+  electron: "electronjs.org",
+  docker: "docker.com",
+  podman: "podman.io",
+  "node.js": "nodejs.org",
+  node: "nodejs.org",
+  python: "python.org",
+  uwsgi: "python.org",
+  gunicorn: "python.org",
+  flask: "python.org",
+  django: "djangoproject.com",
+  fastapi: "fastapi.tiangolo.com",
+  go: "go.dev",
+  golang: "go.dev",
+  gin: "gin-gonic.com",
+  fiber: "gofiber.io",
+  java: "java.com",
+  php: "php.net",
+  ruby: "ruby-lang.org",
+  rails: "rubyonrails.org",
+  "ruby on rails": "rubyonrails.org",
 };
 
 function nodeBrandMatch(haystack, lookup) {
-  const escaped = lookup.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  try { return new RegExp('(?<![a-z0-9])' + escaped + '(?![a-z0-9])', 'i').test(haystack); }
-  catch { return haystack.includes(lookup); }
+  const escaped = lookup.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  try {
+    return new RegExp("(?<![a-z0-9])" + escaped + "(?![a-z0-9])", "i").test(haystack);
+  } catch {
+    return haystack.includes(lookup);
+  }
 }
 
 function nodeNormalizeBrand(value) {
-  return String(value || '').trim().toLowerCase();
+  return String(value || "")
+    .trim()
+    .toLowerCase();
 }
 
 function nodeExtractDomainLike(value) {
-  const match = String(value || '').match(/([a-z0-9.-]+\.[a-z]{2,})/i);
+  const match = String(value || "").match(/([a-z0-9.-]+\.[a-z]{2,})/i);
   return match ? match[1].toLowerCase() : null;
 }
 
@@ -71,23 +124,22 @@ function nodeIsReverseDnsBundleId(value) {
 }
 
 function nodeInferServiceBrand(node) {
-  const command = node.command || '';
-  let runtimeCommand = command.includes(' | ')
-    ? command.split(' | ').slice(1).join(' | ')
+  const command = node.command || "";
+  let runtimeCommand = command.includes(" | ")
+    ? command.split(" | ").slice(1).join(" | ")
     : command;
-  runtimeCommand = runtimeCommand.replace(/^docker-entrypoint\.sh\s+/i, '').trim();
+  runtimeCommand = runtimeCommand.replace(/^docker-entrypoint\.sh\s+/i, "").trim();
 
   const dockerLangMatch = runtimeCommand.match(/^docker-([\w]+)-entrypoint\b/i);
   const dockerLangHint = dockerLangMatch ? dockerLangMatch[1] : null;
   if (dockerLangHint) {
-    runtimeCommand = runtimeCommand.replace(/^docker-[\w]+-entrypoint\s*/i, '').trim();
+    runtimeCommand = runtimeCommand.replace(/^docker-[\w]+-entrypoint\s*/i, "").trim();
   }
 
-  const samples = [node.name, node.containerImage, dockerLangHint, runtimeCommand]
-    .filter(Boolean);
+  const samples = [node.name, node.containerImage, dockerLangHint, runtimeCommand].filter(Boolean);
   for (const sample of samples) {
     const key = nodeNormalizeBrand(sample);
-    const isPathLike = key.startsWith('/') || key.startsWith('~');
+    const isPathLike = key.startsWith("/") || key.startsWith("~");
     if (!isPathLike) {
       if (NODE_BRAND_DOMAIN[key]) return sample;
       for (const lookup of Object.keys(NODE_BRAND_DOMAIN)) {
@@ -101,14 +153,17 @@ function nodeInferServiceBrand(node) {
 }
 
 function nodeLogoDevUrl(domain, token) {
-  let url = 'https://img.logo.dev/' + domain + '?size=64&format=png&fallback=monogram';
-  if (token) url += '&token=' + token;
+  let url = "https://img.logo.dev/" + domain + "?size=64&format=png&fallback=monogram";
+  if (token) url += "&token=" + token;
   return url;
 }
 
 function nodeLogoDevNameUrl(name, token) {
-  let url = 'https://img.logo.dev/name/' + encodeURIComponent(name) + '?size=64&format=png&fallback=monogram';
-  if (token) url += '&token=' + token;
+  let url =
+    "https://img.logo.dev/name/" +
+    encodeURIComponent(name) +
+    "?size=64&format=png&fallback=monogram";
+  if (token) url += "&token=" + token;
   return url;
 }
 
@@ -139,68 +194,116 @@ function getNodeLogoUrl(node, token) {
 function fetchLogoBase64(url) {
   return new Promise((resolve) => {
     let resolved = false;
-    const done = (v) => { if (!resolved) { resolved = true; resolve(v); } };
+    const done = (v) => {
+      if (!resolved) {
+        resolved = true;
+        resolve(v);
+      }
+    };
     const timer = setTimeout(() => done(null), 8000);
 
     try {
       // Electron's net module follows redirects automatically and uses the system session
-      const { net } = require('electron');
-      const req = net.request({ url, redirect: 'follow' });
+      const { net } = require("electron");
+      const req = net.request({ url, redirect: "follow" });
       const chunks = [];
-      req.on('response', (res) => {
-        if (res.statusCode !== 200) { clearTimeout(timer); done(null); return; }
-        res.on('data', (c) => chunks.push(c));
-        res.on('end', () => { clearTimeout(timer); done(Buffer.concat(chunks).toString('base64')); });
-        res.on('error', () => { clearTimeout(timer); done(null); });
+      req.on("response", (res) => {
+        if (res.statusCode !== 200) {
+          clearTimeout(timer);
+          done(null);
+          return;
+        }
+        res.on("data", (c) => chunks.push(c));
+        res.on("end", () => {
+          clearTimeout(timer);
+          done(Buffer.concat(chunks).toString("base64"));
+        });
+        res.on("error", () => {
+          clearTimeout(timer);
+          done(null);
+        });
       });
-      req.on('error', () => { clearTimeout(timer); done(null); });
+      req.on("error", () => {
+        clearTimeout(timer);
+        done(null);
+      });
       req.end();
     } catch {
       // Fallback to https if net is unavailable
       clearTimeout(timer);
       const fallbackTimer = setTimeout(() => done(null), 8000);
       let parsed;
-      try { parsed = new URL(url); } catch { done(null); return; }
-      const lib = parsed.protocol === 'https:' ? https : http;
-      const req2 = lib.request({
-        hostname: parsed.hostname,
-        path: parsed.pathname + parsed.search,
-        method: 'GET',
-        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Fere/1.0)' },
-      }, (res) => {
-        if (res.statusCode !== 200) { res.resume(); clearTimeout(fallbackTimer); done(null); return; }
-        const chunks2 = [];
-        res.on('data', c => chunks2.push(c));
-        res.on('end', () => { clearTimeout(fallbackTimer); done(Buffer.concat(chunks2).toString('base64')); });
-        res.on('error', () => { clearTimeout(fallbackTimer); done(null); });
+      try {
+        parsed = new URL(url);
+      } catch {
+        done(null);
+        return;
+      }
+      const lib = parsed.protocol === "https:" ? https : http;
+      const req2 = lib.request(
+        {
+          hostname: parsed.hostname,
+          path: parsed.pathname + parsed.search,
+          method: "GET",
+          headers: { "User-Agent": "Mozilla/5.0 (compatible; Fere/1.0)" },
+        },
+        (res) => {
+          if (res.statusCode !== 200) {
+            res.resume();
+            clearTimeout(fallbackTimer);
+            done(null);
+            return;
+          }
+          const chunks2 = [];
+          res.on("data", (c) => chunks2.push(c));
+          res.on("end", () => {
+            clearTimeout(fallbackTimer);
+            done(Buffer.concat(chunks2).toString("base64"));
+          });
+          res.on("error", () => {
+            clearTimeout(fallbackTimer);
+            done(null);
+          });
+        },
+      );
+      req2.on("error", () => {
+        clearTimeout(fallbackTimer);
+        done(null);
       });
-      req2.on('error', () => { clearTimeout(fallbackTimer); done(null); });
       req2.end();
     }
   });
 }
 
 function escapeHtml(str) {
-  if (str == null) return '';
-  return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  if (str == null) return "";
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
 function escapeJson(obj) {
-  return JSON.stringify(obj).replace(/<\/script>/gi, '<\\/script>');
+  return JSON.stringify(obj).replace(/<\/script>/gi, "<\\/script>");
 }
 
-async function generateHTML({ graphData, metadata, logoDevToken = '' }) {
+async function generateHTML({ graphData, metadata, logoDevToken = "" }) {
   const { nodes = [], edges = [] } = graphData;
 
   // Strip heavy fields, keep everything the node card and detail panel need
   const cleanNodes = nodes
-    .filter(n => n.type !== 'external')
-    .map(n => ({
+    .filter((n) => n.type !== "external")
+    .map((n) => ({
       id: n.id,
       name: n.name,
-      type: n.type || 'service',
-      healthStatus: n.healthStatus || 'yellow',
-      ports: (n.ports || []).map(p => ({ port: p.port, host: p.host || 'localhost', description: p.description || '' })),
+      type: n.type || "service",
+      healthStatus: n.healthStatus || "yellow",
+      ports: (n.ports || []).map((p) => ({
+        port: p.port,
+        host: p.host || "localhost",
+        description: p.description || "",
+      })),
       isDocker: !!n.isDockerContainer,
       containerImage: n.containerImage || null,
       containerState: n.containerState || null,
@@ -213,18 +316,21 @@ async function generateHTML({ graphData, metadata, logoDevToken = '' }) {
       cpu: n.cpu || 0,
       memory: n.memory || 0,
       memoryUsage: n.memoryUsage || null,
-      command: n.command || '',
+      command: n.command || "",
       lastSeen: n.lastSeen || Date.now(),
-      routes: (n.routes || []).map(r => ({ method: String(r.method || 'GET').toUpperCase(), path: r.path })),
-      containerNetworks: (n.containerNetworks || []).slice(0, 2).map(cn => cn.name || cn),
+      routes: (n.routes || []).map((r) => ({
+        method: String(r.method || "GET").toUpperCase(),
+        path: r.path,
+      })),
+      containerNetworks: (n.containerNetworks || []).slice(0, 2).map((cn) => cn.name || cn),
     }));
   cleanNodes.sort((a, b) => String(a.id).localeCompare(String(b.id)));
 
   // Keep only edges between non-external nodes
-  const cleanNodeIds = new Set(cleanNodes.map(n => n.id));
+  const cleanNodeIds = new Set(cleanNodes.map((n) => n.id));
   const cleanEdges = edges
-    .filter(e => cleanNodeIds.has(e.source) && cleanNodeIds.has(e.target))
-    .map(e => ({
+    .filter((e) => cleanNodeIds.has(e.source) && cleanNodeIds.has(e.target))
+    .map((e) => ({
       id: e.id,
       source: e.source,
       target: e.target,
@@ -237,13 +343,15 @@ async function generateHTML({ graphData, metadata, logoDevToken = '' }) {
   // Pre-fetch brand logos as base64 so the exported HTML is fully self-contained
   // (htmlpreview.github.io blocks external image requests)
   const logosMap = {};
-  await Promise.all(cleanNodes.map(async (n) => {
-    const url = getNodeLogoUrl(n, logoDevToken);
-    if (url) {
-      const b64 = await fetchLogoBase64(url);
-      if (b64) logosMap[n.id] = 'data:image/png;base64,' + b64;
-    }
-  }));
+  await Promise.all(
+    cleanNodes.map(async (n) => {
+      const url = getNodeLogoUrl(n, logoDevToken);
+      if (url) {
+        const b64 = await fetchLogoBase64(url);
+        if (b64) logosMap[n.id] = "data:image/png;base64," + b64;
+      }
+    }),
+  );
 
   const payload = escapeJson({ nodes: cleanNodes, edges: cleanEdges, metadata, logos: logosMap });
 

@@ -1,10 +1,4 @@
-import {
-  useEffect,
-  useCallback,
-  useState,
-  type CSSProperties,
-  type ReactElement,
-} from "react";
+import { useEffect, useCallback, useState, type ReactElement } from "react";
 import fereLogo from "../assets/fere.png";
 
 interface WelcomeModalProps {
@@ -20,9 +14,7 @@ interface OnboardingStep {
 }
 
 const RAW_LOGO_DEV_TOKEN = (process.env.REACT_APP_LOGO_DEV_TOKEN || "").trim();
-const LOGO_DEV_TOKEN = RAW_LOGO_DEV_TOKEN.startsWith("pk_")
-  ? RAW_LOGO_DEV_TOKEN
-  : "";
+const LOGO_DEV_TOKEN = RAW_LOGO_DEV_TOKEN.startsWith("pk_") ? RAW_LOGO_DEV_TOKEN : "";
 const APP_LOGO_SRC = fereLogo;
 
 function getLogoDevUrl(domain: string): string {
@@ -90,26 +82,10 @@ function ServiceMapPreview() {
         </span>
       </div>
 
-      <ServiceMapNode
-        label="Node.js"
-        domain="nodejs.org"
-        className="service-map-node-web"
-      />
-      <ServiceMapNode
-        label="Docker"
-        domain="docker.com"
-        className="service-map-node-pay"
-      />
-      <ServiceMapNode
-        label="RabbitMQ"
-        domain="rabbitmq.com"
-        className="service-map-node-db"
-      />
-      <ServiceMapNode
-        label="Redis"
-        domain="redis.io"
-        className="service-map-node-cache"
-      />
+      <ServiceMapNode label="Node.js" domain="nodejs.org" className="service-map-node-web" />
+      <ServiceMapNode label="Docker" domain="docker.com" className="service-map-node-pay" />
+      <ServiceMapNode label="RabbitMQ" domain="rabbitmq.com" className="service-map-node-db" />
+      <ServiceMapNode label="Redis" domain="redis.io" className="service-map-node-cache" />
     </div>
   );
 }
@@ -124,139 +100,6 @@ function WelcomeIntroPreview() {
         loading="lazy"
         decoding="async"
       />
-    </div>
-  );
-}
-
-function ContainerLogsPreview() {
-  const logLines = [
-    {
-      tone: "ms-blue",
-      node: "analytics-api-1",
-      time: "06:14:21",
-      message: "GET /health 200",
-    },
-    {
-      tone: "pink",
-      node: "mongodb-primary-1",
-      time: "06:14:26",
-      message: "checkpoint snapshot saved",
-    },
-    {
-      tone: "nvidia-green",
-      node: "event-bus",
-      time: "06:14:32",
-      message: "accepting AMQP connection",
-    },
-    {
-      tone: "pink",
-      node: "inventory-api-2",
-      time: "06:14:33",
-      message: "rabbitmq connection timeout",
-    },
-    {
-      tone: "nvidia-green",
-      node: "python-worker",
-      time: "06:14:34",
-      message: "queue payments synced",
-    },
-    {
-      tone: "ms-blue",
-      node: "docker-engine",
-      time: "06:14:36",
-      message: "container orders-api restarted",
-    },
-  ];
-
-  return (
-    <div className="multi-views-preview" aria-hidden="true">
-      <div className="multi-views-code-block">
-        <div className="multi-views-code-scroll">
-          {logLines.map((line, index) => {
-            const chars = line.node.length + line.time.length + line.message.length + 4;
-            return (
-              <div
-                key={`line-${index}`}
-                className={`multi-views-code-line tone-${line.tone}`}
-                style={
-                  {
-                    "--chars": chars,
-                    "--line-delay": `${index * 1.2}s`,
-                  } as CSSProperties
-                }
-              >
-                <span className="multi-views-token-node">{line.node}</span>
-                <span className="multi-views-token-time">{line.time}</span>
-                {line.message}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function RequestsPreview() {
-  return (
-    <div className="requests-preview" aria-hidden="true">
-      <div className="requests-preview-card">
-        <div className="requests-preview-method">
-          <span className="requests-method-badge">GET</span>
-          <span className="requests-url">localhost:3000/api/users</span>
-        </div>
-        <div className="requests-preview-divider" />
-        <div className="requests-preview-response">
-          <span className="requests-status-badge">200</span>
-          <div className="requests-json">
-            <span className="requests-json-bracket">{"{"}</span>
-            <span className="requests-json-line">
-              <span className="requests-json-key">"users"</span>
-              <span className="requests-json-colon">: </span>
-              <span className="requests-json-bracket">[</span>
-              <span className="requests-json-value">...</span>
-              <span className="requests-json-bracket">]</span>
-            </span>
-            <span className="requests-json-bracket">{"}"}</span>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function SharePreview() {
-  return (
-    <div className="share-preview" aria-hidden="true">
-      <div className="share-preview-card">
-        <div className="share-preview-header">
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#171717" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="3" r="2" />
-            <circle cx="4" cy="8" r="2" />
-            <circle cx="12" cy="13" r="2" />
-            <line x1="5.7" y1="7" x2="10.3" y2="4" />
-            <line x1="5.7" y1="9" x2="10.3" y2="12" />
-          </svg>
-          <span className="share-preview-title">Share Localhost Map</span>
-        </div>
-        <div className="share-preview-url-row">
-          <div className="share-preview-url">
-            <span className="share-preview-url-text">https://gist.github.com/user/a1b2c3</span>
-          </div>
-          <div className="share-preview-copy">
-            <svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="5" y="5" width="7" height="7" rx="1" />
-              <path d="M9 5V3a1 1 0 00-1-1H3a1 1 0 00-1 1v5a1 1 0 001 1h2" />
-            </svg>
-          </div>
-        </div>
-        <div className="share-preview-status">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M20 6L9 17l-5-5" />
-          </svg>
-          <span>Published just now</span>
-        </div>
-      </div>
     </div>
   );
 }
@@ -351,11 +194,7 @@ export function WelcomeModal({ onClose }: WelcomeModalProps) {
               />
             ))}
           </div>
-          <button
-            className="modal-close"
-            onClick={onClose}
-            aria-label="Close welcome modal"
-          >
+          <button className="modal-close" onClick={onClose} aria-label="Close welcome modal">
             <svg
               width="20"
               height="20"
@@ -372,9 +211,7 @@ export function WelcomeModal({ onClose }: WelcomeModalProps) {
 
         <div className="modal-body welcome-body">
           {step.icon && (
-            <div
-              className={`welcome-icon${step.iconClassName ? ` ${step.iconClassName}` : ""}`}
-            >
+            <div className={`welcome-icon${step.iconClassName ? ` ${step.iconClassName}` : ""}`}>
               {step.icon}
             </div>
           )}
@@ -402,10 +239,7 @@ export function WelcomeModal({ onClose }: WelcomeModalProps) {
           </button>
           <div className="welcome-nav-buttons">
             {!isFirstStep && (
-              <button
-                className="modal-btn modal-btn-secondary"
-                onClick={handlePrev}
-              >
+              <button className="modal-btn modal-btn-secondary" onClick={handlePrev}>
                 <svg
                   width="16"
                   height="16"
@@ -419,11 +253,7 @@ export function WelcomeModal({ onClose }: WelcomeModalProps) {
                 Previous
               </button>
             )}
-            <button
-              className="modal-btn modal-btn-primary"
-              onClick={handleNext}
-              autoFocus
-            >
+            <button className="modal-btn modal-btn-primary" onClick={handleNext} autoFocus>
               {isLastStep ? "Let's go" : "Next"}
               {!isLastStep && (
                 <svg

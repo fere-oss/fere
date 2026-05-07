@@ -6,12 +6,12 @@
  * getDockerBinaries(), and resolveDockerBinary(). This module centralizes them.
  */
 
-const { execFile } = require('child_process');
-const { promisify } = require('util');
-const fs = require('fs');
+const { execFile } = require("child_process");
+const { promisify } = require("util");
+const fs = require("fs");
 
 const execFileAsync = promisify(execFile);
-const { DOCKER_BIN_CANDIDATES } = require('./index');
+const { DOCKER_BIN_CANDIDATES } = require("./index");
 
 const DOCKER_EXEC_TIMEOUT_MS = 15000;
 let resolvedDockerBin = null;
@@ -24,10 +24,10 @@ function getDockerBinaries() {
   const bins = [];
   for (const bin of DOCKER_BIN_CANDIDATES) {
     // Absolute paths: check they exist. Bare commands (no /): keep as-is.
-    if ((bin.includes('/') || bin.includes('\\')) && !fs.existsSync(bin)) continue;
+    if ((bin.includes("/") || bin.includes("\\")) && !fs.existsSync(bin)) continue;
     bins.push(bin);
   }
-  return bins.length > 0 ? bins : ['docker'];
+  return bins.length > 0 ? bins : ["docker"];
 }
 
 /**
@@ -45,7 +45,7 @@ async function resolveDockerBinary(options = {}) {
 
   for (const candidate of candidates) {
     try {
-      await execFileAsync(candidate, ['version', '--format', '{{.Client.Version}}'], {
+      await execFileAsync(candidate, ["version", "--format", "{{.Client.Version}}"], {
         timeout,
         maxBuffer: 1024 * 1024,
       });
@@ -85,10 +85,11 @@ async function runDocker(args, options = {}) {
         maxBuffer: 1024 * 1024,
       });
       resolvedDockerBin = bin;
-      return result.stdout || '';
+      return result.stdout || "";
     } catch (error) {
       lastError = error;
-      const isMissingBinary = error?.code === 'ENOENT' || /not found/i.test(String(error?.message || ''));
+      const isMissingBinary =
+        error?.code === "ENOENT" || /not found/i.test(String(error?.message || ""));
       if (isMissingBinary) continue;
       throw error;
     }
@@ -97,7 +98,7 @@ async function runDocker(args, options = {}) {
   if (allowFailure && lastError) {
     throw lastError;
   }
-  throw new Error('Docker CLI not found. Tried: ' + candidates.join(', '));
+  throw new Error("Docker CLI not found. Tried: " + candidates.join(", "));
 }
 
 /**
@@ -106,7 +107,7 @@ async function runDocker(args, options = {}) {
 async function getDockerBinaryOrThrow() {
   const dockerBin = await resolveDockerBinary();
   if (!dockerBin) {
-    throw new Error('Docker CLI not found. Tried: ' + getDockerBinaries().join(', '));
+    throw new Error("Docker CLI not found. Tried: " + getDockerBinaries().join(", "));
   }
   return dockerBin;
 }

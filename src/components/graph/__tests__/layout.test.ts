@@ -111,12 +111,7 @@ describe("computeHierarchicalLayout", () => {
     const b = makeNode({ id: "b", type: "backend" });
     const c = makeNode({ id: "c", type: "backend" });
     const d = makeNode({ id: "d", type: "database" });
-    const edges = [
-      makeEdge("a", "b"),
-      makeEdge("a", "c"),
-      makeEdge("b", "d"),
-      makeEdge("c", "d"),
-    ];
+    const edges = [makeEdge("a", "b"), makeEdge("a", "c"), makeEdge("b", "d"), makeEdge("c", "d")];
     const { connected } = computeHierarchicalLayout([a, b, c, d], edges);
     const layerOf = (id: string) => connected.find((ln) => ln.node.id === id)!.layer;
     expect(layerOf("a")).toBe(0);

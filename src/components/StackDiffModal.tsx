@@ -28,13 +28,12 @@ function computeDiff(mine: StackFingerprint, theirs: StackFingerprint): StackDif
   return { services, containers, envKeys, summary: { matching, onlyMine, onlyTheirs, different } };
 }
 
-function diffServices(
-  mine: FingerprintService[],
-  theirs: FingerprintService[],
-): StackDiffItem[] {
+function diffServices(mine: FingerprintService[], theirs: FingerprintService[]): StackDiffItem[] {
   const mineMap = new Map(mine.map((s) => [s.name, s]));
   const theirsMap = new Map(theirs.map((s) => [s.name, s]));
-  const names = Array.from(new Set([...Array.from(mineMap.keys()), ...Array.from(theirsMap.keys())])).sort();
+  const names = Array.from(
+    new Set([...Array.from(mineMap.keys()), ...Array.from(theirsMap.keys())]),
+  ).sort();
 
   return names.map((name): StackDiffItem => {
     const m = mineMap.get(name);
@@ -42,8 +41,14 @@ function diffServices(
 
     if (m && t) {
       const differences: string[] = [];
-      const myPorts = m.ports.slice().sort((a, b) => a - b).join(",");
-      const theirPorts = t.ports.slice().sort((a, b) => a - b).join(",");
+      const myPorts = m.ports
+        .slice()
+        .sort((a, b) => a - b)
+        .join(",");
+      const theirPorts = t.ports
+        .slice()
+        .sort((a, b) => a - b)
+        .join(",");
       if (myPorts !== theirPorts) {
         differences.push(`ports: mine [${myPorts || "none"}] vs theirs [${theirPorts || "none"}]`);
       }
@@ -66,7 +71,9 @@ function diffContainers(
 ): StackDiffItem[] {
   const mineMap = new Map(mine.map((c) => [c.name, c]));
   const theirsMap = new Map(theirs.map((c) => [c.name, c]));
-  const names = Array.from(new Set([...Array.from(mineMap.keys()), ...Array.from(theirsMap.keys())])).sort();
+  const names = Array.from(
+    new Set([...Array.from(mineMap.keys()), ...Array.from(theirsMap.keys())]),
+  ).sort();
 
   return names.map((name): StackDiffItem => {
     const m = mineMap.get(name);
@@ -80,8 +87,14 @@ function diffContainers(
       if (m.state !== t.state) {
         differences.push(`state: mine "${m.state}" vs theirs "${t.state}"`);
       }
-      const myPorts = m.ports.slice().sort((a, b) => a - b).join(",");
-      const theirPorts = t.ports.slice().sort((a, b) => a - b).join(",");
+      const myPorts = m.ports
+        .slice()
+        .sort((a, b) => a - b)
+        .join(",");
+      const theirPorts = t.ports
+        .slice()
+        .sort((a, b) => a - b)
+        .join(",");
       if (myPorts !== theirPorts) {
         differences.push(`ports: mine [${myPorts || "none"}] vs theirs [${theirPorts || "none"}]`);
       }
@@ -137,7 +150,9 @@ function DiffRow({ item }: { item: StackDiffItem }) {
         {item.differences && item.differences.length > 0 && (
           <div className="stack-diff-row-differences">
             {item.differences.map((d, i) => (
-              <span key={i} className="stack-diff-row-diff-line">{d}</span>
+              <span key={i} className="stack-diff-row-diff-line">
+                {d}
+              </span>
             ))}
           </div>
         )}
@@ -146,13 +161,7 @@ function DiffRow({ item }: { item: StackDiffItem }) {
   );
 }
 
-function DiffSection({
-  title,
-  items,
-}: {
-  title: string;
-  items: StackDiffItem[];
-}) {
+function DiffSection({ title, items }: { title: string; items: StackDiffItem[] }) {
   const [open, setOpen] = useState(true);
 
   if (items.length === 0) return null;
@@ -227,7 +236,9 @@ export function StackDiffModal({ onClose }: Props) {
     window.electronAPI
       .exportStackFingerprint({ label: "My Stack" })
       .then(setMyFingerprint)
-      .catch(() => {/* silently ignore on load — user can still click Copy */});
+      .catch(() => {
+        /* silently ignore on load — user can still click Copy */
+      });
   }, []);
 
   const handleParse = useCallback(() => {
@@ -250,7 +261,9 @@ export function StackDiffModal({ onClose }: Props) {
     }
     const fp = parsed as Record<string, unknown>;
     if (fp.version !== 1) {
-      setParseError("Unrecognized fingerprint version. Make sure both sides are running the same Fere version.");
+      setParseError(
+        "Unrecognized fingerprint version. Make sure both sides are running the same Fere version.",
+      );
       return;
     }
     setTheirFingerprint(fp as unknown as StackFingerprint);
@@ -262,13 +275,26 @@ export function StackDiffModal({ onClose }: Props) {
   }, [myFingerprint, theirFingerprint]);
 
   return (
-    <div className="stack-diff-overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+    <div
+      className="stack-diff-overlay"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
       <div className="stack-diff-modal">
         {/* Header */}
         <div className="stack-diff-header">
           <span className="stack-diff-title">Stack Diff</span>
           <button className="stack-diff-close" onClick={onClose} title="Close" type="button">
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+            >
               <line x1="3" y1="3" x2="13" y2="13" />
               <line x1="13" y1="3" x2="3" y2="13" />
             </svg>
@@ -283,10 +309,12 @@ export function StackDiffModal({ onClose }: Props) {
             {myFingerprint ? (
               <>
                 <span className="stack-diff-panel-meta">
-                  Generated at {formatTs(myFingerprint.generatedAt)} · checksum {myFingerprint.checksum}
+                  Generated at {formatTs(myFingerprint.generatedAt)} · checksum{" "}
+                  {myFingerprint.checksum}
                 </span>
                 <span className="stack-diff-panel-counts">
-                  {myFingerprint.services.length} services · {myFingerprint.containers.length} containers · {myFingerprint.envKeys.length} env keys
+                  {myFingerprint.services.length} services · {myFingerprint.containers.length}{" "}
+                  containers · {myFingerprint.envKeys.length} env keys
                 </span>
               </>
             ) : (
@@ -310,15 +338,21 @@ export function StackDiffModal({ onClose }: Props) {
             {theirFingerprint ? (
               <>
                 <span className="stack-diff-panel-meta">
-                  {theirFingerprint.label} · generated at {formatTs(theirFingerprint.generatedAt)} · checksum {theirFingerprint.checksum}
+                  {theirFingerprint.label} · generated at {formatTs(theirFingerprint.generatedAt)} ·
+                  checksum {theirFingerprint.checksum}
                 </span>
                 <span className="stack-diff-panel-counts">
-                  {theirFingerprint.services.length} services · {theirFingerprint.containers.length} containers · {theirFingerprint.envKeys.length} env keys
+                  {theirFingerprint.services.length} services · {theirFingerprint.containers.length}{" "}
+                  containers · {theirFingerprint.envKeys.length} env keys
                 </span>
                 <div className="stack-diff-panel-actions">
                   <button
                     className="stack-diff-btn"
-                    onClick={() => { setTheirFingerprint(null); setTheirRaw(""); setParseError(""); }}
+                    onClick={() => {
+                      setTheirFingerprint(null);
+                      setTheirRaw("");
+                      setParseError("");
+                    }}
                     type="button"
                   >
                     Clear
@@ -371,8 +405,8 @@ export function StackDiffModal({ onClose }: Props) {
             {/* Sectioned results */}
             <div className="stack-diff-results">
               {diffResult.services.length === 0 &&
-                diffResult.containers.length === 0 &&
-                diffResult.envKeys.length === 0 ? (
+              diffResult.containers.length === 0 &&
+              diffResult.envKeys.length === 0 ? (
                 <div className="stack-diff-empty">No items to compare.</div>
               ) : (
                 <>
