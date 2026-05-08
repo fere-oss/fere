@@ -44,8 +44,8 @@
     "wait-on": "^9.0.3"
   },
   "scripts": {
-    "start": "react-scripts start",
-    "start:no-deprecation": "node --no-deprecation node_modules/react-scripts/scripts/start.js",
+    "start": "node scripts/start-react.js",
+    "start:no-deprecation": "node --no-deprecation scripts/start-react.js",
     "build": "react-scripts build",
     "typecheck": "tsc --noEmit",
     "test": "react-scripts test",
