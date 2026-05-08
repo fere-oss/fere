@@ -3144,12 +3144,11 @@ body.sentinel-panel-open .activity-donut-total {
   opacity: 1;
 }
 
-/* Sticky-note popover anchored to the right of a service node card. */
+/* Sticky-note popover anchored next to a service node card. The side is
+   chosen at open time (NotePopover.tsx) to avoid overlapping neighbors. */
 .service-note-popover {
   position: absolute;
   top: 0;
-  left: 100%;
-  margin-left: 14px;
   width: 220px;
   padding: 10px 12px 8px;
   border-radius: 6px;
@@ -3162,14 +3161,36 @@ body.sentinel-panel-open .activity-donut-total {
   flex-direction: column;
   gap: 6px;
   z-index: 30;
-  animation: serviceNotePopoverIn 0.14s cubic-bezier(0.22, 1, 0.36, 1);
   -webkit-app-region: no-drag;
 }
 
-@keyframes serviceNotePopoverIn {
+.service-note-popover-right {
+  left: 100%;
+  margin-left: 14px;
+  animation: serviceNotePopoverInRight 0.14s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.service-note-popover-left {
+  right: 100%;
+  margin-right: 14px;
+  animation: serviceNotePopoverInLeft 0.14s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes serviceNotePopoverInRight {
   from {
     opacity: 0;
     transform: translateX(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes serviceNotePopoverInLeft {
+  from {
+    opacity: 0;
+    transform: translateX(4px);
   }
   to {
     opacity: 1;
@@ -3181,13 +3202,31 @@ body.sentinel-panel-open .activity-donut-total {
 .service-note-popover-tail {
   position: absolute;
   top: 14px;
-  left: -6px;
   width: 10px;
   height: 10px;
   background: #fef9c3;
+}
+
+.service-note-popover-right .service-note-popover-tail {
+  left: -6px;
   border-left: 1px solid #fde68a;
   border-bottom: 1px solid #fde68a;
   transform: rotate(45deg);
+}
+
+.service-note-popover-left .service-note-popover-tail {
+  right: -6px;
+  border-right: 1px solid #fde68a;
+  border-top: 1px solid #fde68a;
+  transform: rotate(45deg);
+}
+
+/* Lift the node container that owns an open note popover above its
+   neighbors so the popover wins hover/click priority when it overlaps an
+   adjacent node card. Uses :has() — supported in Chromium 105+, fine in
+   Electron 40 (Chromium 130+). */
+.react-flow__node:has(.rf-node-wrapper-note-open) {
+  z-index: 50;
 }
 
 .service-note-popover-textarea {

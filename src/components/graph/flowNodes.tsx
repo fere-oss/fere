@@ -1,9 +1,13 @@
-import { memo, useEffect, useRef } from "react";
+import { memo, useEffect, useRef, useSyncExternalStore } from "react";
 import type { GraphNode } from "../../types/electron";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import { Handle, Position } from "reactflow";
 import { ServiceNode } from "./ServiceNodes";
 import { NotePopover } from "./NotePopover";
+import {
+  getOpenNoteNodeId,
+  subscribeOpenNoteNodeId,
+} from "./notePopoverState";
 import { useHoverState } from "./hoverContext";
 import { useTraceState } from "./traceContext";
 
@@ -121,6 +125,13 @@ const FlowServiceNodeInner = memo(function FlowServiceNodeInner({
     entryLabel = `${method} ${path}`;
   }
 
+  const openNoteNodeId = useSyncExternalStore(
+    subscribeOpenNoteNodeId,
+    getOpenNoteNodeId,
+    getOpenNoteNodeId,
+  );
+  const isNoteOpen = openNoteNodeId === data.node.id;
+
   const wrapperClass = [
     "rf-node-wrapper",
     data.animate && "rf-node-animate",
@@ -128,6 +139,7 @@ const FlowServiceNodeInner = memo(function FlowServiceNodeInner({
     highlighted && "rf-node-highlighted",
     traceActive && isInTrace && "rf-node-trace-active",
     isTraceEntry && "rf-node-trace-entry",
+    isNoteOpen && "rf-node-wrapper-note-open",
   ]
     .filter(Boolean)
     .join(" ");

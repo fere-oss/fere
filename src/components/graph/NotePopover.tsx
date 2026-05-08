@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   useSyncExternalStore,
@@ -45,8 +46,60 @@ export function NotePopover({ node }: { node: GraphNode }) {
   const [draft, setDraft] = useState(cachedBody);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [side, setSide] = useState<"right" | "left">("right");
   const containerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Pick the side that doesn't overlap a neighboring service node. Runs in
+  // useLayoutEffect (before paint) so the popover is placed correctly without
+  // a visible jump.
+  useLayoutEffect(() => {
+    if (!isOpen) return;
+    const popoverEl = containerRef.current;
+    const wrapper = popoverEl?.parentElement;
+    if (!wrapper) return;
+
+    const myNodeContainer = wrapper.closest(".react-flow__node") || wrapper;
+    const myRect = wrapper.getBoundingClientRect();
+    const popoverRect = popoverEl!.getBoundingClientRect();
+    const popWidth = popoverRect.width || 220;
+    const popHeight = popoverRect.height || 120;
+    const gap = 14;
+
+    const others: DOMRect[] = [];
+    document.querySelectorAll(".react-flow__node").forEach((el) => {
+      if (el === myNodeContainer) return;
+      others.push(el.getBoundingClientRect());
+    });
+
+    const rightBox = {
+      top: myRect.top,
+      bottom: myRect.top + popHeight,
+      left: myRect.right + gap,
+      right: myRect.right + gap + popWidth,
+    };
+    const leftBox = {
+      top: myRect.top,
+      bottom: myRect.top + popHeight,
+      left: myRect.left - gap - popWidth,
+      right: myRect.left - gap,
+    };
+
+    const overlaps = (box: typeof rightBox) =>
+      others.some(
+        (r) =>
+          box.left < r.right &&
+          box.right > r.left &&
+          box.top < r.bottom &&
+          box.bottom > r.top,
+      );
+
+    if (!overlaps(rightBox)) setSide("right");
+    else if (!overlaps(leftBox)) setSide("left");
+    else setSide("right");
+    // Re-run when the cached body changes — popover height may grow, which
+    // could change overlap calculations.
+  }, [isOpen, cachedBody]);
 
   // Sync draft from cache whenever the popover is opened or external edits land.
   useEffect(() => {
@@ -125,7 +178,7 @@ export function NotePopover({ node }: { node: GraphNode }) {
   return (
     <div
       ref={containerRef}
-      className="service-note-popover"
+      className={`service-note-popover service-note-popover-${side}`}
       role="dialog"
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
