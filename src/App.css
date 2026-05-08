@@ -1177,6 +1177,7 @@ body.sentinel-panel-open .activity-donut-total {
 
 .rf-node-wrapper {
   pointer-events: auto;
+  position: relative;
   transform: scale(1);
   transition:
     opacity 0.25s ease,
@@ -3090,6 +3091,239 @@ body.sentinel-panel-open .activity-donut-total {
   align-items: center;
   justify-content: center;
   padding: 12px 18px 8px;
+}
+
+/* Note icon button — sits in a service node's header. Subtle when empty,
+   filled amber when a note exists. */
+.service-note-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin-left: 6px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+  opacity: 0.55;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease,
+    opacity 0.15s ease;
+}
+
+.service-note-icon-btn:hover {
+  opacity: 1;
+  background: rgba(0, 0, 0, 0.05);
+  color: var(--text-primary);
+}
+
+.service-node:hover .service-note-icon-btn,
+.compact-service-node:hover .service-note-icon-btn,
+.service-node-minimal:hover .service-note-icon-btn {
+  opacity: 1;
+}
+
+.service-note-icon-btn-active {
+  color: #b45309; /* amber-700 — readable on white + the filled icon */
+  opacity: 1;
+}
+
+.service-note-icon-btn-active:hover {
+  background: #fef3c7; /* amber-100 */
+  color: #92400e;
+}
+
+.service-note-icon-btn-open {
+  background: #fde68a; /* amber-200 */
+  color: #92400e;
+  opacity: 1;
+}
+
+/* Sticky-note popover anchored next to a service node card. The side is
+   chosen at open time (NotePopover.tsx) to avoid overlapping neighbors. */
+.service-note-popover {
+  position: absolute;
+  top: 0;
+  width: 220px;
+  padding: 10px 12px 8px;
+  border-radius: 6px;
+  background: #fef9c3; /* yellow-100 — pale sticky note */
+  border: 1px solid #fde68a; /* yellow-200 */
+  box-shadow:
+    0 1px 2px rgba(146, 64, 14, 0.12),
+    0 8px 20px rgba(146, 64, 14, 0.18);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  z-index: 30;
+  -webkit-app-region: no-drag;
+}
+
+.service-note-popover-right {
+  left: 100%;
+  margin-left: 14px;
+  animation: serviceNotePopoverInRight 0.14s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.service-note-popover-left {
+  right: 100%;
+  margin-right: 14px;
+  animation: serviceNotePopoverInLeft 0.14s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes serviceNotePopoverInRight {
+  from {
+    opacity: 0;
+    transform: translateX(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes serviceNotePopoverInLeft {
+  from {
+    opacity: 0;
+    transform: translateX(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Triangular tail pointing back at the node card. */
+.service-note-popover-tail {
+  position: absolute;
+  top: 14px;
+  width: 10px;
+  height: 10px;
+  background: #fef9c3;
+}
+
+.service-note-popover-right .service-note-popover-tail {
+  left: -6px;
+  border-left: 1px solid #fde68a;
+  border-bottom: 1px solid #fde68a;
+  transform: rotate(45deg);
+}
+
+.service-note-popover-left .service-note-popover-tail {
+  right: -6px;
+  border-right: 1px solid #fde68a;
+  border-top: 1px solid #fde68a;
+  transform: rotate(45deg);
+}
+
+/* Lift the node container that owns an open note popover above its
+   neighbors so the popover wins hover/click priority when it overlaps an
+   adjacent node card. React Flow sets `style.zIndex` inline on every
+   .react-flow__node, so we need !important to beat that. Uses :has() —
+   supported in Chromium 105+, fine in Electron 40 (Chromium 130+). */
+.react-flow__node:has(.rf-node-wrapper-note-open) {
+  z-index: 50 !important;
+}
+
+/* If the popover is open, never let its parent wrapper dim — otherwise the
+   opacity collapse propagates into the popover and it visually disappears
+   the moment a neighbor gets hovered. */
+.rf-node-wrapper.rf-node-wrapper-note-open.rf-node-dimmed {
+  opacity: 1;
+  filter: none;
+}
+
+.service-note-popover-close {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 18px;
+  height: 18px;
+  border: 0;
+  background: transparent;
+  color: #a16207; /* yellow-700 */
+  cursor: pointer;
+  border-radius: 4px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1;
+  -webkit-app-region: no-drag;
+}
+
+.service-note-popover-close:hover {
+  background: #fde68a; /* yellow-200 */
+  color: #92400e; /* yellow-800 */
+}
+
+.service-note-popover-textarea {
+  width: 100%;
+  min-height: 60px;
+  max-height: 180px;
+  resize: vertical;
+  border: 0;
+  background: transparent;
+  color: #422006; /* yellow-950 */
+  font-family: inherit;
+  font-size: 12.5px;
+  line-height: 1.45;
+  padding: 0 22px 0 0; /* keep first-line text clear of the close button */
+  outline: none;
+  box-sizing: border-box;
+}
+
+.service-note-popover-textarea::placeholder {
+  color: #a16207; /* yellow-700 */
+  opacity: 0.7;
+}
+
+.service-note-popover-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border-top: 1px dashed rgba(146, 64, 14, 0.18);
+  padding-top: 6px;
+}
+
+.service-note-popover-hint {
+  font-size: 10.5px;
+  color: #a16207;
+  letter-spacing: 0.01em;
+}
+
+.service-note-popover-save {
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 5px;
+  border: 1px solid #f59e0b; /* amber-500 */
+  background: #f59e0b;
+  color: #fffbeb;
+  cursor: pointer;
+}
+
+.service-note-popover-save:hover:not(:disabled) {
+  background: #d97706; /* amber-600 */
+  border-color: #d97706;
+}
+
+.service-note-popover-save:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+/* Note line inside Sentinel's runtime context block. */
+.agp-context-service-note {
+  color: var(--text-primary);
+  font-style: italic;
 }
 
 .node-detail-section-title-row {
@@ -10162,6 +10396,18 @@ body.sentinel-panel-open .activity-donut-total {
 
 /* Service Dropdown */
 
+.service-dropdown-anchor {
+  -webkit-app-region: no-drag;
+}
+
+.service-dropdown-anchor .service-dropdown {
+  position: static;
+  top: auto;
+  left: auto;
+  width: 100%;
+  max-width: none;
+}
+
 .service-dropdown {
   position: absolute;
   top: calc(100% + 6px);
@@ -14325,6 +14571,54 @@ body.sentinel-panel-open .activity-donut-total {
   z-index: 2000;
 }
 
+.agp-agent-toast {
+  position: fixed;
+  top: 24px;
+  right: 24px;
+  z-index: 3000;
+  max-width: 360px;
+  padding: 12px 36px 12px 14px;
+  background: var(--bg-white);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.14);
+  -webkit-app-region: no-drag;
+  animation: agpSlideIn 0.18s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.agp-agent-toast-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+
+.agp-agent-toast-msg {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+  white-space: pre-wrap;
+}
+
+.agp-agent-toast-dismiss {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  width: 22px;
+  height: 22px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.agp-agent-toast-dismiss:hover {
+  background: var(--bg-hover, rgba(0, 0, 0, 0.06));
+}
+
 @keyframes agpSlideIn {
   from {
     opacity: 0;
@@ -15949,88 +16243,62 @@ body.sentinel-panel-open .activity-donut-total {
 
 .agp-finding-actions {
   display: flex;
-  gap: 5px;
-  padding-left: 14px;
-  padding-top: 3px;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 4px 14px 0;
 }
 
-.agp-finding-fix-btn {
-  all: unset;
-  display: inline-flex;
-  align-items: center;
-  height: 22px;
-  padding: 0 9px;
-  background: var(--text-primary);
-  color: var(--bg-white);
-  border-radius: 5px;
-  font-size: 11px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: opacity 0.15s;
-}
-
-.agp-finding-fix-btn:hover:not(:disabled) {
-  opacity: 0.78;
-}
-
-.agp-finding-fix-btn:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
-}
-
-.agp-finding-explain-btn {
-  all: unset;
-  display: inline-flex;
-  align-items: center;
-  height: 22px;
-  padding: 0 9px;
-  border: 1px solid var(--border-color);
-  border-radius: 5px;
-  font-size: 11px;
-  color: var(--text-muted);
-  cursor: pointer;
-  transition:
-    background 0.15s,
-    color 0.15s,
-    border-color 0.15s;
-}
-
-.agp-finding-explain-btn:hover:not(:disabled) {
-  background: var(--bg-muted);
-  color: var(--text-primary);
-  border-color: var(--border-hover);
-}
-
-.agp-finding-explain-btn:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
-}
-
+.agp-finding-fix-btn,
+.agp-finding-explain-btn,
 .agp-finding-claudecode-btn {
   all: unset;
   display: inline-flex;
   align-items: center;
-  height: 22px;
-  padding: 0 9px;
-  border: 1px solid var(--border-color);
-  border-radius: 5px;
-  font-size: 11px;
-  color: var(--text-muted);
+  justify-content: center;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 6px;
+  font-size: 11.5px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  flex-shrink: 0;
   cursor: pointer;
   transition:
     background 0.15s,
     color 0.15s,
-    border-color 0.15s;
+    border-color 0.15s,
+    opacity 0.15s;
 }
 
+.agp-finding-fix-btn {
+  background: var(--text-primary);
+  color: var(--bg-white);
+  border: 1px solid var(--text-primary);
+}
+
+.agp-finding-fix-btn:hover:not(:disabled) {
+  opacity: 0.85;
+}
+
+.agp-finding-explain-btn,
+.agp-finding-claudecode-btn {
+  border: 1px solid var(--border-color);
+  color: var(--text-muted);
+  background: transparent;
+}
+
+.agp-finding-explain-btn:hover:not(:disabled),
 .agp-finding-claudecode-btn:hover:not(:disabled) {
   background: var(--bg-muted);
   color: var(--text-primary);
   border-color: var(--border-hover);
 }
 
+.agp-finding-fix-btn:disabled,
+.agp-finding-explain-btn:disabled,
 .agp-finding-claudecode-btn:disabled {
-  opacity: 0.35;
+  opacity: 0.4;
   cursor: not-allowed;
 }
 
@@ -16284,6 +16552,119 @@ body.sentinel-panel-open .activity-donut-total {
 
 .agp-finding-status-escalated {
   color: var(--text-secondary);
+}
+
+.agp-finding-investigation {
+  padding: 4px 14px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* Split button: Investigate (main) + caret (menu trigger). The two halves
+   share visuals with the rest of the action row but are joined with a thin
+   inner border. Wraps as a unit when the row reflows. */
+.agp-finding-investigate-split {
+  position: relative;
+  display: inline-flex;
+  align-items: stretch;
+  flex-shrink: 0;
+}
+
+.agp-finding-investigate-split .agp-finding-investigate-main {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+  border-right-width: 0;
+}
+
+.agp-finding-investigate-split .agp-finding-investigate-caret {
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  padding: 0 7px;
+  font-size: 10px;
+  border-left: 1px solid var(--border-color);
+}
+
+.agp-finding-agent-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  min-width: 180px;
+  background: var(--bg-white);
+  border: 1px solid var(--border-color);
+  border-radius: 7px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+  z-index: 60;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+}
+
+.agp-finding-agent-menu-empty {
+  padding: 8px 10px;
+  font-size: 11.5px;
+  color: var(--text-secondary);
+}
+
+.agp-finding-agent-menu-row {
+  display: flex;
+}
+
+.agp-finding-agent-menu-item {
+  all: unset;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex: 1;
+  padding: 6px 10px;
+  font-size: 12px;
+  border-radius: 5px;
+  color: var(--text-primary);
+}
+
+.agp-finding-agent-menu-item:hover {
+  background: var(--bg-muted);
+}
+
+.agp-finding-agent-menu-disabled {
+  cursor: not-allowed;
+  color: var(--text-secondary);
+}
+
+.agp-finding-agent-menu-disabled:hover {
+  background: transparent;
+}
+
+.agp-finding-agent-menu-name {
+  font-weight: 500;
+}
+
+.agp-finding-agent-menu-check {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.agp-finding-agent-menu-install {
+  font-size: 10.5px;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.agp-finding-investigation-result {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--text-primary);
+  background: var(--bg-muted);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 8px 10px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 240px;
+  overflow-y: auto;
 }
 
 .agp-finding-escalated {

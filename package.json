@@ -6,8 +6,12 @@
   "license": "MIT",
   "private": true,
   "main": "electron/main.js",
+  "bin": {
+    "fere-mcp": "./bin/fere-mcp.js"
+  },
   "homepage": "./",
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@sentry/electron": "^7.10.0",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^6.9.1",
@@ -43,8 +47,8 @@
     "wait-on": "^9.0.3"
   },
   "scripts": {
-    "start": "react-scripts start",
-    "start:no-deprecation": "node --no-deprecation node_modules/react-scripts/scripts/start.js",
+    "start": "node scripts/start-react.js",
+    "start:no-deprecation": "node --no-deprecation scripts/start-react.js",
     "build": "react-scripts build",
     "typecheck": "tsc --noEmit",
     "test": "react-scripts test",
@@ -129,7 +133,12 @@
     "files": [
       "build/**/*",
       "electron/**/*",
+      "bin/**/*",
       "package.json"
+    ],
+    "asarUnpack": [
+      "bin/**/*",
+      "node_modules/@modelcontextprotocol/**/*"
     ],
     "directories": {
       "buildResources": "assets"

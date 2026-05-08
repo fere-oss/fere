@@ -336,6 +336,71 @@ The app includes a welcome/onboarding modal with previews for:
 
 This is part of the current shipped product surface and not just a design stub.
 
+## Headless investigations from Sentinel
+
+Sentinel can drive a headless AI coding CLI on your behalf. Click **Investigate** on any finding and Fere spawns a one-shot session of your chosen agent with the Fere MCP attached, scoped to the affected service's project. The agent investigates, optionally calls `apply_fix` (which still goes through Fere's approval modal), and the result lands inline on the finding card.
+
+Currently supported providers:
+
+| Provider | Install | Notes |
+| --- | --- | --- |
+| **Claude Code** | `npm i -g @anthropic-ai/claude-code` | Per-invocation MCP via `--mcp-config`. Tool allowlist enforced. |
+| **OpenAI Codex** | `npm i -g @openai/codex` | Per-invocation MCP via `-c` config overrides (no global pollution). Sandbox `read-only` enforced. |
+
+Click the caret next to the Investigate button to switch agents. The choice is persisted per-machine. Agents that aren't installed appear greyed out with the install hint. Fere falls back to the **Hand off** button (clipboard + Terminal) for any other agent.
+
+## MCP Server (for Claude Code, Cursor, Windsurf, Zed)
+
+Fere ships an MCP server (`fere-mcp`) so AI coding clients can pull live runtime data from your local stack instead of guessing. While Fere is running, your AI client can call:
+
+- `list_findings` — ranked Sentinel issues (port conflicts, down services, unhealthy containers, env mismatches, etc.)
+- `get_service` — health, ports, container, recent logs, and graph edges for a single service
+- `get_topology` — full live service graph (nodes + edges)
+- `list_routes` — discovered HTTP routes (FastAPI, Flask, Express, Next.js, Koa, Hono)
+- `list_external_apis` — third-party providers detected from source/env
+- `get_logs` — recent log slice from any Docker container
+
+Architecture: AI clients spawn `fere-mcp` (stdio). The shim talks to a local-loopback HTTP bridge inside the Fere app on every tool call, so responses always reflect the current snapshot. If Fere isn't running, every tool returns a clean "Fere is not running" message.
+
+### Connect an AI client
+
+After `npm install` in this repo:
+
+**Claude Code** (project scope):
+
+```jsonc
+// .mcp.json
+{
+  "mcpServers": {
+    "fere": {
+      "command": "node",
+      "args": ["./bin/fere-mcp.js"]
+    }
+  }
+}
+```
+
+Or globally with `claude mcp add fere -- node /path/to/fere/bin/fere-mcp.js`.
+
+**Cursor** (`~/.cursor/mcp.json`):
+
+```jsonc
+{
+  "mcpServers": {
+    "fere": {
+      "command": "node",
+      "args": ["/path/to/fere/bin/fere-mcp.js"]
+    }
+  }
+}
+```
+
+Open the Fere app first; then ask the AI client a question about your stack.
+
+### How it knows where Fere is running
+
+Fere writes `~/.fere/mcp.lock` (mode 0600) on startup containing `{port, token, pid}`. The shim reads that file, authenticates with the token, and connects only on `127.0.0.1`. The lockfile is removed on app quit; if the recorded PID is dead, the shim treats Fere as not running.
+
 ## Platform and Scope
 
 Fere is a desktop app focused on local development environments.

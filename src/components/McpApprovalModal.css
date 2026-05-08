@@ -1,0 +1,161 @@
+/* MCP Approval Modal — shown when an external AI client (Claude Code,
+   Cursor, etc.) requests to apply a fix. Blocks until the user approves
+   or denies. Styled to match the rest of the app shell — no AI-brand
+   styling, no gradients. */
+
+.mcp-approval-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 1100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-ui);
+}
+
+.mcp-approval-modal {
+  background: var(--bg-white);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  width: 520px;
+  max-width: calc(100vw - 32px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  color: var(--text-primary);
+}
+
+.mcp-approval-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.mcp-approval-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.mcp-approval-countdown {
+  font-size: 12px;
+  font-family: var(--font-mono);
+  color: var(--text-secondary);
+}
+
+.mcp-approval-body {
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.mcp-approval-finding {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mcp-approval-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.mcp-approval-summary {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.mcp-approval-detail {
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+
+.mcp-approval-severity {
+  display: inline-block;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 600;
+  border: 1px solid var(--border-color);
+}
+.mcp-approval-severity[data-sev="critical"] { color: #b91c1c; border-color: #fecaca; background: #fef2f2; }
+.mcp-approval-severity[data-sev="warning"]  { color: #b45309; border-color: #fde68a; background: #fffbeb; }
+.mcp-approval-severity[data-sev="info"]     { color: #1d4ed8; border-color: #bfdbfe; background: #eff6ff; }
+
+[data-theme="dark"] .mcp-approval-severity[data-sev="critical"] { background: #2b1313; border-color: #5b1a1a; }
+[data-theme="dark"] .mcp-approval-severity[data-sev="warning"]  { background: #2b220c; border-color: #4d3a12; }
+[data-theme="dark"] .mcp-approval-severity[data-sev="info"]     { background: #0f1f3a; border-color: #1f3a6b; }
+
+.mcp-approval-action {
+  background: var(--bg-muted);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 10px 12px;
+  font-size: 12.5px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.mcp-approval-action-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.mcp-approval-action-text {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-primary);
+  word-break: break-word;
+}
+
+.mcp-approval-source {
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+}
+
+.mcp-approval-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 18px;
+  border-top: 1px solid var(--border-color);
+  background: var(--bg-muted);
+}
+
+.mcp-approval-btn {
+  font-family: var(--font-ui);
+  font-size: 13px;
+  padding: 7px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  border: 1px solid var(--border-color);
+  background: var(--bg-white);
+  color: var(--text-primary);
+}
+.mcp-approval-btn:hover { background: var(--bg-muted); }
+
+.mcp-approval-btn-primary {
+  background: var(--text-primary);
+  color: var(--bg-white);
+  border-color: var(--text-primary);
+}
+.mcp-approval-btn-primary:hover {
+  opacity: 0.9;
+  background: var(--text-primary);
+}

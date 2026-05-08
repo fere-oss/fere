@@ -165,6 +165,8 @@ const {
   buildNodeDetails,
 } = require("./services/ai/sentinelEngine");
 const { openInClaudeCode } = require("./services/ai/claudeCodeBrief");
+const mcpBridge = require("./services/mcpBridge");
+const headlessAgent = require("./services/headlessAgent");
 const OpenAI = require("openai").default;
 const sentry = require("./sentry");
 const { generateHTML } = require("./services/sharing/graphExporter");
@@ -172,6 +174,7 @@ const { createGist, updateGist, buildPreviewUrl } = require("./services/sharing/
 const { executeTracedRequest } = require("./services/system/traceCapture");
 const { buildFingerprint } = require("./services/graph/stackFingerprint");
 const blueprintManager = require("./services/sharing/blueprintManager");
+const notesManager = require("./services/notesManager");
 
 app.setName("Fere");
 app.name = "Fere";
@@ -411,6 +414,131 @@ app.whenReady().then(() => {
   if (!isDev) {
     autoUpdater.checkForUpdatesAndNotify();
   }
+
+  // Start the MCP bridge so AI clients (Claude Code, Cursor) can pull live
+  // runtime data via the bin/fere-mcp.js stdio shim.
+  mcpBridge
+    .start({
+      snapshotScheduler: { get previousSnapshot() { return snapshotScheduler && snapshotScheduler.previousSnapshot; }, getLatestSnapshot: () => snapshotScheduler && snapshotScheduler.getLatestSnapshot && snapshotScheduler.getLatestSnapshot() },
+      runScan,
+      scanRoutes,
+      scanExternalApis,
+      agentDockerLogs: (id, lines) => agentDockerLogs(id, lines),
+      requestApproval: requestMcpApproval,
+      executeAction: (action) => executeAction(action),
+    })
+    .then(({ port }) => {
+      console.log(`[mcp] bridge listening on 127.0.0.1:${port}`);
+    })
+    .catch((err) => {
+      console.error('[mcp] bridge failed to start:', err && err.message);
+    });
+});
+
+// ── MCP human-in-the-loop approval ───────────────────────────────────────────
+// The MCP bridge calls requestMcpApproval() before executing any state-changing
+// fix. We forward the request to the renderer, show a modal, and resolve the
+// promise with whatever the user clicks. Times out at 60s if the window isn't
+// focused.
+
+const MCP_APPROVAL_TIMEOUT_MS = 60_000;
+const pendingMcpApprovals = new Map();
+
+function requestMcpApproval(payload) {
+  return new Promise((resolve) => {
+    if (!mainWindow || mainWindow.isDestroyed() || !mainWindow.webContents) {
+      resolve({ approved: false, reason: 'Fere window unavailable' });
+      return;
+    }
+    const requestId = crypto.randomUUID();
+    const timer = setTimeout(() => {
+      if (pendingMcpApprovals.delete(requestId)) {
+        resolve({ approved: false, reason: 'approval timed out (60s)' });
+      }
+    }, MCP_APPROVAL_TIMEOUT_MS);
+    pendingMcpApprovals.set(requestId, { resolve, timer });
+
+    try {
+      mainWindow.show();
+      mainWindow.focus();
+    } catch { /* noop */ }
+
+    mainWindow.webContents.send('mcp:approval-request', {
+      requestId,
+      finding: payload.finding,
+      action: payload.action,
+      timeoutMs: MCP_APPROVAL_TIMEOUT_MS,
+    });
+  });
+}
+
+ipcMain.on('mcp:approval-response', (_event, payload) => {
+  if (!payload || typeof payload.requestId !== 'string') return;
+  const pending = pendingMcpApprovals.get(payload.requestId);
+  if (!pending) return;
+  clearTimeout(pending.timer);
+  pendingMcpApprovals.delete(payload.requestId);
+  pending.resolve({
+    approved: !!payload.approved,
+    reason: payload.reason,
+  });
+});
+
+// Spawn a headless AI coding CLI (Claude Code, Codex, …) with the Fere MCP
+// attached, scoped to a single finding. Streams tool calls + text back to the
+// renderer as they happen. The chosen provider is passed in by the renderer;
+// if omitted, the first detected provider is used.
+ipcMain.handle(
+  'agent:investigate-finding',
+  async (event, { finding, investigationId, providerId }) => {
+    if (!finding || !finding.id) {
+      return { success: false, error: 'finding is required' };
+    }
+
+    const snapshot = (snapshotScheduler && snapshotScheduler.previousSnapshot) || null;
+    let projectPath = null;
+    if (snapshot && Array.isArray(snapshot.graph?.nodes)) {
+      for (const node of snapshot.graph.nodes) {
+        const name = node.name || node.label || node.service;
+        if (name === finding.service && node.projectPath) {
+          projectPath = node.projectPath;
+          break;
+        }
+      }
+    }
+
+    const send = (channel, payload) => {
+      if (!event.sender.isDestroyed()) event.sender.send(channel, payload);
+    };
+
+    const onStep = (step) => {
+      send('agent:investigation-step', { investigationId, ...step });
+    };
+
+    const result = await headlessAgent.runInvestigation({
+      finding,
+      projectPath,
+      providerId,
+      onStep,
+    });
+
+    send('agent:investigation-complete', { investigationId, ...result });
+    return result;
+  },
+);
+
+ipcMain.handle('agent:list-providers', async (_event, opts) => {
+  try {
+    if (opts && opts.fresh) {
+      const providers = require('./services/agentProviders');
+      providers.clearDetectionCache();
+      const resolver = require('./services/agentProviders/_resolveBinary');
+      resolver.clearCache();
+    }
+    return { providers: await headlessAgent.listProviders() };
+  } catch (err) {
+    return { providers: [], error: err && err.message ? err.message : String(err) };
+  }
 });
 
 app.on("window-all-closed", () => {
@@ -425,6 +553,7 @@ app.on("before-quit", () => {
 });
 
 app.on("will-quit", async () => {
+  try { mcpBridge.stop(); } catch { /* noop */ }
   await sentry.flush();
   try {
     shutdownActivityLog();
@@ -2983,6 +3112,48 @@ ipcMain.handle("agent:chat", async (event, payload) => {
     return { success: true };
   } catch (err) {
     console.error("agent:chat error:", err);
+    return { success: false, error: err.message };
+  }
+});
+
+// Service notes — small per-service reminders stored in .fere/notes.json
+ipcMain.handle("notes:list", async (_, projectPath) => {
+  try {
+    return { success: true, notes: notesManager.listNotes(projectPath) };
+  } catch (err) {
+    console.error("notes:list error:", err);
+    return { success: false, error: err.message, notes: {} };
+  }
+});
+
+ipcMain.handle("notes:listForProjects", async (_, projectPaths) => {
+  try {
+    return {
+      success: true,
+      byProject: notesManager.listNotesForProjects(projectPaths),
+    };
+  } catch (err) {
+    console.error("notes:listForProjects error:", err);
+    return { success: false, error: err.message, byProject: {} };
+  }
+});
+
+ipcMain.handle("notes:set", async (_, { projectPath, serviceKey, body }) => {
+  try {
+    const note = notesManager.setNote(projectPath, serviceKey, body);
+    return { success: true, note };
+  } catch (err) {
+    console.error("notes:set error:", err);
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle("notes:delete", async (_, { projectPath, serviceKey }) => {
+  try {
+    notesManager.deleteNote(projectPath, serviceKey);
+    return { success: true };
+  } catch (err) {
+    console.error("notes:delete error:", err);
     return { success: false, error: err.message };
   }
 });

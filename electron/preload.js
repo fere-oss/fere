@@ -180,6 +180,13 @@ contextBridge.exposeInMainWorld("electronAPI", {
   loadBlueprint: (projectPath) => ipcRenderer.invoke("blueprint:load", projectPath),
   deleteBlueprint: (projectPath) => ipcRenderer.invoke("blueprint:delete", projectPath),
   checkBlueprint: (opts) => ipcRenderer.invoke("blueprint:check", opts),
+
+  // Service notes — small per-service reminders saved to .fere/notes.json
+  listServiceNotes: (projectPath) => ipcRenderer.invoke("notes:list", projectPath),
+  listServiceNotesForProjects: (projectPaths) =>
+    ipcRenderer.invoke("notes:listForProjects", projectPaths),
+  setServiceNote: (opts) => ipcRenderer.invoke("notes:set", opts),
+  deleteServiceNote: (opts) => ipcRenderer.invoke("notes:delete", opts),
   agentApplyFix: (action) => ipcRenderer.invoke("agent:apply-fix", action),
   openInClaudeCode: (finding) => ipcRenderer.invoke("agent:open-in-claude-code", finding),
   agentChat: (messages, nodeIds, tabLabel, options, graphEdges) =>
@@ -203,4 +210,28 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
   // Stack Diff
   exportStackFingerprint: (opts) => ipcRenderer.invoke("stack:export-fingerprint", opts),
+
+  // MCP — human-in-the-loop approval for fixes proposed by AI clients
+  onMcpApprovalRequest: (callback) =>
+    ipcRenderer.on("mcp:approval-request", (_, payload) => callback(payload)),
+  offMcpApprovalRequest: () => ipcRenderer.removeAllListeners("mcp:approval-request"),
+  respondMcpApproval: (requestId, approved, reason) =>
+    ipcRenderer.send("mcp:approval-response", { requestId, approved, reason }),
+
+  // Headless agent — Fere drives a one-shot AI CLI (Claude Code, Codex, ...)
+  // against a finding, with the Fere MCP attached so the agent can pull live
+  // runtime data while it works.
+  listAgentProviders: (opts) => ipcRenderer.invoke("agent:list-providers", opts),
+  investigateFinding: (finding, investigationId, providerId) =>
+    ipcRenderer.invoke("agent:investigate-finding", {
+      finding,
+      investigationId,
+      providerId,
+    }),
+  onInvestigationStep: (callback) =>
+    ipcRenderer.on("agent:investigation-step", (_, payload) => callback(payload)),
+  offInvestigationStep: () => ipcRenderer.removeAllListeners("agent:investigation-step"),
+  onInvestigationComplete: (callback) =>
+    ipcRenderer.on("agent:investigation-complete", (_, payload) => callback(payload)),
+  offInvestigationComplete: () => ipcRenderer.removeAllListeners("agent:investigation-complete"),
 });
