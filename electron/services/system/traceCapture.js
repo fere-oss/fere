@@ -343,18 +343,6 @@ async function executeTracedRequest(options, makeRequest) {
     // can't see internal traffic), walk the graph from the target node via BFS
     if (timeline.length === 0) {
       const targetNode = findTargetNode(options.url, graphNodes);
-      console.log(
-        "[traceCapture] BFS fallback: url=",
-        options.url,
-        "targetNode=",
-        targetNode ? `${targetNode.name} (${targetNode.id})` : "NOT FOUND",
-        "graphNodes=",
-        graphNodes.length,
-        "graphEdges=",
-        graphEdges.length,
-        "nodePorts=",
-        graphNodes.map((n) => `${n.name}:[${n.ports.map((p) => p.port).join(",")}]`).join(", "),
-      );
       if (targetNode) {
         // Extract request path for route-aware filtering
         let requestPath = "/";
@@ -362,16 +350,6 @@ async function executeTracedRequest(options, makeRequest) {
           requestPath = new URL(options.url).pathname;
         } catch {}
         const inferredEdges = bfsDockerHops(targetNode.id, graphNodes, graphEdges, requestPath);
-        console.log(
-          "[traceCapture] Route-aware BFS found",
-          inferredEdges.length,
-          "edges from",
-          targetNode.name,
-          "for path",
-          requestPath,
-          "edges:",
-          inferredEdges.map((e) => `${e.source}->${e.target}`).join(", "),
-        );
         let time = 0;
         const hopInterval = totalTime / Math.max(1, inferredEdges.length + 1);
         for (const edge of inferredEdges) {

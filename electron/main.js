@@ -34,7 +34,6 @@ function loadRuntimeConfig() {
 
 const runtimeConfig = loadRuntimeConfig();
 
-// Import security utilities
 const {
   validateExternalUrl,
   validateHttpRequestUrl,
@@ -48,11 +47,8 @@ const {
   setNetworkPolicy,
 } = require("./security");
 
-/**
- * Extract hostname from a database connection URI and reject private/internal addresses.
- * Supports mongodb://, mongodb+srv://, postgresql://, postgres://, http://, https://.
- * Returns { valid: true } or { valid: false, reason: string }.
- */
+// Reject private/internal hostnames in remote DB URIs (SSRF prevention).
+// mongodb+srv:// is normalized to https:// for URL parsing since the native URL class won't handle it.
 function validateRemoteDbUri(uri) {
   if (!uri || typeof uri !== "string") {
     return { valid: false, reason: "URI must be a non-empty string" };
@@ -77,7 +73,6 @@ function validateRemoteDbUri(uri) {
   return { valid: true };
 }
 
-// Import services
 const {
   getDevProcesses,
   getAllProcesses,
@@ -174,10 +169,8 @@ const { buildFingerprint } = require("./services/graph/stackFingerprint");
 const blueprintManager = require("./services/sharing/blueprintManager");
 
 app.setName("Fere");
-app.name = "Fere";
 process.title = "Fere";
 
-// Keep a global reference of the window object
 let mainWindow;
 let snapshotScheduler = null;
 let snapshotHandler = null;
@@ -291,23 +284,19 @@ function createWindow() {
     },
   });
 
-  // Load the app
   if (isDev) {
     mainWindow.loadURL("http://localhost:3001");
   } else {
     mainWindow.loadFile(path.join(__dirname, "../build/index.html"));
   }
 
-  // Guard against Chromium/Electron page zoom getting stuck across launches.
-  // React Flow handles in-canvas zoom itself; the shell should stay at 100%.
+  // Pin zoom to 100% — React Flow handles in-canvas zoom; the shell must not drift.
   mainWindow.webContents.setZoomFactor(1);
   mainWindow.webContents.setVisualZoomLevelLimits(1, 1).catch(() => {});
   mainWindow.webContents.on("did-finish-load", () => {
     mainWindow?.webContents.setZoomFactor(1);
   });
 
-  // Security: Set up navigation blocking
-  // Allow only dev server in development, file:// protocol in production
   const allowedOrigins = isDev
     ? [
         "http://localhost:3001",
@@ -318,10 +307,8 @@ function createWindow() {
     : ["file://"];
   setupNavigationBlocking(mainWindow.webContents, allowedOrigins);
 
-  // Security: Block new windows, open http/https in external browser
   setupWindowOpenHandler(mainWindow.webContents);
 
-  // Throttle snapshot collection when app is not visible
   mainWindow.on("minimize", () => {
     if (snapshotScheduler) snapshotScheduler.throttle();
   });
@@ -373,20 +360,11 @@ app.on("open-url", (event, url) => {
 });
 
 app.whenReady().then(() => {
-  // Security: Set up default-deny permission handlers
   setupPermissionHandlers();
-
-  // Security: Set up CSP (different for dev vs production)
   setupCSP(isDev);
-
-  // Initialize alert manager (loads preferences from disk)
   initAlertManager();
   initActivityLog();
-
-  // Initialize error reporting
   sentry.init(isDev);
-
-  // Initialize analytics
   analytics.init();
   analytics.capture("app_launched", { is_dev: isDev });
 
@@ -443,10 +421,6 @@ app.on("activate", () => {
   }
 });
 
-/**
- * Maintain a shadow copy of all graph nodes from snapshot deltas
- * for alert evaluation purposes.
- */
 function updateAlertNodeMap(delta) {
   if (delta.type === "full" && delta.graph && Array.isArray(delta.graph.nodes)) {
     alertNodeMap = new Map(delta.graph.nodes.map((n) => [n.id, n]));
@@ -1337,8 +1311,7 @@ async function incrementUsageCount(accessToken) {
     if (!res.ok) {
       console.error("[auth] Usage increment failed:", res.status, await res.text().catch(() => ""));
     } else {
-      const newCount = await res.json();
-      console.log("[auth] Usage incremented to", newCount);
+      await res.json();
     }
   } catch (err) {
     console.error("[auth] Usage increment error:", err);
@@ -2576,7 +2549,6 @@ ipcMain.handle("agent:chat", async (event, payload) => {
     }
 
     if (directNodeAnswer) {
-      console.log("[auth] Direct node answer (no AI call, no usage counted)");
       if (!event.sender.isDestroyed()) {
         event.sender.send("agent:chat-token", directNodeAnswer);
       }
@@ -2600,7 +2572,6 @@ ipcMain.handle("agent:chat", async (event, payload) => {
     ];
 
     async function* streamProxyChatCompletion(requestPayload, countUsage) {
-      console.log("[auth] Proxy chat call, countUsage:", countUsage);
       const res = await fetch(`${SUPABASE_URL}/functions/v1/chat`, {
         method: "POST",
         headers: {
