@@ -42,7 +42,12 @@
       "Bash(codex --version)",
       "Bash(claude --version)",
       "Bash(echo \"exit=$?\")",
-      "Bash(brew list *)"
+      "Bash(brew list *)",
+      "Bash(git log *)",
+      "Bash(tee /tmp/fere-dev.log)",
+      "Bash(pkill -f electron)",
+      "Bash(pkill -f \"react-scripts\")",
+      "Bash(npm test *)"
     ]
   }
 }

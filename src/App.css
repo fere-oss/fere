@@ -10162,6 +10162,18 @@ body.sentinel-panel-open .activity-donut-total {
 
 /* Service Dropdown */
 
+.service-dropdown-anchor {
+  -webkit-app-region: no-drag;
+}
+
+.service-dropdown-anchor .service-dropdown {
+  position: static;
+  top: auto;
+  left: auto;
+  width: 100%;
+  max-width: none;
+}
+
 .service-dropdown {
   position: absolute;
   top: calc(100% + 6px);

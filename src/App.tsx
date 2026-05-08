@@ -7,7 +7,7 @@ import {
   useRef,
   useReducer,
 } from "react";
-import type { MouseEvent as ReactMouseEvent } from "react";
+import type { CSSProperties, MouseEvent as ReactMouseEvent } from "react";
 import { useSystemSnapshot } from "./hooks/useSystemMonitor";
 import { GraphView } from "./components/GraphView";
 import { AgentPanel } from "./components/AgentPanel";
@@ -55,6 +55,9 @@ const SYSTEM_TAB_ID = "__system__";
 const TAB_GROUPING_KEY = "fere.tabGrouping";
 const WELCOME_SEEN_KEY = "fere.hasSeenWelcome";
 const THEME_KEY = "fere.theme";
+const SERVICE_DROPDOWN_WIDTH = 320;
+const SERVICE_DROPDOWN_EDGE_MARGIN = 16;
+const SERVICE_DROPDOWN_PANEL_GAP = 12;
 type Theme = "light" | "dark";
 
 const STACK_FRAMEWORK_LABELS: Record<string, string> = {
@@ -241,6 +244,21 @@ function getNodeTabPath(node: GraphNode, grouping: TabGrouping): string | null {
     return node.repoPath || node.projectPath;
   }
   return normalizeProjectTabPath(node.projectPath);
+}
+
+function getRightDockedPanelLeft(): number | null {
+  if (typeof document === "undefined") return null;
+
+  const panels = Array.from(
+    document.querySelectorAll<HTMLElement>(".agp-popup, .blueprint-panel"),
+  );
+  const visibleLefts = panels
+    .map((panel) => panel.getBoundingClientRect())
+    .filter((rect) => rect.width > 0 && rect.height > 0)
+    .map((rect) => rect.left);
+
+  if (visibleLefts.length === 0) return null;
+  return Math.min(...visibleLefts);
 }
 
 const DOCKER_EMPTY_SVG = (
@@ -1702,20 +1720,60 @@ function App() {
               const activeStatus = getProjectStatus(activeTab.id);
               const btnEl = tabButtonRefs.current[activeTab.id];
               const tabsEl = appTabsRef.current;
-              let dropdownLeft = 16;
-              if (btnEl && tabsEl) {
+              const viewportWidth =
+                typeof window === "undefined"
+                  ? SERVICE_DROPDOWN_WIDTH + SERVICE_DROPDOWN_EDGE_MARGIN * 2
+                  : window.innerWidth;
+              const dropdownWidth = Math.min(
+                SERVICE_DROPDOWN_WIDTH,
+                Math.max(
+                  240,
+                  viewportWidth - SERVICE_DROPDOWN_EDGE_MARGIN * 2,
+                ),
+              );
+              let dropdownTop = SERVICE_DROPDOWN_EDGE_MARGIN;
+              let dropdownLeft = SERVICE_DROPDOWN_EDGE_MARGIN;
+
+              if (btnEl) {
                 const btnRect = btnEl.getBoundingClientRect();
+                dropdownTop = btnRect.bottom + 6;
+                dropdownLeft = btnRect.left;
+              } else if (tabsEl) {
                 const tabsRect = tabsEl.getBoundingClientRect();
-                dropdownLeft = btnRect.left - tabsRect.left;
+                dropdownTop = tabsRect.bottom + 6;
               }
+
+              const panelLeft = getRightDockedPanelLeft();
+              const availableRight = Math.min(
+                viewportWidth - SERVICE_DROPDOWN_EDGE_MARGIN,
+                panelLeft === null
+                  ? viewportWidth - SERVICE_DROPDOWN_EDGE_MARGIN
+                  : panelLeft - SERVICE_DROPDOWN_PANEL_GAP,
+              );
+              const maxLeft = Math.max(
+                SERVICE_DROPDOWN_EDGE_MARGIN,
+                availableRight - dropdownWidth,
+              );
+              dropdownLeft = Math.min(dropdownLeft, maxLeft);
+              dropdownLeft = Math.max(
+                SERVICE_DROPDOWN_EDGE_MARGIN,
+                Math.min(
+                  dropdownLeft,
+                  viewportWidth - SERVICE_DROPDOWN_EDGE_MARGIN - dropdownWidth,
+                ),
+              );
+
+              const dropdownStyle: CSSProperties = {
+                position: "fixed",
+                top: dropdownTop,
+                left: dropdownLeft,
+                width: dropdownWidth,
+                zIndex: 1000,
+              };
               return (
                 <div
-                  style={{
-                    position: "absolute",
-                    top: "100%",
-                    left: dropdownLeft,
-                    zIndex: 1000,
-                  }}
+                  className="service-dropdown-anchor"
+                  style={dropdownStyle}
                 >
                   <ServiceDropdown
                     services={activeStatus.services}
