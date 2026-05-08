@@ -3,6 +3,7 @@ import type { GraphNode } from "../../types/electron";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import { Handle, Position } from "reactflow";
 import { ServiceNode } from "./ServiceNodes";
+import { NotePopover } from "./NotePopover";
 import { useHoverState } from "./hoverContext";
 import { useTraceState } from "./traceContext";
 
@@ -196,6 +197,7 @@ const FlowServiceNodeInner = memo(function FlowServiceNodeInner({
         onContextMenu={data.onNodeContextMenu}
         animationIndex={0}
       />
+      <NotePopover node={data.node} />
       <Handle
         type="source"
         id="source-top"

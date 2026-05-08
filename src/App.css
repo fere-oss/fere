@@ -1177,6 +1177,7 @@ body.sentinel-panel-open .activity-donut-total {
 
 .rf-node-wrapper {
   pointer-events: auto;
+  position: relative;
   transform: scale(1);
   transition:
     opacity 0.25s ease,
@@ -3092,168 +3093,159 @@ body.sentinel-panel-open .activity-donut-total {
   padding: 12px 18px 8px;
 }
 
-/* Service note editor (NodeDetailPanel) */
-.service-note-block {
-  margin: 0 18px 12px;
-  padding: 10px 12px;
-  border: 1px solid var(--border-color);
-  border-radius: 10px;
-  background: var(--bg-white);
+/* Note icon button — sits in a service node's header. Subtle when empty,
+   filled amber when a note exists. */
+.service-note-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin-left: 6px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+  opacity: 0.55;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease,
+    opacity 0.15s ease;
+}
+
+.service-note-icon-btn:hover {
+  opacity: 1;
+  background: rgba(0, 0, 0, 0.05);
+  color: var(--text-primary);
+}
+
+.service-node:hover .service-note-icon-btn,
+.compact-service-node:hover .service-note-icon-btn,
+.service-node-minimal:hover .service-note-icon-btn {
+  opacity: 1;
+}
+
+.service-note-icon-btn-active {
+  color: #b45309; /* amber-700 — readable on white + the filled icon */
+  opacity: 1;
+}
+
+.service-note-icon-btn-active:hover {
+  background: #fef3c7; /* amber-100 */
+  color: #92400e;
+}
+
+.service-note-icon-btn-open {
+  background: #fde68a; /* amber-200 */
+  color: #92400e;
+  opacity: 1;
+}
+
+/* Sticky-note popover anchored to the right of a service node card. */
+.service-note-popover {
+  position: absolute;
+  top: 0;
+  left: 100%;
+  margin-left: 14px;
+  width: 220px;
+  padding: 10px 12px 8px;
+  border-radius: 6px;
+  background: #fef9c3; /* yellow-100 — pale sticky note */
+  border: 1px solid #fde68a; /* yellow-200 */
+  box-shadow:
+    0 1px 2px rgba(146, 64, 14, 0.12),
+    0 8px 20px rgba(146, 64, 14, 0.18);
   display: flex;
   flex-direction: column;
   gap: 6px;
+  z-index: 30;
+  animation: serviceNotePopoverIn 0.14s cubic-bezier(0.22, 1, 0.36, 1);
+  -webkit-app-region: no-drag;
 }
 
-.service-note-block-disabled {
-  background: var(--bg-muted, transparent);
-  opacity: 0.7;
+@keyframes serviceNotePopoverIn {
+  from {
+    opacity: 0;
+    transform: translateX(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
 }
 
-.service-note-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+/* Triangular tail pointing back at the node card. */
+.service-note-popover-tail {
+  position: absolute;
+  top: 14px;
+  left: -6px;
+  width: 10px;
+  height: 10px;
+  background: #fef9c3;
+  border-left: 1px solid #fde68a;
+  border-bottom: 1px solid #fde68a;
+  transform: rotate(45deg);
 }
 
-.service-note-label {
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--text-muted);
-}
-
-.service-note-edit-btn {
-  border: 0;
-  background: transparent;
-  color: var(--text-muted);
-  font-size: 11px;
-  font-weight: 500;
-  cursor: pointer;
-  padding: 0;
-}
-
-.service-note-edit-btn:hover {
-  color: var(--text-primary);
-}
-
-.service-note-disabled-msg {
-  font-size: 12px;
-  color: var(--text-muted);
-}
-
-.service-note-body {
-  font-size: 13px;
-  color: var(--text-primary);
-  line-height: 1.45;
-  white-space: pre-wrap;
-  word-break: break-word;
-  cursor: text;
-}
-
-.service-note-add {
-  border: 0;
-  background: transparent;
-  color: var(--text-muted);
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  padding: 4px 0;
-  text-align: left;
-}
-
-.service-note-add:hover {
-  color: var(--text-primary);
-}
-
-.service-note-textarea {
+.service-note-popover-textarea {
   width: 100%;
-  min-height: 64px;
+  min-height: 60px;
+  max-height: 180px;
   resize: vertical;
+  border: 0;
+  background: transparent;
+  color: #422006; /* yellow-950 */
   font-family: inherit;
-  font-size: 13px;
+  font-size: 12.5px;
   line-height: 1.45;
-  padding: 8px 10px;
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-  background: var(--bg-white);
-  color: var(--text-primary);
+  padding: 0;
+  outline: none;
   box-sizing: border-box;
 }
 
-.service-note-textarea:focus {
-  outline: none;
-  border-color: var(--text-primary);
+.service-note-popover-textarea::placeholder {
+  color: #a16207; /* yellow-700 */
+  opacity: 0.7;
 }
 
-.service-note-footer {
+.service-note-popover-footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  border-top: 1px dashed rgba(146, 64, 14, 0.18);
+  padding-top: 6px;
 }
 
-.service-note-hint {
-  font-size: 11px;
-  color: var(--text-muted);
+.service-note-popover-hint {
+  font-size: 10.5px;
+  color: #a16207;
+  letter-spacing: 0.01em;
 }
 
-.service-note-actions {
-  display: flex;
-  gap: 6px;
-}
-
-.service-note-btn {
+.service-note-popover-save {
   font-family: inherit;
-  font-size: 12px;
-  font-weight: 500;
-  padding: 5px 10px;
-  border-radius: 6px;
-  border: 1px solid var(--border-color);
-  cursor: pointer;
-  background: var(--bg-white);
-  color: var(--text-primary);
-}
-
-.service-note-btn:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
-.service-note-btn-secondary:hover:not(:disabled) {
-  border-color: var(--border-hover);
-}
-
-.service-note-btn-primary {
-  background: var(--text-primary);
-  color: var(--bg-white);
-  border-color: var(--text-primary);
-}
-
-.service-note-btn-primary:hover:not(:disabled) {
-  opacity: 0.9;
-}
-
-.service-note-error {
   font-size: 11px;
-  color: #ef4444;
-}
-
-/* Tiny indicator placed inside a node header when a note exists. */
-.service-node-note-dot {
-  display: inline-block;
-  width: 6px;
-  height: 6px;
-  border-radius: 999px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 5px;
+  border: 1px solid #f59e0b; /* amber-500 */
   background: #f59e0b;
-  box-shadow: 0 0 0 2px var(--bg-white);
-  margin-left: 6px;
-  flex-shrink: 0;
+  color: #fffbeb;
+  cursor: pointer;
 }
 
-.service-node-minimal .service-node-note-dot {
-  margin-left: 4px;
+.service-note-popover-save:hover:not(:disabled) {
+  background: #d97706; /* amber-600 */
+  border-color: #d97706;
+}
+
+.service-note-popover-save:disabled {
+  opacity: 0.55;
+  cursor: default;
 }
 
 /* Note line inside Sentinel's runtime context block. */
