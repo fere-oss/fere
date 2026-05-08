@@ -3223,10 +3223,19 @@ body.sentinel-panel-open .activity-donut-total {
 
 /* Lift the node container that owns an open note popover above its
    neighbors so the popover wins hover/click priority when it overlaps an
-   adjacent node card. Uses :has() — supported in Chromium 105+, fine in
-   Electron 40 (Chromium 130+). */
+   adjacent node card. React Flow sets `style.zIndex` inline on every
+   .react-flow__node, so we need !important to beat that. Uses :has() —
+   supported in Chromium 105+, fine in Electron 40 (Chromium 130+). */
 .react-flow__node:has(.rf-node-wrapper-note-open) {
-  z-index: 50;
+  z-index: 50 !important;
+}
+
+/* If the popover is open, never let its parent wrapper dim — otherwise the
+   opacity collapse propagates into the popover and it visually disappears
+   the moment a neighbor gets hovered. */
+.rf-node-wrapper.rf-node-wrapper-note-open.rf-node-dimmed {
+  opacity: 1;
+  filter: none;
 }
 
 .service-note-popover-textarea {
