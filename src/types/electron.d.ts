@@ -788,6 +788,27 @@ export interface ElectronAPI {
   deleteBlueprint: (projectPath: string) => Promise<void>;
   checkBlueprint: (opts: { projectPath: string; snapshot: SystemSnapshot }) => Promise<BlueprintCheckResult>;
 
+  // Service notes — short per-service reminders saved to .fere/notes.json
+  listServiceNotes: (projectPath: string) => Promise<{
+    success: boolean;
+    error?: string;
+    notes: Record<string, ServiceNote>;
+  }>;
+  listServiceNotesForProjects: (projectPaths: string[]) => Promise<{
+    success: boolean;
+    error?: string;
+    byProject: Record<string, Record<string, ServiceNote>>;
+  }>;
+  setServiceNote: (opts: {
+    projectPath: string;
+    serviceKey: string;
+    body: string;
+  }) => Promise<{ success: boolean; error?: string; note?: ServiceNote | null }>;
+  deleteServiceNote: (opts: {
+    projectPath: string;
+    serviceKey: string;
+  }) => Promise<{ success: boolean; error?: string }>;
+
   // MCP — human-in-the-loop approval for AI-proposed fixes
   onMcpApprovalRequest: (callback: (payload: McpApprovalRequest) => void) => void;
   offMcpApprovalRequest: () => void;
@@ -888,6 +909,11 @@ export interface BlueprintCheckResult {
   missingCount: number;
   wrongCount: number;
   okCount: number;
+}
+
+export interface ServiceNote {
+  body: string;
+  updatedAt: number;
 }
 
 

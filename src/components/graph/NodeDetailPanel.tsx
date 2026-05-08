@@ -2,6 +2,7 @@ import { useCallback, useEffect } from "react";
 import type { GraphNode, GraphEdge } from "../../types/electron";
 import { getServiceColor, getTypeBadge } from "./constants";
 import { NodeDetailContent } from "./NodeDetailContent";
+import { ServiceNoteEditor } from "./ServiceNoteEditor";
 
 interface NodeDetailPanelProps {
   node: GraphNode;
@@ -115,6 +116,7 @@ export function NodeDetailPanel({ node, edges, allNodes, onClose }: NodeDetailPa
             Investigate with Sentinel
           </button>
         </div>
+        <ServiceNoteEditor node={node} />
         <NodeDetailContent
           node={node}
           edges={edges}

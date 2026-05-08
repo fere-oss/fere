@@ -3092,6 +3092,176 @@ body.sentinel-panel-open .activity-donut-total {
   padding: 12px 18px 8px;
 }
 
+/* Service note editor (NodeDetailPanel) */
+.service-note-block {
+  margin: 0 18px 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  background: var(--bg-white);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.service-note-block-disabled {
+  background: var(--bg-muted, transparent);
+  opacity: 0.7;
+}
+
+.service-note-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.service-note-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+.service-note-edit-btn {
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 0;
+}
+
+.service-note-edit-btn:hover {
+  color: var(--text-primary);
+}
+
+.service-note-disabled-msg {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.service-note-body {
+  font-size: 13px;
+  color: var(--text-primary);
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+  cursor: text;
+}
+
+.service-note-add {
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 4px 0;
+  text-align: left;
+}
+
+.service-note-add:hover {
+  color: var(--text-primary);
+}
+
+.service-note-textarea {
+  width: 100%;
+  min-height: 64px;
+  resize: vertical;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.45;
+  padding: 8px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--bg-white);
+  color: var(--text-primary);
+  box-sizing: border-box;
+}
+
+.service-note-textarea:focus {
+  outline: none;
+  border-color: var(--text-primary);
+}
+
+.service-note-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.service-note-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.service-note-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.service-note-btn {
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 5px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+  cursor: pointer;
+  background: var(--bg-white);
+  color: var(--text-primary);
+}
+
+.service-note-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.service-note-btn-secondary:hover:not(:disabled) {
+  border-color: var(--border-hover);
+}
+
+.service-note-btn-primary {
+  background: var(--text-primary);
+  color: var(--bg-white);
+  border-color: var(--text-primary);
+}
+
+.service-note-btn-primary:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.service-note-error {
+  font-size: 11px;
+  color: #ef4444;
+}
+
+/* Tiny indicator placed inside a node header when a note exists. */
+.service-node-note-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: #f59e0b;
+  box-shadow: 0 0 0 2px var(--bg-white);
+  margin-left: 6px;
+  flex-shrink: 0;
+}
+
+.service-node-minimal .service-node-note-dot {
+  margin-left: 4px;
+}
+
+/* Note line inside Sentinel's runtime context block. */
+.agp-context-service-note {
+  color: var(--text-primary);
+  font-style: italic;
+}
+
 .node-detail-section-title-row {
   display: flex;
   align-items: flex-start;

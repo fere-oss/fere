@@ -163,6 +163,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   loadBlueprint: (projectPath) => ipcRenderer.invoke('blueprint:load', projectPath),
   deleteBlueprint: (projectPath) => ipcRenderer.invoke('blueprint:delete', projectPath),
   checkBlueprint: (opts) => ipcRenderer.invoke('blueprint:check', opts),
+
+  // Service notes — small per-service reminders saved to .fere/notes.json
+  listServiceNotes: (projectPath) => ipcRenderer.invoke('notes:list', projectPath),
+  listServiceNotesForProjects: (projectPaths) =>
+    ipcRenderer.invoke('notes:listForProjects', projectPaths),
+  setServiceNote: (opts) => ipcRenderer.invoke('notes:set', opts),
+  deleteServiceNote: (opts) => ipcRenderer.invoke('notes:delete', opts),
   agentApplyFix: (action) => ipcRenderer.invoke('agent:apply-fix', action),
   openInClaudeCode: (finding) => ipcRenderer.invoke('agent:open-in-claude-code', finding),
   agentChat: (messages, nodeIds, tabLabel, options, graphEdges) =>

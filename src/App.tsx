@@ -9,6 +9,7 @@ import {
 } from "react";
 import type { CSSProperties, MouseEvent as ReactMouseEvent } from "react";
 import { useSystemSnapshot } from "./hooks/useSystemMonitor";
+import { useServiceNotes } from "./hooks/useServiceNotes";
 import { GraphView } from "./components/GraphView";
 import { AgentPanel } from "./components/AgentPanel";
 import { CurlBuilder } from "./components/CurlBuilder";
@@ -984,6 +985,14 @@ function App() {
     addService,
     removeService,
   } = useKnownServices(tabs, visibleGraphNodes, tabGrouping);
+
+  // Load per-repo service notes (.fere/notes.json) for every project tab.
+  const projectPathsForNotes = useMemo(
+    () => tabs.map((t) => t.id).filter((id) => id !== SYSTEM_TAB_ID),
+    [tabs],
+  );
+  useServiceNotes(projectPathsForNotes);
+
   const [serviceDropdownTab, setServiceDropdownTab] = useState<string | null>(
     null,
   );

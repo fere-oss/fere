@@ -181,6 +181,7 @@ const {
 const { executeTracedRequest } = require("./services/traceCapture");
 const { buildFingerprint } = require("./services/stackFingerprint");
 const blueprintManager = require("./services/blueprintManager");
+const notesManager = require("./services/notesManager");
 
 app.setName("Fere");
 app.name = "Fere";
@@ -4666,5 +4667,47 @@ ipcMain.handle("blueprint:check", async (_, { projectPath, snapshot }) => {
   } catch (err) {
     console.error("blueprint:check error:", err);
     throw err;
+  }
+});
+
+// Service notes — small per-service reminders stored in .fere/notes.json
+ipcMain.handle("notes:list", async (_, projectPath) => {
+  try {
+    return { success: true, notes: notesManager.listNotes(projectPath) };
+  } catch (err) {
+    console.error("notes:list error:", err);
+    return { success: false, error: err.message, notes: {} };
+  }
+});
+
+ipcMain.handle("notes:listForProjects", async (_, projectPaths) => {
+  try {
+    return {
+      success: true,
+      byProject: notesManager.listNotesForProjects(projectPaths),
+    };
+  } catch (err) {
+    console.error("notes:listForProjects error:", err);
+    return { success: false, error: err.message, byProject: {} };
+  }
+});
+
+ipcMain.handle("notes:set", async (_, { projectPath, serviceKey, body }) => {
+  try {
+    const note = notesManager.setNote(projectPath, serviceKey, body);
+    return { success: true, note };
+  } catch (err) {
+    console.error("notes:set error:", err);
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle("notes:delete", async (_, { projectPath, serviceKey }) => {
+  try {
+    notesManager.deleteNote(projectPath, serviceKey);
+    return { success: true };
+  } catch (err) {
+    console.error("notes:delete error:", err);
+    return { success: false, error: err.message };
   }
 });

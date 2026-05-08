@@ -8,6 +8,7 @@ import {
   subscribeExternalApiCacheUpdates,
 } from "./externalApis";
 import { BrandIcon, inferServiceBrand } from "./brandIcons";
+import { NoteIndicator } from "./NoteIndicator";
 
 // Hoisted to module level — avoids Set recreation on every ServiceNode render
 const DOCKER_BADGE_TYPES = new Set(["container", "cache", "database", "broker"]);
@@ -129,6 +130,7 @@ export function CompactServiceNode({
         <span className="compact-node-badge">
           {remoteKind || getTypeBadge(node.type)}
         </span>
+        <NoteIndicator node={node} />
       </div>
 
       <h4 className="compact-node-name">{node.name}</h4>
@@ -442,6 +444,7 @@ export const ServiceNode = React.memo(function ServiceNode({
         >
           {remoteKind || getTypeBadge(node.type)}
         </span>
+        <NoteIndicator node={node} />
       </div>
 
       <h3 className="service-node-name">

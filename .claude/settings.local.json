@@ -47,7 +47,9 @@
       "Bash(tee /tmp/fere-dev.log)",
       "Bash(pkill -f electron)",
       "Bash(pkill -f \"react-scripts\")",
-      "Bash(npm test *)"
+      "Bash(npm test *)",
+      "Bash(awk 'NR>=68 && NR<=80 { for\\(i=1;i<=length\\($0\\);i++\\) printf \"%s \",substr\\($0,i,1\\)*0+\\(substr\\($0,i,1\\)\\); print \"\" }' /Users/siddharthbalaji/Documents/fere/src/components/graph/serviceNotes.ts)",
+      "Bash(sed -n '68,80p' /Users/siddharthbalaji/Documents/fere/src/components/graph/serviceNotes.ts)"
     ]
   }
 }

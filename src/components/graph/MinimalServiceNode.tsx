@@ -1,5 +1,6 @@
 import type { GraphNode } from "../../types/electron";
 import { getHealthInfo, getServiceColor } from "./constants";
+import { NoteIndicator } from "./NoteIndicator";
 
 /**
  * Minimal level-of-detail node — rendered when zoomed out below LOD_ZOOM_THRESHOLD.
@@ -36,6 +37,7 @@ export function MinimalServiceNode({
           :{mainPort}
         </span>
       )}
+      <NoteIndicator node={node} />
     </div>
   );
 }

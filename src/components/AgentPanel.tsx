@@ -19,6 +19,7 @@ import type {
   GraphNode,
 } from "../types/electron";
 import { getServiceColor } from "./graph/constants";
+import { getNoteForNode } from "./graph/serviceNotes";
 import { ApiKeySetup } from "./ApiKeySetup";
 import sentinelLogo from "../assets/sentinel.png";
 
@@ -369,6 +370,7 @@ type ContextService = {
   projectPath?: string;
   externalApis?: string[];
   routes?: Array<{ method?: string; path: string }>;
+  note?: string;
 };
 type ContextFinding = {
   severity: string;
@@ -589,6 +591,11 @@ function ContextBlock({
                     <div className="agp-context-service-detail">
                       routes: {svc.routes.slice(0, 4).map((r) => `${r.method ?? "?"} ${r.path}`).join(", ")}
                       {svc.routes.length > 4 ? ` +${svc.routes.length - 4} more` : ""}
+                    </div>
+                  )}
+                  {svc.note && (
+                    <div className="agp-context-service-detail agp-context-service-note">
+                      note: {svc.note}
                     </div>
                   )}
                 </div>
@@ -1859,20 +1866,24 @@ export function AgentPanel({
     const scope = tabLabel ? `Project: ${tabLabel}` : "All services";
     const internalNodes = nodes.filter((n) => n.type !== "external");
 
-    const services: ContextService[] = internalNodes.map((n) => ({
-      name: n.name,
-      type: n.type,
-      pid: n.pid,
-      ports: (n.ports ?? []).map((p) => p.port),
-      healthStatus: n.healthStatus ?? "unknown",
-      cpu: n.cpu ?? undefined,
-      memory: n.memory ?? undefined,
-      isDockerContainer: n.isDockerContainer,
-      containerState: n.containerState,
-      projectPath: n.projectPath ?? undefined,
-      externalApis: (n.externalApis ?? []).map((a) => a.name).filter(Boolean),
-      routes: (n.routes ?? []).slice(0, 6).map((r) => ({ method: r.method, path: r.path })),
-    }));
+    const services: ContextService[] = internalNodes.map((n) => {
+      const note = getNoteForNode(n);
+      return {
+        name: n.name,
+        type: n.type,
+        pid: n.pid,
+        ports: (n.ports ?? []).map((p) => p.port),
+        healthStatus: n.healthStatus ?? "unknown",
+        cpu: n.cpu ?? undefined,
+        memory: n.memory ?? undefined,
+        isDockerContainer: n.isDockerContainer,
+        containerState: n.containerState,
+        projectPath: n.projectPath ?? undefined,
+        externalApis: (n.externalApis ?? []).map((a) => a.name).filter(Boolean),
+        routes: (n.routes ?? []).slice(0, 6).map((r) => ({ method: r.method, path: r.path })),
+        note: note?.body && note.body.trim() ? note.body : undefined,
+      };
+    });
 
     // Build topology connections from edges
     const nodeById = new Map(nodes.map((n) => [n.id, n]));
@@ -1911,6 +1922,9 @@ export function AgentPanel({
     const routeLines = services
       .filter((s) => s.routes && s.routes.length > 0)
       .map((s) => `- ${s.name}: ${s.routes!.map((r) => `${r.method ?? "?"} ${r.path}`).join(", ")}`);
+    const noteLines = services
+      .filter((s) => s.note)
+      .map((s) => `- ${s.name}: ${s.note}`);
     const findLines = findings.map(
       (f) => `- [${f.severity.toUpperCase()}] ${f.service}: ${f.summary}`,
     );
@@ -1923,6 +1937,7 @@ export function AgentPanel({
       connLines.length ? `\n## Service Connections\n${connLines.join("\n")}` : "",
       extLines.length ? `\n## External APIs\n${extLines.join("\n")}` : "",
       routeLines.length ? `\n## API Routes\n${routeLines.join("\n")}` : "",
+      noteLines.length ? `\n## Service Notes\n${noteLines.join("\n")}` : "",
       ``,
       `## Active Findings`,
       findLines.join("\n") || "(none)",
