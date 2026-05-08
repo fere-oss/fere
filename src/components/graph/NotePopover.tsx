@@ -6,6 +6,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
+import type { SyntheticEvent } from "react";
 import type { GraphNode } from "../../types/electron";
 import {
   getNoteForNode,
@@ -49,6 +50,7 @@ export function NotePopover({ node }: { node: GraphNode }) {
   const [side, setSide] = useState<"right" | "left">("right");
   const containerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const saveRequestInFlightRef = useRef(false);
 
   // Pick the side that doesn't overlap a neighboring service node. Runs in
   // useLayoutEffect (before paint) so the popover is placed correctly without
@@ -156,6 +158,34 @@ export function NotePopover({ node }: { node: GraphNode }) {
     if (ok) close();
   }, [persist, draft, close]);
 
+  const requestSaveAndClose = useCallback(() => {
+    if (saveRequestInFlightRef.current) return;
+    saveRequestInFlightRef.current = true;
+    void saveAndClose().finally(() => {
+      window.setTimeout(() => {
+        saveRequestInFlightRef.current = false;
+      }, 0);
+    });
+  }, [saveAndClose]);
+
+  const stopPopoverEvent = useCallback((e: SyntheticEvent) => {
+    e.stopPropagation();
+  }, []);
+
+  const stopControlEvent = useCallback((e: SyntheticEvent<HTMLButtonElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+  }, []);
+
+  const handleSaveControlPress = useCallback(
+    (e: SyntheticEvent<HTMLButtonElement>) => {
+      e.preventDefault();
+      e.stopPropagation();
+      requestSaveAndClose();
+    },
+    [requestSaveAndClose],
+  );
+
   // Click outside to save & close. Only attached while open.
   useEffect(() => {
     if (!isOpen) return;
@@ -165,11 +195,11 @@ export function NotePopover({ node }: { node: GraphNode }) {
       // Don't close on icon clicks — the icon's own handler toggles state.
       const el = target as HTMLElement;
       if (el.closest && el.closest(".service-note-icon-btn")) return;
-      void saveAndClose();
+      requestSaveAndClose();
     };
     document.addEventListener("mousedown", handler, true);
     return () => document.removeEventListener("mousedown", handler, true);
-  }, [isOpen, saveAndClose]);
+  }, [isOpen, requestSaveAndClose]);
 
   if (!isOpen || !projectPath) return null;
 
@@ -178,17 +208,25 @@ export function NotePopover({ node }: { node: GraphNode }) {
   return (
     <div
       ref={containerRef}
-      className={`service-note-popover service-note-popover-${side}`}
+      // React Flow opt-out classes keep mouse/touch events inside the popover
+      // from being treated as canvas/node interactions.
+      className={`service-note-popover service-note-popover-${side} nodrag nopan nowheel`}
       role="dialog"
-      onMouseDown={(e) => e.stopPropagation()}
-      onClick={(e) => e.stopPropagation()}
-      onWheel={(e) => e.stopPropagation()}
+      onPointerDown={stopPopoverEvent}
+      onPointerUp={stopPopoverEvent}
+      onMouseDown={stopPopoverEvent}
+      onMouseDownCapture={stopPopoverEvent}
+      onClick={stopPopoverEvent}
+      onWheel={stopPopoverEvent}
     >
       <div className="service-note-popover-tail" aria-hidden="true" />
       <button
         type="button"
-        className="service-note-popover-close"
-        onClick={() => void saveAndClose()}
+        className="service-note-popover-close nodrag nopan nowheel"
+        onPointerDown={handleSaveControlPress}
+        onMouseDown={handleSaveControlPress}
+        onPointerUp={stopControlEvent}
+        onClick={handleSaveControlPress}
         aria-label="Close note"
         title="Close"
       >
@@ -206,7 +244,7 @@ export function NotePopover({ node }: { node: GraphNode }) {
       </button>
       <textarea
         ref={textareaRef}
-        className="service-note-popover-textarea"
+        className="service-note-popover-textarea nodrag nopan nowheel"
         value={draft}
         maxLength={MAX_LEN}
         placeholder="Leave a quick reminder…"
@@ -218,7 +256,7 @@ export function NotePopover({ node }: { node: GraphNode }) {
             close();
           } else if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
             e.preventDefault();
-            void saveAndClose();
+            requestSaveAndClose();
           }
         }}
       />
@@ -234,8 +272,11 @@ export function NotePopover({ node }: { node: GraphNode }) {
         </span>
         <button
           type="button"
-          className="service-note-popover-save"
-          onClick={() => void saveAndClose()}
+          className="service-note-popover-save nodrag nopan nowheel"
+          onPointerDown={handleSaveControlPress}
+          onMouseDown={handleSaveControlPress}
+          onPointerUp={stopControlEvent}
+          onClick={handleSaveControlPress}
           disabled={saving}
         >
           Save

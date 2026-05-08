@@ -3230,12 +3230,22 @@ body.sentinel-panel-open .activity-donut-total {
   z-index: 50 !important;
 }
 
-/* If the popover is open, never let its parent wrapper dim — otherwise the
-   opacity collapse propagates into the popover and it visually disappears
-   the moment a neighbor gets hovered. */
+/* While a note popover is open, freeze its source node visually. Without
+   this, cursor crossings near the popover/gap edge re-trigger hover/dim
+   states on the source wrapper — which animates `transform: scale(1.05)`
+   and is anchored to the popover, so the popover visibly flickers. */
+.rf-node-wrapper.rf-node-wrapper-note-open {
+  transform: none !important;
+  transition: none !important;
+}
+
 .rf-node-wrapper.rf-node-wrapper-note-open.rf-node-dimmed {
   opacity: 1;
   filter: none;
+}
+
+.rf-node-wrapper.rf-node-wrapper-note-open.rf-node-highlighted {
+  transform: none !important;
 }
 
 .service-note-popover-close {

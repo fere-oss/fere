@@ -926,11 +926,20 @@ function App() {
     removeService,
   } = useKnownServices(tabs, visibleGraphNodes, tabGrouping);
 
-  // Load per-repo service notes (.fere/notes.json) for every project tab.
-  const projectPathsForNotes = useMemo(
-    () => tabs.map((t) => t.id).filter((id) => id !== SYSTEM_TAB_ID),
-    [tabs],
-  );
+  // Load per-repo service notes (.fere/notes.json). Anchored to the repo
+  // root (or the project path when there is no repo root) so the seeded
+  // path matches where notes are *written* — `noteProjectPath(node)` uses
+  // the same `repoPath || projectPath` resolution. Sourced directly from
+  // visible nodes, not tab IDs, because tab IDs depend on grouping mode.
+  const projectPathsForNotes = useMemo(() => {
+    const set = new Set<string>();
+    for (const node of visibleGraphNodes) {
+      if (node.type === "external") continue;
+      const root = node.repoPath || node.projectPath;
+      if (root) set.add(root);
+    }
+    return Array.from(set);
+  }, [visibleGraphNodes]);
   useServiceNotes(projectPathsForNotes);
 
   const [serviceDropdownTab, setServiceDropdownTab] = useState<string | null>(
