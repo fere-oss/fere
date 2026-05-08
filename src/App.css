@@ -4828,6 +4828,7 @@ body.sentinel-panel-open .activity-donut-total {
   border: 1px solid var(--border-color);
   border-radius: 6px;
   background: var(--bg-white);
+  color: var(--text-primary);
 }
 
 .curl-header-key:focus,
@@ -4844,6 +4845,7 @@ body.sentinel-panel-open .activity-donut-total {
   border: 1px solid var(--border-color);
   border-radius: 6px;
   background: var(--bg-white);
+  color: var(--text-primary);
 }
 
 .curl-add-btn {
@@ -8705,26 +8707,26 @@ body.sentinel-panel-open .activity-donut-total {
   display: block;
   font-size: 13px;
   font-weight: 600;
-  color: #171717;
+  color: var(--text-primary);
   margin-bottom: 8px;
 }
 
 .form-input {
   width: 100%;
   padding: 10px 14px;
-  background: #fafafa;
-  border: 1px solid #e5e5e5;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
   border-radius: 8px;
   font-size: 14px;
   font-family: var(--font-mono);
-  color: #171717;
+  color: var(--text-primary);
   transition: all 0.15s ease;
 }
 
 .form-input:focus {
   outline: none;
-  background: #ffffff;
-  border-color: #525252;
+  background: var(--bg-white);
+  border-color: var(--text-secondary);
 }
 
 .form-input:disabled {
@@ -8775,8 +8777,8 @@ body.sentinel-panel-open .activity-donut-total {
 
 .column-item {
   padding: 18px;
-  background: #fafafa;
-  border: 1px solid #e5e5e5;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
   border-radius: 10px;
 }
 
@@ -8790,11 +8792,11 @@ body.sentinel-panel-open .activity-donut-total {
 .column-number {
   font-size: 12px;
   font-weight: 600;
-  color: #525252;
-  background: #ffffff;
+  color: var(--text-secondary);
+  background: var(--bg-white);
   padding: 4px 10px;
   border-radius: 6px;
-  border: 1px solid #e5e5e5;
+  border: 1px solid var(--border-color);
 }
 
 .remove-column-btn {
@@ -8838,25 +8840,25 @@ body.sentinel-panel-open .activity-donut-total {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  color: #525252;
+  color: var(--text-secondary);
 }
 
 .field-input,
 .field-select {
   padding: 8px 12px;
-  background: #ffffff;
-  border: 1px solid #d4d4d4;
+  background: var(--bg-white);
+  border: 1px solid var(--border-color);
   border-radius: 6px;
   font-size: 13px;
   font-family: var(--font-mono);
-  color: #171717;
+  color: var(--text-primary);
   transition: all 0.15s ease;
 }
 
 .field-input:focus,
 .field-select:focus {
   outline: none;
-  border-color: #525252;
+  border-color: var(--text-secondary);
 }
 
 .field-input:disabled,
@@ -8866,7 +8868,7 @@ body.sentinel-panel-open .activity-donut-total {
 }
 
 .field-input::placeholder {
-  color: #a3a3a3;
+  color: var(--text-faint);
   font-style: italic;
 }
 
@@ -9675,7 +9677,7 @@ body.sentinel-panel-open .activity-donut-total {
   justify-content: space-between;
   padding: 14px 14px 12px 14px;
   border-bottom: 1px solid var(--border-color);
-  background: #fafafa;
+  background: var(--bg-primary);
 }
 
 .unified-logs-containers-title {
@@ -9748,7 +9750,7 @@ body.sentinel-panel-open .activity-donut-total {
   padding: 10px 12px;
   background: transparent;
   border: none;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+  border-bottom: 1px solid var(--border-color);
   text-align: left;
   cursor: pointer;
   transition: background 0.15s ease;
@@ -9756,11 +9758,11 @@ body.sentinel-panel-open .activity-donut-total {
 }
 
 .unified-logs-container-row:hover {
-  background: #f7f9fc;
+  background: var(--bg-muted);
 }
 
 .unified-logs-container-row.selected {
-  background: #eef4ff;
+  background: var(--bg-muted);
   box-shadow: inset 2px 0 0 #4a8af4;
 }
 
@@ -9950,7 +9952,7 @@ body.sentinel-panel-open .activity-donut-total {
   justify-content: space-between;
   gap: 16px;
   padding: 12px 14px;
-  background: #fafafa;
+  background: var(--bg-primary);
   border: none;
   border-bottom: 1px solid var(--border-color);
   border-radius: 0;
@@ -17952,12 +17954,12 @@ body.sentinel-panel-open .activity-donut-total {
   background: color-mix(
     in srgb,
     var(--group-color, #4a4a60) 9%,
-    rgba(34, 34, 34, 0.7)
+    rgba(30, 30, 30, 0.85)
   );
   border-color: color-mix(
     in srgb,
-    var(--group-color, #4a4a60) 25%,
-    rgba(51, 51, 51, 0.6)
+    var(--group-color, #4a4a60) 30%,
+    rgba(70, 70, 70, 0.7)
   );
 }
 
@@ -18009,7 +18011,7 @@ body.sentinel-panel-open .activity-donut-total {
 
 /* Graph canvas background */
 [data-theme="dark"] .graph-flow .react-flow__background {
-  background-color: var(--bg-white);
+  background-color: var(--bg-primary);
 }
 
 /* SQL syntax highlighting — VSCode Dark palette */
@@ -18380,8 +18382,9 @@ body.sentinel-panel-open .activity-donut-total {
   color: var(--text-primary);
 }
 [data-theme="dark"] .db-table-item.active {
-  background: var(--text-primary);
-  color: var(--bg-primary);
+  background: var(--border-hover);
+  color: var(--text-primary);
+  box-shadow: none;
 }
 [data-theme="dark"] .db-sidebar-empty {
   color: var(--text-muted);
@@ -18667,4 +18670,79 @@ body.sentinel-panel-open .activity-donut-total {
 /* When blueprint panel is open alongside Sentinel, shift Sentinel to the left */
 .blueprint-panel-active .agp-popup {
   right: calc(340px + 32px); /* 340px blueprint + 16px gap + 16px from edge */
+}
+
+/* ─── Dark mode: graph edge + node contrast ─────────────────────────────── */
+
+[data-theme="dark"] .graph-view {
+  --graph-edge: #6b7280;
+}
+[data-theme="dark"] .service-node {
+  border-color: #3d3d3d;
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.5),
+    0 4px 12px rgba(0, 0, 0, 0.35);
+}
+[data-theme="dark"] .service-node:hover {
+  border-color: #525252;
+  box-shadow:
+    0 2px 6px rgba(0, 0, 0, 0.5),
+    0 6px 16px rgba(0, 0, 0, 0.4);
+}
+
+/* ─── Dark mode: Containers — unified logs toolbar ───────────────────────── */
+
+[data-theme="dark"] .unified-logs-checkbox input {
+  background: var(--bg-muted);
+  border-color: var(--border-hover);
+}
+
+/* ─── Dark mode: Requests — header key/value inputs ─────────────────────── */
+
+[data-theme="dark"] .curl-header-key,
+[data-theme="dark"] .curl-header-value {
+  background: var(--bg-white);
+  border-color: var(--border-color);
+  color: var(--text-primary);
+}
+
+/* ─── Dark mode: Create Table modal — form and column editor ─────────────── */
+
+[data-theme="dark"] .form-input::placeholder {
+  color: var(--text-faint);
+}
+[data-theme="dark"] .constraint-checkbox {
+  color: var(--text-secondary);
+}
+[data-theme="dark"] .mongodb-note {
+  background: var(--bg-muted);
+  border-color: var(--border-color);
+  color: var(--text-secondary);
+}
+
+/* ─── Dark mode: Containers — unified log lines ──────────────────────────── */
+
+[data-theme="dark"] .unified-log-text {
+  color: #c9d1d9;
+}
+[data-theme="dark"] .unified-log-level-error .unified-log-text {
+  color: #fca5a5;
+}
+[data-theme="dark"] .unified-log-level-warn .unified-log-text {
+  color: #fcd34d;
+}
+[data-theme="dark"] .unified-log-level-debug .unified-log-text {
+  color: #9ca3af;
+}
+[data-theme="dark"] .unified-log-stream-stdout {
+  background: rgba(255, 255, 255, 0.08);
+  color: #6ee7b7;
+}
+[data-theme="dark"] .unified-log-stream-stderr {
+  background: rgba(239, 68, 68, 0.15);
+  color: #fca5a5;
+}
+[data-theme="dark"] .unified-log-highlight {
+  background: rgba(253, 230, 138, 0.25);
+  color: #fef08a;
 }
