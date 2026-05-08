@@ -185,6 +185,25 @@ export function NotePopover({ node }: { node: GraphNode }) {
       onWheel={(e) => e.stopPropagation()}
     >
       <div className="service-note-popover-tail" aria-hidden="true" />
+      <button
+        type="button"
+        className="service-note-popover-close"
+        onClick={() => void saveAndClose()}
+        aria-label="Close note"
+        title="Close"
+      >
+        <svg
+          width="10"
+          height="10"
+          viewBox="0 0 16 16"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+        >
+          <path d="M4 4l8 8M12 4l-8 8" />
+        </svg>
+      </button>
       <textarea
         ref={textareaRef}
         className="service-note-popover-textarea"

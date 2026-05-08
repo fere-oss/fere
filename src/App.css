@@ -3238,6 +3238,30 @@ body.sentinel-panel-open .activity-donut-total {
   filter: none;
 }
 
+.service-note-popover-close {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 18px;
+  height: 18px;
+  border: 0;
+  background: transparent;
+  color: #a16207; /* yellow-700 */
+  cursor: pointer;
+  border-radius: 4px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1;
+  -webkit-app-region: no-drag;
+}
+
+.service-note-popover-close:hover {
+  background: #fde68a; /* yellow-200 */
+  color: #92400e; /* yellow-800 */
+}
+
 .service-note-popover-textarea {
   width: 100%;
   min-height: 60px;
@@ -3249,7 +3273,7 @@ body.sentinel-panel-open .activity-donut-total {
   font-family: inherit;
   font-size: 12.5px;
   line-height: 1.45;
-  padding: 0;
+  padding: 0 22px 0 0; /* keep first-line text clear of the close button */
   outline: none;
   box-sizing: border-box;
 }
