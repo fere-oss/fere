@@ -903,7 +903,84 @@ export interface ElectronAPI {
     projectPath: string;
     snapshot: SystemSnapshot;
   }) => Promise<BlueprintCheckResult>;
+
+  // Service notes — short per-service reminders saved to .fere/notes.json
+  listServiceNotes: (projectPath: string) => Promise<{
+    success: boolean;
+    error?: string;
+    notes: Record<string, ServiceNote>;
+  }>;
+  listServiceNotesForProjects: (projectPaths: string[]) => Promise<{
+    success: boolean;
+    error?: string;
+    byProject: Record<string, Record<string, ServiceNote>>;
+  }>;
+  setServiceNote: (opts: {
+    projectPath: string;
+    serviceKey: string;
+    body: string;
+  }) => Promise<{ success: boolean; error?: string; note?: ServiceNote | null }>;
+  deleteServiceNote: (opts: {
+    projectPath: string;
+    serviceKey: string;
+  }) => Promise<{ success: boolean; error?: string }>;
+
+  // MCP — human-in-the-loop approval for AI-proposed fixes
+  onMcpApprovalRequest: (callback: (payload: McpApprovalRequest) => void) => void;
+  offMcpApprovalRequest: () => void;
+  respondMcpApproval: (requestId: string, approved: boolean, reason?: string) => void;
+
+  // Headless agent investigation — Fere spawns an AI CLI (Claude Code, Codex,
+  // ...) with the Fere MCP attached and streams progress back to the renderer.
+  listAgentProviders: (opts?: { fresh?: boolean }) => Promise<{
+    providers: AgentProviderInfo[];
+    error?: string;
+  }>;
+  investigateFinding: (
+    finding: AgentFinding,
+    investigationId: string,
+    providerId?: string,
+  ) => Promise<InvestigationResult>;
+  onInvestigationStep: (callback: (step: InvestigationStep) => void) => void;
+  offInvestigationStep: () => void;
+  onInvestigationComplete: (callback: (result: InvestigationCompletion) => void) => void;
+  offInvestigationComplete: () => void;
 }
+
+export interface AgentProviderInfo {
+  id: string;
+  displayName: string;
+  binary: string;
+  installHint: string;
+  detected: boolean;
+}
+
+export interface McpApprovalRequest {
+  requestId: string;
+  finding: AgentFinding;
+  action: AgentFixAction;
+  timeoutMs: number;
+}
+
+export interface InvestigationResult {
+  success: boolean;
+  providerId?: string;
+  result?: string;
+  error?: string;
+  durationMs?: number;
+}
+
+export interface InvestigationCompletion extends InvestigationResult {
+  investigationId: string;
+}
+
+export type InvestigationStep =
+  | { investigationId: string; kind: 'start'; finding: { id: string; summary: string } }
+  | { investigationId: string; kind: 'system'; subtype: string | null }
+  | { investigationId: string; kind: 'tool_use'; tool: string; input: unknown }
+  | { investigationId: string; kind: 'tool_result'; tool_use_id: string; isError: boolean }
+  | { investigationId: string; kind: 'text'; text: string }
+  | { investigationId: string; kind: 'result'; result: string | null; isError: boolean; durationMs?: number; costUsd?: number };
 
 // Blueprint types
 export interface BlueprintService {
@@ -948,6 +1025,11 @@ export interface BlueprintCheckResult {
   missingCount: number;
   wrongCount: number;
   okCount: number;
+}
+
+export interface ServiceNote {
+  body: string;
+  updatedAt: number;
 }
 
 export interface ChatStep {
