@@ -11581,7 +11581,7 @@ body.sentinel-panel-open .activity-donut-total {
   box-shadow:
     0 24px 80px rgba(0, 0, 0, 0.12),
     0 4px 18px rgba(0, 0, 0, 0.05);
-  z-index: 2200;
+  z-index: 900; /* Above app chrome, below modal overlays (1000+). */
   overflow: hidden;
   pointer-events: auto;
   backdrop-filter: none;
@@ -14842,14 +14842,14 @@ body.sentinel-panel-open .activity-donut-total {
   flex-direction: column;
   overflow: hidden;
   animation: agpSlideIn 0.18s cubic-bezier(0.22, 1, 0.36, 1);
-  z-index: 2000;
+  z-index: 900; /* Above app chrome, below modal overlays (1000+). */
 }
 
 .agp-agent-toast {
   position: fixed;
   top: 24px;
   right: 24px;
-  z-index: 3000;
+  z-index: 900; /* Above app chrome, below modal overlays (1000+). */
   max-width: 360px;
   padding: 12px 36px 12px 14px;
   background: var(--bg-white);
