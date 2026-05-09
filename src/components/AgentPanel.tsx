@@ -2798,6 +2798,32 @@ export function AgentPanel({
                   </svg>
                 )}
               </button>
+              <button
+                className="agp-scan-btn agp-connect-ai-btn agp-header-utility"
+                onClick={() =>
+                  window.dispatchEvent(new CustomEvent("fere:open-connect-ai"))
+                }
+                title="Connect external AI (Claude, Cursor, Windsurf, Zed) via MCP"
+                disabled={isStreaming}
+                aria-label="Connect AI via MCP"
+              >
+                <svg
+                  width="15"
+                  height="15"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  {/* socket / plug shape */}
+                  <rect x="2" y="6" width="9" height="4" rx="1" />
+                  <line x1="11" y1="8" x2="14" y2="8" />
+                  <line x1="4" y1="6" x2="4" y2="4" />
+                  <line x1="9" y1="6" x2="9" y2="4" />
+                </svg>
+              </button>
               {threads.length > 0 && (
                 <button
                   className={`agp-scan-btn agp-history-btn agp-header-utility${historyOpen ? " agp-scan-btn-active" : ""}`}

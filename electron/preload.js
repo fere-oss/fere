@@ -187,6 +187,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.invoke("notes:listForProjects", projectPaths),
   setServiceNote: (opts) => ipcRenderer.invoke("notes:set", opts),
   deleteServiceNote: (opts) => ipcRenderer.invoke("notes:delete", opts),
+
+  // MCP — copy-pasteable config snippets that point AI clients at fere-mcp
+  getMcpConfig: () => ipcRenderer.invoke("mcp:get-config"),
+  revealMcpConfigPath: (configPath) =>
+    ipcRenderer.invoke("mcp:reveal-config", configPath),
   agentApplyFix: (action) => ipcRenderer.invoke("agent:apply-fix", action),
   openInClaudeCode: (finding) => ipcRenderer.invoke("agent:open-in-claude-code", finding),
   agentChat: (messages, nodeIds, tabLabel, options, graphEdges) =>

@@ -3157,3 +3157,100 @@ ipcMain.handle("notes:delete", async (_, { projectPath, serviceKey }) => {
     return { success: false, error: err.message };
   }
 });
+
+// MCP integration — emit a copy-pasteable config payload that points an AI
+// client at the local fere-mcp shim. Resolves the script path so it works in
+// both dev and packaged builds (bin/ is `asarUnpack`'d, so swap app.asar →
+// app.asar.unpacked).
+function fereMcpScriptPath() {
+  const base = app.getAppPath().replace(/app\.asar(?=$|[\\/])/, "app.asar.unpacked");
+  return path.join(base, "bin", "fere-mcp.js");
+}
+
+ipcMain.handle("mcp:get-config", async () => {
+  try {
+    const scriptPath = fereMcpScriptPath();
+    const exists = fs.existsSync(scriptPath);
+    const home = os.homedir();
+    const serverEntry = {
+      command: "node",
+      args: [scriptPath],
+    };
+    // Same MCP server entry under each client's expected config shape +
+    // canonical config-file location. Renderer renders one tab per client.
+    const clients = [
+      {
+        id: "claude-desktop",
+        label: "Claude Desktop",
+        configPath: path.join(
+          home,
+          "Library",
+          "Application Support",
+          "Claude",
+          "claude_desktop_config.json",
+        ),
+        snippet: JSON.stringify({ mcpServers: { fere: serverEntry } }, null, 2),
+        notes:
+          "Merge into the existing JSON. Restart Claude Desktop after saving.",
+      },
+      {
+        id: "claude-code",
+        label: "Claude Code",
+        configPath: ".mcp.json (project root) — or ~/.claude.json for global",
+        snippet: JSON.stringify({ mcpServers: { fere: serverEntry } }, null, 2),
+        notes:
+          "Or run: claude mcp add fere -s user -- node " + scriptPath,
+      },
+      {
+        id: "cursor",
+        label: "Cursor",
+        configPath: path.join(home, ".cursor", "mcp.json"),
+        snippet: JSON.stringify({ mcpServers: { fere: serverEntry } }, null, 2),
+        notes: "Or place at .cursor/mcp.json inside a project for project scope.",
+      },
+      {
+        id: "windsurf",
+        label: "Windsurf",
+        configPath: path.join(home, ".codeium", "windsurf", "mcp_config.json"),
+        snippet: JSON.stringify({ mcpServers: { fere: serverEntry } }, null, 2),
+        notes: "Restart Windsurf after saving.",
+      },
+      {
+        id: "zed",
+        label: "Zed",
+        configPath: path.join(home, ".config", "zed", "settings.json"),
+        snippet: JSON.stringify(
+          { context_servers: { fere: serverEntry } },
+          null,
+          2,
+        ),
+        notes: "Merge under the existing `context_servers` key.",
+      },
+    ];
+    return { success: true, scriptPath, scriptExists: exists, clients };
+  } catch (err) {
+    console.error("mcp:get-config error:", err);
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle("mcp:reveal-config", async (_, configPath) => {
+  try {
+    if (!configPath) return { success: false, error: "No path" };
+    if (fs.existsSync(configPath)) {
+      shell.showItemInFolder(configPath);
+    } else {
+      // Show the parent directory if the config doesn't exist yet.
+      const dir = path.dirname(configPath);
+      if (fs.existsSync(dir)) {
+        shell.openPath(dir);
+      } else {
+        return { success: false, error: "Path does not exist" };
+      }
+    }
+    return { success: true };
+  } catch (err) {
+    console.error("mcp:reveal-config error:", err);
+    return { success: false, error: err.message };
+  }
+});

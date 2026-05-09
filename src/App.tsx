@@ -18,6 +18,7 @@ import { ContainerLogsTab } from "./components/ContainerLogsTab";
 import { AnalyticsView } from "./components/AnalyticsView";
 import { WelcomeModal } from "./components/WelcomeModal";
 import { ShareModal } from "./components/ShareModal";
+import { ConnectAiModal } from "./components/ConnectAiModal";
 import { StackDiffModal } from "./components/StackDiffModal";
 import { McpApprovalModal } from "./components/McpApprovalModal";
 import { BlueprintPanel } from "./components/BlueprintPanel";
@@ -416,6 +417,7 @@ function App() {
   // Share modal state
   const [showShare, setShowShare] = useState(false);
   const [showStackDiff, setShowStackDiff] = useState(false);
+  const [showConnectAi, setShowConnectAi] = useState(false);
   const [authSession, setAuthSession] = useState<AuthSession | null>(null);
 
   const setIsAgentOpen = useCallback((open: boolean) => {
@@ -543,6 +545,13 @@ function App() {
     const handler = () => setViewMode("graph");
     window.addEventListener("fere:show-graph", handler);
     return () => window.removeEventListener("fere:show-graph", handler);
+  }, []);
+
+  // Sentinel header dispatches this to open the MCP connect modal.
+  useEffect(() => {
+    const handler = () => setShowConnectAi(true);
+    window.addEventListener("fere:open-connect-ai", handler);
+    return () => window.removeEventListener("fere:open-connect-ai", handler);
   }, []);
 
   // Cmd+K / Ctrl+K to focus command palette
@@ -1894,6 +1903,11 @@ function App() {
       {/* Stack Diff Modal */}
       {showStackDiff && (
         <StackDiffModal onClose={() => setShowStackDiff(false)} />
+      )}
+
+      {/* Connect AI (MCP config) Modal */}
+      {showConnectAi && (
+        <ConnectAiModal onClose={() => setShowConnectAi(false)} />
       )}
 
       {/* MCP fix approval — shown only when an external AI client requests a fix */}

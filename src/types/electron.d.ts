@@ -904,6 +904,19 @@ export interface ElectronAPI {
     snapshot: SystemSnapshot;
   }) => Promise<BlueprintCheckResult>;
 
+  // MCP integration — emit copy-pasteable config snippets pointing at fere-mcp
+  getMcpConfig: () => Promise<{
+    success: boolean;
+    error?: string;
+    scriptPath?: string;
+    scriptExists?: boolean;
+    clients?: McpClientConfig[];
+  }>;
+  revealMcpConfigPath: (configPath: string) => Promise<{
+    success: boolean;
+    error?: string;
+  }>;
+
   // Service notes — short per-service reminders saved to .fere/notes.json
   listServiceNotes: (projectPath: string) => Promise<{
     success: boolean;
@@ -1030,6 +1043,14 @@ export interface BlueprintCheckResult {
 export interface ServiceNote {
   body: string;
   updatedAt: number;
+}
+
+export interface McpClientConfig {
+  id: string;
+  label: string;
+  configPath: string;
+  snippet: string;
+  notes?: string;
 }
 
 export interface ChatStep {
