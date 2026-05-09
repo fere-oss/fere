@@ -20,12 +20,17 @@ function readShareSettings() {
 }
 
 function writeShareSettings(patch) {
+  const existing = readShareSettings();
+  replaceShareSettings({ ...existing, ...patch });
+}
+
+// Atomic full overwrite — use this when callers need to *delete* keys, since
+// writeShareSettings's spread-merge can't drop existing fields.
+function replaceShareSettings(full) {
   const dir = path.join(os.homedir(), ".fere");
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  const existing = readShareSettings();
-  const merged = { ...existing, ...patch };
   const tmp = SHARE_SETTINGS_FILE + ".tmp";
-  fs.writeFileSync(tmp, JSON.stringify(merged, null, 2), "utf-8");
+  fs.writeFileSync(tmp, JSON.stringify(full, null, 2), "utf-8");
   fs.renameSync(tmp, SHARE_SETTINGS_FILE);
 }
 
@@ -133,4 +138,9 @@ function registerShareHandlers(
   });
 }
 
-module.exports = { registerShareHandlers, readShareSettings };
+module.exports = {
+  registerShareHandlers,
+  readShareSettings,
+  writeShareSettings,
+  replaceShareSettings,
+};

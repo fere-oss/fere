@@ -5,7 +5,6 @@ const {
   shell,
   nativeImage,
   Notification,
-  clipboard,
   powerMonitor,
   dialog,
   safeStorage,
@@ -921,7 +920,12 @@ const { registerSettingsHandlers } = require("./handlers/settingsHandlers");
 const { registerDockerHandlers } = require("./handlers/dockerHandlers");
 const { registerDatabaseHandlers } = require("./handlers/databaseHandlers");
 const { registerContainerLogHandlers } = require("./handlers/containerLogHandlers");
-const { registerShareHandlers, readShareSettings } = require("./handlers/shareHandlers");
+const {
+  registerShareHandlers,
+  readShareSettings,
+  writeShareSettings,
+  replaceShareSettings,
+} = require("./handlers/shareHandlers");
 const { registerBlueprintHandlers } = require("./handlers/blueprintHandlers");
 
 registerProcessControlHandlers(ipcMain, {
@@ -1065,11 +1069,7 @@ ipcMain.handle("agent:clear-api-key", () => {
   try {
     const settings = readShareSettings();
     delete settings.encryptedApiKey;
-    const dir = path.join(os.homedir(), ".fere");
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    const tmp = SHARE_SETTINGS_FILE + ".tmp";
-    fs.writeFileSync(tmp, JSON.stringify(settings, null, 2), "utf-8");
-    fs.renameSync(tmp, SHARE_SETTINGS_FILE);
+    replaceShareSettings(settings);
     return { success: true };
   } catch (err) {
     return { success: false, error: err.message };
@@ -1094,11 +1094,7 @@ function getAuthSession() {
     delete settings.authGithubId;
     delete settings.authGithubUsername;
     delete settings.authGithubAvatarUrl;
-    const dir = path.join(os.homedir(), ".fere");
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    const tmp = SHARE_SETTINGS_FILE + ".tmp";
-    fs.writeFileSync(tmp, JSON.stringify(settings, null, 2), "utf-8");
-    fs.renameSync(tmp, SHARE_SETTINGS_FILE);
+    replaceShareSettings(settings);
   }
   if (!settings.encryptedAuthAccessToken || !safeStorage.isEncryptionAvailable()) {
     return null;
@@ -1175,11 +1171,7 @@ function clearAuthSession() {
   delete settings.authGithubId;
   delete settings.authGithubUsername;
   delete settings.authGithubAvatarUrl;
-  const dir = path.join(os.homedir(), ".fere");
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  const tmp = SHARE_SETTINGS_FILE + ".tmp";
-  fs.writeFileSync(tmp, JSON.stringify(settings, null, 2), "utf-8");
-  fs.renameSync(tmp, SHARE_SETTINGS_FILE);
+  replaceShareSettings(settings);
 }
 
 async function refreshAuthToken() {
@@ -3251,6 +3243,53 @@ ipcMain.handle("mcp:reveal-config", async (_, configPath) => {
     return { success: true };
   } catch (err) {
     console.error("mcp:reveal-config error:", err);
+    return { success: false, error: err.message };
+  }
+});
+
+// Locate the prebuilt fere.mcpb. Dev: <repo>/dist/fere.mcpb (built via
+// `npm run build:mcpb`). Packaged: <Resources>/fere.mcpb (declared in
+// electron-builder extraResources).
+function fereMcpbPath() {
+  if (app.isPackaged) {
+    return path.join(process.resourcesPath, "fere.mcpb");
+  }
+  return path.join(app.getAppPath(), "dist", "fere.mcpb");
+}
+
+ipcMain.handle("mcp:get-bundle-status", async () => {
+  const bundlePath = fereMcpbPath();
+  const exists = fs.existsSync(bundlePath);
+  return {
+    available: exists,
+    bundlePath: exists ? bundlePath : null,
+    sizeBytes: exists ? fs.statSync(bundlePath).size : null,
+  };
+});
+
+ipcMain.handle("mcp:export-bundle", async () => {
+  try {
+    const bundlePath = fereMcpbPath();
+    if (!fs.existsSync(bundlePath)) {
+      return {
+        success: false,
+        error:
+          "fere.mcpb not found. In dev, run `npm run build:mcpb` first.",
+      };
+    }
+    const win = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0];
+    const result = await dialog.showSaveDialog(win, {
+      title: "Save Fere Claude Desktop extension",
+      defaultPath: path.join(app.getPath("downloads"), "fere.mcpb"),
+      filters: [{ name: "Claude Desktop Extension", extensions: ["mcpb"] }],
+    });
+    if (result.canceled || !result.filePath) {
+      return { success: false, canceled: true };
+    }
+    fs.copyFileSync(bundlePath, result.filePath);
+    return { success: true, savedTo: result.filePath };
+  } catch (err) {
+    console.error("mcp:export-bundle error:", err);
     return { success: false, error: err.message };
   }
 });

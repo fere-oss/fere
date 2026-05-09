@@ -15,10 +15,17 @@ type LoadState =
       clients: McpClientConfig[];
     };
 
+type BundleStatus =
+  | { status: "checking" }
+  | { status: "missing" }
+  | { status: "ready"; sizeKB: number };
+
 export function ConnectAiModal({ onClose }: Props) {
   const [state, setState] = useState<LoadState>({ status: "loading" });
   const [activeId, setActiveId] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [bundle, setBundle] = useState<BundleStatus>({ status: "checking" });
+  const [exportMsg, setExportMsg] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -52,6 +59,46 @@ export function ConnectAiModal({ onClose }: Props) {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void window.electronAPI
+      ?.getMcpBundleStatus?.()
+      .then((res) => {
+        if (cancelled) return;
+        if (res.available && typeof res.sizeBytes === "number") {
+          setBundle({
+            status: "ready",
+            sizeKB: Math.max(1, Math.round(res.sizeBytes / 1024)),
+          });
+        } else {
+          setBundle({ status: "missing" });
+        }
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setBundle({ status: "missing" });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const handleExportBundle = async () => {
+    setExportMsg(null);
+    try {
+      const res = await window.electronAPI.exportMcpBundle();
+      if (res.canceled) return;
+      if (!res.success) {
+        setExportMsg(res.error || "Could not export extension");
+        return;
+      }
+      setExportMsg(`Saved to ${res.savedTo}`);
+      window.setTimeout(() => setExportMsg(null), 4000);
+    } catch (err) {
+      setExportMsg(err instanceof Error ? err.message : "Could not export extension");
+    }
+  };
 
   useEffect(() => {
     const onEsc = (e: KeyboardEvent) => {
@@ -148,6 +195,39 @@ export function ConnectAiModal({ onClose }: Props) {
                   </button>
                 ))}
               </div>
+
+              {active.id === "claude-desktop" && (
+                <div className="connect-ai-bundle">
+                  <div className="connect-ai-bundle-header">
+                    <div>
+                      <div className="connect-ai-bundle-title">
+                        One-click install (recommended)
+                      </div>
+                      <div className="connect-ai-bundle-sub">
+                        {bundle.status === "ready"
+                          ? `Save the .mcpb (${bundle.sizeKB} KB), then double-click to install in Claude Desktop.`
+                          : bundle.status === "missing"
+                            ? "Bundle not built. In dev, run `npm run build:mcpb`."
+                            : "Checking bundle…"}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      className="connect-ai-bundle-btn"
+                      onClick={() => void handleExportBundle()}
+                      disabled={bundle.status !== "ready"}
+                    >
+                      Save .mcpb
+                    </button>
+                  </div>
+                  {exportMsg && (
+                    <div className="connect-ai-bundle-msg">{exportMsg}</div>
+                  )}
+                  <div className="connect-ai-bundle-or">
+                    or paste the JSON below manually
+                  </div>
+                </div>
+              )}
 
               <div className="connect-ai-target">
                 <div className="connect-ai-target-label">Paste into</div>

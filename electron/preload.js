@@ -192,6 +192,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
   getMcpConfig: () => ipcRenderer.invoke("mcp:get-config"),
   revealMcpConfigPath: (configPath) =>
     ipcRenderer.invoke("mcp:reveal-config", configPath),
+  // .mcpb (Claude Desktop Extension) — packaged with the app
+  getMcpBundleStatus: () => ipcRenderer.invoke("mcp:get-bundle-status"),
+  exportMcpBundle: () => ipcRenderer.invoke("mcp:export-bundle"),
   agentApplyFix: (action) => ipcRenderer.invoke("agent:apply-fix", action),
   openInClaudeCode: (finding) => ipcRenderer.invoke("agent:open-in-claude-code", finding),
   agentChat: (messages, nodeIds, tabLabel, options, graphEdges) =>

@@ -916,6 +916,17 @@ export interface ElectronAPI {
     success: boolean;
     error?: string;
   }>;
+  getMcpBundleStatus: () => Promise<{
+    available: boolean;
+    bundlePath: string | null;
+    sizeBytes: number | null;
+  }>;
+  exportMcpBundle: () => Promise<{
+    success: boolean;
+    canceled?: boolean;
+    savedTo?: string;
+    error?: string;
+  }>;
 
   // Service notes — short per-service reminders saved to .fere/notes.json
   listServiceNotes: (projectPath: string) => Promise<{
