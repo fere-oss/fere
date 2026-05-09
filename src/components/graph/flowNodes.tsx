@@ -1,4 +1,5 @@
-import { memo, useEffect, useRef, useSyncExternalStore } from "react";
+import { memo, useCallback, useEffect, useRef, useSyncExternalStore } from "react";
+import type { SyntheticEvent } from "react";
 import type { GraphNode } from "../../types/electron";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import { Handle, Position } from "reactflow";
@@ -6,8 +7,10 @@ import { ServiceNode } from "./ServiceNodes";
 import { NotePopover } from "./NotePopover";
 import {
   getOpenNoteNodeId,
+  setOpenNoteNodeId,
   subscribeOpenNoteNodeId,
 } from "./notePopoverState";
+import { noteProjectPath } from "./serviceNotes";
 import { useHoverState } from "./hoverContext";
 import { useTraceState } from "./traceContext";
 
@@ -22,6 +25,18 @@ export type FlowServiceNodeData = {
   animationIndex: number;
   onMeasure: (id: string, height: number) => void;
 };
+
+function focusOpenNoteEditor() {
+  window.requestAnimationFrame(() => {
+    const textarea = document.querySelector<HTMLTextAreaElement>(
+      ".service-note-popover-textarea",
+    );
+    if (!textarea) return;
+    textarea.focus();
+    textarea.selectionStart = textarea.value.length;
+    textarea.selectionEnd = textarea.value.length;
+  });
+}
 
 export function TierLabelNode({ data }: { data: { text: string } }) {
   return <div className="graph-tier-label">{data.text}</div>;
@@ -111,6 +126,29 @@ const FlowServiceNodeInner = memo(function FlowServiceNodeInner({
   );
   const isNoteOpen = openNoteNodeId === data.node.id;
 
+  const handleNodeClick = useCallback(
+    (node: GraphNode) => {
+      if (getOpenNoteNodeId() !== null && noteProjectPath(node)) {
+        setOpenNoteNodeId(node.id);
+        focusOpenNoteEditor();
+        return;
+      }
+      data.onNodeClick(node);
+    },
+    [data],
+  );
+
+  const handleNodePressCapture = useCallback(
+    (event: SyntheticEvent<HTMLDivElement>) => {
+      if (getOpenNoteNodeId() === null || !noteProjectPath(data.node)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      setOpenNoteNodeId(data.node.id);
+      focusOpenNoteEditor();
+    },
+    [data.node],
+  );
+
   const wrapperClass = [
     "rf-node-wrapper",
     data.animate && "rf-node-animate",
@@ -130,6 +168,7 @@ const FlowServiceNodeInner = memo(function FlowServiceNodeInner({
       ref={nodeRef}
       className={wrapperClass}
       style={{ animationDelay: `${data.animationIndex * 40}ms` }}
+      onMouseDownCapture={handleNodePressCapture}
     >
       {/* Entry point marker — anchored above the node */}
       {isTraceEntry && (
@@ -180,7 +219,7 @@ const FlowServiceNodeInner = memo(function FlowServiceNodeInner({
       />
       <ServiceNode
         node={data.node}
-        onClick={data.onNodeClick}
+        onClick={handleNodeClick}
         onContextMenu={data.onNodeContextMenu}
         animationIndex={0}
       />

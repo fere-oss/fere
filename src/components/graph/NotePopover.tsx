@@ -149,24 +149,53 @@ export function NotePopover({ node }: { node: GraphNode }) {
   );
 
   const close = useCallback(() => {
+    if (getOpenNoteNodeId() !== node.id) return;
     setOpenNoteNodeId(null);
     setError(null);
-  }, []);
+  }, [node.id]);
+
+  const saveDraft = useCallback(async () => {
+    return persist(draft);
+  }, [persist, draft]);
 
   const saveAndClose = useCallback(async () => {
     const ok = await persist(draft);
     if (ok) close();
   }, [persist, draft, close]);
 
-  const requestSaveAndClose = useCallback(() => {
+  const runSaveRequest = useCallback((closeWhenDone: boolean) => {
     if (saveRequestInFlightRef.current) return;
     saveRequestInFlightRef.current = true;
-    void saveAndClose().finally(() => {
+    void (async () => {
+      if (closeWhenDone) {
+        await saveAndClose();
+      } else {
+        await saveDraft();
+      }
+    })().finally(() => {
       window.setTimeout(() => {
         saveRequestInFlightRef.current = false;
       }, 0);
     });
-  }, [saveAndClose]);
+  }, [saveAndClose, saveDraft]);
+
+  const requestSaveAndClose = useCallback(() => {
+    runSaveRequest(true);
+  }, [runSaveRequest]);
+
+  const requestSaveOnly = useCallback(() => {
+    runSaveRequest(false);
+  }, [runSaveRequest]);
+
+  const focusTextarea = useCallback(() => {
+    window.requestAnimationFrame(() => {
+      const el = textareaRef.current;
+      if (!el) return;
+      el.focus();
+      el.selectionStart = el.value.length;
+      el.selectionEnd = el.value.length;
+    });
+  }, []);
 
   const stopPopoverEvent = useCallback((e: SyntheticEvent) => {
     e.stopPropagation();
@@ -187,19 +216,54 @@ export function NotePopover({ node }: { node: GraphNode }) {
   );
 
   // Click outside to save & close. Only attached while open.
+  // Uses a class-based check so any click landing inside *any* popover
+  // surface (including its tail and absolutely-positioned children) is
+  // treated as "inside" — more robust than relying solely on containerRef.
   useEffect(() => {
     if (!isOpen) return;
     const handler = (e: MouseEvent) => {
-      const target = e.target as Node;
-      if (containerRef.current && containerRef.current.contains(target)) return;
-      // Don't close on icon clicks — the icon's own handler toggles state.
-      const el = target as HTMLElement;
-      if (el.closest && el.closest(".service-note-icon-btn")) return;
+      const el = e.target as HTMLElement | null;
+      if (!el || !el.closest) return;
+      if (el.closest(".service-note-popover")) return;
+      const clickedNode = el.closest("[data-node-id]") as HTMLElement | null;
+      if (clickedNode) {
+        requestSaveOnly();
+        if (clickedNode.getAttribute("data-node-id") === node.id) {
+          focusTextarea();
+        }
+        return;
+      }
       requestSaveAndClose();
     };
     document.addEventListener("mousedown", handler, true);
     return () => document.removeEventListener("mousedown", handler, true);
-  }, [isOpen, requestSaveAndClose]);
+  }, [focusTextarea, isOpen, node.id, requestSaveAndClose, requestSaveOnly]);
+
+  // A click anywhere on the popover background or tail should route the
+  // user into editing — focus the textarea. Buttons and the textarea itself
+  // handle their own click semantics.
+  const handlePopoverClick = useCallback(
+    (e: SyntheticEvent<HTMLDivElement>) => {
+      e.stopPropagation();
+      const target = e.target as HTMLElement;
+      if (target.closest("button, textarea")) return;
+      focusTextarea();
+    },
+    [focusTextarea],
+  );
+
+  const handlePopoverDoubleClick = useCallback(
+    (e: SyntheticEvent<HTMLDivElement>) => {
+      e.stopPropagation();
+      const target = e.target as HTMLElement;
+      if (target.closest("button")) return;
+      const el = textareaRef.current;
+      if (!el) return;
+      el.focus();
+      el.select();
+    },
+    [],
+  );
 
   if (!isOpen || !projectPath) return null;
 
@@ -216,7 +280,8 @@ export function NotePopover({ node }: { node: GraphNode }) {
       onPointerUp={stopPopoverEvent}
       onMouseDown={stopPopoverEvent}
       onMouseDownCapture={stopPopoverEvent}
-      onClick={stopPopoverEvent}
+      onClick={handlePopoverClick}
+      onDoubleClick={handlePopoverDoubleClick}
       onWheel={stopPopoverEvent}
     >
       <div className="service-note-popover-tail" aria-hidden="true" />

@@ -7,9 +7,21 @@ import {
 } from "./serviceNotes";
 import {
   getOpenNoteNodeId,
+  setOpenNoteNodeId,
   subscribeOpenNoteNodeId,
-  toggleOpenNoteNodeId,
 } from "./notePopoverState";
+
+function focusOpenNoteEditor() {
+  window.requestAnimationFrame(() => {
+    const textarea = document.querySelector<HTMLTextAreaElement>(
+      ".service-note-popover-textarea",
+    );
+    if (!textarea) return;
+    textarea.focus();
+    textarea.selectionStart = textarea.value.length;
+    textarea.selectionEnd = textarea.value.length;
+  });
+}
 
 // Small clickable note icon that lives in a service node's header. Clicking
 // it opens the sticky-note popover (rendered separately as a sibling of the
@@ -46,7 +58,8 @@ export function NoteIconButton({ node }: { node: GraphNode }) {
         .join(" ")}
       onClick={(e) => {
         e.stopPropagation();
-        toggleOpenNoteNodeId(node.id);
+        setOpenNoteNodeId(node.id);
+        focusOpenNoteEditor();
       }}
       onMouseDown={(e) => e.stopPropagation()}
       title={hasNote ? note!.body : "Add note"}
