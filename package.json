@@ -28,7 +28,6 @@
     "posthog-node": "^5.24.17",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
-    "react-flow": "^1.0.3",
     "react-markdown": "^9.1.0",
     "react-scripts": "5.0.1",
     "react-window": "^2.2.7",
@@ -175,8 +174,7 @@
     "collectCoverageFrom": [
       "src/**/*.{ts,tsx}",
       "!src/**/*.d.ts",
-      "!src/index.tsx",
-      "!src/reportWebVitals.ts"
+      "!src/index.tsx"
     ],
     "coverageThreshold": {
       "global": {

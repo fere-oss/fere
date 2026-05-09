@@ -319,8 +319,6 @@ function App() {
     window.electronAPI?.setNativeTheme?.(theme);
   }, [theme]);
 
-  // First detection toast
-  // View mode state - graph or api-tester
   const [viewMode, setViewMode] = useState<ViewMode>("graph");
 
   const [analyticsBadge, setAnalyticsBadge] = useState(false);
