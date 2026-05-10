@@ -66,6 +66,23 @@ function writeManifest(serverEntryRel) {
     typeof PKG.author === "string"
       ? { name: PKG.author }
       : PKG.author || { name: "Fere" };
+  // package.json's `homepage` is set to "./" for Create React App's public
+  // path — that's not a valid URL for the DXT manifest, which only accepts
+  // http(s). Fall back to the GitHub repo when the value isn't a real URL.
+  const isHttpUrl = (s) =>
+    typeof s === "string" && /^https?:\/\//.test(s);
+  const homepage = isHttpUrl(PKG.homepage)
+    ? PKG.homepage
+    : "https://github.com/RahulThennarasu/fere-macOS";
+  const repositoryUrl =
+    PKG.repository &&
+    (typeof PKG.repository === "string"
+      ? isHttpUrl(PKG.repository)
+        ? PKG.repository
+        : null
+      : isHttpUrl(PKG.repository.url)
+        ? PKG.repository.url
+        : null);
   const manifest = {
     dxt_version: "0.1",
     name: "fere",
@@ -76,8 +93,8 @@ function writeManifest(serverEntryRel) {
     long_description:
       "Fere watches your local development environment in real time. This extension lets Claude Desktop pull live runtime data from a running Fere app via MCP. Services, port mappings, health, findings, API routes, external API calls, and container logs become available as MCP tools. Requires the Fere desktop app to be installed and running on the same machine — discovery is via ~/.fere/mcp.lock.",
     author,
-    homepage: PKG.homepage || "https://github.com/RahulThennarasu/fere-macOS",
-    repository: PKG.repository || undefined,
+    homepage,
+    ...(repositoryUrl ? { repository: { type: "git", url: repositoryUrl } } : {}),
     license: PKG.license || "MIT",
     keywords: ["mcp", "fere", "runtime", "observability", "local-dev"],
     server: {
