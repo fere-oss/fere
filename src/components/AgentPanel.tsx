@@ -105,11 +105,7 @@ function renderDefaultStepIcon(stepType: ChatStep["type"]): React.ReactElement {
     );
   }
 
-  if (
-    stepType === "docker_logs" ||
-    stepType === "docker_exec" ||
-    stepType === "docker_control"
-  ) {
+  if (stepType === "docker_logs" || stepType === "docker_exec" || stepType === "docker_control") {
     return (
       <svg
         width="12"
@@ -190,9 +186,7 @@ function normalizeDomain(domain: string): string | null {
   return parts.slice(-2).join(".");
 }
 
-function buildProviderDomainMap(
-  providers: ExternalApiProvider[],
-): Record<string, string> {
+function buildProviderDomainMap(providers: ExternalApiProvider[]): Record<string, string> {
   const map: Record<string, string> = {};
   for (const provider of providers) {
     const key = normalizeLabel(provider.name);
@@ -212,15 +206,10 @@ function buildProviderDomainMap(
   return map;
 }
 
-function getLogoUrl(
-  name: string,
-  providerDomains: Record<string, string>,
-): string | null {
+function getLogoUrl(name: string, providerDomains: Record<string, string>): string | null {
   const normalizedName = normalizeLabel(name);
   const aliased = PROVIDER_ALIAS_MAP[normalizedName];
-  const domain =
-    providerDomains[normalizedName] ||
-    (aliased ? providerDomains[aliased] : "");
+  const domain = providerDomains[normalizedName] || (aliased ? providerDomains[aliased] : "");
   if (!domain) return null;
   const params = new URLSearchParams({
     size: "32",
@@ -235,11 +224,7 @@ function isWordChar(char: string): boolean {
   return /[a-z0-9]/i.test(char);
 }
 
-function hasTokenBoundaries(
-  text: string,
-  start: number,
-  length: number,
-): boolean {
+function hasTokenBoundaries(text: string, start: number, length: number): boolean {
   const before = start > 0 ? text[start - 1] : "";
   const after = start + length < text.length ? text[start + length] : "";
   const beforeOk = !before || !isWordChar(before);
@@ -259,10 +244,7 @@ function findProviderMentionHits(
 ): ProviderMentionHit[] {
   if (!text.trim()) return [];
   const lookupTerms = Array.from(
-    new Set([
-      ...Object.keys(providerDomains),
-      ...Object.keys(PROVIDER_ALIAS_MAP),
-    ]),
+    new Set([...Object.keys(providerDomains), ...Object.keys(PROVIDER_ALIAS_MAP)]),
   ).sort((a, b) => b.length - a.length);
   if (lookupTerms.length === 0) return [];
 
@@ -280,11 +262,7 @@ function findProviderMentionHits(
       }
       if (idx === -1) continue;
       const end = idx + term.length;
-      if (
-        bestStart === -1 ||
-        idx < bestStart ||
-        (idx === bestStart && end > bestEnd)
-      ) {
+      if (bestStart === -1 || idx < bestStart || (idx === bestStart && end > bestEnd)) {
         bestStart = idx;
         bestEnd = end;
       }
@@ -478,13 +456,7 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
-function ContextBlock({
-  snapshot,
-  copyText,
-}: {
-  snapshot: ContextSnapshot;
-  copyText: string;
-}) {
+function ContextBlock({ snapshot, copyText }: { snapshot: ContextSnapshot; copyText: string }) {
   const HEALTH_DOT: Record<string, string> = {
     green: "#22C55E",
     yellow: "#EAB308",
@@ -495,7 +467,9 @@ function ContextBlock({
     <div className="agp-context-block">
       <div className="agp-context-header">
         <span className="agp-context-title">Runtime Context</span>
-        <span className="agp-context-meta">{snapshot.scope} · {snapshot.timestamp}</span>
+        <span className="agp-context-meta">
+          {snapshot.scope} · {snapshot.timestamp}
+        </span>
       </div>
 
       <div className="agp-context-scrollable">
@@ -521,7 +495,10 @@ function ContextBlock({
                       {svc.type}
                     </span>
                     <span className="agp-context-service-name">{svc.name}</span>
-                    <span className="agp-context-service-health" style={{ background: healthColor }} />
+                    <span
+                      className="agp-context-service-health"
+                      style={{ background: healthColor }}
+                    />
                     <span className="agp-context-service-meta">:{ports}</span>
                     {cpu && <span className="agp-context-service-meta">{cpu}</span>}
                     {mem && <span className="agp-context-service-meta">{mem}</span>}
@@ -534,7 +511,11 @@ function ContextBlock({
                   )}
                   {svc.routes && svc.routes.length > 0 && (
                     <div className="agp-context-service-detail">
-                      routes: {svc.routes.slice(0, 4).map((r) => `${r.method ?? "?"} ${r.path}`).join(", ")}
+                      routes:{" "}
+                      {svc.routes
+                        .slice(0, 4)
+                        .map((r) => `${r.method ?? "?"} ${r.path}`)
+                        .join(", ")}
                       {svc.routes.length > 4 ? ` +${svc.routes.length - 4} more` : ""}
                     </div>
                   )}
@@ -551,13 +532,17 @@ function ContextBlock({
 
         {(snapshot.connections ?? []).length > 0 && (
           <div className="agp-context-section">
-            <div className="agp-context-section-label">Connections ({snapshot.connections.length})</div>
+            <div className="agp-context-section-label">
+              Connections ({snapshot.connections.length})
+            </div>
             {snapshot.connections.map((c, i) => (
               <div key={i} className="agp-context-service-detail" style={{ padding: "2px 0" }}>
                 <span style={{ fontWeight: 600, color: "var(--text-primary)" }}>{c.from}</span>
                 <span style={{ margin: "0 4px", color: "var(--text-muted)" }}>→</span>
                 <span style={{ fontWeight: 600, color: "var(--text-primary)" }}>{c.to}</span>
-                <span className="agp-context-service-meta" style={{ marginLeft: 4 }}>:{c.port}</span>
+                <span className="agp-context-service-meta" style={{ marginLeft: 4 }}>
+                  :{c.port}
+                </span>
               </div>
             ))}
           </div>
@@ -569,7 +554,13 @@ function ContextBlock({
             {snapshot.findings.map((f, i) => {
               const sev = f.severity.toLowerCase();
               const sevColor =
-                sev === "critical" ? "#EF4444" : sev === "high" ? "#F97316" : sev === "medium" ? "#EAB308" : "#6B7280";
+                sev === "critical"
+                  ? "#EF4444"
+                  : sev === "high"
+                    ? "#F97316"
+                    : sev === "medium"
+                      ? "#EAB308"
+                      : "#6B7280";
               return (
                 <div key={i} className="agp-context-finding">
                   <span className="agp-context-finding-sev" style={{ color: sevColor }}>
@@ -628,11 +619,7 @@ function renderProviderMentionsInText(
     const logoUrl = getLogoUrl(hit.text, providerDomains);
     if (logoUrl) {
       nodes.push(
-        <ProviderMention
-          key={`provider-${idx}-${hit.start}`}
-          text={hit.text}
-          logoUrl={logoUrl}
-        />,
+        <ProviderMention key={`provider-${idx}-${hit.start}`} text={hit.text} logoUrl={logoUrl} />,
       );
     } else {
       nodes.push(hit.text);
@@ -676,10 +663,7 @@ function renderProviderMentionsInChildren(
   if (!("children" in element.props)) return element;
   return React.cloneElement(element, {
     ...element.props,
-    children: renderProviderMentionsInChildren(
-      element.props.children,
-      providerDomains,
-    ),
+    children: renderProviderMentionsInChildren(element.props.children, providerDomains),
   });
 }
 
@@ -747,11 +731,7 @@ function sanitizeFeed(input: unknown): FeedItem[] {
     if (!raw || typeof raw !== "object") continue;
     const m = raw as Record<string, unknown>;
     // Old format: { role, content } without kind — migrate
-    if (
-      !m.kind &&
-      (m.role === "user" || m.role === "assistant") &&
-      typeof m.content === "string"
-    ) {
+    if (!m.kind && (m.role === "user" || m.role === "assistant") && typeof m.content === "string") {
       items.push({
         kind: "message",
         role: m.role as "user" | "assistant",
@@ -818,10 +798,7 @@ function sanitizeThreads(input: unknown): ChatThread[] {
         ? maybe.updatedAt
         : Date.now();
     threads.push({
-      id:
-        typeof maybe.id === "string" && maybe.id.trim()
-          ? maybe.id
-          : createThreadId(),
+      id: typeof maybe.id === "string" && maybe.id.trim() ? maybe.id : createThreadId(),
       title:
         typeof maybe.title === "string" && maybe.title.trim()
           ? maybe.title.trim()
@@ -914,11 +891,7 @@ function AgentErrorToast({
     <div className="agp-agent-toast" role="alert">
       <div className="agp-agent-toast-title">{providerName} couldn't run</div>
       <div className="agp-agent-toast-msg">{message}</div>
-      <button
-        className="agp-agent-toast-dismiss"
-        onClick={onDismiss}
-        aria-label="Dismiss"
-      >
+      <button className="agp-agent-toast-dismiss" onClick={onDismiss} aria-label="Dismiss">
         ×
       </button>
     </div>
@@ -1017,9 +990,7 @@ function InvestigateButton({
       {menuOpen && (
         <div className="agp-finding-agent-menu" role="menu">
           {(agentLoadState === "loading" || agentLoadState === "idle") && (
-            <div className="agp-finding-agent-menu-empty">
-              Detecting agents…
-            </div>
+            <div className="agp-finding-agent-menu-empty">Detecting agents…</div>
           )}
           {agentLoadState === "error" && (
             <>
@@ -1028,7 +999,9 @@ function InvestigateButton({
               </div>
               <button
                 className="agp-finding-agent-menu-item"
-                onClick={() => { void onRefreshAgents(); }}
+                onClick={() => {
+                  void onRefreshAgents();
+                }}
               >
                 <span className="agp-finding-agent-menu-name">Retry</span>
               </button>
@@ -1036,47 +1009,42 @@ function InvestigateButton({
           )}
           {agentLoadState === "ready" && agentProviders.length === 0 && (
             <div className="agp-finding-agent-menu-empty">
-              No agent CLI detected. Install Claude Code or OpenAI Codex,
-              then click Retry.
+              No agent CLI detected. Install Claude Code or OpenAI Codex, then click Retry.
             </div>
           )}
-          {agentLoadState === "ready" && agentProviders.map((p) => (
-            <div key={p.id} className="agp-finding-agent-menu-row">
-              {p.detected ? (
-                <button
-                  className="agp-finding-agent-menu-item"
-                  role="menuitem"
-                  onClick={() => {
-                    onChooseDefault(p.id);
-                    onInvestigate(item, p.id);
-                  }}
-                >
-                  <span className="agp-finding-agent-menu-name">
-                    {p.displayName}
-                  </span>
-                  {activeProvider?.id === p.id && (
-                    <span className="agp-finding-agent-menu-check">✓</span>
-                  )}
-                </button>
-              ) : (
-                <div className="agp-finding-agent-menu-item agp-finding-agent-menu-disabled">
-                  <span className="agp-finding-agent-menu-name">
-                    {p.displayName}
-                  </span>
-                  <span
-                    className="agp-finding-agent-menu-install"
-                    title={p.installHint}
+          {agentLoadState === "ready" &&
+            agentProviders.map((p) => (
+              <div key={p.id} className="agp-finding-agent-menu-row">
+                {p.detected ? (
+                  <button
+                    className="agp-finding-agent-menu-item"
+                    role="menuitem"
+                    onClick={() => {
+                      onChooseDefault(p.id);
+                      onInvestigate(item, p.id);
+                    }}
                   >
-                    not installed
-                  </span>
-                </div>
-              )}
-            </div>
-          ))}
+                    <span className="agp-finding-agent-menu-name">{p.displayName}</span>
+                    {activeProvider?.id === p.id && (
+                      <span className="agp-finding-agent-menu-check">✓</span>
+                    )}
+                  </button>
+                ) : (
+                  <div className="agp-finding-agent-menu-item agp-finding-agent-menu-disabled">
+                    <span className="agp-finding-agent-menu-name">{p.displayName}</span>
+                    <span className="agp-finding-agent-menu-install" title={p.installHint}>
+                      not installed
+                    </span>
+                  </div>
+                )}
+              </div>
+            ))}
           {agentLoadState === "ready" && (
             <button
               className="agp-finding-agent-menu-item agp-finding-agent-menu-refresh"
-              onClick={() => { void onRefreshAgents(); }}
+              onClick={() => {
+                void onRefreshAgents();
+              }}
               title="Re-run detection"
             >
               <span className="agp-finding-agent-menu-name">Refresh</span>
@@ -1135,13 +1103,9 @@ function FindingCard({
   const [agentMenuOpen, setAgentMenuOpen] = useState(false);
   const detectedProviders = agentProviders.filter((p) => p.detected);
   const activeProvider =
-    detectedProviders.find((p) => p.id === defaultAgentId) ??
-    detectedProviders[0] ??
-    null;
+    detectedProviders.find((p) => p.id === defaultAgentId) ?? detectedProviders[0] ?? null;
   const canDismiss =
-    item.stage === "detected" ||
-    item.stage === "verified" ||
-    item.stage === "escalated";
+    item.stage === "detected" || item.stage === "verified" || item.stage === "escalated";
 
   return (
     <div className={`agp-finding-card agp-finding-stage-${item.stage}`}>
@@ -1162,24 +1126,20 @@ function FindingCard({
 
       {item.stage === "detected" && (
         <div className="agp-finding-actions">
-          {item.fix &&
-            (item.fix.type === "restart-container" ||
-              item.fix.type === "kill-port") && (
-              <button
-                className="agp-finding-fix-btn"
-                onClick={() => onFix(item.id)}
-                disabled={isStreaming}
-                title={
-                  item.fix.type === "restart-container"
-                    ? "Restart this container"
-                    : `Kill the process on port ${item.fix.port}`
-                }
-              >
-                {item.fix.type === "restart-container"
-                  ? "Restart"
-                  : `Kill :${item.fix.port}`}
-              </button>
-            )}
+          {item.fix && (item.fix.type === "restart-container" || item.fix.type === "kill-port") && (
+            <button
+              className="agp-finding-fix-btn"
+              onClick={() => onFix(item.id)}
+              disabled={isStreaming}
+              title={
+                item.fix.type === "restart-container"
+                  ? "Restart this container"
+                  : `Kill the process on port ${item.fix.port}`
+              }
+            >
+              {item.fix.type === "restart-container" ? "Restart" : `Kill :${item.fix.port}`}
+            </button>
+          )}
           <button
             className="agp-finding-explain-btn"
             onClick={() => onExplain(item)}
@@ -1216,50 +1176,43 @@ function FindingCard({
         </div>
       )}
 
-      {investigation && (() => {
-        const trimmed = (investigation.result ?? "").trim();
-        const isMeaningful =
-          trimmed.length > 0 &&
-          trimmed !== "(no output)" &&
-          trimmed !== "()";
-        const showResult = investigation.status === "done" && isMeaningful;
-        const showEmptyDone = investigation.status === "done" && !isMeaningful;
-        const showRunning = investigation.status === "running";
-        const showError = investigation.status === "error";
-        if (!showResult && !showEmptyDone && !showRunning && !showError) {
-          return null;
-        }
-        return (
-          <div className="agp-finding-investigation">
-            {showRunning && (() => {
-              const who = investigation.providerName || "Agent";
-              return (
-                <div className="agp-finding-status">
-                  <span className="agp-step-spinner" />
-                  {investigation.lastTool
-                    ? `${who} → ${investigation.lastTool}`
-                    : `${who} is investigating…`}
+      {investigation &&
+        (() => {
+          const trimmed = (investigation.result ?? "").trim();
+          const isMeaningful = trimmed.length > 0 && trimmed !== "(no output)" && trimmed !== "()";
+          const showResult = investigation.status === "done" && isMeaningful;
+          const showEmptyDone = investigation.status === "done" && !isMeaningful;
+          const showRunning = investigation.status === "running";
+          const showError = investigation.status === "error";
+          if (!showResult && !showEmptyDone && !showRunning && !showError) {
+            return null;
+          }
+          return (
+            <div className="agp-finding-investigation">
+              {showRunning &&
+                (() => {
+                  const who = investigation.providerName || "Agent";
+                  return (
+                    <div className="agp-finding-status">
+                      <span className="agp-step-spinner" />
+                      {investigation.lastTool
+                        ? `${who} → ${investigation.lastTool}`
+                        : `${who} is investigating…`}
+                    </div>
+                  );
+                })()}
+              {showResult && <pre className="agp-finding-investigation-result">{trimmed}</pre>}
+              {showEmptyDone && (
+                <div className="agp-finding-status">Investigation finished with no output.</div>
+              )}
+              {showError && (
+                <div className="agp-finding-status agp-finding-status-escalated">
+                  {investigation.error}
                 </div>
-              );
-            })()}
-            {showResult && (
-              <pre className="agp-finding-investigation-result">
-                {trimmed}
-              </pre>
-            )}
-            {showEmptyDone && (
-              <div className="agp-finding-status">
-                Investigation finished with no output.
-              </div>
-            )}
-            {showError && (
-              <div className="agp-finding-status agp-finding-status-escalated">
-                {investigation.error}
-              </div>
-            )}
-          </div>
-        );
-      })()}
+              )}
+            </div>
+          );
+        })()}
 
       {(item.stage === "fixing" || item.stage === "fixed") && (
         <div className="agp-finding-status">
@@ -1269,9 +1222,7 @@ function FindingCard({
       )}
 
       {item.stage === "verified" && (
-        <div className="agp-finding-status agp-finding-status-verified">
-          Fixed
-        </div>
+        <div className="agp-finding-status agp-finding-status-verified">Fixed</div>
       )}
 
       {item.stage === "escalated" && (
@@ -1378,9 +1329,7 @@ export function AgentPanel({
     providerName?: string;
     providerId?: string;
   };
-  const [investigations, setInvestigations] = useState<
-    Record<string, InvestigationState>
-  >({});
+  const [investigations, setInvestigations] = useState<Record<string, InvestigationState>>({});
 
   // Available agent CLIs detected on the user's machine + the persisted default.
   type AgentProviderInfo = {
@@ -1392,9 +1341,9 @@ export function AgentPanel({
   };
   const AGENT_PREF_KEY = "fere.defaultAgentProvider";
   const [agentProviders, setAgentProviders] = useState<AgentProviderInfo[]>([]);
-  const [agentLoadState, setAgentLoadState] = useState<
-    "idle" | "loading" | "ready" | "error"
-  >("loading");
+  const [agentLoadState, setAgentLoadState] = useState<"idle" | "loading" | "ready" | "error">(
+    "loading",
+  );
   const [agentLoadError, setAgentLoadError] = useState<string | null>(null);
   const [defaultAgentId, setDefaultAgentIdState] = useState<string | null>(() => {
     if (typeof localStorage === "undefined") return null;
@@ -1428,8 +1377,7 @@ export function AgentPanel({
       setAgentLoadState("ready");
       if (res.error) setAgentLoadError(res.error);
       const detected = (res.providers ?? []).filter((p) => p.detected);
-      const stillValid =
-        defaultAgentId && detected.some((p) => p.id === defaultAgentId);
+      const stillValid = defaultAgentId && detected.some((p) => p.id === defaultAgentId);
       if (!stillValid && detected.length > 0) {
         setDefaultAgentId(detected[0].id);
       } else if (!stillValid) {
@@ -1445,7 +1393,8 @@ export function AgentPanel({
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const mirrorRef = useRef<HTMLDivElement>(null);
   const streamingTextRef = useRef("");
-  const surfacedByTabRef = useRef<Map<string, Set<string>>>(new Map());
+  // Track when we last surfaced a finding id per tab scope so recurring issues can re-alert.
+  const surfacedByTabRef = useRef<Map<string, Map<string, number>>>(new Map());
   const autopilotInFlightRef = useRef<Set<string>>(new Set());
   // Pending investigation message — sent once activeThread settles after thread switch
   const pendingInvestigationRef = useRef<string | null>(null);
@@ -1870,9 +1819,7 @@ export function AgentPanel({
       .map(
         (s) => `- ${s.name}: ${s.routes!.map((r) => `${r.method ?? "?"} ${r.path}`).join(", ")}`,
       );
-    const noteLines = services
-      .filter((s) => s.note)
-      .map((s) => `- ${s.name}: ${s.note}`);
+    const noteLines = services.filter((s) => s.note).map((s) => `- ${s.name}: ${s.note}`);
     const findLines = findings.map(
       (f) => `- [${f.severity.toUpperCase()}] ${f.service}: ${f.summary}`,
     );
@@ -2300,11 +2247,20 @@ export function AgentPanel({
       });
       if (inScope.length === 0) return;
 
-      const existing = surfacedByTabRef.current.get(tabScopeKey) ?? new Set<string>();
-      const unseen = inScope.filter((f) => !existing.has(f.id));
+      const RESURFACE_COOLDOWN_MS = 5_000;
+      const existing = surfacedByTabRef.current.get(tabScopeKey) ?? new Map<string, number>();
+      const now = Date.now();
+      const unseen = inScope.filter((f) => {
+        const occurredAt = typeof (f as any).occurredAt === "number" ? (f as any).occurredAt : now;
+        const lastSeenAt = existing.get(f.id) ?? 0;
+        return occurredAt > lastSeenAt && occurredAt - lastSeenAt >= RESURFACE_COOLDOWN_MS;
+      });
       if (unseen.length === 0) return;
 
-      unseen.forEach((f) => existing.add(f.id));
+      unseen.forEach((f) => {
+        const occurredAt = typeof (f as any).occurredAt === "number" ? (f as any).occurredAt : now;
+        existing.set(f.id, occurredAt);
+      });
       surfacedByTabRef.current.set(tabScopeKey, existing);
       unseen.forEach((f) => updateFindingInFeed(f.id, "detected"));
 
@@ -2800,9 +2756,7 @@ export function AgentPanel({
               </button>
               <button
                 className="agp-scan-btn agp-connect-ai-btn agp-header-utility"
-                onClick={() =>
-                  window.dispatchEvent(new CustomEvent("fere:open-connect-ai"))
-                }
+                onClick={() => window.dispatchEvent(new CustomEvent("fere:open-connect-ai"))}
                 title="Connect external AI (Claude, Cursor, Windsurf, Zed) via MCP"
                 disabled={isStreaming}
                 aria-label="Connect AI via MCP"

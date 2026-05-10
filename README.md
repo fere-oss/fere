@@ -1,8 +1,8 @@
 # Fere
 
-[![CI](https://github.com/RahulThennarasu/fere/actions/workflows/ci.yml/badge.svg)](https://github.com/RahulThennarasu/fere/actions/workflows/ci.yml)
+[![CI](https://github.com/fere-oss/fere/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/fere-oss/fere/actions/workflows/ci.yml?query=branch%3Amain)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/github/v/release/RahulThennarasu/fere?label=version)](https://github.com/RahulThennarasu/fere/releases)
+[![Version](https://img.shields.io/github/v/release/fere-oss/fere?label=version)](https://github.com/fere-oss/fere/releases)
 
 Fere is a desktop app for understanding what is running on your machine right now.
 
@@ -609,4 +609,3 @@ For deeper internals, read:
 
 - [`docs/architecture.md`](docs/architecture.md)
 - [`ARCHITECTURE.md`](ARCHITECTURE.md) — public IPC bridge overview
-
