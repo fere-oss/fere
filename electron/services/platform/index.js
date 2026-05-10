@@ -14,6 +14,9 @@ switch (platform) {
   case "darwin":
     impl = require("./darwin");
     break;
+  case "linux":
+    impl = require("./linux");
+    break;
   case "win32":
     impl = require("./win32");
     break;
