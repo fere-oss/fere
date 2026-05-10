@@ -85,7 +85,8 @@
       "Bash(unzip -q /Users/siddharthbalaji/Documents/fere/dist/fere.mcpb -d fere-mcpb-test)",
       "Bash(timeout 2 node fere-mcpb-test/server/index.js)",
       "Bash(node --check /Users/siddharthbalaji/Documents/fere/electron/main.js)",
-      "Bash(node --check /Users/siddharthbalaji/Documents/fere/electron/handlers/shareHandlers.js)"
+      "Bash(node --check /Users/siddharthbalaji/Documents/fere/electron/handlers/shareHandlers.js)",
+      "Bash(node --test electron/services electron/security.test.js)"
     ]
   }
 }

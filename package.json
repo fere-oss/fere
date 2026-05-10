@@ -63,7 +63,7 @@
     "electron:build": "npm run build && npm run build:mcpb && electron-builder",
     "electron:build:mac": "npm run build && npm run build:mcpb && electron-builder --mac",
     "electron:build:win": "npm run build && npm run build:mcpb && electron-builder --win",
-    "test:node": "node --test 'electron/services/**/*.test.js' electron/security.test.js",
+    "test:node": "node scripts/run-node-tests.js",
     "build:mcpb": "node scripts/build-mcpb.js",
     "release:check": "npm run typecheck && npm run test:node && npm run build",
     "prepare": "husky"
