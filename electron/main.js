@@ -179,6 +179,8 @@ let snapshotHandler = null;
 let activityEventHandler = null;
 let alertNodeMap = new Map();
 const _surfacedFindingIds = new Set();
+// id → last time (ms) we surfaced this finding to the renderer
+const _surfacedFindingLastAt = new Map();
 // id → severity of last surfaced finding, for worsened detection
 const _surfacedFindingSeverity = new Map();
 // Suppress repeated critical notifications within 60s per finding id
@@ -396,7 +398,15 @@ app.whenReady().then(() => {
   // runtime data via the bin/fere-mcp.js stdio shim.
   mcpBridge
     .start({
-      snapshotScheduler: { get previousSnapshot() { return snapshotScheduler && snapshotScheduler.previousSnapshot; }, getLatestSnapshot: () => snapshotScheduler && snapshotScheduler.getLatestSnapshot && snapshotScheduler.getLatestSnapshot() },
+      snapshotScheduler: {
+        get previousSnapshot() {
+          return snapshotScheduler && snapshotScheduler.previousSnapshot;
+        },
+        getLatestSnapshot: () =>
+          snapshotScheduler &&
+          snapshotScheduler.getLatestSnapshot &&
+          snapshotScheduler.getLatestSnapshot(),
+      },
       runScan,
       scanRoutes,
       scanExternalApis,
@@ -408,7 +418,7 @@ app.whenReady().then(() => {
       console.log(`[mcp] bridge listening on 127.0.0.1:${port}`);
     })
     .catch((err) => {
-      console.error('[mcp] bridge failed to start:', err && err.message);
+      console.error("[mcp] bridge failed to start:", err && err.message);
     });
 });
 
@@ -424,13 +434,13 @@ const pendingMcpApprovals = new Map();
 function requestMcpApproval(payload) {
   return new Promise((resolve) => {
     if (!mainWindow || mainWindow.isDestroyed() || !mainWindow.webContents) {
-      resolve({ approved: false, reason: 'Fere window unavailable' });
+      resolve({ approved: false, reason: "Fere window unavailable" });
       return;
     }
     const requestId = crypto.randomUUID();
     const timer = setTimeout(() => {
       if (pendingMcpApprovals.delete(requestId)) {
-        resolve({ approved: false, reason: 'approval timed out (60s)' });
+        resolve({ approved: false, reason: "approval timed out (60s)" });
       }
     }, MCP_APPROVAL_TIMEOUT_MS);
     pendingMcpApprovals.set(requestId, { resolve, timer });
@@ -438,9 +448,11 @@ function requestMcpApproval(payload) {
     try {
       mainWindow.show();
       mainWindow.focus();
-    } catch { /* noop */ }
+    } catch {
+      /* noop */
+    }
 
-    mainWindow.webContents.send('mcp:approval-request', {
+    mainWindow.webContents.send("mcp:approval-request", {
       requestId,
       finding: payload.finding,
       action: payload.action,
@@ -449,8 +461,8 @@ function requestMcpApproval(payload) {
   });
 }
 
-ipcMain.on('mcp:approval-response', (_event, payload) => {
-  if (!payload || typeof payload.requestId !== 'string') return;
+ipcMain.on("mcp:approval-response", (_event, payload) => {
+  if (!payload || typeof payload.requestId !== "string") return;
   const pending = pendingMcpApprovals.get(payload.requestId);
   if (!pending) return;
   clearTimeout(pending.timer);
@@ -466,10 +478,10 @@ ipcMain.on('mcp:approval-response', (_event, payload) => {
 // renderer as they happen. The chosen provider is passed in by the renderer;
 // if omitted, the first detected provider is used.
 ipcMain.handle(
-  'agent:investigate-finding',
+  "agent:investigate-finding",
   async (event, { finding, investigationId, providerId }) => {
     if (!finding || !finding.id) {
-      return { success: false, error: 'finding is required' };
+      return { success: false, error: "finding is required" };
     }
 
     const snapshot = (snapshotScheduler && snapshotScheduler.previousSnapshot) || null;
@@ -489,7 +501,7 @@ ipcMain.handle(
     };
 
     const onStep = (step) => {
-      send('agent:investigation-step', { investigationId, ...step });
+      send("agent:investigation-step", { investigationId, ...step });
     };
 
     const result = await headlessAgent.runInvestigation({
@@ -499,17 +511,17 @@ ipcMain.handle(
       onStep,
     });
 
-    send('agent:investigation-complete', { investigationId, ...result });
+    send("agent:investigation-complete", { investigationId, ...result });
     return result;
   },
 );
 
-ipcMain.handle('agent:list-providers', async (_event, opts) => {
+ipcMain.handle("agent:list-providers", async (_event, opts) => {
   try {
     if (opts && opts.fresh) {
-      const providers = require('./services/agentProviders');
+      const providers = require("./services/agentProviders");
       providers.clearDetectionCache();
-      const resolver = require('./services/agentProviders/_resolveBinary');
+      const resolver = require("./services/agentProviders/_resolveBinary");
       resolver.clearCache();
     }
     return { providers: await headlessAgent.listProviders() };
@@ -530,7 +542,11 @@ app.on("before-quit", () => {
 });
 
 app.on("will-quit", async () => {
-  try { mcpBridge.stop(); } catch { /* noop */ }
+  try {
+    mcpBridge.stop();
+  } catch {
+    /* noop */
+  }
   await sentry.flush();
   try {
     shutdownActivityLog();
@@ -690,6 +706,7 @@ ipcMain.handle("start-snapshot-stream", async (event) => {
         const findings = await runScan(snap);
         const currentIds = new Set(findings.map((f) => f.id));
         const severityRank = { critical: 2, warning: 1, suggestion: 0 };
+        const RESURFACE_COOLDOWN_MS = 5_000;
 
         // Detect resolved findings (previously surfaced, no longer present)
         const resolvedIds = [];
@@ -697,23 +714,34 @@ ipcMain.handle("start-snapshot-stream", async (event) => {
           if (!currentIds.has(id)) {
             resolvedIds.push(id);
             _surfacedFindingIds.delete(id);
+            _surfacedFindingLastAt.delete(id);
             _surfacedFindingSeverity.delete(id);
           }
         }
 
-        // Detect new findings and worsened findings
+        // Detect new findings and worsened findings.
+        // Also re-surface recurring findings after a cooldown, even if we never observed
+        // a clean "resolved" phase (common when services flap between scan intervals).
         const newFindings = [];
         const worsenedFindings = [];
+        const resurfacedFindings = [];
         for (const f of findings) {
           if (f.severity !== "critical" && f.severity !== "warning") continue;
           const prevSev = _surfacedFindingSeverity.get(f.id);
+          const now = Date.now();
+          const lastAt = _surfacedFindingLastAt.get(f.id) ?? 0;
           if (!_surfacedFindingIds.has(f.id)) {
-            newFindings.push(f);
+            newFindings.push({ ...f, occurredAt: now });
             _surfacedFindingIds.add(f.id);
+            _surfacedFindingLastAt.set(f.id, now);
             _surfacedFindingSeverity.set(f.id, f.severity);
           } else if (prevSev && (severityRank[f.severity] ?? 0) > (severityRank[prevSev] ?? 0)) {
-            worsenedFindings.push(f);
+            worsenedFindings.push({ ...f, occurredAt: now });
             _surfacedFindingSeverity.set(f.id, f.severity);
+            _surfacedFindingLastAt.set(f.id, now);
+          } else if (now - lastAt >= RESURFACE_COOLDOWN_MS) {
+            resurfacedFindings.push({ ...f, occurredAt: now });
+            _surfacedFindingLastAt.set(f.id, now);
           }
         }
 
@@ -754,6 +782,13 @@ ipcMain.handle("start-snapshot-stream", async (event) => {
             }
             _notifiedCriticalAt.set(f.id, now);
           }
+        }
+
+        // Broadcast re-surfaced findings (cooldown-based)
+        if (resurfacedFindings.length > 0) {
+          windows.forEach((win) =>
+            win.webContents.send("agent:proactive-finding", resurfacedFindings),
+          );
         }
       } catch (_) {}
     });
@@ -3153,16 +3188,14 @@ ipcMain.handle("mcp:get-config", async () => {
           "claude_desktop_config.json",
         ),
         snippet: JSON.stringify({ mcpServers: { fere: serverEntry } }, null, 2),
-        notes:
-          "Merge into the existing JSON. Restart Claude Desktop after saving.",
+        notes: "Merge into the existing JSON. Restart Claude Desktop after saving.",
       },
       {
         id: "claude-code",
         label: "Claude Code",
         configPath: ".mcp.json (project root) — or ~/.claude.json for global",
         snippet: JSON.stringify({ mcpServers: { fere: serverEntry } }, null, 2),
-        notes:
-          "Or run: claude mcp add fere -s user -- node " + scriptPath,
+        notes: "Or run: claude mcp add fere -s user -- node " + scriptPath,
       },
       {
         id: "cursor",
@@ -3182,11 +3215,7 @@ ipcMain.handle("mcp:get-config", async () => {
         id: "zed",
         label: "Zed",
         configPath: path.join(home, ".config", "zed", "settings.json"),
-        snippet: JSON.stringify(
-          { context_servers: { fere: serverEntry } },
-          null,
-          2,
-        ),
+        snippet: JSON.stringify({ context_servers: { fere: serverEntry } }, null, 2),
         notes: "Merge under the existing `context_servers` key.",
       },
     ];
@@ -3244,8 +3273,7 @@ ipcMain.handle("mcp:export-bundle", async () => {
     if (!fs.existsSync(bundlePath)) {
       return {
         success: false,
-        error:
-          "fere.mcpb not found. In dev, run `npm run build:mcpb` first.",
+        error: "fere.mcpb not found. In dev, run `npm run build:mcpb` first.",
       };
     }
     const win = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0];
