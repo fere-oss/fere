@@ -235,12 +235,52 @@ async function fetchProcessOnPort(port) {
 }
 
 async function fetchEstablishedConnections() {
-  // Not currently needed for CI; return an empty list rather than failing.
-  return [];
+  try {
+    const { stdout } = await execAsync("lsof -iTCP -sTCP:ESTABLISHED -P -n 2>/dev/null", {
+      maxBuffer: 10 * 1024 * 1024,
+      timeout: 10000,
+    });
+    return parseEstablishedConnections(stdout);
+  } catch (error) {
+    // lsof returns exit code 1 when no matches
+    if (error?.code === 1) return [];
+    return [];
+  }
 }
 
-function parseEstablishedConnections() {
-  return [];
+function parseEstablishedConnections(lsofOutput) {
+  if (!lsofOutput || !String(lsofOutput).trim()) return [];
+
+  const lines = String(lsofOutput).trim().split("\n");
+  const connections = [];
+
+  for (let i = 1; i < lines.length; i++) {
+    const parsed = parseLsofLine(lines[i]);
+    if (!parsed) continue;
+
+    const { command, pid, user, node, name } = parsed;
+    const cleaned = normalizeName(name);
+
+    const parts = cleaned.split("->");
+    if (parts.length !== 2) continue;
+
+    const local = parseHostPort(parts[0].trim());
+    const remote = parseHostPort(parts[1].trim());
+    if (!local || !remote) continue;
+
+    connections.push({
+      pid: parseInt(pid, 10),
+      process: command,
+      user,
+      localHost: local.host,
+      localPort: local.port,
+      remoteHost: remote.host,
+      remotePort: remote.port,
+      protocol: String(node || "tcp").toLowerCase(),
+    });
+  }
+
+  return connections;
 }
 
 // ============================================
@@ -320,4 +360,3 @@ module.exports = {
   HOME_DIR_PATH_PREFIXES,
   SYSTEM_PROJECT_ROOTS,
 };
-
